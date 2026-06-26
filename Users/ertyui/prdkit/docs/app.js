@@ -5093,10 +5093,9 @@ async function generateBlueprint() {
     }
     createArtifacts(blueprintArtifacts);
 
-    //     AI Enhancement: Generate PRD with AI    
-    // Rainbow glow on generate card
-    var genCard = document.querySelector('#wizardContent .card');
-    if (genCard) genCard.classList.add('ai-processing');
+    //     AI Enhancement: Generate PRD with AI
+    // Rainbow glow on ALL cards during generation
+    document.querySelectorAll('#wizardContent .card').forEach(function(c) { c.classList.add('ai-processing'); });
 
     try {
       // Build prompt from accumulated context
@@ -5202,7 +5201,7 @@ async function generateBlueprint() {
       console.warn('AI blueprint generation failed, using pipeline result:', aiErr);
       // Fallback   pipeline's createArtifacts already built the PRD
     } finally {
-      if (genCard) genCard.classList.remove('ai-processing');
+      document.querySelectorAll('#wizardContent .card').forEach(function(c) { c.classList.remove('ai-processing'); });
     }
 
     navigate('result');
@@ -11318,27 +11317,11 @@ function renderStep4HTML() {
 }
 
 function generateFromWizard() {
-    if (typeof generateBlueprint !== 'function') {
+    if (typeof generateBlueprint === 'function') {
+        generateBlueprint();
+    } else {
         showToast('Fitur generate sedang disiapkan', 'info');
-        return;
     }
-    // Check API key
-    var apiKey = '';
-    if (typeof KEY_STORE !== 'undefined') apiKey = KEY_STORE.get();
-    if (!apiKey && typeof settings !== 'undefined' && settings.apiKey) apiKey = settings.apiKey;
-    if (!apiKey) {
-        showToast('Atur API Key dulu di Pengaturan Model (halaman Home).', 'warning');
-        return;
-    }
-    // Save context
-    if (typeof state !== 'undefined') {
-        state.tech = state.tech || {};
-        state.extras = state.extras || [];
-        state.answers = state.answers || {};
-        if (typeof saveState === 'function') saveState();
-    }
-    loadWizardOverlay();
-    setTimeout(function() { doGenerate(); }, 500);
 }
 
 
