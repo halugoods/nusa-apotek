@@ -2101,14 +2101,10 @@ body::after {
 #modePickerCards > .card:nth-child(2) { animation-delay: 0.20s; }
 #modePickerCards > .card:nth-child(3) { animation-delay: 0.32s; }
 
-/* Survey mode-picker: parent glow mati klo salah satu mode card di dalemnya di-hover */
-#surveyCard:has(#modePickerCards > .card:hover):hover { transform: none !important; }
-#surveyCard:has(#modePickerCards > .card:hover):hover > .card-inner {
-  box-shadow: none;
-}
-#surveyCard:has(#modePickerCards > .card:hover):hover > .card-inner::before {
-  opacity: 0.10;
-}
+/* Survey mode-picker: parent glow mati klo mouse di dalem area mode cards */
+#surveyCard.suppress-glow:hover { transform: none !important; }
+#surveyCard.suppress-glow:hover > .card-inner { box-shadow: none !important; }
+#surveyCard.suppress-glow:hover > .card-inner::before { opacity: 0.10 !important; }
 
 /* Featured (selected) card variant — stronger accent border */
 .card.featured {
