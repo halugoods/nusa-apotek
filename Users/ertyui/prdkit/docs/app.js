@@ -10744,6 +10744,19 @@ window.showBetaDashboard = showBetaDashboard;
     });
   }
 
+  function initModePickerGlow() {
+    var surveyCard = document.getElementById('surveyCard');
+    if (!surveyCard) return;
+    var modePicker = document.getElementById('modePickerCards');
+    if (!modePicker) return;
+    modePicker.addEventListener('mouseenter', function() {
+      surveyCard.classList.add('suppress-glow');
+    });
+    modePicker.addEventListener('mouseleave', function() {
+      surveyCard.classList.remove('suppress-glow');
+    });
+  }
+
   function renderWizStep() {
     var container = document.getElementById('wizardContent');
     if (!container) return;
@@ -10757,6 +10770,9 @@ window.showBetaDashboard = showBetaDashboard;
           if (typeof renderSurvey === 'function') renderSurvey();
         }, 100);
       }
+      setTimeout(function() {
+        if (typeof initModePickerGlow === 'function') initModePickerGlow();
+      }, 50);
     }
     else if (wizardStep === 3) {
       container.innerHTML = renderStep2HTML();
@@ -11165,17 +11181,14 @@ function renderModePickerHTML() {
 function renderStep3HTML() {
     // If no survey mode selected yet, show mode picker
         if (!state.surveyMode) {
-      return '<div class="stagger">' +
-        // Heading like gym-membership — plain text, no card wrapper
-        '<div class="mb-5 text-center sm:text-left">' +
+      return '<div class="stagger"><div class="card" id="surveyCard" style="--accent:#22C55E"><div class="card-inner !p-4 sm:!p-6">' +
         '<h2 class="text-base sm:text-lg font-bold mb-1" style="color:var(--text)">Pilih Mode Survey</h2>' +
-        '<p class="text-[11px] sm:text-[12px]" style="color:var(--text-muted)">Semakin detail, semakin akurat blueprint yang dihasilkan.</p></div>' +
-        // 3 sibling mode cards — no outer card, no parent-child cascade
+        '<p class="text-[11px] sm:text-[12px] mb-4" style="color:var(--text-muted)">Semakin detail, semakin akurat blueprint yang dihasilkan.</p>' +
         '<div id="modePickerCards">' + renderModePickerHTML() + '</div>' +
-        '<div id="surveyLoading" class="mt-5 text-center" style="display:none">' +
+        '<div id="surveyLoading" class="mt-4 text-center" style="display:none">' +
         '<div class="loading-ai justify-center"><div class="spinner-ring"></div></div>' +
         '<div class="text-[12px] mt-2 animate-pulse" style="color:var(--text-muted)">Menggenerate pertanyaan...</div></div>' +
-        '</div>' +
+        '</div></div></div>' +
         '<div class="wizard-nav">' +
         '<button class="btn-ghost rounded-xl font-semibold text-sm" onclick="goWizardStep(1)">Kembali</button>' +
         '<div></div></div>';
