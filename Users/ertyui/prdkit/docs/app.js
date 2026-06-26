@@ -11317,27 +11317,11 @@ function renderStep4HTML() {
 }
 
 function generateFromWizard() {
-    if (typeof generateBlueprint !== 'function') {
+    if (typeof generateBlueprint === 'function') {
+        generateBlueprint();
+    } else {
         showToast('Fitur generate sedang disiapkan', 'info');
-        return;
     }
-    // Check API key
-    var apiKey = '';
-    if (typeof KEY_STORE !== 'undefined') apiKey = KEY_STORE.get();
-    if (!apiKey && typeof settings !== 'undefined' && settings.apiKey) apiKey = settings.apiKey;
-    if (!apiKey) {
-        showToast('Atur API Key dulu di Pengaturan Model (halaman Home).', 'warning');
-        return;
-    }
-    // Save context
-    if (typeof state !== 'undefined') {
-        state.tech = state.tech || {};
-        state.extras = state.extras || [];
-        state.answers = state.answers || {};
-        if (typeof saveState === 'function') saveState();
-    }
-    loadWizardOverlay();
-    setTimeout(function() { doGenerate(); }, 500);
 }
 
 
@@ -11394,17 +11378,17 @@ function goStep4FromTech() {
   function loadWizardOverlay() {
     var overlay = document.getElementById('loadOverlay');
     if (overlay) overlay.classList.add('open');
-    // Rainbow glow on ALL wizard cards during generation
+    // Rainbow glow on all wizard cards during generation
     document.querySelectorAll('#wizardContent .card').forEach(function(c) { c.classList.add('ai-processing'); });
     var modelName = 'Claude 3.5 Sonnet';
     if (typeof settings !== 'undefined' && settings.model) modelName = settings.model.split('/').pop();
     var el = document.getElementById('loadingModel');
     if (el) el.textContent = 'Menggunakan ' + modelName;
 
-    //     Dramatic Lab Animation Sequence
-    // Phase 1: Three cards fly in with energy trails (0-2s)
-    // Phase 2: Flash combine + energy burst (2-3.5s)
-    // Phase 3: Beaker experiment with formulas + particles (3.5s+)
+    //     Lab Animation Sequence    
+    // Phase 1: Three cards fly in (0-2s)
+    // Phase 2: Flash combine (2-3.5s)
+    // Phase 3: Beaker + progress (3.5s+)
 
     var p1 = document.getElementById('labPhase1');
     var p2 = document.getElementById('labPhase2');
@@ -11413,46 +11397,40 @@ function goStep4FromTech() {
     var progFill = document.getElementById('labProgressFill');
     var statusText = document.getElementById('labStatusText');
 
-    // Phase 1→2: Cards combine with flash
+    // Phase 1→2: Cards combine
     setTimeout(function() {
       if (p1) p1.style.display = 'none';
       if (p2) p2.style.display = 'block';
     }, 2200);
 
-    // Phase 2→3: Beaker appears with dramatic entrance
+    // Phase 2→3: Beaker appears
     setTimeout(function() {
       if (p2) p2.style.display = 'none';
       if (p3) p3.style.display = 'block';
       // Start filling the beaker
-      if (pFill) pFill.style.height = '20%';
-      if (progFill) progFill.style.width = '10%';
+      if (pFill) pFill.style.height = '30%';
+      if (progFill) progFill.style.width = '15%';
       if (statusText) statusText.textContent = 'Menganalisis data produk...';
     }, 3500);
 
-    // Progress updates — semakin heboh statusnya
+    // Progress updates
     setTimeout(function() {
-      if (pFill) pFill.style.height = '35%';
-      if (progFill) progFill.style.width = '25%';
+      if (pFill) pFill.style.height = '55%';
+      if (progFill) progFill.style.width = '35%';
       if (statusText) statusText.textContent = 'Menyusun struktur blueprint...';
     }, 5000);
 
     setTimeout(function() {
-      if (pFill) pFill.style.height = '55%';
-      if (progFill) progFill.style.width = '45%';
-      if (statusText) statusText.textContent = 'Meramu logika bisnis & alur sistem...';
-    }, 7000);
-
-    setTimeout(function() {
       if (pFill) pFill.style.height = '75%';
-      if (progFill) progFill.style.width = '65%';
+      if (progFill) progFill.style.width = '60%';
       if (statusText) statusText.textContent = 'Mengoptimasi dengan AI...';
-    }, 9000);
+    }, 7000);
 
     setTimeout(function() {
       if (pFill) pFill.style.height = '90%';
       if (progFill) progFill.style.width = '85%';
       if (statusText) statusText.textContent = 'Finalisasi blueprint...';
-    }, 11000);
+    }, 9000);
   }
 
   function doGenerate() {

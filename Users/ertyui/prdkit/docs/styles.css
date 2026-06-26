@@ -666,7 +666,11 @@ body::after {
   border-color: rgba(59,130,246,0.2);
   animation-delay: 0.3s;
 }
-/* Enhanced at end of file */
+@keyframes labCardEnter {
+  0% { opacity: 0; transform: scale(0.6) rotate(-8deg) translateY(20px); }
+  60% { opacity: 1; transform: scale(1.05) rotate(2deg) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg) translateY(0); }
+}
 
 /* Phase 2: Combination flash */
 .lab-flash {
@@ -694,7 +698,11 @@ body::after {
   animation-delay: 0.3s;
 }
 @keyframes labFlashPulse {
-/* Enhanced at end of file */
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
 /* Phase 3: Beaker */
 .lab-beaker-container {
   position: relative;
@@ -769,7 +777,10 @@ body::after {
   50% { opacity: 0.8; transform: translateX(-50%) scale(1.15); }
 }
 .lab-bubble {
-/* Enhanced at end of file */
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.04);
   animation: labBubbleRise 2.5s ease-in infinite;
   pointer-events: none;
 }
@@ -840,227 +851,6 @@ body::after {
   font-size: 11px;
   color: rgba(255,255,255,0.30);
   margin-top: 4px;
-}
-
-/* ─── Lab Experiment — Dramatic Effects ─── */
-
-/* Energy aura behind beaker */
-.lab-energy-aura {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 260px; height: 260px;
-  background: radial-gradient(circle, rgba(168,85,247,0.08) 0%, rgba(59,130,246,0.04) 30%, rgba(34,197,94,0.02) 50%, transparent 70%);
-  border-radius: 50%;
-  filter: blur(40px);
-  animation: labAuraPulse 3s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes labAuraPulse {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
-  50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
-}
-
-/* Floating formula symbols */
-.lab-formula {
-  position: absolute;
-  font-size: 18px;
-  font-weight: 700;
-  opacity: 0;
-  pointer-events: none;
-  animation: labFormulaFloat 5s ease-in-out infinite;
-  text-shadow: 0 0 12px currentColor, 0 0 30px currentColor;
-}
-.lab-fml-1 { top: 5%; left: 8%; color: #A855F7; font-size: 20px; animation-delay: 0s; }
-.lab-fml-2 { top: 12%; right: 10%; color: #3B82F6; font-size: 16px; animation-delay: 0.8s; }
-.lab-fml-3 { top: 25%; left: 4%; color: #22C55E; font-size: 14px; animation-delay: 1.6s; }
-.lab-fml-4 { top: 8%; left: 50%; color: #F59E0B; font-size: 22px; animation-delay: 2.4s; }
-.lab-fml-5 { bottom: 30%; right: 6%; color: #EC4899; font-size: 15px; animation-delay: 3.2s; }
-.lab-fml-6 { bottom: 15%; left: 12%; color: #34D399; font-size: 18px; animation-delay: 4s; }
-@keyframes labFormulaFloat {
-  0% { opacity: 0; transform: translateY(10px) scale(0.5) rotate(-10deg); }
-  15% { opacity: 0.7; }
-  30% { opacity: 0.2; }
-  45% { opacity: 0.6; transform: translateY(-20px) scale(1.1) rotate(5deg); }
-  60% { opacity: 0.1; }
-  75% { opacity: 0.5; transform: translateY(-35px) scale(0.9) rotate(-5deg); }
-  100% { opacity: 0; transform: translateY(-50px) scale(0.6) rotate(10deg); }
-}
-
-/* Floating glow particles */
-.lab-particle {
-  position: absolute;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.5);
-  box-shadow: 0 0 6px 2px rgba(168,85,247,0.3);
-  pointer-events: none;
-  animation: labParticleDrift 4s ease-in-out infinite;
-}
-.lab-ptcl-1 { top: 30%; left: 10%; animation-delay: 0s; }
-.lab-ptcl-2 { top: 50%; right: 8%; animation-delay: 0.7s; background: rgba(59,130,246,0.6); box-shadow: 0 0 6px 2px rgba(59,130,246,0.3); }
-.lab-ptcl-3 { top: 20%; left: 55%; animation-delay: 1.4s; background: rgba(34,197,94,0.6); box-shadow: 0 0 6px 2px rgba(34,197,94,0.3); }
-.lab-ptcl-4 { top: 60%; right: 20%; animation-delay: 2.1s; }
-.lab-ptcl-5 { top: 10%; left: 30%; animation-delay: 2.8s; background: rgba(245,158,11,0.6); box-shadow: 0 0 6px 2px rgba(245,158,11,0.3); }
-.lab-ptcl-6 { top: 45%; left: 70%; animation-delay: 3.5s; background: rgba(236,72,153,0.6); box-shadow: 0 0 6px 2px rgba(236,72,153,0.3); }
-@keyframes labParticleDrift {
-  0% { transform: translateY(0) translateX(0) scale(0.5); opacity: 0; }
-  20% { opacity: 1; transform: translateY(-15px) translateX(10px) scale(1); }
-  40% { transform: translateY(-10px) translateX(-5px) scale(0.8); opacity: 0.6; }
-  60% { transform: translateY(-25px) translateX(8px) scale(1.1); opacity: 0.8; }
-  80% { transform: translateY(-15px) translateX(-10px) scale(0.7); opacity: 0.3; }
-  100% { transform: translateY(-35px) translateX(5px) scale(0.4); opacity: 0; }
-}
-
-/* Electric arcs around beaker */
-.lab-beaker-arc {
-  position: absolute;
-  width: 2px; height: 40px;
-  top: 50%; transform: translateY(-50%);
-  background: linear-gradient(180deg, transparent, rgba(168,85,247,0.6), rgba(59,130,246,0.4), transparent);
-  filter: blur(1px);
-  animation: labArcZap 2s ease-in-out infinite;
-  pointer-events: none;
-}
-.lab-arc-left { left: -15px; animation-delay: 0s; }
-.lab-arc-right { right: -15px; animation-delay: 1s; }
-@keyframes labArcZap {
-  0%, 100% { opacity: 0; transform: translateY(-50%) scaleY(0.3); }
-  20% { opacity: 0.8; transform: translateY(-50%) scaleY(1.2); }
-  30% { opacity: 0.2; transform: translateY(-50%) scaleY(0.8); }
-  40% { opacity: 0.6; transform: translateY(-50%) scaleY(1); }
-  50% { opacity: 0; transform: translateY(-50%) scaleY(0.5); }
-  70% { opacity: 0.7; transform: translateY(-50%) scaleY(1.1); }
-  80% { opacity: 0.1; }
-  100% { opacity: 0; transform: translateY(-50%) scaleY(0.3); }
-}
-
-/* Extra bubbles */
-.lab-bubble-5 { width: 7px; height: 7px; bottom: 8%; left: 35%; animation-delay: 0.5s; background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.06); }
-.lab-bubble-6 { width: 9px; height: 9px; bottom: 12%; left: 60%; animation-delay: 1.7s; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.06); }
-.lab-bubble-5, .lab-bubble-6 { animation: labBubbleRise 2.8s ease-in infinite; }
-
-/* Extra steam */
-.lab-steam-4 { top: -5px; left: 38px; animation-delay: 0.6s; }
-
-/* Enhanced beaker liquid shimmer */
-.lab-beaker-liquid::after {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: -10%;
-  width: 120%;
-  height: 10px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), rgba(168,85,247,0.15), transparent);
-  filter: blur(3px);
-  animation: labLiquidShimmer 2.5s ease-in-out infinite;
-}
-@keyframes labLiquidShimmer {
-  0% { transform: translateX(-30%); opacity: 0.3; }
-  50% { transform: translateX(30%); opacity: 0.8; }
-  100% { transform: translateX(-30%); opacity: 0.3; }
-}
-
-/* Enhanced lab beaker glow pulse — more vibrant */
-@keyframes labGlowPulse {
-  0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(1); }
-  50% { opacity: 1; transform: translateX(-50%) scale(1.3); }
-}
-
-/* Phase 2: Enhanced flash combine — more dramatic */
-.lab-flash {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 220px; height: 220px;
-}
-.lab-flash-ring {
-  position: absolute;
-  inset: 20px;
-  border-radius: 50%;
-  border: 2px solid rgba(168,85,247,0.5);
-  animation: labFlashPulse 0.8s cubic-bezier(0.22,1,0.36,1) forwards;
-  opacity: 0;
-  box-shadow: 0 0 20px rgba(168,85,247,0.15), inset 0 0 20px rgba(168,85,247,0.05);
-}
-.lab-flash-ring-2 {
-  inset: 10px;
-  border-color: rgba(59,130,246,0.4);
-  animation-delay: 0.15s;
-  box-shadow: 0 0 30px rgba(59,130,246,0.1), inset 0 0 30px rgba(59,130,246,0.05);
-}
-.lab-flash-ring-3 {
-  inset: 0;
-  border-color: rgba(0,224,143,0.3);
-  animation-delay: 0.3s;
-  box-shadow: 0 0 40px rgba(0,224,143,0.08);
-}
-@keyframes labFlashPulse {
-  0% { transform: scale(0.3); opacity: 0; }
-  40% { opacity: 0.9; transform: scale(0.9); }
-  60% { opacity: 0.5; transform: scale(1.1); }
-  100% { transform: scale(1.4); opacity: 0; }
-}
-
-/* Flash burst - center white flash */
-.lab-flash::before {
-  content: "";
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 40px; height: 40px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.8), rgba(168,85,247,0.3), transparent);
-  animation: labFlashBurst 0.6s ease-out forwards;
-  opacity: 0;
-}
-@keyframes labFlashBurst {
-  0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0; }
-  30% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
-}
-
-/* Phase 1: Enhanced card entering with energy trail */
-.lab-card {
-  position: absolute;
-  width: 80px;
-  height: 90px;
-  border-radius: 16px;
-  padding: 14px 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: linear-gradient(160deg, rgba(18,22,38,0.88) 0%, rgba(8,10,20,0.96) 100%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  opacity: 0;
-  animation: labCardEnter 0.7s cubic-bezier(0.22,1,0.36,1) forwards;
-}
-.lab-card::after {
-  content: "";
-  position: absolute;
-  width: 100%; height: 100%;
-  border-radius: 16px;
-  background: radial-gradient(circle at center, var(--card-color, #A855F7) 0%, transparent 70%);
-  opacity: 0;
-  animation: labCardTrail 0.7s ease-out forwards;
-  pointer-events: none;
-  z-index: -1;
-  filter: blur(12px);
-}
-@keyframes labCardTrail {
-  0% { opacity: 0.5; transform: scale(0.7); }
-  50% { opacity: 0.2; transform: scale(1.3); }
-  100% { opacity: 0; transform: scale(1.5); }
-}
-@keyframes labCardEnter {
-  0% { opacity: 0; transform: scale(0.5) rotate(-12deg) translateY(30px); }
-  50% { opacity: 1; transform: scale(1.08) rotate(3deg) translateY(-6px); }
-  75% { transform: scale(0.97) rotate(-1deg) translateY(2px); }
-  100% { opacity: 1; transform: scale(1) rotate(0deg) translateY(0); }
 }
 
 /* ─── Result Components ─── */
