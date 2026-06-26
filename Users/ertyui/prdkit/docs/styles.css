@@ -2103,10 +2103,10 @@ body::after {
 
 /* Survey mode-picker: parent glow mati klo salah satu mode card di dalemnya di-hover */
 #surveyCard:has(#modePickerCards > .card:hover):hover { transform: none !important; }
-#surveyCard:has(#modePickerCards > .card:hover):hover .card-inner {
+#surveyCard:has(#modePickerCards > .card:hover):hover > .card-inner {
   box-shadow: none;
 }
-#surveyCard:has(#modePickerCards > .card:hover):hover .card-inner::before {
+#surveyCard:has(#modePickerCards > .card:hover):hover > .card-inner::before {
   opacity: 0.10;
 }
 
