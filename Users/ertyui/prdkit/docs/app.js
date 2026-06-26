@@ -1302,6 +1302,7 @@ function fillExampleIdea(idea) {
 //     Step 1: Ide    
 function updateIdeaCounter() {
   const textarea = document.getElementById('ideaText');
+  if (!textarea) return;
   const len = textarea.value.length;
   document.getElementById('ideaCount').textContent = len.toLocaleString();
   const counter = document.querySelector('.form-counter');
