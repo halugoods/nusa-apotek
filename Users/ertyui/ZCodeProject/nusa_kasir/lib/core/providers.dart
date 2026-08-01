@@ -20,17 +20,21 @@ final themeModeProvider = StateProvider<String>((ref) => 'system');
 
 final activeBranchProvider = StateProvider<Branche?>((ref) => null);
 
-final settingsRepoProvider =
-    Provider((ref) => SettingsRepository(ref.watch(databaseProvider)));
+final settingsRepoProvider = Provider(
+  (ref) => SettingsRepository(ref.watch(databaseProvider)),
+);
 
-final transactionRepoProvider =
-    Provider((ref) => TransactionRepository(ref.watch(databaseProvider)));
+final transactionRepoProvider = Provider(
+  (ref) => TransactionRepository(ref.watch(databaseProvider)),
+);
 
-final customerRepoProvider =
-    Provider((ref) => CustomerRepository(ref.watch(databaseProvider)));
+final customerRepoProvider = Provider(
+  (ref) => CustomerRepository(ref.watch(databaseProvider)),
+);
 
-final productRepoProvider =
-    Provider((ref) => ProductRepository(ref.watch(databaseProvider)));
+final productRepoProvider = Provider(
+  (ref) => ProductRepository(ref.watch(databaseProvider)),
+);
 
 final activationRepoProvider = Provider<ActivationRepository>((ref) {
   try {
@@ -40,11 +44,19 @@ final activationRepoProvider = Provider<ActivationRepository>((ref) {
   }
 });
 
-final onlineOrderRepoProvider =
-    Provider((ref) => OnlineOrderRepository(ref.watch(databaseProvider)));
+final onlineOrderRepoProvider = Provider(
+  (ref) => OnlineOrderRepository(ref.watch(databaseProvider)),
+);
 
 /// Feature toggles — which menu items show on Home Screen.
 final featureTogglesProvider = StateProvider<Map<String, bool>>((ref) => {});
+
+/// Menu ordering — user-defined order from Kelola Fitur drag-reorder.
+final menuOrderProvider = StateProvider<List<String>>((ref) => []);
+
+/// Active theme preset ID (maps to NusaConfig.themePresets keys).
+/// Loaded from SecureStore on app init, default = productId.
+final themePresetProvider = StateProvider<String>((ref) => 'kelontong');
 
 /// PIN length preference (4 or 6 digits). Default 6.
 /// Loaded from settings DB on app init, mutated by settings screen.

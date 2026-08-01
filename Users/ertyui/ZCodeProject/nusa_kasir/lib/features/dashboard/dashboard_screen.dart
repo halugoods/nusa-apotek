@@ -155,6 +155,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (branch != null && mounted) {
         setState(() => _activeBranch = branch);
         ref.read(activeBranchProvider.notifier).state = branch;
+        await _load();
       }
     }
   }
@@ -179,10 +180,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final emps = await attRepo.getEmployees();
     final branches =
         await BranchRepository(ref.read(databaseProvider)).getAll();
+    final session = ref.read(employeeSessionProvider);
+    // A null branch keeps owner/global dashboards scoped to all branches.
+    final branchId = _activeBranch?.id ?? session?.branchId;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final reportRepo = ReportRepository(ref.read(databaseProvider));
-    final sum = await reportRepo.summary(from: today, to: now);
+    final sum = await reportRepo.summary(
+      from: today,
+      to: now,
+      branchId: branchId,
+    );
 
     final cashierRepo =
         CashierSessionRepository(ref.read(databaseProvider));
@@ -225,7 +233,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     // Load keuangan summary
     final financeRepo = FinanceRepository(ref.read(databaseProvider));
-    final finSummary = await financeRepo.getDashboardSummary();
+    final finSummary = await financeRepo.getDashboardSummary(branchId: branchId);
 
     // Load flip card data
     await _fetchCardData(ref.read(employeeSessionProvider)?.employeeId);
@@ -266,9 +274,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final onlineRepo = OnlineOrderRepository(db);
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
+      final branchId = _activeBranch?.id ??
+          ref.read(employeeSessionProvider)?.branchId;
 
       // Today's sales summary
-      final sum = await reportRepo.summary(from: today, to: now);
+      final sum = await reportRepo.summary(
+        from: today,
+        to: now,
+        branchId: branchId,
+      );
       final penjualan = sum['omzet'] as int;
       final trxCount = sum['count'] as int;
 
@@ -297,7 +311,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
       // Monthly data
       final monthStart = DateTime(now.year, now.month, 1);
-      final monthSum = await reportRepo.summary(from: monthStart, to: now);
+      final monthSum = await reportRepo.summary(
+        from: monthStart,
+        to: now,
+        branchId: branchId,
+      );
       final omzet = monthSum['omzet'] as int;
       final transaksiBulan = monthSum['count'] as int;
 
@@ -390,11 +408,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ? const Icon(Icons.check_circle, color: NusaConfig.accentGreen, size: 22)
                 : null,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            onTap: () {
-              setState(() => _activeBranch = null);
-              ref.read(activeBranchProvider.notifier).state = null;
-              Navigator.pop(ctx);
-            },
+              onTap: () async {
+                setState(() => _activeBranch = null);
+                ref.read(activeBranchProvider.notifier).state = null;
+                Navigator.pop(ctx);
+                await _load();
+              },
           ),
           const SizedBox(height: 4),
           // Branch list
@@ -421,10 +440,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ? const Icon(Icons.check_circle, color: NusaConfig.accentPurple, size: 22)
                   : null,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              onTap: () {
+              onTap: () async {
                 setState(() => _activeBranch = b);
                 ref.read(activeBranchProvider.notifier).state = b;
                 Navigator.pop(ctx);
+                await _load();
               },
             );
           }),
@@ -472,13 +492,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    // 3. PIN guard for sensitive menus (kasir)
+    // 3. RBAC access guard — block navigation for screens not in role's access list
+    if (!hasAccess(currentRole, route)) {
+      _showOwnerOnlyDialog(route);
+      return;
+    }
+
+    // 4. PIN guard for sensitive menus (kasir)
     if (needsPinGuard(route)) {
       final pinOk = await _requirePinReentry();
       if (!pinOk) return;
     }
 
-    // 4. Attendance check: if not checked in, check in now
+    // 5. Attendance check: if not checked in, check in now
     if (!_hasCheckedIn && session != null) {
       final attRepo = AttendanceRepository(ref.read(databaseProvider));
       await attRepo.checkIn(session.employeeId);
@@ -926,7 +952,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     // Build menu items with access indicators
     final featureToggles = ref.watch(featureTogglesProvider);
-    final menuItems = _items
+    final menuOrder = ref.watch(menuOrderProvider);
+    final filteredItems = _items
         .where((item) {
           final id = item['id'] as String;
           // User override from Kelola Fitur takes priority
@@ -957,6 +984,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         'access': accessType,
       };
     }).toList();
+
+    // Apply user-defined menu order from Kelola Fitur drag-reorder
+    if (menuOrder.isNotEmpty) {
+      final orderMap = <String, int>{};
+      for (var i = 0; i < menuOrder.length; i++) {
+        orderMap[menuOrder[i]] = i;
+      }
+      filteredItems.sort((a, b) {
+        final ai = orderMap[a['id'] as String] ?? 999;
+        final bi = orderMap[b['id'] as String] ?? 999;
+        return ai.compareTo(bi);
+      });
+    }
+    final menuItems = filteredItems;
 
     // Build card props
     String initials, userName, roleText, attendanceText;
@@ -1204,7 +1245,7 @@ class _MenuItem extends StatelessWidget {
     final isLocked = access == '🔒';
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLocked ? null : onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,

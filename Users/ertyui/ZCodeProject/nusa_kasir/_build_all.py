@@ -3,7 +3,7 @@
 NUSA Multi-Variant APK Builder
 Builds all 8 variants sequentially by swapping config files per variant.
 """
-import os, sys, shutil, subprocess, re
+import os, sys, shutil, subprocess, re, time
 
 FLUTTER = r"C:\Users\ertyui\flutter\bin\flutter.bat"
 BASE_DIR = r"C:\Users\ertyui\ZCodeProject\nusa_kasir"
@@ -340,9 +340,9 @@ def update_config(variant: dict):
     config = re.sub(r'(appSubtitle\s*=\s*")[^"]+', rf'\g<1>{v["subtitle"]}', config)
     config = re.sub(r'(githubRepo\s*=\s*")[^"]+', rf'\g<1>{v["repo"]}', config)
     config = re.sub(r'(applicationId\s*=\s*")[^"]+', rf'\g<1>{v["pkg"]}', config)
-    config = re.sub(r'(primaryColor\s*=\s*Color\()[^)]+', rf'\g<1>{v["primary"]}', config)
-    config = re.sub(r'(primaryDark\s*=\s*Color\()[^)]+', rf'\g<1>{v["dark"]}', config)
-    config = re.sub(r'(primarySoft\s*=\s*Color\()[^)]+', rf'\g<1>{v["soft"]}', config)
+    config = re.sub(r'(primaryColor\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["primary"]}', config)
+    config = re.sub(r'(primaryDark\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["dark"]}', config)
+    config = re.sub(r'(primarySoft\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["soft"]}', config)
     hm = v["hidden_menus"]
     hm_str = "[" + ", ".join("'" + m + "'" for m in hm) + "]"
     config = re.sub(r'(hiddenMenus\s*=\s*)\[.*?\]', r'\g<1>' + hm_str, config)
@@ -383,110 +383,92 @@ def update_config(variant: dict):
 
 
 def build_apk(variant_id: str):
-    """Run flutter build apk --release."""
-    print(f"  → Flutter clean...")
-    subprocess.run([FLUTTER, "clean"], cwd=BASE_DIR, capture_output=True)
-
-    print(f"  → Flutter pub get...")
+    """Run Flutter build and reject an output left by an earlier build."""
+    apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
+    try:
+        os.remove(apk_src)
+    except FileNotFoundError:
+        pass
+    print("  → Flutter clean...")
+    r = subprocess.run([FLUTTER, "clean"], cwd=BASE_DIR, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"  ❌ clean failed:\n{r.stderr[-500:]}")
+        return False
+    print("  → Flutter pub get...")
     r = subprocess.run([FLUTTER, "pub", "get"], cwd=BASE_DIR, capture_output=True, text=True)
     if r.returncode != 0:
         print(f"  ❌ pub get failed:\n{r.stderr[-500:]}")
         return False
-
-    print(f"  → Building release APK (5-40 min for first variant, faster after)...")
-    r = subprocess.run(
-        [FLUTTER, "build", "apk", "--release"],
-        cwd=BASE_DIR, capture_output=True, text=True, timeout=2400
-    )
+    print("  → Building release APK...")
+    started = time.time()
+    r = subprocess.run([FLUTTER, "build", "apk", "--release"], cwd=BASE_DIR,
+                       capture_output=True, text=True, timeout=2400)
     if r.returncode != 0:
         print(f"  ❌ Build failed:\n{r.stderr[-1000:]}")
         return False
+    if not os.path.isfile(apk_src) or os.path.getsize(apk_src) == 0 or os.path.getmtime(apk_src) < started:
+        print(f"  ❌ Missing or stale APK output: {apk_src}")
+        return False
+    return True
 
-    # Show last few lines of output
-    for line in r.stdout.strip().split("\n")[-3:]:
-        print(f"    {line}")
-    if r.stderr.strip():
-        for line in r.stderr.strip().split("\n")[-5:]:
-            if line.strip():
-                print(f"    {line}")
 
+def validate_variant(variant: dict):
+    """Verify all identity-bearing source files agree before a build."""
+    checks = [(CONFIG_FILE, (variant["pkg"], variant["product"], variant["repo"])),
+              (GRADLE_FILE, (variant["pkg"],)),
+              (MANIFEST_FILE, (_escape_xml(variant["name"],),))]
+    for path, values in checks:
+        text = open(path, encoding="utf-8").read()
+        if not all(value in text for value in values):
+            print(f"  ❌ Variant identity validation failed: {path}")
+            return False
     return True
 
 
 def main():
-    # Backup original state
-    shutil.copy2(CONFIG_FILE, CONFIG_FILE + ".orig")
-    shutil.copy2(GRADLE_FILE, GRADLE_FILE + ".orig")
-    shutil.copy2(MANIFEST_FILE, MANIFEST_FILE + ".orig")
+    requested = set(sys.argv[1:])
+    unknown = requested - {v["id"] for v in VARIANTS}
+    if unknown:
+        print(f"Unknown variant(s): {', '.join(sorted(unknown))}", file=sys.stderr)
+        return 2
+    variants = [v for v in VARIANTS if not requested or v["id"] in requested]
+    backups = [(CONFIG_FILE, CONFIG_FILE + ".orig"),
+               (GRADLE_FILE, GRADLE_FILE + ".orig"),
+               (MANIFEST_FILE, MANIFEST_FILE + ".orig")]
     orig_gms = os.path.join(GMS_DIR, "google-services.json")
     if os.path.exists(orig_gms):
-        shutil.copy2(orig_gms, orig_gms + ".orig")
-
-    print("=" * 50)
-    print("  NUSA Multi-Variant Builder")
-    print(f"  Building {len(VARIANTS)} variants")
-    print("=" * 50)
-
-    success = []
-    failed = []
-
-    for i, variant in enumerate(VARIANTS, 1):
-        vid = variant["id"]
-        vname = variant["name"]
-        print(f"\n{'='*50}")
-        print(f"  [{i}/{len(VARIANTS)}] {vname} ({vid})")
-        print(f"  Package: {variant['pkg']}")
-        print(f"{'='*50}")
-
-        # Update configs
-        if not update_config(variant):
-            failed.append(vid)
-            continue
-
-        # Build APK
-        if not build_apk(vid):
-            failed.append(vid)
-            continue
-
-        # Copy APK
-        apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
-        apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}-v1.0.0.apk")
-        if os.path.exists(apk_src):
+        backups.append((orig_gms, orig_gms + ".orig"))
+    success, failed = [], []
+    try:
+        for source, backup in backups:
+            shutil.copy2(source, backup)
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        for i, variant in enumerate(variants, 1):
+            vid = variant["id"]
+            print(f"\n{'='*50}\n  [{i}/{len(variants)}] {variant['name']} ({vid})\n{'='*50}")
+            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}-v1.0.0.apk")
+            try:
+                os.remove(apk_dst)
+            except FileNotFoundError:
+                pass
+            if not update_config(variant) or not validate_variant(variant) or not build_apk(vid):
+                failed.append(vid)
+                continue
+            apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
             shutil.copy2(apk_src, apk_dst)
-            size_mb = os.path.getsize(apk_dst) / (1024 * 1024)
-            print(f"  ✅ APK saved: {apk_dst} ({size_mb:.1f} MB)")
+            print(f"  APK saved: {apk_dst} ({os.path.getsize(apk_dst) / (1024 * 1024):.1f} MB)")
             success.append(vid)
-        else:
-            print(f"  ❌ APK not found at {apk_src}")
-            failed.append(vid)
-
-    # ── Restore original state ──
-    print(f"\n{'='*50}")
-    print("  Restoring original config...")
-    for f in [CONFIG_FILE, GRADLE_FILE, MANIFEST_FILE]:
-        orig = f + ".orig"
-        if os.path.exists(orig):
-            shutil.copy2(orig, f)
-            os.remove(orig)
-    orig_gms_bak = orig_gms + ".orig"
-    if os.path.exists(orig_gms_bak):
-        shutil.copy2(orig_gms_bak, orig_gms)
-        os.remove(orig_gms_bak)
-
-    # ── Summary ──
-    print(f"\n{'='*50}")
-    print(f"  BUILD SUMMARY")
-    print(f"{'='*50}")
-    print(f"  ✅ Success: {len(success)} — {', '.join(success)}")
+    finally:
+        print("\n  Restoring original config...")
+        for source, backup in backups:
+            if os.path.exists(backup):
+                shutil.copy2(backup, source)
+                os.remove(backup)
+    print(f"\nBUILD SUMMARY: {len(success)} succeeded, {len(failed)} failed")
     if failed:
-        print(f"  ❌ Failed:  {len(failed)} — {', '.join(failed)}")
-    print(f"\n  APK output: {OUTPUT_DIR}")
-    apks = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith(".apk")])
-    for a in apks:
-        sz = os.path.getsize(os.path.join(OUTPUT_DIR, a)) / (1024 * 1024)
-        print(f"    {a} ({sz:.1f} MB)")
-    print()
+        print("Failed: " + ", ".join(failed))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

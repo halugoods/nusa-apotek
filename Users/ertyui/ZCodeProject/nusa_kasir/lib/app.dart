@@ -1,8 +1,12 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/theme/nusa_theme.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/features/auth/rbac.dart';
+import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/core/activation/activation_screen.dart';
 import 'package:nusa_kasir/core/widgets/splash_screen.dart';
 import 'package:nusa_kasir/features/auth/login_screen.dart';
@@ -40,144 +44,277 @@ import 'package:nusa_kasir/features/domain/booking_screen.dart';
 import 'package:nusa_kasir/features/domain/resep_screen.dart';
 import 'package:nusa_kasir/features/domain/print_order_screen.dart';
 
-GoRouter buildRouter(String initialLocation) => GoRouter(
-      initialLocation: '/splash',
-      routes: [
-        GoRoute(
-            path: '/splash',
-            pageBuilder: (_, state) => CustomTransitionPage(
-                  key: state.pageKey,
-                  child: SplashScreen(
-                    onDone: (context) => context.go(initialLocation),
-                  ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) =>
-                          FadeTransition(opacity: animation, child: child),
-                )),
-        GoRoute(
-            path: '/activation',
-            pageBuilder: (_, __) => _slidePage(const ActivationScreen())),
-        GoRoute(
-            path: '/login', pageBuilder: (_, __) => _slidePage(const LoginScreen())),
-        GoRoute(
-            path: '/onboarding',
-            pageBuilder: (_, __) => _slidePage(const OnboardingScreen())),
-        GoRoute(
-            path: '/setup',
-            pageBuilder: (_, __) => _slidePage(const SetupScreen())),
-        GoRoute(
-            path: '/home',
-            pageBuilder: (_, __) => _slidePage(const DashboardScreen())),
-        GoRoute(
-            path: '/kasir',
-            pageBuilder: (_, state) => _slidePage(PosScreen(
-                sessionId: int.tryParse(
-                    state.uri.queryParameters['sessionId'] ?? '')))),
-        GoRoute(
-            path: '/checkout',
-            pageBuilder: (_, state) => _slidePage(CheckoutScreen(
-                sessionId: int.tryParse(
-                    state.uri.queryParameters['sessionId'] ?? '')))),
-        GoRoute(
-            path: '/produk',
-            pageBuilder: (_, __) => _slidePage(const ProductsScreen())),
-        GoRoute(
-            path: '/produk/tambah',
-            pageBuilder: (_, __) => _slidePage(const ProductFormScreen())),
-        GoRoute(
-            path: '/produk/edit/:id',
-            pageBuilder: (_, state) => _slidePage(ProductFormScreen(
-                productId: int.parse(state.pathParameters['id']!)))),
-        GoRoute(
-            path: '/produk/kategori',
-            pageBuilder: (_, __) => _slidePage(const KategoriListScreen())),
-        GoRoute(
-            path: '/produk/kategori/:category',
-            pageBuilder: (_, state) => _slidePage(ProductsByCategoryScreen(
-                category: state.pathParameters['category']!))),
-        GoRoute(
-            path: '/stok', pageBuilder: (_, state) => _slidePage(StockScreen(
-                lowStockOnly: state.uri.queryParameters['lowStock'] == 'true'))),
-        GoRoute(
-            path: '/transaksi',
-            pageBuilder: (_, __) => _slidePage(const TransactionsScreen())),
-        GoRoute(
-            path: '/pelanggan',
-            pageBuilder: (_, __) => _slidePage(const CustomersScreen())),
-        GoRoute(
-            path: '/piutang',
-            pageBuilder: (_, __) => _slidePage(const DebtScreen())),
-        GoRoute(
-            path: '/promo', pageBuilder: (_, __) => _slidePage(const PromoScreen())),
-        GoRoute(
-            path: '/laporan',
-            pageBuilder: (_, __) => _slidePage(const ReportsScreen())),
-        GoRoute(
-            path: '/karyawan',
-            pageBuilder: (_, __) => _slidePage(const EmployeesScreen())),
-        GoRoute(
-            path: '/presensi',
-            pageBuilder: (_, __) => _slidePage(const AttendanceScreen())),
-        GoRoute(
-            path: '/keuangan',
-            pageBuilder: (_, __) => _slidePage(const FinanceScreen())),
-        GoRoute(
-            path: '/pengaturan',
-            pageBuilder: (_, __) => _slidePage(const SettingsScreen())),
-        GoRoute(
-            path: '/supplier',
-            pageBuilder: (_, __) => _slidePage(const SuppliersScreen())),
-        GoRoute(
-            path: '/spreadsheet',
-            pageBuilder: (_, __) => _slidePage(const SpreadsheetScreen())),
-        GoRoute(
-            path: '/cabang',
-            pageBuilder: (_, __) => _slidePage(const BranchScreen())),
-        GoRoute(
-            path: '/pesanan_online',
-            pageBuilder: (_, __) => _slidePage(const OnlineOrdersScreen())),
-        GoRoute(
-            path: '/toko_online_setup',
-            pageBuilder: (_, __) => _slidePage(const OnlineStoreSetupScreen())),
-        GoRoute(
-            path: '/ai_chat',
-            pageBuilder: (_, __) => _slidePage(const AiChatScreen())),
-        GoRoute(
-            path: '/toko',
-            pageBuilder: (_, __) => _slidePage(const StorefrontScreen())),
-        GoRoute(
-            path: '/pengaturan_pembayaran',
-            pageBuilder: (_, __) => _slidePage(const PaymentSettingsScreen())),
-        // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Service HP) ──
-        GoRoute(
-            path: '/meja', pageBuilder: (_, __) => _slidePage(const MejaScreen())),
-        GoRoute(
-            path: '/laundry_status', pageBuilder: (_, __) => _slidePage(const LaundryStatusScreen())),
-        GoRoute(
-            path: '/servis', pageBuilder: (_, __) => _slidePage(const ServisScreen())),
-        GoRoute(
-            path: '/booking', pageBuilder: (_, __) => _slidePage(const BookingScreen())),
-        GoRoute(
-            path: '/resep', pageBuilder: (_, __) => _slidePage(const ResepScreen())),
-        GoRoute(
-            path: '/print_order', pageBuilder: (_, __) => _slidePage(const PrintOrderScreen())),
-      ],
-    );
+const _publicRoutes = {
+  '/splash',
+  '/activation',
+  '/login',
+  '/onboarding',
+  '/setup',
+};
+
+/// Menu routes are protected centrally so deep links cannot bypass Dashboard's
+/// menu-level RBAC checks. Route keys intentionally match NusaConfig.roleAccess.
+const _protectedRouteKeys = {
+  '/home': 'home',
+  '/kasir': 'kasir',
+  '/checkout': 'kasir',
+  '/produk': 'produk',
+  '/produk/tambah': 'produk',
+  '/produk/edit': 'produk',
+  '/produk/kategori': 'produk',
+  '/produk/kategori/': 'produk',
+  '/stok': 'stok',
+  '/transaksi': 'transaksi',
+  '/pelanggan': 'pelanggan',
+  '/piutang': 'piutang',
+  '/promo': 'promo',
+  '/laporan': 'laporan',
+  '/karyawan': 'karyawan',
+  '/presensi': 'presensi',
+  '/keuangan': 'keuangan',
+  '/pengaturan': 'pengaturan',
+  '/supplier': 'supplier',
+  '/spreadsheet': 'spreadsheet',
+  '/cabang': 'cabang',
+  '/pesanan_online': 'pesanan_online',
+  '/toko_online_setup': 'pesanan_online',
+  '/ai_chat': 'ai_chat',
+  '/toko': 'ai_chat',
+  '/pengaturan_pembayaran': 'pengaturan',
+  '/meja': 'meja',
+  '/laundry_status': 'laundry_status',
+  '/servis': 'servis',
+  '/booking': 'booking',
+  '/resep': 'resep',
+  '/print_order': 'print_order',
+};
+
+String? _protectedRouteKey(String location) {
+  final path = Uri.parse(location).path;
+  for (final entry in _protectedRouteKeys.entries) {
+    if (path == entry.key ||
+        (entry.key.endsWith('/') && path.startsWith(entry.key)) ||
+        (entry.key == '/produk/edit' && path.startsWith('/produk/edit/'))) {
+      return entry.value;
+    }
+  }
+  return null;
+}
+
+Future<String?> _redirectForAuth(WidgetRef ref, GoRouterState state) async {
+  final path = state.uri.path;
+  if (_publicRoutes.contains(path)) return null;
+
+  // Every non-public route requires activation and a valid employee session.
+  // Route keys additionally apply menu visibility and role-based access.
+  final routeKey = _protectedRouteKey(state.uri.toString());
+
+  final activated = await SecureStore.getActivation() != null;
+  if (!activated) return '/activation';
+
+  var session = ref.read(employeeSessionProvider);
+  if (session == null) {
+    await ref.read(employeeSessionProvider.notifier).restore();
+    session = ref.read(employeeSessionProvider);
+  }
+  if (session == null || session.isExpired) return '/login';
+
+  if (routeKey != null &&
+      (NusaConfig.hiddenMenus.contains(routeKey) ||
+          !hasAccess(session.role, routeKey))) {
+    return '/home';
+  }
+  return null;
+}
+
+GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
+  initialLocation: '/splash',
+  redirect: (_, state) => _redirectForAuth(ref, state),
+  routes: [
+    GoRoute(
+      path: '/splash',
+      pageBuilder: (_, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: SplashScreen(onDone: (context) => context.go(initialLocation)),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    ),
+    GoRoute(
+      path: '/activation',
+      pageBuilder: (_, __) => _slidePage(const ActivationScreen()),
+    ),
+    GoRoute(
+      path: '/login',
+      pageBuilder: (_, __) => _slidePage(const LoginScreen()),
+    ),
+    GoRoute(
+      path: '/onboarding',
+      pageBuilder: (_, __) => _slidePage(const OnboardingScreen()),
+    ),
+    GoRoute(
+      path: '/setup',
+      pageBuilder: (_, __) => _slidePage(const SetupScreen()),
+    ),
+    GoRoute(
+      path: '/home',
+      pageBuilder: (_, __) => _slidePage(const DashboardScreen()),
+    ),
+    GoRoute(
+      path: '/kasir',
+      pageBuilder: (_, state) => _slidePage(
+        PosScreen(
+          sessionId: int.tryParse(state.uri.queryParameters['sessionId'] ?? ''),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/checkout',
+      pageBuilder: (_, state) => _slidePage(
+        CheckoutScreen(
+          sessionId: int.tryParse(state.uri.queryParameters['sessionId'] ?? ''),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/produk',
+      pageBuilder: (_, __) => _slidePage(const ProductsScreen()),
+    ),
+    GoRoute(
+      path: '/produk/tambah',
+      pageBuilder: (_, __) => _slidePage(const ProductFormScreen()),
+    ),
+    GoRoute(
+      path: '/produk/edit/:id',
+      pageBuilder: (_, state) => _slidePage(
+        ProductFormScreen(productId: int.parse(state.pathParameters['id']!)),
+      ),
+    ),
+    GoRoute(
+      path: '/produk/kategori',
+      pageBuilder: (_, __) => _slidePage(const KategoriListScreen()),
+    ),
+    GoRoute(
+      path: '/produk/kategori/:category',
+      pageBuilder: (_, state) => _slidePage(
+        ProductsByCategoryScreen(category: state.pathParameters['category']!),
+      ),
+    ),
+    GoRoute(
+      path: '/stok',
+      pageBuilder: (_, state) => _slidePage(
+        StockScreen(
+          lowStockOnly: state.uri.queryParameters['lowStock'] == 'true',
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/transaksi',
+      pageBuilder: (_, __) => _slidePage(const TransactionsScreen()),
+    ),
+    GoRoute(
+      path: '/pelanggan',
+      pageBuilder: (_, __) => _slidePage(const CustomersScreen()),
+    ),
+    GoRoute(
+      path: '/piutang',
+      pageBuilder: (_, __) => _slidePage(const DebtScreen()),
+    ),
+    GoRoute(
+      path: '/promo',
+      pageBuilder: (_, __) => _slidePage(const PromoScreen()),
+    ),
+    GoRoute(
+      path: '/laporan',
+      pageBuilder: (_, __) => _slidePage(const ReportsScreen()),
+    ),
+    GoRoute(
+      path: '/karyawan',
+      pageBuilder: (_, __) => _slidePage(const EmployeesScreen()),
+    ),
+    GoRoute(
+      path: '/presensi',
+      pageBuilder: (_, __) => _slidePage(const AttendanceScreen()),
+    ),
+    GoRoute(
+      path: '/keuangan',
+      pageBuilder: (_, __) => _slidePage(const FinanceScreen()),
+    ),
+    GoRoute(
+      path: '/pengaturan',
+      pageBuilder: (_, __) => _slidePage(const SettingsScreen()),
+    ),
+    GoRoute(
+      path: '/supplier',
+      pageBuilder: (_, __) => _slidePage(const SuppliersScreen()),
+    ),
+    GoRoute(
+      path: '/spreadsheet',
+      pageBuilder: (_, __) => _slidePage(const SpreadsheetScreen()),
+    ),
+    GoRoute(
+      path: '/cabang',
+      pageBuilder: (_, __) => _slidePage(const BranchScreen()),
+    ),
+    GoRoute(
+      path: '/pesanan_online',
+      pageBuilder: (_, __) => _slidePage(const OnlineOrdersScreen()),
+    ),
+    GoRoute(
+      path: '/toko_online_setup',
+      pageBuilder: (_, __) => _slidePage(const OnlineStoreSetupScreen()),
+    ),
+    GoRoute(
+      path: '/ai_chat',
+      pageBuilder: (_, __) => _slidePage(const AiChatScreen()),
+    ),
+    GoRoute(
+      path: '/toko',
+      pageBuilder: (_, __) => _slidePage(const StorefrontScreen()),
+    ),
+    GoRoute(
+      path: '/pengaturan_pembayaran',
+      pageBuilder: (_, __) => _slidePage(const PaymentSettingsScreen()),
+    ),
+    // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Service HP) ──
+    GoRoute(
+      path: '/meja',
+      pageBuilder: (_, __) => _slidePage(const MejaScreen()),
+    ),
+    GoRoute(
+      path: '/laundry_status',
+      pageBuilder: (_, __) => _slidePage(const LaundryStatusScreen()),
+    ),
+    GoRoute(
+      path: '/servis',
+      pageBuilder: (_, __) => _slidePage(const ServisScreen()),
+    ),
+    GoRoute(
+      path: '/booking',
+      pageBuilder: (_, __) => _slidePage(const BookingScreen()),
+    ),
+    GoRoute(
+      path: '/resep',
+      pageBuilder: (_, __) => _slidePage(const ResepScreen()),
+    ),
+    GoRoute(
+      path: '/print_order',
+      pageBuilder: (_, __) => _slidePage(const PrintOrderScreen()),
+    ),
+  ],
+);
 
 CustomTransitionPage _slidePage(Widget child) => CustomTransitionPage(
-      child: child,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-          SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0.3, 0),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        )),
+  child: child,
+  transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+      SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0.3, 0), end: Offset.zero)
+            .animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
         child: child,
       ),
-    );
+);
 
 class NusaApp extends ConsumerStatefulWidget {
   final String initialLocation;
@@ -188,7 +325,7 @@ class NusaApp extends ConsumerStatefulWidget {
 }
 
 class _NusaAppState extends ConsumerState<NusaApp> {
-  late final GoRouter _router = buildRouter(widget.initialLocation);
+  late final GoRouter _router = buildRouter(widget.initialLocation, ref);
 
   ThemeMode _toThemeMode(String mode) {
     switch (mode) {
@@ -204,7 +341,11 @@ class _NusaAppState extends ConsumerState<NusaApp> {
   @override
   Widget build(BuildContext context) {
     final themeModeStr = ref.watch(themeModeProvider);
+    final themePreset = ref.watch(
+      themePresetProvider,
+    ); // watch for rebuild on theme change
     return MaterialApp.router(
+      key: ValueKey('nusa_$themePreset'), // force rebuild when theme changes
       title: 'NUSA Kasir',
       theme: NusaTheme.light,
       darkTheme: NusaTheme.dark,

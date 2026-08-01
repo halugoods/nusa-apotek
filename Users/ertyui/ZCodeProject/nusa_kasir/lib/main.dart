@@ -45,8 +45,9 @@ Future<void> _repairPinLength() async {
       } else {
         fixed = e.pin.padRight(6, '0');
       }
-      await (db.update(db.employees)..where((t) => t.id.equals(e.id)))
-          .write(EmployeesCompanion(pin: Value(fixed)));
+      await (db.update(db.employees)..where((t) => t.id.equals(e.id))).write(
+        EmployeesCompanion(pin: Value(fixed)),
+      );
     }
     await db.close();
   } catch (_) {
@@ -59,7 +60,8 @@ void _setupErrorHandlers() {
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     if (!details.silent) {
-      final errorString = 'FlutterError: ${details.exception}\n${details.stack?.toString().substring(0, 500) ?? ''}';
+      final errorString =
+          'FlutterError: ${details.exception}\n${details.stack?.toString().substring(0, 500) ?? ''}';
       debugPrint(errorString);
     }
   };
@@ -67,6 +69,24 @@ void _setupErrorHandlers() {
     debugPrint('PlatformDispatcher error: $error\n$stack');
     return true; // handled
   };
+}
+
+Future<void> _writeRestoreFile(
+  String rootPath,
+  String relativePath,
+  List<int> bytes,
+) async {
+  final rootCanonical = p.normalize(Directory(rootPath).absolute.path);
+  final destinationCanonical = p.normalize(
+    File(p.join(rootPath, relativePath)).absolute.path,
+  );
+  if (destinationCanonical != rootCanonical &&
+      !p.isWithin(rootCanonical, destinationCanonical)) {
+    throw FormatException(
+      'Restore path escapes application directory: $relativePath',
+    );
+  }
+  await File(destinationCanonical).writeAsBytes(bytes, flush: true);
 }
 
 /// Swap a pending backup into place BEFORE the database opens.
@@ -90,8 +110,7 @@ Future<void> _applyPendingRestore() async {
 
     var imageCount = 0;
     for (final entry in files.entries) {
-      final dest = File(p.join(dir.path, entry.key));
-      await dest.writeAsBytes(entry.value, flush: true);
+      await _writeRestoreFile(dir.path, entry.key, entry.value);
       if (entry.key != 'nusa_kasir.sqlite') imageCount++;
     }
     if (imageCount > 0) {
@@ -101,8 +120,8 @@ Future<void> _applyPendingRestore() async {
     await pending.delete();
     await SecureStore.clearPendingRestore();
   } catch (e) {
-    debugPrint('[Restore] _applyPendingRestore error: $e');
-    await SecureStore.clearPendingRestore();
+    // Keep the marker and pending file so the restore can be retried next launch.
+    debugPrint('[Restore] _applyPendingRestore error (will retry): $e');
   }
 }
 
@@ -148,33 +167,60 @@ void main() async {
   String initialLocation = '/activation';
 
   // Auto-repair PIN length BEFORE anything opens — ensures 6-digit PINs always
-  try { await _repairPinLength(); } catch (_) {}
+  try {
+    await _repairPinLength();
+  } catch (_) {}
 
   try {
     // Workmanager
-    try { await Workmanager().initialize(stokCallbackDispatcher, isInDebugMode: false); } catch (_) {}
+    try {
+      await Workmanager().initialize(
+        stokCallbackDispatcher,
+        isInDebugMode: false,
+      );
+    } catch (_) {}
 
     // Local notifications
-    try { await NotificationService.init(); } catch (_) {}
+    try {
+      await NotificationService.init();
+    } catch (_) {}
 
-    if (NusaConfig.supabaseUrl.isNotEmpty && NusaConfig.supabaseAnon.isNotEmpty) {
-      try { await Supabase.initialize(url: NusaConfig.supabaseUrl, publishableKey: NusaConfig.supabaseAnon); } catch (_) {}
+    if (NusaConfig.supabaseUrl.isNotEmpty &&
+        NusaConfig.supabaseAnon.isNotEmpty) {
+      try {
+        await Supabase.initialize(
+          url: NusaConfig.supabaseUrl,
+          publishableKey: NusaConfig.supabaseAnon,
+        );
+      } catch (_) {}
     }
 
     // Apply pending device-migration backup BEFORE opening the database.
-    try { await _applyPendingRestore(); } catch (_) {}
+    try {
+      await _applyPendingRestore();
+    } catch (_) {}
 
     // Manual sync only — user controls when to upload/download via Settings.
     // Auto-sync removed to prevent race-condition data loss between devices.
 
     // Register background tasks
-    try { registerStokCheck(); } catch (_) {}
-    try { registerOnlineCheck(); } catch (_) {}
+    try {
+      registerStokCheck();
+    } catch (_) {}
+    try {
+      registerOnlineCheck();
+    } catch (_) {}
 
-    // Load persisted theme mode before app starts.
+    // Load persisted theme mode and color preset before app starts.
     final db = AppDatabase();
     try {
       persistedTheme = await SettingsRepository(db).getThemeMode() ?? 'system';
+    } catch (_) {}
+    try {
+      final preset = await SecureStore.getThemePreset();
+      if (preset != null && NusaConfig.themePresets.containsKey(preset)) {
+        NusaConfig.applyTheme(preset);
+      }
     } catch (_) {}
 
     // Determine initial route.
@@ -195,7 +241,9 @@ void main() async {
     // Background: sync images from cloud (first-time migration + download)
     _syncImagesFromCloud();
 
-    try { await db.close(); } catch (_) {}
+    try {
+      await db.close();
+    } catch (_) {}
   } catch (e) {
     debugPrint('[Main] Startup error: $e');
     // Fall through — runApp() always executes
@@ -205,6 +253,15 @@ void main() async {
     ProviderScope(
       overrides: [
         themeModeProvider.overrideWith((ref) => persistedTheme),
+        themePresetProvider.overrideWith((ref) {
+          final preset = NusaConfig.themePresets.keys.firstWhere(
+            (id) =>
+                NusaConfig.activePrimary ==
+                NusaConfig.themePresets[id]!['primary'],
+            orElse: () => NusaConfig.productId.replaceFirst('nusa-', ''),
+          );
+          return preset;
+        }),
       ],
       child: NusaApp(initialLocation: initialLocation),
     ),

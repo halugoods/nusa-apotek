@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-	static const String productId = "nusa-bengkel";
-	static const String appSubtitle = "Aplikasi Kasir untuk Bengkel & Otomotif";
+	static const String productId = "nusa-kelontong";
+	static const String appSubtitle = "Aplikasi Kasir untuk Toko Kelontong";
 		static const String appVersion = "1.0.0";
 		static const int appBuildNumber = 1;
-	  static const String githubRepo = "halugoods/nusa-bengkel";
+	  static const String githubRepo = "halugoods/nusa-kelontong";
 	  static const String landingPageUrl = "https://nusa-online.vercel.app";
 	  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Kelontong";
-	  static const String applicationId = "com.nusa.bengkel"; // shared for all variants (Firebase constraint)
+	  static const String applicationId = "com.nusa.kelontong"; // shared for all variants (Firebase constraint)
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 
@@ -18,11 +18,94 @@ abstract class NusaConfig {
   //  DESIGN TOKENS — Single source of truth
   // ═══════════════════════════════════════════
 
-  // ── Brand colors ──
-	static const Color primaryColor = Color(0xFF374151);   // Orange — Kelontong
-	static const Color primaryDark = Color(0xFF1F2937);
-	static const Color primarySoft = Color(0xFFF3F4F6);
-  static const Color backgroundColor = Color(0xFFF7F7F9);
+  // ── Brand colors (build-time defaults, patched by _build_all.py) ──
+  // These remain const for broad compatibility with const constructors
+  // across 50+ widget files. Theme switching uses overrides below.
+  static const Color primaryColor = const Color(0xFFF97316);
+  static const Color primaryDark = const Color(0xFFEA580C);
+  static const Color primarySoft = const Color(0xFFFFF7ED);
+  static const Color backgroundColor = const Color(0xFFF7F7F9);
+
+  // ── Runtime theme override (set by user via Settings → Tema Warna) ──
+  static Color? _primaryOverride;
+  static Color? _darkOverride;
+  static Color? _softOverride;
+
+  /// Active primary color: user override or build-time default.
+  static Color get activePrimary => _primaryOverride ?? primaryColor;
+  static Color get activeDark => _darkOverride ?? primaryDark;
+  static Color get activeSoft => _softOverride ?? primarySoft;
+
+  /// 8 preset theme color schemes — one per product variant.
+  /// Users can switch between them in Settings → Tema Warna.
+  static const Map<String, Map<String, Color>> themePresets = {
+    'kelontong': {
+      'primary': Color(0xFFF97316), // Orange
+      'dark': Color(0xFFEA580C),
+      'soft': Color(0xFFFFF7ED),
+    },
+    'fnb': {
+      'primary': Color(0xFFEF4444), // Red
+      'dark': Color(0xFFDC2626),
+      'soft': Color(0xFFFEF2F2),
+    },
+    'laundry': {
+      'primary': Color(0xFF06B6D4), // Cyan
+      'dark': Color(0xFF0891B2),
+      'soft': Color(0xFFECFEFF),
+    },
+    'bengkel': {
+      'primary': Color(0xFF374151), // Dark Gray
+      'dark': Color(0xFF1F2937),
+      'soft': Color(0xFFF3F4F6),
+    },
+    'salon': {
+      'primary': Color(0xFFEC4899), // Pink
+      'dark': Color(0xFFDB2777),
+      'soft': Color(0xFFFDF2F8),
+    },
+    'apotek': {
+      'primary': Color(0xFF22C55E), // Green
+      'dark': Color(0xFF16A34A),
+      'soft': Color(0xFFF0FDF4),
+    },
+    'fotocopy': {
+      'primary': Color(0xFF3B82F6), // Blue
+      'dark': Color(0xFF2563EB),
+      'soft': Color(0xFFEFF6FF),
+    },
+    'servicehp': {
+      'primary': Color(0xFF8B5CF6), // Purple
+      'dark': Color(0xFF7C3AED),
+      'soft': Color(0xFFF5F3FF),
+    },
+  };
+
+  /// Human-readable labels for theme presets.
+  static const Map<String, String> themeNames = {
+    'kelontong': 'Kelontong (Orange)',
+    'fnb': 'F&B (Merah)',
+    'laundry': 'Laundry (Cyan)',
+    'bengkel': 'Bengkel (Abu)',
+    'salon': 'Salon (Pink)',
+    'apotek': 'Apotek (Hijau)',
+    'fotocopy': 'Fotocopy (Biru)',
+    'servicehp': 'Service HP (Ungu)',
+  };
+
+  /// Apply a theme preset at runtime. Saves to SecureStore.
+  static void applyTheme(String themeId) {
+    final preset = themePresets[themeId];
+    if (preset == null) {
+      _primaryOverride = null;
+      _darkOverride = null;
+      _softOverride = null;
+      return;
+    }
+    _primaryOverride = preset['primary']!;
+    _darkOverride = preset['dark']!;
+    _softOverride = preset['soft']!;
+  }
   static const Color surfaceColor = Color(0xFFFFFFFF);
   static const Color textPrimary = Color(0xFF1F2937);
   static const Color textSecondary = Color(0xFF6B7280);
@@ -115,25 +198,25 @@ abstract class NusaConfig {
 
   // ── Category maps (single source across all screens) ──
 	static const Map<String, String> catEmoji = {
-	  'Oli': '🛢️',
-	  'Ban': '🛞',
-	  'Servis': '🔧',
-	  'Sparepart': '⚙️',
+	  'Sembako': '🍚',
+	  'Makanan': '🍜',
+	  'Minuman': '🥤',
+	  'Perlengkapan': '🧹',
 	  'Lainnya': '📦',
 	};
 	  static const Map<String, List<Color>> catGradients = {
-	    'Oli': [Color(0xFFF3F4F6), Color(0xFFE5E7EB), Color(0xFFF9FAFB)],
-	    'Ban': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-	    'Servis': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-	    'Sparepart': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+	    'Sembako': [Color(0xFFFFEDD5), Color(0xFFFED7AA), Color(0xFFFFF7ED)],
+	    'Makanan': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+	    'Minuman': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+	    'Perlengkapan': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
 	    'Lainnya': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
 	  };
 	  static const Map<String, IconData> catIcons = {
 	    'Semua': Icons.grid_view_rounded,
-	    'Oli': Icons.oil_barrel_rounded,
-	    'Ban': Icons.tire_repair_rounded,
-	    'Servis': Icons.build_rounded,
-	    'Sparepart': Icons.settings_rounded,
+	    'Sembako': Icons.rice_bowl_rounded,
+	    'Makanan': Icons.restaurant_rounded,
+	    'Minuman': Icons.local_drink_rounded,
+	    'Perlengkapan': Icons.cleaning_services_rounded,
 	    'Lainnya': Icons.category_rounded,
 	  };
 
@@ -173,7 +256,7 @@ abstract class NusaConfig {
 
   /// Menu yang disembunyikan secara default per domain.
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
-  static const List<String> hiddenMenus = [];
+  static const List<String> hiddenMenus = ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'];
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).
   /// Format: {'id', 'label', 'icon'}
