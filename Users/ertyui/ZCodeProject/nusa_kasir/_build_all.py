@@ -446,7 +446,7 @@ def main():
         for i, variant in enumerate(variants, 1):
             vid = variant["id"]
             print(f"\n{'='*50}\n  [{i}/{len(variants)}] {variant['name']} ({vid})\n{'='*50}")
-            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}-v1.0.0.apk")
+            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}-v1.2.0.apk")
             try:
                 os.remove(apk_dst)
             except FileNotFoundError:
