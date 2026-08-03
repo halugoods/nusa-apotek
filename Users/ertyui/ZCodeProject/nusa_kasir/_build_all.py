@@ -3,7 +3,7 @@
 NUSA Multi-Variant APK Builder
 Builds all 8 variants sequentially by swapping config files per variant.
 """
-import os, sys, shutil, subprocess, re, time
+import os, sys, shutil, subprocess, re, time, glob
 
 try:
     from PIL import Image
@@ -338,15 +338,25 @@ def _escape_xml(s: str) -> str:
 def setup_logo(variant_id: str):
     """Resize variant app logo into all 5 mipmap densities + copy to splash asset.
 
-    Requires Pillow (`pip install Pillow`).  If Pillow is absent the logo
-    steps are skipped gracefully with a warning — builds succeed but the
-    launcher icon will be the default Flutter icon.
+    Logo files are named `app_logo_{variant_id} {HEX}.png` (e.g. app_logo_fnb E63946.png).
+    Requires Pillow (`pip install Pillow`) for mipmap resizing.  If Pillow is absent
+    the launcher-icon resize is skipped but splash_nusa.png is always copied.
     """
-    logo_src = os.path.join(ASSETS_ICONS, f"app_logo_{variant_id}.png")
-    if not os.path.isfile(logo_src):
-        print(f"  ⚠ Logo not found: {logo_src} — skipping launcher icon")
+    # Match logo file by pattern: app_logo_{variant_id} *.png
+    pattern = os.path.join(ASSETS_ICONS, f"app_logo_{variant_id} *.png")
+    matches = glob.glob(pattern)
+    if not matches:
+        print(f"  ⚠ Logo not found matching: {pattern} — skipping launcher icon & splash")
         return
 
+    logo_src = matches[0]  # pick first match
+
+    # ── Splash asset (always copied, even without Pillow) ──
+    splash_dst = os.path.join(ASSETS_ICONS, "splash_nusa.png")
+    shutil.copy2(logo_src, splash_dst)
+    print(f"  ✓ splash_nusa.png ← {os.path.basename(logo_src)}")
+
+    # ── Mipmap launcher icons (needs Pillow) ──
     if not HAS_PIL:
         print("  ⚠ pip install Pillow missing — skipping launcher icon resize")
         return
@@ -364,11 +374,6 @@ def setup_logo(variant_id: str):
         resized = img.resize((size, size), Image.LANCZOS)
         resized.save(dst, "PNG")
         print(f"  ✓ ic_launcher.png → mipmap-{density} ({size}×{size})")
-
-    # Copy logo to splash asset used by SplashScreen widget
-    splash_dst = os.path.join(ASSETS_ICONS, "splash_nusa.png")
-    shutil.copy2(logo_src, splash_dst)
-    print(f"  ✓ splash_nusa.png → {splash_dst}")
 
 
 def update_config(variant: dict):
@@ -398,7 +403,7 @@ def update_config(variant: dict):
     config = re.sub(r'(primarySoft\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["soft"]}', config)
     hm = v["hidden_menus"]
     hm_str = "[" + ", ".join("'" + m + "'" for m in hm) + "]"
-    config = re.sub(r'(hiddenMenus\s*=\s*)\[.*?\]', r'\g<1>' + hm_str, config)
+    config = re.sub(rf"('{v['id']}'\s*:\s*)\[.*?\]", r'\g<1>' + hm_str, config)
 
     # Category maps: use line-based replacement (regex can't handle nested braces + emoji)
     lines = config.split("\n")

@@ -82,7 +82,7 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
       case 'Perbaikan': return NusaConfig.accentPurple;
       case 'Selesai': return NusaConfig.success;
       case 'Diambil': return NusaConfig.textTertiary;
-      default: return NusaConfig.primaryColor;
+      default: return NusaConfig.activePrimary;
     }
   }
 

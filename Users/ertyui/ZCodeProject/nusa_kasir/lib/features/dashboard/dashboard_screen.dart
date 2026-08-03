@@ -1,4 +1,5 @@
 ﻿import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/report_repository.dart';
@@ -13,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
+import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
@@ -20,7 +23,7 @@ import 'package:nusa_kasir/shared/widgets/dashboard_header.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/profile_stats_card.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,6 +115,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _currentEmployeeId = session.employeeId;
       // Check attendance for today
       await _checkAttendance(session.employeeId);
+    }
+
+    // ═══ Init providers from persisted storage (fixes BUG #5 + #11) ═══
+    // These providers start empty by default — we must seed them from
+    // SecureStore before the first Dashboard build so menu ordering,
+    // feature toggles, and per-role access lists work on fresh launch.
+    try {
+      // Feature toggles
+      final togglesRaw = await SecureStore.getFeatureToggles();
+      if (togglesRaw != null) {
+        final toggles = (jsonDecode(togglesRaw) as Map<String, dynamic>)
+            .map((k, v) => MapEntry(k, v as bool));
+        ref.read(featureTogglesProvider.notifier).state = toggles;
+      }
+      // Menu order
+      final orderRaw = await SecureStore.getMenuOrder();
+      if (orderRaw != null) {
+        final order = (jsonDecode(orderRaw) as List<dynamic>)
+            .map((e) => e as String)
+            .toList();
+        ref.read(menuOrderProvider.notifier).state = order;
+      }
+      // RBAC dynamic role access — load custom roles so Owner-defined
+      // per-role access lists are applied without needing to open Karyawan.
+      final roleRepo = RoleRepository();
+      final roles = await roleRepo.getRoles();
+      final dynamicAccess = <String, List<String>>{};
+      for (final r in roles) {
+        dynamicAccess[r['name'] as String] =
+            List<String>.from(r['access'] as List? ?? []);
+      }
+      setDynamicRoleAccess(dynamicAccess);
+    } catch (_) {
+      // Non-critical — defaults are safe fallbacks
     }
 
     await _load();
@@ -478,11 +515,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _handleMenuTap(String route) async {
     final session = ref.read(employeeSessionProvider);
 
-    // 1. Login required
-    if (session == null) {
-      await _pickAndLogin();
-      if (ref.read(employeeSessionProvider) == null) return;
-    }
+    // 1. Session must exist (GoRouter guard ensures this)
+    if (session == null) return;
 
     final currentRole = ref.read(employeeSessionProvider)?.role ?? 'Kasir';
 
@@ -498,31 +532,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    // 4. PIN guard for sensitive menus (kasir) — verify via existing session
+    // 4. PIN guard for sensitive menus (kasir)
     if (needsPinGuard(route)) {
-      final active = ref.read(employeeSessionProvider);
-      if (active == null) return;
-      final emp = _employees.cast<Employee?>().firstWhere(
-            (e) => e!.id == active.employeeId,
-            orElse: () => null,
-          );
-      if (emp == null) return;
-      final result = await PinDialog.show(
-        context: context,
-        employeeName: emp.name,
-        employeeRole: emp.role,
-        correctPin: emp.pin,
-        showRemember: false,
-        showFingerprint: true,
-        showNfc: true,
-        onFingerprint: () async => await _authFingerprint(),
-        onNfc: () async {
-          final id = await NfcTagService.readEmployeeTag();
-          return id?.toString();
-        },
-        pinLength: 6,
-      );
-      if (result == null || !result.success) return;
+      final pinOk = await _requirePinReentry();
+      if (!pinOk) return;
     }
 
     // 5. Attendance check: if not checked in, check in now
@@ -554,11 +567,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.lock_rounded, color: NusaConfig.primaryColor, size: 28),
-            SizedBox(width: 10),
-            Text('Akses Terbatas', style: TextStyle(fontSize: 17)),
+            Icon(Icons.lock_rounded, color: NusaConfig.activePrimary, size: 28),
+            const SizedBox(width: 10),
+            const Text('Akses Terbatas', style: TextStyle(fontSize: 17)),
           ],
         ),
         content: Text(
@@ -569,7 +582,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         actions: [
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: NusaConfig.primaryColor,
+              backgroundColor: NusaConfig.activePrimary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () => Navigator.pop(ctx),
@@ -578,6 +591,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ],
       ),
     );
+  }
+
+  /// Force PIN re-entry for sensitive operations.
+  Future<bool> _requirePinReentry() async {
+    final session = ref.read(employeeSessionProvider);
+    if (session == null) return false;
+
+    final emp = _employees.cast<Employee?>().firstWhere(
+          (e) => e!.id == session.employeeId,
+          orElse: () => null,
+        );
+    if (emp == null) return false;
+
+    final result = await PinDialog.show(
+      context: context,
+      employeeName: emp.name,
+      employeeRole: emp.role,
+      correctPin: emp.pin,
+      showRemember: false,
+      showFingerprint: true,
+      showNfc: true,
+      onFingerprint: () async => await _authFingerprint(),
+      onNfc: () async {
+        final id = await NfcTagService.readEmployeeTag();
+        return id?.toString();
+      },
+      pinLength: 6,
+    );
+
+    if (result == null || !result.success) {
+      return false;
+    }
+
+    // Touch session on successful PIN
+    ref.read(employeeSessionProvider.notifier).touch();
+    return true;
   }
 
   Future<bool> _authFingerprint() async {
@@ -622,9 +671,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       name: emp.name,
       role: emp.role,
       branchId: emp.branchId,
+      remember: result.remember,
     );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
+    ref.read(employeeSessionProvider.notifier).login(session, remember: result.remember);
     ref.read(authProvider.notifier).state = emp.role;
+
+    // Touch session
+    ref.read(employeeSessionProvider.notifier).touch();
 
     // Auto-scope to employee's assigned branch
     if (emp.branchId != null) {
@@ -655,17 +708,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ── Buka Kasir ─────────────────────────────────────────────────────
 
   Future<void> _bukaKasir() async {
-    // Need a logged-in employee session first
-    final session = ref.read(employeeSessionProvider);
-    if (session == null) {
-      await _pickAndLogin();
-      if (ref.read(employeeSessionProvider) == null) return;
-    }
-    if (!mounted) return;
+    // Session must exist (GoRouter guard ensures this)
+    final s = ref.read(employeeSessionProvider);
+    if (s == null) return;
 
+    // PIN re-entry for security
+    final pinOk = await _requirePinReentry();
+    if (!pinOk) return;
     if (!mounted) return;
-
-    final s = ref.read(employeeSessionProvider)!;
 
     // Check if there's already an active cashier session
     final cashierRepo = CashierSessionRepository(ref.read(databaseProvider));
@@ -745,14 +795,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               leading: Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: NusaConfig.primaryColor.withValues(alpha: 0.12),
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: Text(e.name[0].toUpperCase(),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: NusaConfig.primaryColor)),
+                        color: NusaConfig.activePrimary)),
               ),
               title: Text(e.name,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -854,14 +904,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           width: 40, height: 40,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            color: NusaConfig.primaryColor.withValues(alpha: 0.12),
+                            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
                             image: hasPhoto
                                 ? DecorationImage(image: FileImage(File(e.photoPath!)), fit: BoxFit.cover)
                                 : null,
                           ),
                           alignment: Alignment.center,
                           child: !hasPhoto
-                              ? Text(e.name[0].toUpperCase(), style: TextStyle(fontWeight: FontWeight.w700, color: NusaConfig.primaryColor))
+                              ? Text(e.name[0].toUpperCase(), style: TextStyle(fontWeight: FontWeight.w700, color: NusaConfig.activePrimary))
                               : Stack(children: [
                                   // Attendance badge
                                   if (!checkedIn)
@@ -928,7 +978,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final session = ref.watch(employeeSessionProvider);
     final role = session?.role ?? 'Owner';
 
-    // Build menu items with access indicators
+    // Build menu items — only show menus this variant + role can access
     final featureToggles = ref.watch(featureTogglesProvider);
     final menuOrder = ref.watch(menuOrderProvider);
     final filteredItems = _items
@@ -936,23 +986,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           final id = item['id'] as String;
           // User override from Kelola Fitur takes priority
           if (featureToggles.containsKey(id)) return featureToggles[id]!;
-          // Default: hide menus that are domain-inappropriate for this variant
-          return !NusaConfig.hiddenMenus.contains(id);
+          // Hide domain-inappropriate menus for this variant
+          if (NusaConfig.hiddenMenus.contains(id)) return false;
+          // Hide menus the employee's role cannot access (no lock gimmick)
+          if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager') return false;
+          if (!hasAccess(role, id)) return false;
+          return true;
         })
         .map((item) {
       final id = item['id'] as String;
       final label = item['label'] as String;
       final icon = item['icon'] as String;
 
-      String accessType;
-      if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager') {
-        accessType = '🔒';
-      } else if (needsPinGuard(id)) {
+      // Only PIN-guarded menus need an indicator; everything else is accessible
+      String accessType = '';
+      if (needsPinGuard(id)) {
         accessType = '🔐';
-      } else if (hasAccess(role, id)) {
-        accessType = '✅';
-      } else {
-        accessType = '🔒';
       }
 
       return {
@@ -1184,7 +1233,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           width: double.infinity,
           height: 56,
           child: FloatingActionButton.extended(
-            backgroundColor: NusaConfig.primaryColor,
+            backgroundColor: NusaConfig.activePrimary,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.point_of_sale_rounded, size: 24),
             label: const Text('Kasir',
@@ -1199,7 +1248,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-/// Individual menu item with access indicator.
+/// Individual menu item with optional PIN-guard indicator.
 class _MenuItem extends StatelessWidget {
   final String label;
   final String icon;
@@ -1220,10 +1269,12 @@ class _MenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isLocked = access == '🔒';
+    // Only PIN-guarded menus (kasir) show a 🔐 indicator; locked menus
+    // are now hidden by the caller, so they never reach here.
+    final isPinGuarded = access == '🔐';
 
     return GestureDetector(
-      onTap: isLocked ? null : onTap,
+      onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1238,16 +1289,16 @@ class _MenuItem extends StatelessWidget {
                   size: 72,
                 ),
               ),
-              // Lock badge
-              if (isLocked)
+              // PIN guard badge (kasir only)
+              if (isPinGuarded)
                 Positioned(
                   right: 0,
                   top: 0,
                   child: Container(
-                    width: 16,
-                    height: 16,
+                    width: 18,
+                    height: 18,
                     decoration: BoxDecoration(
-                      color: NusaConfig.primaryColor,
+                      color: NusaConfig.warning,
                       shape: BoxShape.circle,
                       border: Border.all(
                           color: isDark ? NusaConfig.darkBackground : Colors.white,
@@ -1255,7 +1306,7 @@ class _MenuItem extends StatelessWidget {
                     ),
                     alignment: Alignment.center,
                     child:
-                        const Text('🔒', style: TextStyle(fontSize: 7)),
+                        const Text('🔐', style: TextStyle(fontSize: 8)),
                   ),
                 ),
               // Badge (count)
@@ -1267,7 +1318,7 @@ class _MenuItem extends StatelessWidget {
                     width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: badgeColor ?? NusaConfig.primaryColor,
+                      color: badgeColor ?? NusaConfig.activePrimary,
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
@@ -1288,7 +1339,7 @@ class _MenuItem extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: isLocked
+              color: isPinGuarded
                   ? (isDark
                       ? NusaConfig.darkTextTertiary
                       : NusaConfig.textTertiary)
@@ -1341,11 +1392,11 @@ class _KeuanganSummary extends StatelessWidget {
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            _finStat('Pengeluaran', expense, NusaConfig.primaryColor, isDark),
+            _finStat('Pengeluaran', expense, NusaConfig.activePrimary, isDark),
             const SizedBox(width: 12),
             _finStat('Pemasukan', income, NusaConfig.accentGreen, isDark),
             const SizedBox(width: 12),
-            _finStat('Selisih', net, net >= 0 ? NusaConfig.accentGreen : NusaConfig.primaryColor, isDark),
+            _finStat('Selisih', net, net >= 0 ? NusaConfig.accentGreen : NusaConfig.activePrimary, isDark),
           ]),
         ]),
       ),
@@ -1363,44 +1414,19 @@ class _KeuanganSummary extends StatelessWidget {
   }
 }
 
-/// Menu icon mapping — SVG icons from assets/icons/.
+/// Menu icon — PNG icons from assets/icons/ (225px), resolved by [iconAssetPath].
 class MenuIcon extends StatelessWidget {
   final String name;
   final double size;
   const MenuIcon({super.key, required this.name, this.size = 26});
 
-  static const Map<String, String> _map = {
-    'product': 'assets/icons/product.svg',
-    'inventory': 'assets/icons/inventory.svg',
-    'transaction': 'assets/icons/transaction.svg',
-    'customer': 'assets/icons/customer.svg',
-    'promotion': 'assets/icons/promotion.svg',
-    'report': 'assets/icons/report.svg',
-    'finance': 'assets/icons/finance.svg',
-    'settings': 'assets/icons/settings.svg',
-    'notification': 'assets/icons/notification.svg',
-    'table': 'assets/icons/table.svg',
-    'supplier': 'assets/icons/supplier.svg',
-    'employee': 'assets/icons/employee.svg',
-    'online': 'assets/icons/online.svg',
-    'ai': 'assets/icons/ai_chat.svg',
-    'branch': 'assets/icons/branch.svg',
-    'debt': 'assets/icons/debt.svg',
-    'stockcount': 'assets/icons/inventory.svg',
-    // Domain icons — use closest available SVGs
-    'table_bar': 'assets/icons/table.svg',
-    'laundry': 'assets/icons/inventory.svg',
-    'repair': 'assets/icons/settings.svg',
-    'booking': 'assets/icons/notification.svg',
-    'prescription': 'assets/icons/product.svg',
-    'print_order': 'assets/icons/online.svg',
-  };
-
   @override
-  Widget build(BuildContext context) => SvgPicture.asset(
-        _map[name] ?? 'assets/icons/product.svg',
+  Widget build(BuildContext context) => Image.asset(
+        iconAssetPath(name),
         width: size,
         height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(Icons.grid_view_rounded, size: size, color: NusaConfig.activePrimary),
       );
 }
 

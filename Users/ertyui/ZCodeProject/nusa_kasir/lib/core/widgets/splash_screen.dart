@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../config/nusa_config.dart';
 import '../utils/icon_loader.dart';
 import 'package:nusa_kasir/shared/widgets/animated_builder.dart'
@@ -125,10 +123,12 @@ class _SplashScreenState extends State<SplashScreen>
                     // ── NUSA ──
                     Text(
                       'NUSA',
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
                         fontSize: 36,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 4,
+                        decoration: TextDecoration.none,
                         color: isDark
                             ? NusaConfig.darkTextPrimary
                             : NusaConfig.textPrimary,
@@ -138,9 +138,11 @@ class _SplashScreenState extends State<SplashScreen>
                     // ── by Halu Goods Indonesia ──
                     Text(
                       'by Halu Goods Indonesia',
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
                         color: isDark
                             ? NusaConfig.darkTextTertiary
                             : NusaConfig.textTertiary,

@@ -74,7 +74,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen> with Single
       case 'Diproses': return NusaConfig.warning;
       case 'Selesai': return NusaConfig.success;
       case 'Diambil': return NusaConfig.textTertiary;
-      default: return NusaConfig.primaryColor;
+      default: return NusaConfig.activePrimary;
     }
   }
 

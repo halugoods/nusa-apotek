@@ -73,7 +73,7 @@ class _ResepScreenState extends ConsumerState<ResepScreen> with SingleTickerProv
       case 'Diproses': return NusaConfig.warning;
       case 'Siap': return NusaConfig.success;
       case 'Diambil': return NusaConfig.textTertiary;
-      default: return NusaConfig.primaryColor;
+      default: return NusaConfig.activePrimary;
     }
   }
 

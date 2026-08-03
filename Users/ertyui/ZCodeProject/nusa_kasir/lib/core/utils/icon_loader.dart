@@ -37,6 +37,9 @@ Map<String, String> _iconNameMap = {
 
 /// Returns the PNG asset path for [iconKey] matching the active primary colour.
 ///
+/// Icon files are named `{UPPERCASE_ICON_KEY} {HEX}.png` (with a space
+/// between name and hex) inside `assets/icons/`.
+///
 /// Falls back to `assets/icons/PRODUCT F97316.png` when no match is found so
 /// the UI never shows a broken-image placeholder.
 String iconAssetPath(String iconKey) {
@@ -45,11 +48,16 @@ String iconAssetPath(String iconKey) {
   return 'assets/icons/$iconName $hex.png';
 }
 
-/// Returns the splash logo asset path corresponding to the active theme
-/// preset colour.  Each variant has an `app_logo_{id}.png` in `assets/icons/`.
+/// Returns the splash logo asset path — dynamically resolved from the active
+/// theme colour so the logo follows user-chosen themes at runtime.
+///
+/// Maps [NusaConfig.activePrimary] → variant ID via [_activeThemeId], then
+/// resolves `assets/icons/app_logo_{variantId} {HEX}.png`.
+/// Falls back to `assets/icons/splash_nusa.png` when the dynamic file is absent.
 String splashLogoPath() {
-  final id = _activeThemeId();
-  return 'assets/icons/app_logo_$id.png';
+  final variantId = _activeThemeId();
+  final hex = themePrimaryToHex(NusaConfig.activePrimary);
+  return 'assets/icons/app_logo_$variantId $hex.png';
 }
 
 // ── colour utilities ──────────────────────────────────────────────────────

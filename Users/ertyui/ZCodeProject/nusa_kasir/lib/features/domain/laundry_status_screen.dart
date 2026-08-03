@@ -27,7 +27,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     {'label': 'Kering', 'icon': Icons.air, 'color': NusaConfig.accentGreen},
     {'label': 'Setrika', 'icon': Icons.iron, 'color': NusaConfig.warning},
     {'label': 'Siap', 'icon': Icons.check_circle, 'color': NusaConfig.success},
-    {'label': 'Diambil', 'icon': Icons.delivery_dining, 'color': NusaConfig.primaryColor},
+    {'label': 'Diambil', 'icon': Icons.delivery_dining, 'color': NusaConfig.activePrimary},
   ];
   List<LaundryOrder> _all = [];
   List<LaundryOrder> _filtered = [];

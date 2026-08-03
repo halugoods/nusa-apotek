@@ -63,7 +63,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   List<String> _menuOrder = []; // persistable menu order (drag-reorder)
 
   static const _allFeatures = [
-    'produk', 'stok', 'transaksi', 'pelanggan', 'promo',
+    'produk', 'stok', 'transaksi', 'pelanggan', 'piutang', 'promo',
     'pesanan_online', 'laporan', 'presensi', 'karyawan',
     'keuangan', 'spreadsheet', 'supplier', 'cabang', 'ai_chat', 'pengaturan',
     // Domain features — hidden by default per variant via NusaConfig.hiddenMenus
@@ -75,6 +75,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'stok': 'Stok',
     'transaksi': 'Transaksi',
     'pelanggan': 'Pelanggan',
+    'piutang': 'Piutang',
     'promo': 'Promo',
     'pesanan_online': 'Pesanan Online',
     'laporan': 'Laporan',
@@ -99,6 +100,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'stok': Icons.view_module_outlined,
     'transaksi': Icons.receipt_long_outlined,
     'pelanggan': Icons.person_outline,
+    'piutang': Icons.money_off_outlined,
     'promo': Icons.discount_outlined,
     'pesanan_online': Icons.shopping_cart_outlined,
     'laporan': Icons.paid_outlined,
@@ -187,6 +189,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.read(themeModeProvider.notifier).state = _themeMode;
       // Sync feature toggles to provider (used by dashboard)
       ref.read(featureTogglesProvider.notifier).state = Map.from(toggles);
+      // Sync menu order to provider (used by dashboard sort)
+      ref.read(menuOrderProvider.notifier).state = List.from(order);
 
       // Load fingerprint state
       _fingerprintEnabled = await BiometricService.isEnabled();
@@ -300,6 +304,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final enable = !_fingerprintEnabled;
 
     if (enable) {
+      // Check hardware capabilities first — don't allow enable on devices
+      // without biometric sensors (otherwise OS falls back to device PIN).
+      final caps = await BiometricService.checkCapabilities();
+      if (!caps.ok) {
+        if (mounted) TopToast.error(context, caps.message);
+        return;
+      }
+
       // Validate via system biometric dialog directly
       final scanned = await BiometricService.authenticate(
         reason: 'Pindai sidik jari untuk mengaktifkan Login Fingerprint',
@@ -399,10 +411,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Icon(
+            Icon(
               Icons.cloud_sync,
               size: 40,
-              color: NusaConfig.primaryColor,
+              color: NusaConfig.activePrimary,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -468,7 +480,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     : const Icon(Icons.cloud_upload_outlined),
                 label: const Text('Upload ke Cloud (Simpan data lokal)'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: NusaConfig.primaryColor,
+                  backgroundColor: NusaConfig.activePrimary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -560,6 +572,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ok = await repo.uploadBackupNow();
     if (mounted) {
       setState(() => _syncing = false);
+      // Refresh timestamps so the next cloud sync dialog shows up-to-date values.
+      if (ok) {
+        final cloudTime = await repo.getBackupTimestamp();
+        final localTime = await SecureStore.getLastBackupTime();
+        setState(() {
+          _cloudTimeStr = cloudTime != null
+              ? '${cloudTime.day}/${cloudTime.month}/${cloudTime.year} ${cloudTime.hour.toString().padLeft(2, '0')}:${cloudTime.minute.toString().padLeft(2, '0')}'
+              : null;
+          _localTimeStr = localTime != null
+              ? '${localTime.day}/${localTime.month}/${localTime.year} ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}'
+              : null;
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -698,7 +723,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Icon(icon, color: iconColor ?? NusaConfig.primaryColor),
+            Icon(icon, color: iconColor ?? NusaConfig.activePrimary),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -757,7 +782,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected
-                  ? NusaConfig.primaryColor
+                  ? NusaConfig.activePrimary
                   : NusaConfig.dividerColor,
             ),
           ),
@@ -767,7 +792,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon,
                 size: 20,
                 color: selected
-                    ? NusaConfig.primaryColor
+                    ? NusaConfig.activePrimary
                     : isDark
                     ? NusaConfig.darkTextSecondary
                     : NusaConfig.textSecondary,
@@ -779,7 +804,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: selected
-                      ? NusaConfig.primaryColor
+                      ? NusaConfig.activePrimary
                       : isDark
                       ? NusaConfig.darkTextSecondary
                       : NusaConfig.textSecondary,
@@ -833,12 +858,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: NusaConfig.primaryColor.withValues(alpha: 0.12),
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.palette_outlined,
-                        color: NusaConfig.primaryColor,
+                        color: NusaConfig.activePrimary,
                         size: 20,
                       ),
                     ),
@@ -968,12 +993,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: NusaConfig.primaryColor.withValues(alpha: 0.12),
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.toggle_on_outlined,
-                        color: NusaConfig.primaryColor,
+                        color: NusaConfig.activePrimary,
                         size: 20,
                       ),
                     ),
@@ -1020,7 +1045,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     return Material(
                       elevation: 4,
                       borderRadius: BorderRadius.circular(12),
-                      shadowColor: NusaConfig.primaryColor.withValues(
+                      shadowColor: NusaConfig.activePrimary.withValues(
                         alpha: 0.2,
                       ),
                       child: child,
@@ -1060,7 +1085,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               height: 36,
                               decoration: BoxDecoration(
                                 color: enabled
-                                    ? NusaConfig.primaryColor.withValues(
+                                    ? NusaConfig.activePrimary.withValues(
                                         alpha: 0.12,
                                       )
                                     : (isDark
@@ -1072,7 +1097,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 (_featureIcons[id] ?? Icons.circle),
                                 size: 18,
                                 color: enabled
-                                    ? NusaConfig.primaryColor
+                                    ? NusaConfig.activePrimary
                                     : isDark
                                     ? NusaConfig.darkTextTertiary
                                     : NusaConfig.textTertiary,
@@ -1095,7 +1120,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         value: enabled,
-                        activeColor: NusaConfig.primaryColor,
+                        activeColor: NusaConfig.activePrimary,
                         onChanged: (v) {
                           setSt(() {
                             _featureToggles[id] = v;
@@ -1259,8 +1284,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : const Icon(Icons.cloud_upload_outlined, size: 18),
               label: Text(_backingUp ? 'Menyimpan...' : 'Backup ke Cloud'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: NusaConfig.primaryColor,
-                side: const BorderSide(color: NusaConfig.primaryColor),
+                foregroundColor: NusaConfig.activePrimary,
+                side: BorderSide(color: NusaConfig.activePrimary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -1440,7 +1465,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: const Icon(Icons.download, size: 18),
               label: const Text('Download'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.primaryColor,
+                backgroundColor: NusaConfig.activePrimary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1593,15 +1618,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         color: NusaConfig.primarySoft.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: NusaConfig.primaryColor.withValues(alpha: 0.2),
+                          color: NusaConfig.activePrimary.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.info_outline,
                             size: 18,
-                            color: NusaConfig.primaryColor,
+                            color: NusaConfig.activePrimary,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -2075,7 +2100,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected
-                  ? NusaConfig.primaryColor
+                  ? NusaConfig.activePrimary
                   : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
             ),
           ),
@@ -2085,7 +2110,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 selected ? Icons.check_circle : Icons.print,
                 size: 20,
                 color: selected
-                    ? NusaConfig.primaryColor
+                    ? NusaConfig.activePrimary
                     : (isDark
                           ? NusaConfig.darkTextSecondary
                           : NusaConfig.textSecondary),
@@ -2097,7 +2122,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: selected
-                      ? NusaConfig.primaryColor
+                      ? NusaConfig.activePrimary
                       : (isDark
                             ? NusaConfig.darkTextSecondary
                             : NusaConfig.textSecondary),
@@ -2124,7 +2149,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       value: value,
       dense: true,
       contentPadding: EdgeInsets.zero,
-      activeColor: NusaConfig.primaryColor,
+      activeColor: NusaConfig.activePrimary,
       onChanged: onChanged,
     );
   }
@@ -2147,7 +2172,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 11, color: NusaConfig.primaryColor),
+          style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary),
         ),
       ),
     );
@@ -2296,10 +2321,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.of(ctx).pop(true),
-                                        child: const Text(
+                                        child: Text(
                                           'Hapus',
                                           style: TextStyle(
-                                            color: NusaConfig.primaryColor,
+                                            color: NusaConfig.activePrimary,
                                           ),
                                         ),
                                       ),
@@ -2311,12 +2336,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   if (mounted) Navigator.of(ctx).pop();
                                 }
                               },
-                              child: const Padding(
+                              child: Padding(
                                 padding: EdgeInsets.all(8),
                                 child: Icon(
                                   Icons.delete_outline,
                                   size: 18,
-                                  color: NusaConfig.primaryColor,
+                                  color: NusaConfig.activePrimary,
                                 ),
                               ),
                             ),
@@ -2341,7 +2366,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Tambah Role'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.primaryColor,
+                backgroundColor: NusaConfig.activePrimary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2489,7 +2514,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 if (mounted) Navigator.of(ctx).pop();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.primaryColor,
+                backgroundColor: NusaConfig.activePrimary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2516,7 +2541,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         label,
         style: TextStyle(
           fontSize: 13,
-          color: NusaConfig.primaryColor,
+          color: NusaConfig.activePrimary,
           decoration: TextDecoration.underline,
         ),
       ),
@@ -2653,7 +2678,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             // Tema Warna
             _menuRow(
               icon: Icons.palette_outlined,
-              iconColor: NusaConfig.primaryColor,
+              iconColor: NusaConfig.activePrimary,
               title: 'Tema Warna',
               subtitle: _currentThemeLabel(),
               isDark: isDark,
@@ -2735,7 +2760,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _sectionHeader('DATA', isDark),
             _menuRow(
               icon: Icons.backup,
-              iconColor: NusaConfig.primaryColor,
+              iconColor: NusaConfig.activePrimary,
               title: 'Backup & Restore',
               subtitle: 'Simpan atau muat file database',
               isDark: isDark,
@@ -2785,7 +2810,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : Icons.update,
               iconColor: _updateInfo?.hasUpdate == true
                   ? Colors.orange
-                  : NusaConfig.primaryColor,
+                  : NusaConfig.activePrimary,
               title: _updateInfo?.hasUpdate == true
                   ? 'Update Tersedia!'
                   : 'Cek Update',

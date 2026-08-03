@@ -162,6 +162,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     int? branchId = employee?.branchId;
     String workStart = employee?.workStart ?? '08:00';
     String workEnd = employee?.workEnd ?? '17:00';
+    bool requiresAttendance = employee?.requiresAttendance ?? false;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
@@ -465,6 +466,24 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
                 SizedBox(height: 12),
 
+                // ── Wajib Presensi Toggle ──
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Wajib Presensi',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      )),
+                  subtitle: Text(
+                    'Karyawan wajib isi presensi masuk, pulang, kas awal & kas akhir',
+                    style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  ),
+                  value: requiresAttendance,
+                  activeColor: NusaConfig.activePrimary,
+                  onChanged: (v) => setSt(() => requiresAttendance = v),
+                ),
+
                 // ── NFC Tag Registration ──
                 _NfcRegisterButton(
                   isDark: isDark,
@@ -526,7 +545,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                               status: status,
                               branchId: branchId,
                               workStart: workStart,
-                              workEnd: workEnd);
+                              workEnd: workEnd,
+                              requiresAttendance: requiresAttendance);
                         } else {
                           await repo.updateEmployee(
                               id: employee.id, name: name, pin: pin, role: role,
@@ -537,7 +557,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                               status: status,
                               branchId: branchId,
                               workStart: workStart,
-                              workEnd: workEnd);
+                              workEnd: workEnd,
+                              requiresAttendance: requiresAttendance);
                         }
                         // Upload photo to cloud in background
                         if (photoPath != null) {

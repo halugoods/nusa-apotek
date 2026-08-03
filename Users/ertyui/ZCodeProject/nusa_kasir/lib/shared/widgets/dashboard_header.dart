@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
-import 'package:nusa_kasir/core/utils/icon_loader.dart';
 
 /// NUSA-branded app header: logo + user info + notification bell.
 ///

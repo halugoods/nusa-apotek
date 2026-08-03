@@ -51,7 +51,7 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
       case 'Kosong': return NusaConfig.success;
       case 'Dipesan': return NusaConfig.warning;
       case 'Tutup': return NusaConfig.textTertiary;
-      default: return NusaConfig.primaryColor;
+      default: return NusaConfig.activePrimary;
     }
   }
 

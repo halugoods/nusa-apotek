@@ -5,8 +5,8 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 	static const String productId = "nusa-kelontong";
 	static const String appSubtitle = "Aplikasi Kasir untuk Toko Kelontong";
-		static const String appVersion = "1.0.0";
-		static const int appBuildNumber = 1;
+		static const String appVersion = "1.6.4";
+			static const int appBuildNumber = 10;
 	  static const String githubRepo = "halugoods/nusa-kelontong";
 	  static const String landingPageUrl = "https://nusa-online.vercel.app";
 	  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Kelontong";
@@ -45,39 +45,39 @@ abstract class NusaConfig {
       'soft': Color(0xFFFFF7ED),
     },
     'fnb': {
-      'primary': Color(0xFFEF4444), // Red
-      'dark': Color(0xFFDC2626),
-      'soft': Color(0xFFFEF2F2),
+      'primary': Color(0xFFE63946), // Red
+      'dark': Color(0xFFC1121F),
+      'soft': Color(0xFFFDE8EA),
     },
     'laundry': {
-      'primary': Color(0xFF06B6D4), // Cyan
-      'dark': Color(0xFF0891B2),
-      'soft': Color(0xFFECFEFF),
-    },
-    'bengkel': {
-      'primary': Color(0xFF374151), // Dark Gray
-      'dark': Color(0xFF1F2937),
-      'soft': Color(0xFFF3F4F6),
-    },
-    'salon': {
-      'primary': Color(0xFFEC4899), // Pink
+      'primary': Color(0xFFEC4899), // Pink (was Cyan — aligned with _build_all.py)
       'dark': Color(0xFFDB2777),
       'soft': Color(0xFFFDF2F8),
     },
-    'apotek': {
-      'primary': Color(0xFF22C55E), // Green
-      'dark': Color(0xFF16A34A),
-      'soft': Color(0xFFF0FDF4),
+    'bengkel': {
+      'primary': Color(0xFFEAB308), // Yellow
+      'dark': Color(0xFFCA8A04),
+      'soft': Color(0xFFFEF9C3),
     },
-    'fotocopy': {
+    'salon': {
       'primary': Color(0xFF3B82F6), // Blue
       'dark': Color(0xFF2563EB),
       'soft': Color(0xFFEFF6FF),
     },
-    'servicehp': {
+    'apotek': {
+      'primary': Color(0xFF10B981), // Green
+      'dark': Color(0xFF059669),
+      'soft': Color(0xFFECFDF5),
+    },
+    'fotocopy': {
       'primary': Color(0xFF8B5CF6), // Purple
       'dark': Color(0xFF7C3AED),
       'soft': Color(0xFFF5F3FF),
+    },
+    'servicehp': {
+      'primary': Color(0xFF78716C), // Stone/Warm Gray
+      'dark': Color(0xFF57534E),
+      'soft': Color(0xFFFAFAF9),
     },
   };
 
@@ -85,12 +85,12 @@ abstract class NusaConfig {
   static const Map<String, String> themeNames = {
     'kelontong': 'Kelontong (Orange)',
     'fnb': 'F&B (Merah)',
-    'laundry': 'Laundry (Cyan)',
-    'bengkel': 'Bengkel (Abu)',
-    'salon': 'Salon (Pink)',
+    'laundry': 'Laundry (Pink)',
+    'bengkel': 'Bengkel (Kuning)',
+    'salon': 'Salon (Biru)',
     'apotek': 'Apotek (Hijau)',
-    'fotocopy': 'Fotocopy (Biru)',
-    'servicehp': 'Service HP (Ungu)',
+    'fotocopy': 'Fotocopy (Ungu)',
+    'servicehp': 'Service HP (Abu)',
   };
 
   /// Apply a theme preset at runtime. Saves to SecureStore.
@@ -237,9 +237,9 @@ abstract class NusaConfig {
   // ── Business constants ──
   static const List<String> roles = ["Owner", "Manager", "Kasir", "Gudang", "Finance"];
   static const List<String> productTypes = ["Regular", "Varian", "Grosir"];
-  static const Map<String, List<String>> roleAccess = {
-		    "Owner": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang"],
-		    "Manager": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang"],
+		  static const Map<String, List<String>> roleAccess = {
+			    "Owner": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
+			    "Manager": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
 	    "Kasir": ["home","kasir","produk","stok","transaksi","pelanggan","ai_chat"],
 	    "Gudang": ["home","produk","stok","laporan","supplier"],
 	    "Finance": ["home","transaksi","keuangan","laporan","presensi","karyawan","supplier"],
@@ -258,9 +258,9 @@ abstract class NusaConfig {
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
   static const Map<String, List<String>> variantHiddenMenus = {
     'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'fnb': ['laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'laundry': ['meja', 'servis', 'booking', 'resep', 'print_order'],
-    'bengkel': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+    'fnb': ['supplier', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'laundry': ['supplier', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+    'bengkel': ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
     'salon': ['meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     'apotek': ['meja', 'laundry_status', 'servis', 'booking', 'print_order'],
     'fotocopy': ['meja', 'laundry_status', 'servis', 'booking', 'resep'],
@@ -268,7 +268,11 @@ abstract class NusaConfig {
   };
 
   /// Convenience getter: hidden menus for current variant (productId).
-  static List<String> get hiddenMenus => variantHiddenMenus[productId] ?? [];
+  /// Strips the `nusa-` prefix from productId to match variant keys in [variantHiddenMenus].
+  static List<String> get hiddenMenus {
+    final variantId = productId.startsWith('nusa-') ? productId.substring(5) : productId;
+    return variantHiddenMenus[variantId] ?? [];
+  }
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).
   /// Format: {'id', 'label', 'icon'}

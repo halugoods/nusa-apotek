@@ -74,7 +74,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
       case 'Menunggu': return NusaConfig.warning;
       case 'Selesai': return NusaConfig.success;
       case 'Batal': return Colors.red;
-      default: return NusaConfig.primaryColor;
+      default: return NusaConfig.activePrimary;
     }
   }
 

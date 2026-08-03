@@ -79,7 +79,7 @@ const _protectedRouteKeys = {
   '/pesanan_online': 'pesanan_online',
   '/toko_online_setup': 'pesanan_online',
   '/ai_chat': 'ai_chat',
-  '/toko': 'ai_chat',
+  '/toko': 'pesanan_online',
   '/pengaturan_pembayaran': 'pengaturan',
   '/meja': 'meja',
   '/laundry_status': 'laundry_status',

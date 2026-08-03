@@ -86,6 +86,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  /// Login as Owner via fingerprint — called when fingerprint auth succeeds.
+  Future<void> _fingerprintLogin() async {
+    final db = ref.read(databaseProvider);
+    final repo = AttendanceRepository(db);
+    final emps = await repo.getEmployees();
+    final owner = emps.cast<Employee?>().firstWhere(
+          (e) => e!.role == 'Owner',
+          orElse: () => null,
+        );
+    if (owner == null || !mounted) return;
+
+    final session = EmployeeSession(
+      employeeId: owner.id, name: owner.name, role: owner.role, remember: false,
+    );
+    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
+    ref.read(authProvider.notifier).state = owner.role;
+    if (mounted) context.go('/home');
+  }
+
   /// Verify PIN directly (used by PinKeypad on login screen).
   Future<void> _verifyPin(String pin) async {
     final db = ref.read(databaseProvider);
@@ -253,6 +272,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               showNfc: _nfcAvailable,
               showCancel: false,
               onFingerprint: () async => await _authFingerprint(),
+              onFingerprintSuccess: () => _fingerprintLogin(),
               onNfc: () async {
                 final id = await NfcTagService.readEmployeeTag();
                 if (id == null || !mounted) return null;
