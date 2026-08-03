@@ -868,18 +868,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               Flexible(
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: 2.3,
-                  ),
-                  itemCount: NusaConfig.themePresets.length,
-                  itemBuilder: (context, index) {
-                    final id = NusaConfig.themePresets.keys.elementAt(index);
-                    final preset = NusaConfig.themePresets[id]!;
+                child: Wrap(
+                  spacing: 20,
+                  runSpacing: 20,
+                  alignment: WrapAlignment.center,
+                  children: NusaConfig.themePresets.entries.map((entry) {
+                    final id = entry.key;
+                    final preset = entry.value;
                     final selected = _themePreset == id;
                     return GestureDetector(
                       onTap: () async {
@@ -892,62 +887,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         await SecureStore.saveThemePreset(id);
                       },
                       child: Container(
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
+                          shape: BoxShape.circle,
+                          color: preset['primary'],
                           border: Border.all(
                             color: selected
-                                ? preset['primary']!
-                                : (isDark
-                                      ? NusaConfig.darkBorder
-                                      : NusaConfig.borderColor),
-                            width: selected ? 2.5 : 1,
+                                ? (isDark ? Colors.white : NusaConfig.textPrimary)
+                                : Colors.transparent,
+                            width: selected ? 3 : 0,
                           ),
-                          gradient: LinearGradient(
-                            colors: [preset['primary']!, preset['dark']!],
-                          ),
+                          boxShadow: selected
+                              ? [
+                                  BoxShadow(
+                                    color: (preset['primary']!).withValues(alpha: 0.4),
+                                    blurRadius: 12,
+                                    spreadRadius: 2,
+                                  ),
+                                ]
+                              : null,
                         ),
-                        child: Stack(
-                          children: [
-                            // Right-side decorative circle
-                            Positioned(
-                              right: -12,
-                              top: -12,
-                              child: Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white.withValues(alpha: 0.12),
-                                ),
-                              ),
-                            ),
-                            // Label
-                            Center(
-                              child: Text(
-                                NusaConfig.themeNames[id] ?? id,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            // Checkmark
-                            if (selected)
-                              const Positioned(
-                                right: 8,
-                                top: 8,
-                                child: Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                          ],
-                        ),
+                        child: selected
+                            ? const Icon(Icons.check, color: Colors.white, size: 28)
+                            : null,
                       ),
                     );
-                  },
+                  }).toList(),
                 ),
               ),
             ],
@@ -962,8 +928,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _showFeatureToggles() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Build ordered list respecting user's drag-reorder preference
+    final hidden = NusaConfig.hiddenMenus;
     final ordered = List<String>.from(
-      _menuOrder.isNotEmpty ? _menuOrder : _allFeatures,
+      (_menuOrder.isNotEmpty ? _menuOrder : _allFeatures)
+          .where((id) => !hidden.contains(id)),
     );
     showModalBottomSheet(
       context: context,

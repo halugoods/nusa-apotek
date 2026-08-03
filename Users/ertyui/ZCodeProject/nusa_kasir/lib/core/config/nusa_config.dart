@@ -254,9 +254,21 @@ abstract class NusaConfig {
     'keuangan', 'spreadsheet', 'supplier', 'pengaturan', 'cabang', 'piutang',
   ];
 
-  /// Menu yang disembunyikan secara default per domain.
+  /// Menu yang disembunyikan secara default per dominio.
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
-  static const List<String> hiddenMenus = ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'];
+  static const Map<String, List<String>> variantHiddenMenus = {
+    'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'fnb': ['laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'laundry': ['meja', 'servis', 'booking', 'resep', 'print_order'],
+    'bengkel': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+    'salon': ['meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'apotek': ['meja', 'laundry_status', 'servis', 'booking', 'print_order'],
+    'fotocopy': ['meja', 'laundry_status', 'servis', 'booking', 'resep'],
+    'servicehp': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+  };
+
+  /// Convenience getter: hidden menus for current variant (productId).
+  static List<String> get hiddenMenus => variantHiddenMenus[productId] ?? [];
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).
   /// Format: {'id', 'label', 'icon'}

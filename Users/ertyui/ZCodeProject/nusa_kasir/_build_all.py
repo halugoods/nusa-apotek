@@ -5,6 +5,12 @@ Builds all 8 variants sequentially by swapping config files per variant.
 """
 import os, sys, shutil, subprocess, re, time
 
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 FLUTTER = r"C:\Users\ertyui\flutter\bin\flutter.bat"
 BASE_DIR = r"C:\Users\ertyui\ZCodeProject\nusa_kasir"
 OUTPUT_DIR = os.path.join(BASE_DIR, "nusa_builds")
@@ -12,6 +18,17 @@ CONFIG_FILE = os.path.join(BASE_DIR, "lib", "core", "config", "nusa_config.dart"
 GRADLE_FILE = os.path.join(BASE_DIR, "android", "app", "build.gradle.kts")
 MANIFEST_FILE = os.path.join(BASE_DIR, "android", "app", "src", "main", "AndroidManifest.xml")
 GMS_DIR = os.path.join(BASE_DIR, "android", "app")
+ASSETS_ICONS = os.path.join(BASE_DIR, "assets", "icons")
+MIPMAP_DIR = os.path.join(BASE_DIR, "android", "app", "src", "main", "res")
+
+# Mipmap density → pixel size
+MIPMAP_SIZES = {
+    "mdpi": 48,
+    "hdpi": 72,
+    "xhdpi": 96,
+    "xxhdpi": 144,
+    "xxxhdpi": 192,
+}
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -73,7 +90,7 @@ VARIANTS = [
     {
         "id": "laundry", "name": "NUSA Laundry", "pkg": "com.nusa.laundry",
         "product": "nusa-laundry", "subtitle": "Aplikasi Kasir untuk Usaha Laundry",
-        "primary": "0xFF3B82F6", "dark": "0xFF2563EB", "soft": "0xFFEFF6FF",
+        "primary": "0xFFEC4899", "dark": "0xFFDB2777", "soft": "0xFFFDF2F8",
         "repo": "halugoods/nusa-laundry",
         "cat_emoji": {
             "Cuci Kering": "👕", "Cuci Setrika": "✨", "Setrika Only": "🔥",
@@ -100,7 +117,7 @@ VARIANTS = [
     {
         "id": "bengkel", "name": "NUSA Bengkel", "pkg": "com.nusa.bengkel",
         "product": "nusa-bengkel", "subtitle": "Aplikasi Kasir untuk Bengkel & Otomotif",
-        "primary": "0xFF374151", "dark": "0xFF1F2937", "soft": "0xFFF3F4F6",
+        "primary": "0xFFEAB308", "dark": "0xFFCA8A04", "soft": "0xFFFEF9C3",
         "repo": "halugoods/nusa-bengkel",
         "cat_emoji": {
             "Oli": "🛢️", "Ban": "🛞", "Servis": "🔧",
@@ -127,7 +144,7 @@ VARIANTS = [
     {
         "id": "salon", "name": "NUSA Salon", "pkg": "com.nusa.salon",
         "product": "nusa-salon", "subtitle": "Aplikasi Kasir untuk Salon & Barbershop",
-        "primary": "0xFF78716C", "dark": "0xFF57534E", "soft": "0xFFFAFAF9",
+        "primary": "0xFF3B82F6", "dark": "0xFF2563EB", "soft": "0xFFEFF6FF",
         "repo": "halugoods/nusa-salon",
         "cat_emoji": {
             "Haircut": "✂️", "Coloring": "🎨", "Treatment": "💆",
@@ -208,7 +225,7 @@ VARIANTS = [
     {
         "id": "servicehp", "name": "NUSA Service HP", "pkg": "com.nusa.servicehp",
         "product": "nusa-servicehp", "subtitle": "Aplikasi Kasir untuk Servis Handphone",
-        "primary": "0xFF06B6D4", "dark": "0xFF0891B2", "soft": "0xFFECFEFF",
+        "primary": "0xFF78716C", "dark": "0xFF57534E", "soft": "0xFFFAFAF9",
         "repo": "halugoods/nusa-servicehp",
         "cat_emoji": {
             "LCD": "📱", "Baterai": "🔋", "Software": "⚡",
@@ -318,6 +335,42 @@ def _escape_xml(s: str) -> str:
             .replace('"', "&quot;").replace("'", "&apos;")
 
 
+def setup_logo(variant_id: str):
+    """Resize variant app logo into all 5 mipmap densities + copy to splash asset.
+
+    Requires Pillow (`pip install Pillow`).  If Pillow is absent the logo
+    steps are skipped gracefully with a warning — builds succeed but the
+    launcher icon will be the default Flutter icon.
+    """
+    logo_src = os.path.join(ASSETS_ICONS, f"app_logo_{variant_id}.png")
+    if not os.path.isfile(logo_src):
+        print(f"  ⚠ Logo not found: {logo_src} — skipping launcher icon")
+        return
+
+    if not HAS_PIL:
+        print("  ⚠ pip install Pillow missing — skipping launcher icon resize")
+        return
+
+    try:
+        img = Image.open(logo_src).convert("RGBA")
+    except Exception as e:
+        print(f"  ⚠ Cannot open logo image: {e}")
+        return
+
+    for density, size in MIPMAP_SIZES.items():
+        dst_dir = os.path.join(MIPMAP_DIR, f"mipmap-{density}")
+        os.makedirs(dst_dir, exist_ok=True)
+        dst = os.path.join(dst_dir, "ic_launcher.png")
+        resized = img.resize((size, size), Image.LANCZOS)
+        resized.save(dst, "PNG")
+        print(f"  ✓ ic_launcher.png → mipmap-{density} ({size}×{size})")
+
+    # Copy logo to splash asset used by SplashScreen widget
+    splash_dst = os.path.join(ASSETS_ICONS, "splash_nusa.png")
+    shutil.copy2(logo_src, splash_dst)
+    print(f"  ✓ splash_nusa.png → {splash_dst}")
+
+
 def update_config(variant: dict):
     """Update all 3 config files for the given variant."""
     v = variant
@@ -378,6 +431,9 @@ def update_config(variant: dict):
     with open(MANIFEST_FILE, "w", encoding="utf-8") as f:
         f.write(manifest)
     print(f"  ✓ AndroidManifest.xml updated")
+
+    # ── 5. Setup app logo → mipmap + splash ──
+    setup_logo(v["id"])
 
     return True
 
@@ -446,11 +502,17 @@ def main():
         for i, variant in enumerate(variants, 1):
             vid = variant["id"]
             print(f"\n{'='*50}\n  [{i}/{len(variants)}] {variant['name']} ({vid})\n{'='*50}")
-            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}-v1.2.0.apk")
-            try:
-                os.remove(apk_dst)
-            except FileNotFoundError:
-                pass
+            # Keep one canonical APK per variant locally. Older versioned artifacts
+            # are stale and must not be carried into the next release upload.
+            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}.apk")
+            for filename in os.listdir(OUTPUT_DIR):
+                if filename == f"nusa-{vid}.apk" or re.fullmatch(
+                    rf"nusa-{re.escape(vid)}-v[^/]+\.apk", filename
+                ):
+                    try:
+                        os.remove(os.path.join(OUTPUT_DIR, filename))
+                    except FileNotFoundError:
+                        pass
             if not update_config(variant) or not validate_variant(variant) or not build_apk(vid):
                 failed.append(vid)
                 continue

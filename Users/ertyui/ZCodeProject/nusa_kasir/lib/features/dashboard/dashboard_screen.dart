@@ -498,10 +498,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    // 4. PIN guard for sensitive menus (kasir)
+    // 4. PIN guard for sensitive menus (kasir) — verify via existing session
     if (needsPinGuard(route)) {
-      final pinOk = await _requirePinReentry();
-      if (!pinOk) return;
+      final active = ref.read(employeeSessionProvider);
+      if (active == null) return;
+      final emp = _employees.cast<Employee?>().firstWhere(
+            (e) => e!.id == active.employeeId,
+            orElse: () => null,
+          );
+      if (emp == null) return;
+      final result = await PinDialog.show(
+        context: context,
+        employeeName: emp.name,
+        employeeRole: emp.role,
+        correctPin: emp.pin,
+        showRemember: false,
+        showFingerprint: true,
+        showNfc: true,
+        onFingerprint: () async => await _authFingerprint(),
+        onNfc: () async {
+          final id = await NfcTagService.readEmployeeTag();
+          return id?.toString();
+        },
+        pinLength: 6,
+      );
+      if (result == null || !result.success) return;
     }
 
     // 5. Attendance check: if not checked in, check in now
@@ -559,42 +580,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  /// Force PIN re-entry for sensitive operations.
-  Future<bool> _requirePinReentry() async {
-    final session = ref.read(employeeSessionProvider);
-    if (session == null) return false;
-
-    final emp = _employees.cast<Employee?>().firstWhere(
-          (e) => e!.id == session.employeeId,
-          orElse: () => null,
-        );
-    if (emp == null) return false;
-
-    final result = await PinDialog.show(
-      context: context,
-      employeeName: emp.name,
-      employeeRole: emp.role,
-      correctPin: emp.pin,
-      showRemember: false,
-      showFingerprint: true,
-      showNfc: true,
-      onFingerprint: () async => await _authFingerprint(),
-      onNfc: () async {
-        final id = await NfcTagService.readEmployeeTag();
-        return id?.toString();
-      },
-      pinLength: 6,
-    );
-
-    if (result == null || !result.success) {
-      return false;
-    }
-
-    // Touch session on successful PIN
-    ref.read(employeeSessionProvider.notifier).touch();
-    return true;
-  }
-
   Future<bool> _authFingerprint() async {
     return BiometricService.authenticate(
       reason: 'Verifikasi sidik jari untuk melanjutkan',
@@ -637,13 +622,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       name: emp.name,
       role: emp.role,
       branchId: emp.branchId,
-      remember: result.remember,
     );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: result.remember);
+    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
     ref.read(authProvider.notifier).state = emp.role;
-
-    // Touch session
-    ref.read(employeeSessionProvider.notifier).touch();
 
     // Auto-scope to employee's assigned branch
     if (emp.branchId != null) {
@@ -682,9 +663,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
     if (!mounted) return;
 
-    // PIN re-entry for security
-    final pinOk = await _requirePinReentry();
-    if (!pinOk) return;
     if (!mounted) return;
 
     final s = ref.read(employeeSessionProvider)!;

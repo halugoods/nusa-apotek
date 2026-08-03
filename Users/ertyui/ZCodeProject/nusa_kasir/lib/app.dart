@@ -142,23 +142,23 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     ),
     GoRoute(
       path: '/activation',
-      pageBuilder: (_, __) => _slidePage(const ActivationScreen()),
+      pageBuilder: (_, __) => _slidePage(ActivationScreen()),
     ),
     GoRoute(
       path: '/login',
-      pageBuilder: (_, __) => _slidePage(const LoginScreen()),
+      pageBuilder: (_, __) => _slidePage(LoginScreen()),
     ),
     GoRoute(
       path: '/onboarding',
-      pageBuilder: (_, __) => _slidePage(const OnboardingScreen()),
+      pageBuilder: (_, __) => _slidePage(OnboardingScreen()),
     ),
     GoRoute(
       path: '/setup',
-      pageBuilder: (_, __) => _slidePage(const SetupScreen()),
+      pageBuilder: (_, __) => _slidePage(SetupScreen()),
     ),
     GoRoute(
       path: '/home',
-      pageBuilder: (_, __) => _slidePage(const DashboardScreen()),
+      pageBuilder: (_, __) => _slidePage(DashboardScreen()),
     ),
     GoRoute(
       path: '/kasir',
@@ -178,11 +178,11 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     ),
     GoRoute(
       path: '/produk',
-      pageBuilder: (_, __) => _slidePage(const ProductsScreen()),
+      pageBuilder: (_, __) => _slidePage(ProductsScreen()),
     ),
     GoRoute(
       path: '/produk/tambah',
-      pageBuilder: (_, __) => _slidePage(const ProductFormScreen()),
+      pageBuilder: (_, __) => _slidePage(ProductFormScreen()),
     ),
     GoRoute(
       path: '/produk/edit/:id',
@@ -192,7 +192,7 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     ),
     GoRoute(
       path: '/produk/kategori',
-      pageBuilder: (_, __) => _slidePage(const KategoriListScreen()),
+      pageBuilder: (_, __) => _slidePage(KategoriListScreen()),
     ),
     GoRoute(
       path: '/produk/kategori/:category',
@@ -210,96 +210,96 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     ),
     GoRoute(
       path: '/transaksi',
-      pageBuilder: (_, __) => _slidePage(const TransactionsScreen()),
+      pageBuilder: (_, __) => _slidePage(TransactionsScreen()),
     ),
     GoRoute(
       path: '/pelanggan',
-      pageBuilder: (_, __) => _slidePage(const CustomersScreen()),
+      pageBuilder: (_, __) => _slidePage(CustomersScreen()),
     ),
     GoRoute(
       path: '/piutang',
-      pageBuilder: (_, __) => _slidePage(const DebtScreen()),
+      pageBuilder: (_, __) => _slidePage(DebtScreen()),
     ),
     GoRoute(
       path: '/promo',
-      pageBuilder: (_, __) => _slidePage(const PromoScreen()),
+      pageBuilder: (_, __) => _slidePage(PromoScreen()),
     ),
     GoRoute(
       path: '/laporan',
-      pageBuilder: (_, __) => _slidePage(const ReportsScreen()),
+      pageBuilder: (_, __) => _slidePage(ReportsScreen()),
     ),
     GoRoute(
       path: '/karyawan',
-      pageBuilder: (_, __) => _slidePage(const EmployeesScreen()),
+      pageBuilder: (_, __) => _slidePage(EmployeesScreen()),
     ),
     GoRoute(
       path: '/presensi',
-      pageBuilder: (_, __) => _slidePage(const AttendanceScreen()),
+      pageBuilder: (_, __) => _slidePage(AttendanceScreen()),
     ),
     GoRoute(
       path: '/keuangan',
-      pageBuilder: (_, __) => _slidePage(const FinanceScreen()),
+      pageBuilder: (_, __) => _slidePage(FinanceScreen()),
     ),
     GoRoute(
       path: '/pengaturan',
-      pageBuilder: (_, __) => _slidePage(const SettingsScreen()),
+      pageBuilder: (_, __) => _slidePage(SettingsScreen()),
     ),
     GoRoute(
       path: '/supplier',
-      pageBuilder: (_, __) => _slidePage(const SuppliersScreen()),
+      pageBuilder: (_, __) => _slidePage(SuppliersScreen()),
     ),
     GoRoute(
       path: '/spreadsheet',
-      pageBuilder: (_, __) => _slidePage(const SpreadsheetScreen()),
+      pageBuilder: (_, __) => _slidePage(SpreadsheetScreen()),
     ),
     GoRoute(
       path: '/cabang',
-      pageBuilder: (_, __) => _slidePage(const BranchScreen()),
+      pageBuilder: (_, __) => _slidePage(BranchScreen()),
     ),
     GoRoute(
       path: '/pesanan_online',
-      pageBuilder: (_, __) => _slidePage(const OnlineOrdersScreen()),
+      pageBuilder: (_, __) => _slidePage(OnlineOrdersScreen()),
     ),
     GoRoute(
       path: '/toko_online_setup',
-      pageBuilder: (_, __) => _slidePage(const OnlineStoreSetupScreen()),
+      pageBuilder: (_, __) => _slidePage(OnlineStoreSetupScreen()),
     ),
     GoRoute(
       path: '/ai_chat',
-      pageBuilder: (_, __) => _slidePage(const AiChatScreen()),
+      pageBuilder: (_, __) => _slidePage(AiChatScreen()),
     ),
     GoRoute(
       path: '/toko',
-      pageBuilder: (_, __) => _slidePage(const StorefrontScreen()),
+      pageBuilder: (_, __) => _slidePage(StorefrontScreen()),
     ),
     GoRoute(
       path: '/pengaturan_pembayaran',
-      pageBuilder: (_, __) => _slidePage(const PaymentSettingsScreen()),
+      pageBuilder: (_, __) => _slidePage(PaymentSettingsScreen()),
     ),
     // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Service HP) ──
     GoRoute(
       path: '/meja',
-      pageBuilder: (_, __) => _slidePage(const MejaScreen()),
+      pageBuilder: (_, __) => _slidePage(MejaScreen()),
     ),
     GoRoute(
       path: '/laundry_status',
-      pageBuilder: (_, __) => _slidePage(const LaundryStatusScreen()),
+      pageBuilder: (_, __) => _slidePage(LaundryStatusScreen()),
     ),
     GoRoute(
       path: '/servis',
-      pageBuilder: (_, __) => _slidePage(const ServisScreen()),
+      pageBuilder: (_, __) => _slidePage(ServisScreen()),
     ),
     GoRoute(
       path: '/booking',
-      pageBuilder: (_, __) => _slidePage(const BookingScreen()),
+      pageBuilder: (_, __) => _slidePage(BookingScreen()),
     ),
     GoRoute(
       path: '/resep',
-      pageBuilder: (_, __) => _slidePage(const ResepScreen()),
+      pageBuilder: (_, __) => _slidePage(ResepScreen()),
     ),
     GoRoute(
       path: '/print_order',
-      pageBuilder: (_, __) => _slidePage(const PrintOrderScreen()),
+      pageBuilder: (_, __) => _slidePage(PrintOrderScreen()),
     ),
   ],
 );
