@@ -631,7 +631,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _openLandingPage,
                           icon: Icon(Icons.shopping_bag_outlined, size: 18),
-                          label: Text('Beli Lisensi (Rp 199K)'),
+                          label: Text('Beli Lisensi (Rp 249K)'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: NusaConfig.activePrimary,
                             foregroundColor: Colors.white,
