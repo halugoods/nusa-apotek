@@ -22,34 +22,18 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
-  bool _nfcScanning = false;
   bool _nfcAvailable = false;
 
   @override
   void initState() {
     super.initState();
-    _checkNfc();
+    NfcTagService.isAvailable().then((ok) { if (mounted) setState(() => _nfcAvailable = ok); });
   }
 
   @override
   void dispose() {
     NfcTagService.stopSession();
     super.dispose();
-  }
-
-  Future<void> _checkNfc() async {
-    final available = await NfcTagService.isAvailable();
-    if (mounted) setState(() => _nfcAvailable = available);
-  }
-
-  Future<void> _startNfcLogin() async {
-    if (_loading) return;
-    setState(() { _nfcScanning = true; });
-    final employeeId = await NfcTagService.readEmployeeTag();
-    if (!mounted) return;
-    setState(() => _nfcScanning = false);
-    if (employeeId == null) return;
-    await _loginWithEmployeeId(employeeId);
   }
 
   Future<void> _loginWithEmployeeId(int employeeId) async {
@@ -152,120 +136,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             SizedBox(height: 4),
             Text(
-              _nfcAvailable ? 'Tap kartu NFC atau masukkan PIN' : 'Masukkan PIN karyawan kamu',
+              'Masuk dengan PIN, fingerprint, atau NFC',
               style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
             ),
 
-            // ── NFC Tap Area ────────────────────────────────────
-            if (_nfcAvailable) ...[
-              SizedBox(height: 20),
-              GestureDetector(
-                onTap: _nfcScanning ? null : _startNfcLogin,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: _nfcScanning
-                          ? NusaConfig.accentPurple
-                          : isDark
-                              ? NusaConfig.darkBorder
-                              : NusaConfig.borderColor,
-                      width: _nfcScanning ? 2 : 1,
-                    ),
-                    color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                  ),
-                  child: Column(
-                    children: [
-                      _nfcScanning
-                          ? SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: NusaConfig.accentPurple,
-                              ),
-                            )
-                          : Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                Icons.nfc,
-                                size: 28,
-                                color: NusaConfig.accentPurple,
-                              ),
-                            ),
-                      SizedBox(height: 8),
-                      Flexible(
-                        child: Text(
-                          _nfcScanning ? 'Mendeteksi...' : 'Tempelkan Kartu NFC',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _nfcScanning
-                                ? NusaConfig.accentPurple
-                                : isDark
-                                    ? NusaConfig.darkTextPrimary
-                                    : NusaConfig.textPrimary,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Flexible(
-                        child: Text(
-                          _nfcScanning ? 'Dekatkan kartu ke belakang HP' : 'Login cepat tanpa PIN',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'atau',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-            ],
-
             // ── PIN Keypad ──────────────────────────────────────
-            SizedBox(height: 16),
+            SizedBox(height: 24),
             PinKeypad(
               length: 6,
               showFingerprint: true,
