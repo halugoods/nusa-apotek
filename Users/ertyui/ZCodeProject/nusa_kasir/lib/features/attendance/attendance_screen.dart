@@ -170,6 +170,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
     final cashLabel = isCheckIn ? 'Kas Awal' : 'Kas Akhir';
     final iconData = isCheckIn ? Icons.login_rounded : Icons.logout_rounded;
     final accentColor = isCheckIn ? NusaConfig.accentGreen : Color(0xFFEF4444);
+    // Only require cash input if employee has the flag enabled
+    final showCash = isCheckIn ? (e.requiresCashOpen ?? false) : (e.requiresCashClose ?? false);
 
     showModalBottomSheet(
       context: context,
@@ -260,15 +262,33 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                 ),
               ]),
               SizedBox(height: 20),
-              // Cash input
-              _bsInput(
-                controller: cashCtrl,
-                label: cashLabel,
-                hint: 'Masukkan nominal $cashLabel',
-                keyboardType: TextInputType.number,
-                isDark: isDark,
-                prefixIcon: Icons.account_balance_wallet_outlined,
-              ),
+              // Cash input — only shown when employee requires cash on check-in/out
+              if (showCash)
+                _bsInput(
+                  controller: cashCtrl,
+                  label: cashLabel,
+                  hint: 'Masukkan nominal $cashLabel',
+                  keyboardType: TextInputType.number,
+                  isDark: isDark,
+                  prefixIcon: Icons.account_balance_wallet_outlined,
+                )
+              else ...[
+                // Subtle info text when no cash needed
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline, size: 15,
+                          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                      SizedBox(width: 6),
+                      Text('Tidak perlu isi $cashLabel',
+                          style: TextStyle(fontSize: 12,
+                              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                    ],
+                  ),
+                ),
+              ],
               SizedBox(height: 24),
               // Action buttons
               Row(children: [
@@ -292,7 +312,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                     onPressed: () async {
                       final amountText = cashCtrl.text.trim();
                       final amount = int.tryParse(amountText);
-                      if (amount == null || amount <= 0) {
+                      // Cash validation only when showCash is true
+                      if (showCash && (amount == null || amount <= 0)) {
                         TopToast.error(context, '$cashLabel wajib diisi');
                         return;
                       }
@@ -318,10 +339,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
 
                       final repo = AttendanceRepository(ref.read(databaseProvider));
                       if (isCheckIn) {
-                        await repo.checkInWithCash(e.id, amount);
+                        await repo.checkInWithCash(e.id, amount ?? 0);
                         if (mounted) TopToast.success(context, '${e.name} absen masuk ✅');
                       } else {
-                        await repo.checkOutWithCash(e.id, amount);
+                        await repo.checkOutWithCash(e.id, amount ?? 0);
                         if (mounted) TopToast.success(context, '${e.name} absen pulang ✅');
                       }
                       _load();

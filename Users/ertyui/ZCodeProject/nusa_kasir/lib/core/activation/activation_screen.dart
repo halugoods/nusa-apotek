@@ -201,7 +201,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       return;
     }
 
-    // Try cloud check
+    // Try cloud check to recover license key on fresh installs
     try {
       final res = await Supabase.instance.client.functions.invoke(
         'register_activation',
@@ -213,7 +213,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         final isExpired = data!['is_expired'] == true;
         
         if (isExpired) {
-          // Trial expired → redirect to landing page
           setState(() {
             _googleLoading = false;
             _googleError = 'Masa trial Anda telah habis.\nBeli lisensi seumur hidup untuk melanjutkan.';
@@ -222,14 +221,18 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           return;
         }
 
-        // Has valid license → go to PIN or setup (handles auto-restore)
+        // Has valid license → go to PIN or setup
         final key = data['key'] as String;
         await SecureStore.saveActivation(key);
         _goToPinOrSetup();
         return;
       }
     } catch (_) {
-      // Offline — just proceed to key input
+      // Offline / Supabase down — fall through to local PIN flow.
+      // Google auth already verified the user identity. Don't make them
+      // re-enter an activation key they already own.
+      _goToPinOrSetup();
+      return;
     }
 
     setState(() => _screen = 'key');

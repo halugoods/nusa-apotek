@@ -102,8 +102,7 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
           ),
           child: TabBar(
             controller: _tabController,
-            isScrollable: false,
-            tabAlignment: TabAlignment.fill,
+            isScrollable: true,
             labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
             indicatorSize: TabBarIndicatorSize.tab,

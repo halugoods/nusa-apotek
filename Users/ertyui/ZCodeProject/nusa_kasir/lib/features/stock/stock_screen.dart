@@ -1284,36 +1284,23 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     final controller = MobileScannerController();
     String? code;
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dCtx) => AlertDialog(
-        title: Text('Pindai Barcode'),
-        contentPadding: EdgeInsets.all(8),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 320,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: MobileScanner(
-              controller: controller,
-              onDetect: (capture) {
-                if (code != null || capture.barcodes.isEmpty) return;
-                final barcode = capture.barcodes.firstOrNull;
-                if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
-                code = barcode.rawValue;
-                Navigator.of(dCtx).pop();
-              },
+        final code = await Navigator.of(context).push<String>(
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: Text('Pindai Barcode'), leading: IconButton(icon: Icon(Icons.close), onPressed: () => Navigator.pop(_))),
+              body: MobileScanner(
+                controller: controller,
+                onDetect: (capture) {
+                  if (code != null || capture.barcodes.isEmpty) return;
+                  final barcode = capture.barcodes.firstOrNull;
+                  if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
+                  code = barcode.rawValue;
+                  Navigator.pop(_, code);
+                },
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dCtx).pop(),
-            child: Text('Batal'),
-          ),
-        ],
-      ),
-    );
+        );
     await controller.dispose();
     if (code == null || !mounted) return;
     final product = _byBarcode[code];

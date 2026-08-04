@@ -102,7 +102,7 @@ class _ResepScreenState extends ConsumerState<ResepScreen> with SingleTickerProv
         height: 44, margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
         decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor, borderRadius: BorderRadius.circular(10)),
         child: TabBar(
-          controller: _tabController, isScrollable: false, tabAlignment: TabAlignment.fill,
+          controller: _tabController, isScrollable: true,
           labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
           indicatorSize: TabBarIndicatorSize.tab,

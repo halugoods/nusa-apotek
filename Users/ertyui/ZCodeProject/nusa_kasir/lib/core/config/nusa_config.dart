@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-	static const String productId = "nusa-kelontong";
-	static const String appSubtitle = "Aplikasi Kasir untuk Toko Kelontong";
-	static const String appVersion = "1.6.7";
-					static const int appBuildNumber = 13;
-	  static const String githubRepo = "halugoods/nusa-kelontong";
+	static const String productId = "nusa-servicehp";
+	static const String appSubtitle = "Aplikasi Kasir untuk Servis Handphone";
+	static const String appVersion = "1.6.8";
+						static const int appBuildNumber = 14;
+	  static const String githubRepo = "halugoods/nusa-servicehp";
 	  static const String landingPageUrl = "https://nusa-online.vercel.app";
 	  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Kelontong";
-	  static const String applicationId = "com.nusa.kelontong"; // shared for all variants (Firebase constraint)
+	  static const String applicationId = "com.nusa.servicehp"; // shared for all variants (Firebase constraint)
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 
@@ -21,9 +21,9 @@ abstract class NusaConfig {
   // ── Brand colors (build-time defaults, patched by _build_all.py) ──
   // These remain const for broad compatibility with const constructors
   // across 50+ widget files. Theme switching uses overrides below.
-  static const Color primaryColor = const Color(0xFFF97316);
-  static const Color primaryDark = const Color(0xFFEA580C);
-  static const Color primarySoft = const Color(0xFFFFF7ED);
+  static const Color primaryColor = const Color(0xFF78716C);
+  static const Color primaryDark = const Color(0xFF57534E);
+  static const Color primarySoft = const Color(0xFFFAFAF9);
   static const Color backgroundColor = const Color(0xFFF7F7F9);
 
   // ── Runtime theme override (set by user via Settings → Tema Warna) ──
@@ -45,9 +45,9 @@ abstract class NusaConfig {
       'soft': Color(0xFFFFF7ED),
     },
     'fnb': {
-      'primary': Color(0xFFE63946), // Red
-      'dark': Color(0xFFC1121F),
-      'soft': Color(0xFFFDE8EA),
+      'primary': Color(0xFFDC2626), // Red (v1.7.17 deeper red)
+      'dark': Color(0xFF991B1B),
+      'soft': Color(0xFFFEF2F2),
     },
     'laundry': {
       'primary': Color(0xFFEC4899), // Pink (was Cyan — aligned with _build_all.py)
@@ -81,16 +81,16 @@ abstract class NusaConfig {
     },
   };
 
-  /// Human-readable labels for theme presets.
+  /// Human-readable labels for theme presets — color only (no variant name).
   static const Map<String, String> themeNames = {
-    'kelontong': 'Kelontong (Orange)',
-    'fnb': 'F&B (Merah)',
-    'laundry': 'Laundry (Pink)',
-    'bengkel': 'Bengkel (Kuning)',
-    'salon': 'Salon (Biru)',
-    'apotek': 'Apotek (Hijau)',
-    'fotocopy': 'Fotocopy (Ungu)',
-    'servicehp': 'Service HP (Abu)',
+    'kelontong': 'Orange',
+    'fnb': 'Merah',
+    'laundry': 'Pink',
+    'bengkel': 'Kuning',
+    'salon': 'Biru',
+    'apotek': 'Hijau',
+    'fotocopy': 'Ungu',
+    'servicehp': 'Abu',
   };
 
   /// Apply a theme preset at runtime. Saves to SecureStore.
@@ -198,25 +198,25 @@ abstract class NusaConfig {
 
   // ── Category maps (single source across all screens) ──
 	static const Map<String, String> catEmoji = {
-	  'Sembako': '🍚',
-	  'Makanan': '🍜',
-	  'Minuman': '🥤',
-	  'Perlengkapan': '🧹',
+	  'LCD': '📱',
+	  'Baterai': '🔋',
+	  'Software': '⚡',
+	  'Aksesoris': '🎧',
 	  'Lainnya': '📦',
 	};
 	  static const Map<String, List<Color>> catGradients = {
-	    'Sembako': [Color(0xFFFFEDD5), Color(0xFFFED7AA), Color(0xFFFFF7ED)],
-	    'Makanan': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-	    'Minuman': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-	    'Perlengkapan': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
-	    'Lainnya': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
+	    'LCD': [Color(0xFFECFEFF), Color(0xFFCFFAFE), Color(0xFFF0FDFA)],
+	    'Baterai': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+	    'Software': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+	    'Aksesoris': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
+	    'Lainnya': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
 	  };
 	  static const Map<String, IconData> catIcons = {
 	    'Semua': Icons.grid_view_rounded,
-	    'Sembako': Icons.rice_bowl_rounded,
-	    'Makanan': Icons.restaurant_rounded,
-	    'Minuman': Icons.local_drink_rounded,
-	    'Perlengkapan': Icons.cleaning_services_rounded,
+	    'LCD': Icons.phone_android_rounded,
+	    'Baterai': Icons.battery_charging_full_rounded,
+	    'Software': Icons.terminal_rounded,
+	    'Aksesoris': Icons.headphones_rounded,
 	    'Lainnya': Icons.category_rounded,
 	  };
 
@@ -261,10 +261,10 @@ abstract class NusaConfig {
     'fnb': ['supplier', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
     'laundry': ['supplier', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     'bengkel': ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
-    'salon': ['meja', 'laundry_status', 'servis', 'resep', 'print_order'],
-    'apotek': ['meja', 'laundry_status', 'servis', 'booking', 'print_order'],
-    'fotocopy': ['meja', 'laundry_status', 'servis', 'booking', 'resep'],
-    'servicehp': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+    'salon': ['supplier', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'apotek': ['promo', 'piutang', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
+    'fotocopy': ['cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+    'servicehp': ['promo', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
   };
 
   /// Convenience getter: hidden menus for current variant (productId).

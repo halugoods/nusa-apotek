@@ -164,30 +164,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       } catch (_) {}
     }
 
-    // Biometric auto-unlock for Owner — only for persisted (remembered)
-    // sessions that are NOT freshly created (skip the first 3 seconds to
-    // avoid double-prompting after a login with "Ingat PIN" checked).
-    if (session != null &&
-        session.role == 'Owner' &&
-        session.remember &&
-        !session.isExpired &&
-        DateTime.now().difference(session.savedAt).inSeconds > 3 &&
-        mounted) {
-      final enabled = await BiometricService.isEnabled();
-      if (enabled) {
-        final ok = await BiometricService.authenticate(
-          reason: 'Gunakan sidik jari untuk masuk sebagai Owner',
-        );
-        if (!ok) {
-          // Fingerprint failed — logout & show login screen
-          ref.read(employeeSessionProvider.notifier).logout();
-          if (mounted) {
-            context.go('/login');
-            return;
-          }
-        }
-      }
-    }
+    // Biometric auto-unlock for Owner is handled by the GoRouter redirect guard
+    // in app.dart — NOT here. The redirect guard invalidates remembered sessions
+    // when fingerprint is disabled. If we reach here, the session is valid.
 
     // Auto-scope branch from session
     if (session?.branchId != null && mounted) {

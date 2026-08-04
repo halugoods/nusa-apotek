@@ -467,7 +467,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
                 SizedBox(height: 12),
 
-                // ── Wajib Presensi Checkboxes ──
+                // ── Wajib Presensi Checkboxes (rounded, custom) ──
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text('Wajib Presensi',
@@ -478,31 +478,91 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                       )),
                 ),
                 SizedBox(height: 4),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Kas Awal',
-                      style: TextStyle(fontSize: 13,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                  subtitle: Text('Karyawan wajib isi kas awal saat presensi masuk',
-                      style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                  value: requiresCashOpen,
-                  activeColor: NusaConfig.activePrimary,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
-                  onChanged: (v) => setSt(() => requiresCashOpen = v ?? false),
+                // Kas Awal
+                GestureDetector(
+                  onTap: () => setSt(() => requiresCashOpen = !requiresCashOpen),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22, height: 22,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: requiresCashOpen
+                                  ? NusaConfig.activePrimary
+                                  : (isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor),
+                              width: 2,
+                            ),
+                            color: requiresCashOpen
+                                ? NusaConfig.activePrimary
+                                : Colors.transparent,
+                          ),
+                          child: requiresCashOpen
+                              ? Icon(Icons.check, size: 14, color: Colors.white)
+                              : null,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Kas Awal',
+                                  style: TextStyle(fontSize: 13,
+                                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                              Text('Karyawan wajib isi kas awal saat presensi masuk',
+                                  style: TextStyle(fontSize: 11,
+                                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Kas Akhir',
-                      style: TextStyle(fontSize: 13,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                  subtitle: Text('Karyawan wajib isi kas akhir saat presensi pulang',
-                      style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                  value: requiresCashClose,
-                  activeColor: NusaConfig.activePrimary,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
-                  onChanged: (v) => setSt(() => requiresCashClose = v ?? false),
+                // Kas Akhir
+                GestureDetector(
+                  onTap: () => setSt(() => requiresCashClose = !requiresCashClose),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22, height: 22,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: requiresCashClose
+                                  ? NusaConfig.activePrimary
+                                  : (isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor),
+                              width: 2,
+                            ),
+                            color: requiresCashClose
+                                ? NusaConfig.activePrimary
+                                : Colors.transparent,
+                          ),
+                          child: requiresCashClose
+                              ? Icon(Icons.check, size: 14, color: Colors.white)
+                              : null,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Kas Akhir',
+                                  style: TextStyle(fontSize: 13,
+                                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                              Text('Karyawan wajib isi kas akhir saat presensi pulang',
+                                  style: TextStyle(fontSize: 11,
+                                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
 
                 // ── NFC Tag Registration ──

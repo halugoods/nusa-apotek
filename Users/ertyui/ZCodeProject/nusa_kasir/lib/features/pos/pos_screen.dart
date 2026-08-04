@@ -109,31 +109,36 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     String? scannedCode;
     final controller = MobileScannerController();
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dCtx) => AlertDialog(
-        title: Text('Pindai Barcode'),
-        contentPadding: EdgeInsets.all(8),
-        content: SizedBox(width: double.maxFinite, height: 320,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: MobileScanner(controller: controller, onDetect: (capture) {
+
+    // Full-screen route — avoids dialog+camera crash on Xiaomi/Redmi/Oppo
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: Text('Pindai Barcode'),
+            leading: IconButton(
+              icon: Icon(Icons.close),
+              onPressed: () => Navigator.pop(_),
+            ),
+          ),
+          body: MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
               if (scannedCode != null) return;
               final barcode = capture.barcodes.firstOrNull;
-              final code = barcode?.rawValue;
-              if (code == null || code.isEmpty) return;
-              scannedCode = code;
-              Navigator.of(dCtx).pop(code);
-            }),
+              final raw = barcode?.rawValue;
+              if (raw == null || raw.isEmpty) return;
+              scannedCode = raw;
+              Navigator.pop(_, raw);
+            },
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.of(dCtx).pop(), child: Text('Batal'))],
       ),
     );
     await controller.dispose();
-    if (scannedCode == null || !context.mounted) return;
+    if (code == null || !context.mounted) return;
 
-    final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(scannedCode!);
+    final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(code);
     if (product != null) {
       ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice);
       TopToast.success(context, '${product.name} ditambahkan');
