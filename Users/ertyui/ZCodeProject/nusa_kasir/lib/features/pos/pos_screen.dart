@@ -113,12 +113,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     // Full-screen route — avoids dialog+camera crash on Xiaomi/Redmi/Oppo
     final code = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => Scaffold(
+        builder: (ctx) => Scaffold(
           appBar: AppBar(
             title: Text('Pindai Barcode'),
             leading: IconButton(
               icon: Icon(Icons.close),
-              onPressed: () => Navigator.pop(_),
+              onPressed: () => Navigator.pop(ctx),
             ),
           ),
           body: MobileScanner(
@@ -129,7 +129,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               final raw = barcode?.rawValue;
               if (raw == null || raw.isEmpty) return;
               scannedCode = raw;
-              Navigator.pop(_, raw);
+              Navigator.pop(ctx, raw);
             },
           ),
         ),

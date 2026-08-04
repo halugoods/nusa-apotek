@@ -1284,26 +1284,26 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     final controller = MobileScannerController();
     String? code;
     if (!mounted) return;
-        final code = await Navigator.of(context).push<String>(
-          MaterialPageRoute(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: Text('Pindai Barcode'), leading: IconButton(icon: Icon(Icons.close), onPressed: () => Navigator.pop(_))),
-              body: MobileScanner(
-                controller: controller,
-                onDetect: (capture) {
-                  if (code != null || capture.barcodes.isEmpty) return;
-                  final barcode = capture.barcodes.firstOrNull;
-                  if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
-                  code = barcode.rawValue;
-                  Navigator.pop(_, code);
-                },
-              ),
-            ),
+    final scanned = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(title: Text('Pindai Barcode'), leading: IconButton(icon: Icon(Icons.close), onPressed: () => Navigator.pop(ctx))),
+          body: MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              if (code != null || capture.barcodes.isEmpty) return;
+              final barcode = capture.barcodes.firstOrNull;
+              if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
+              code = barcode.rawValue;
+              Navigator.pop(ctx, code);
+            },
           ),
-        );
+        ),
+      ),
+    );
     await controller.dispose();
-    if (code == null || !mounted) return;
-    final product = _byBarcode[code];
+    if (scanned == null || !mounted) return;
+    final product = _byBarcode[scanned];
     if (product != null) {
       setState(() {
         _selectedId = product.id;
