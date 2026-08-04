@@ -164,10 +164,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       } catch (_) {}
     }
 
-    // Biometric auto-unlock for Owner
+    // Biometric auto-unlock for Owner — only for persisted (remembered)
+    // sessions that are NOT freshly created (skip the first 3 seconds to
+    // avoid double-prompting after a login with "Ingat PIN" checked).
     if (session != null &&
         session.role == 'Owner' &&
+        session.remember &&
         !session.isExpired &&
+        DateTime.now().difference(session.savedAt).inSeconds > 3 &&
         mounted) {
       final enabled = await BiometricService.isEnabled();
       if (enabled) {

@@ -55,10 +55,10 @@ class PinKeypad extends StatefulWidget {
   }) : assert(length == 4 || length == 6);
 
   @override
-  State<PinKeypad> createState() => _PinKeypadState();
+  State<PinKeypad> createState() => PinKeypadState();
 }
 
-class _PinKeypadState extends State<PinKeypad>
+class PinKeypadState extends State<PinKeypad>
     with SingleTickerProviderStateMixin {
   String _digits = '';
   bool _nfcScanning = false;
