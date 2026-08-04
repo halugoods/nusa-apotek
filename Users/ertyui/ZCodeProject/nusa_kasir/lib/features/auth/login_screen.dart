@@ -8,12 +8,15 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
-import 'package:nusa_kasir/shared/widgets/top_toast.dart';
-import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
+import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 
-/// POST-SETUP login: user taps NFC or enters PIN via popup.
+/// POST-SETUP login screen.
+///
+/// Uses the **same** [PinDialog] as every PIN-protected action
+/// (menus, attendance, settings) — lock icon, keypad, FP icon,
+/// NFC hint card, and "Ingat PIN selama 8 jam" checkbox.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -21,13 +24,12 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  bool _loading = false;
-  bool _nfcAvailable = false;
+  Employee? _foundEmp;
 
   @override
   void initState() {
     super.initState();
-    NfcTagService.isAvailable().then((ok) { if (mounted) setState(() => _nfcAvailable = ok); });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showPin());
   }
 
   @override
@@ -36,83 +38,81 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _loginWithEmployeeId(int employeeId) async {
-    setState(() => _loading = true);
-    try {
-      final db = ref.read(databaseProvider);
-      final repo = AttendanceRepository(db);
-      final emp = await repo.getEmployee(employeeId);
-      if (emp == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-      _doLogin(emp);
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _doLogin(Employee emp) async {
-    final session = EmployeeSession(
-      employeeId: emp.id,
-      name: emp.name,
-      role: emp.role,
+  Future<void> _doLogin(Employee emp, bool remember) async {
+    final s = EmployeeSession(
+      employeeId: emp.id, name: emp.name, role: emp.role,
     );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
+    ref.read(employeeSessionProvider.notifier).login(s, remember: remember);
     ref.read(authProvider.notifier).state = emp.role;
     final name = await ref.read(settingsRepoProvider).getStoreName();
     if (mounted) context.go(name.isEmpty ? '/onboarding' : '/home');
   }
 
-  Future<bool> _authFingerprint() async {
-    return BiometricService.authenticate(
-      reason: 'Verifikasi sidik jari untuk melanjutkan',
+  /// Shows the unified PIN dialog. Re-shows on cancel.
+  Future<void> _showPin() async {
+    final result = await PinDialog.show(
+      context: context,
+      title: 'Masuk',
+      subtitle: 'Masukkan PIN, gunakan fingerprint, atau tap NFC',
+      showRemember: true,
+      pinLength: 6,
+      showFingerprint: true,
+      showNfc: true,
+      onFingerprint: () => BiometricService.authenticate(
+        reason: 'Verifikasi sidik jari untuk melanjutkan',
+      ),
+      onNfc: () async {
+        final id = await NfcTagService.readEmployeeTag();
+        return id?.toString();
+      },
+      onVerify: (pin) async {
+        final db = ref.read(databaseProvider);
+        final repo = AttendanceRepository(db);
+        final emps = await repo.getEmployees();
+        _foundEmp = emps.cast<Employee?>().firstWhere(
+              (e) => e!.pin == pin, orElse: () => null);
+        return _foundEmp != null;
+      },
     );
-  }
 
-  /// Login as Owner via fingerprint — called when fingerprint auth succeeds.
-  Future<void> _fingerprintLogin() async {
+    if (result == null) {
+      // User dismissed — re-show
+      _showPin();
+      return;
+    }
+    if (!result.success) {
+      _showPin();
+      return;
+    }
+
+    // NFC login
+    if (result.nfcEmployeeId != null) {
+      final db = ref.read(databaseProvider);
+      final repo = AttendanceRepository(db);
+      final emp = await repo.getEmployee(result.nfcEmployeeId!);
+      if (emp != null) { await _doLogin(emp, result.remember); return; }
+      _showPin();
+      return;
+    }
+
+    // PIN login
+    if (_foundEmp != null) {
+      await _doLogin(_foundEmp!, result.remember);
+      return;
+    }
+
+    // Fingerprint → login as Owner
     final db = ref.read(databaseProvider);
     final repo = AttendanceRepository(db);
     final emps = await repo.getEmployees();
     final owner = emps.cast<Employee?>().firstWhere(
-          (e) => e!.role == 'Owner',
-          orElse: () => null,
-        );
-    if (owner == null || !mounted) return;
-
-    final session = EmployeeSession(
-      employeeId: owner.id, name: owner.name, role: owner.role, remember: false,
-    );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
-    ref.read(authProvider.notifier).state = owner.role;
-    if (mounted) context.go('/home');
-  }
-
-  /// Verify PIN directly (used by PinKeypad on login screen).
-  Future<void> _verifyPin(String pin) async {
-    final db = ref.read(databaseProvider);
-    final repo = AttendanceRepository(db);
-    final emps = await repo.getEmployees();
-    final emp = emps.cast<Employee?>().firstWhere(
-          (e) => e!.pin == pin,
-          orElse: () => null,
-        );
-    if (emp == null) {
-      if (mounted) TopToast.error(context, 'PIN salah');
+          (e) => e!.role == 'Owner', orElse: () => null);
+    if (owner != null) {
+      await _doLogin(owner, result.remember);
       return;
     }
 
-    final session = EmployeeSession(
-      employeeId: emp.id,
-      name: emp.name,
-      role: emp.role,
-      remember: false,
-    );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: false);
-    ref.read(authProvider.notifier).state = emp.role;
-    final name = await ref.read(settingsRepoProvider).getStoreName();
-    if (mounted) context.go(name.isEmpty ? '/onboarding' : '/home');
+    _showPin();
   }
 
   @override
@@ -120,48 +120,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
       'Masuk',
-      Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(height: 32),
-            Text(
-              'Masuk sebagai',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+      Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72, height: 72,
+                decoration: BoxDecoration(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(Icons.store_rounded,
+                    color: NusaConfig.activePrimary, size: 36),
               ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Masuk dengan PIN, fingerprint, atau NFC',
-              style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-            ),
-
-            // ── PIN Keypad ──────────────────────────────────────
-            SizedBox(height: 24),
-            PinKeypad(
-              length: 6,
-              showFingerprint: true,
-              showNfc: _nfcAvailable,
-              showCancel: false,
-              onFingerprint: () async => await _authFingerprint(),
-              onFingerprintSuccess: () => _fingerprintLogin(),
-              onNfc: () async {
-                final id = await NfcTagService.readEmployeeTag();
-                if (id == null || !mounted) return null;
-                await _loginWithEmployeeId(id);
-                return null; // already handled, don't trigger onComplete
-              },
-              onComplete: (pin) async {
-                setState(() => _loading = true);
-                await _verifyPin(pin);
-                if (mounted) setState(() => _loading = false);
-              },
-            ),
-          ],
+              const SizedBox(height: 20),
+              Text('NUSA Kasir',
+                  style: TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.w800,
+                    color: isDark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+                  )),
+              const SizedBox(height: 6),
+              Text(NusaConfig.appSubtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  )),
+            ],
+          ),
         ),
       ),
     );
