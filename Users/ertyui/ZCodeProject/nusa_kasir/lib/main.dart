@@ -230,9 +230,12 @@ void main() async {
         initialLocation = '/activation';
       } else {
         final session = await EmployeeSession.restore();
-        initialLocation = (session != null && !session.isExpired)
-            ? '/home'
-            : '/activation';
+        if (session != null && !session.isExpired) {
+          initialLocation = '/home';
+        } else {
+          // Already activated — skip activation screen, go straight to PIN login.
+          initialLocation = '/login';
+        }
       }
     } catch (_) {
       initialLocation = '/activation';

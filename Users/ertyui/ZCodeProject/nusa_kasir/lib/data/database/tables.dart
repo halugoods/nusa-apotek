@@ -86,6 +86,8 @@ class Employees extends Table {
   TextColumn get workStart => text().nullable()(); // "HH:mm" default "08:00"
   TextColumn get workEnd => text().nullable()();   // "HH:mm" default "17:00"
   BoolColumn get requiresAttendance => boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresCashOpen => boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresCashClose => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 class Attendance extends Table {

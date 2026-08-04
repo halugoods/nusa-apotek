@@ -28,7 +28,8 @@ class AttendanceRepository {
     String? status,
     String? workStart,
     String? workEnd,
-    bool requiresAttendance = false,
+    bool requiresCashOpen = false,
+    bool requiresCashClose = false,
   }) {
     return db
         .into(db.employees)
@@ -45,7 +46,8 @@ class AttendanceRepository {
             status: Value(status),
             workStart: Value(workStart),
             workEnd: Value(workEnd),
-            requiresAttendance: Value(requiresAttendance),
+            requiresCashOpen: Value(requiresCashOpen),
+            requiresCashClose: Value(requiresCashClose),
           ),
         );
   }
@@ -63,7 +65,8 @@ class AttendanceRepository {
     String? status,
     String? workStart,
     String? workEnd,
-    bool requiresAttendance = false,
+    bool requiresCashOpen = false,
+    bool requiresCashClose = false,
   }) => (db.update(db.employees)..where((t) => t.id.equals(id))).write(
     EmployeesCompanion(
       name: Value(name),
@@ -77,7 +80,8 @@ class AttendanceRepository {
       status: Value(status),
       workStart: Value(workStart),
       workEnd: Value(workEnd),
-      requiresAttendance: Value(requiresAttendance),
+      requiresCashOpen: Value(requiresCashOpen),
+      requiresCashClose: Value(requiresCashClose),
     ),
   );
 

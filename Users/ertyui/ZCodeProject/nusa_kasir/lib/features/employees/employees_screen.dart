@@ -162,7 +162,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     int? branchId = employee?.branchId;
     String workStart = employee?.workStart ?? '08:00';
     String workEnd = employee?.workEnd ?? '17:00';
-    bool requiresAttendance = employee?.requiresAttendance ?? false;
+    bool requiresCashOpen = employee?.requiresCashOpen ?? false;
+    bool requiresCashClose = employee?.requiresCashClose ?? false;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
@@ -466,22 +467,42 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
                 SizedBox(height: 12),
 
-                // ── Wajib Presensi Toggle ──
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Wajib Presensi',
+                // ── Wajib Presensi Checkboxes ──
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('Wajib Presensi',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
                       )),
-                  subtitle: Text(
-                    'Karyawan wajib isi presensi masuk, pulang, kas awal & kas akhir',
-                    style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                  ),
-                  value: requiresAttendance,
+                ),
+                SizedBox(height: 4),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Kas Awal',
+                      style: TextStyle(fontSize: 13,
+                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                  subtitle: Text('Karyawan wajib isi kas awal saat presensi masuk',
+                      style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  value: requiresCashOpen,
                   activeColor: NusaConfig.activePrimary,
-                  onChanged: (v) => setSt(() => requiresAttendance = v),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  onChanged: (v) => setSt(() => requiresCashOpen = v ?? false),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Kas Akhir',
+                      style: TextStyle(fontSize: 13,
+                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                  subtitle: Text('Karyawan wajib isi kas akhir saat presensi pulang',
+                      style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  value: requiresCashClose,
+                  activeColor: NusaConfig.activePrimary,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  onChanged: (v) => setSt(() => requiresCashClose = v ?? false),
                 ),
 
                 // ── NFC Tag Registration ──
@@ -546,7 +567,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                               branchId: branchId,
                               workStart: workStart,
                               workEnd: workEnd,
-                              requiresAttendance: requiresAttendance);
+                              requiresCashOpen: requiresCashOpen,
+                              requiresCashClose: requiresCashClose);
                         } else {
                           await repo.updateEmployee(
                               id: employee.id, name: name, pin: pin, role: role,
@@ -558,7 +580,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                               branchId: branchId,
                               workStart: workStart,
                               workEnd: workEnd,
-                              requiresAttendance: requiresAttendance);
+                              requiresCashOpen: requiresCashOpen,
+                              requiresCashClose: requiresCashClose);
                         }
                         // Upload photo to cloud in background
                         if (photoPath != null) {
@@ -807,16 +830,15 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         child: Icon(Icons.badge, size: 18, color: color)),
                       SizedBox(width: 10),
                       Expanded(child: Text(name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                      if (!isDefault)
-                        GestureDetector(
-                          onTap: () async {
-                            Navigator.of(ctx).pop();
-                            await _showRoleForm(roleRepo, existing: r);
-                          },
-                          child: Padding(padding: EdgeInsets.all(8),
-                            child: Icon(Icons.edit, size: 18,
-                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                        ),
+                      GestureDetector(
+                        onTap: () async {
+                          Navigator.of(ctx).pop();
+                          await _showRoleForm(roleRepo, existing: r);
+                        },
+                        child: Padding(padding: EdgeInsets.all(8),
+                          child: Icon(Icons.edit, size: 18,
+                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      ),
                       if (!isDefault)
                         GestureDetector(
                           onTap: () async {

@@ -3586,6 +3586,36 @@ class $EmployeesTable extends Employees
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _requiresCashOpenMeta = const VerificationMeta(
+    'requiresCashOpen',
+  );
+  @override
+  late final GeneratedColumn<bool> requiresCashOpen = GeneratedColumn<bool>(
+    'requires_cash_open',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("requires_cash_open" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _requiresCashCloseMeta = const VerificationMeta(
+    'requiresCashClose',
+  );
+  @override
+  late final GeneratedColumn<bool> requiresCashClose = GeneratedColumn<bool>(
+    'requires_cash_close',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("requires_cash_close" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3614,6 +3644,8 @@ class $EmployeesTable extends Employees
     workStart,
     workEnd,
     requiresAttendance,
+    requiresCashOpen,
+    requiresCashClose,
     createdAt,
   ];
   @override
@@ -3718,6 +3750,24 @@ class $EmployeesTable extends Employees
         ),
       );
     }
+    if (data.containsKey('requires_cash_open')) {
+      context.handle(
+        _requiresCashOpenMeta,
+        requiresCashOpen.isAcceptableOrUnknown(
+          data['requires_cash_open']!,
+          _requiresCashOpenMeta,
+        ),
+      );
+    }
+    if (data.containsKey('requires_cash_close')) {
+      context.handle(
+        _requiresCashCloseMeta,
+        requiresCashClose.isAcceptableOrUnknown(
+          data['requires_cash_close']!,
+          _requiresCashCloseMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3789,6 +3839,14 @@ class $EmployeesTable extends Employees
         DriftSqlType.bool,
         data['${effectivePrefix}requires_attendance'],
       )!,
+      requiresCashOpen: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}requires_cash_open'],
+      )!,
+      requiresCashClose: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}requires_cash_close'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3817,6 +3875,8 @@ class Employee extends DataClass implements Insertable<Employee> {
   final String? workStart;
   final String? workEnd;
   final bool requiresAttendance;
+  final bool requiresCashOpen;
+  final bool requiresCashClose;
   final DateTime createdAt;
   const Employee({
     required this.id,
@@ -3833,6 +3893,8 @@ class Employee extends DataClass implements Insertable<Employee> {
     this.workStart,
     this.workEnd,
     required this.requiresAttendance,
+    required this.requiresCashOpen,
+    required this.requiresCashClose,
     required this.createdAt,
   });
   @override
@@ -3870,6 +3932,8 @@ class Employee extends DataClass implements Insertable<Employee> {
       map['work_end'] = Variable<String>(workEnd);
     }
     map['requires_attendance'] = Variable<bool>(requiresAttendance);
+    map['requires_cash_open'] = Variable<bool>(requiresCashOpen);
+    map['requires_cash_close'] = Variable<bool>(requiresCashClose);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -3908,6 +3972,8 @@ class Employee extends DataClass implements Insertable<Employee> {
           ? const Value.absent()
           : Value(workEnd),
       requiresAttendance: Value(requiresAttendance),
+      requiresCashOpen: Value(requiresCashOpen),
+      requiresCashClose: Value(requiresCashClose),
       createdAt: Value(createdAt),
     );
   }
@@ -3932,6 +3998,8 @@ class Employee extends DataClass implements Insertable<Employee> {
       workStart: serializer.fromJson<String?>(json['workStart']),
       workEnd: serializer.fromJson<String?>(json['workEnd']),
       requiresAttendance: serializer.fromJson<bool>(json['requiresAttendance']),
+      requiresCashOpen: serializer.fromJson<bool>(json['requiresCashOpen']),
+      requiresCashClose: serializer.fromJson<bool>(json['requiresCashClose']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -3953,6 +4021,8 @@ class Employee extends DataClass implements Insertable<Employee> {
       'workStart': serializer.toJson<String?>(workStart),
       'workEnd': serializer.toJson<String?>(workEnd),
       'requiresAttendance': serializer.toJson<bool>(requiresAttendance),
+      'requiresCashOpen': serializer.toJson<bool>(requiresCashOpen),
+      'requiresCashClose': serializer.toJson<bool>(requiresCashClose),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -3972,6 +4042,8 @@ class Employee extends DataClass implements Insertable<Employee> {
     Value<String?> workStart = const Value.absent(),
     Value<String?> workEnd = const Value.absent(),
     bool? requiresAttendance,
+    bool? requiresCashOpen,
+    bool? requiresCashClose,
     DateTime? createdAt,
   }) => Employee(
     id: id ?? this.id,
@@ -3988,6 +4060,8 @@ class Employee extends DataClass implements Insertable<Employee> {
     workStart: workStart.present ? workStart.value : this.workStart,
     workEnd: workEnd.present ? workEnd.value : this.workEnd,
     requiresAttendance: requiresAttendance ?? this.requiresAttendance,
+    requiresCashOpen: requiresCashOpen ?? this.requiresCashOpen,
+    requiresCashClose: requiresCashClose ?? this.requiresCashClose,
     createdAt: createdAt ?? this.createdAt,
   );
   Employee copyWithCompanion(EmployeesCompanion data) {
@@ -4010,6 +4084,12 @@ class Employee extends DataClass implements Insertable<Employee> {
       requiresAttendance: data.requiresAttendance.present
           ? data.requiresAttendance.value
           : this.requiresAttendance,
+      requiresCashOpen: data.requiresCashOpen.present
+          ? data.requiresCashOpen.value
+          : this.requiresCashOpen,
+      requiresCashClose: data.requiresCashClose.present
+          ? data.requiresCashClose.value
+          : this.requiresCashClose,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -4031,6 +4111,8 @@ class Employee extends DataClass implements Insertable<Employee> {
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
+          ..write('requiresCashOpen: $requiresCashOpen, ')
+          ..write('requiresCashClose: $requiresCashClose, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -4052,6 +4134,8 @@ class Employee extends DataClass implements Insertable<Employee> {
     workStart,
     workEnd,
     requiresAttendance,
+    requiresCashOpen,
+    requiresCashClose,
     createdAt,
   );
   @override
@@ -4072,6 +4156,8 @@ class Employee extends DataClass implements Insertable<Employee> {
           other.workStart == this.workStart &&
           other.workEnd == this.workEnd &&
           other.requiresAttendance == this.requiresAttendance &&
+          other.requiresCashOpen == this.requiresCashOpen &&
+          other.requiresCashClose == this.requiresCashClose &&
           other.createdAt == this.createdAt);
 }
 
@@ -4090,6 +4176,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
   final Value<String?> workStart;
   final Value<String?> workEnd;
   final Value<bool> requiresAttendance;
+  final Value<bool> requiresCashOpen;
+  final Value<bool> requiresCashClose;
   final Value<DateTime> createdAt;
   const EmployeesCompanion({
     this.id = const Value.absent(),
@@ -4106,6 +4194,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
+    this.requiresCashOpen = const Value.absent(),
+    this.requiresCashClose = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   EmployeesCompanion.insert({
@@ -4123,6 +4213,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
+    this.requiresCashOpen = const Value.absent(),
+    this.requiresCashClose = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : name = Value(name),
        pin = Value(pin),
@@ -4142,6 +4234,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Expression<String>? workStart,
     Expression<String>? workEnd,
     Expression<bool>? requiresAttendance,
+    Expression<bool>? requiresCashOpen,
+    Expression<bool>? requiresCashClose,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -4159,6 +4253,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       if (workStart != null) 'work_start': workStart,
       if (workEnd != null) 'work_end': workEnd,
       if (requiresAttendance != null) 'requires_attendance': requiresAttendance,
+      if (requiresCashOpen != null) 'requires_cash_open': requiresCashOpen,
+      if (requiresCashClose != null) 'requires_cash_close': requiresCashClose,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -4178,6 +4274,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Value<String?>? workStart,
     Value<String?>? workEnd,
     Value<bool>? requiresAttendance,
+    Value<bool>? requiresCashOpen,
+    Value<bool>? requiresCashClose,
     Value<DateTime>? createdAt,
   }) {
     return EmployeesCompanion(
@@ -4195,6 +4293,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       workStart: workStart ?? this.workStart,
       workEnd: workEnd ?? this.workEnd,
       requiresAttendance: requiresAttendance ?? this.requiresAttendance,
+      requiresCashOpen: requiresCashOpen ?? this.requiresCashOpen,
+      requiresCashClose: requiresCashClose ?? this.requiresCashClose,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -4244,6 +4344,12 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     if (requiresAttendance.present) {
       map['requires_attendance'] = Variable<bool>(requiresAttendance.value);
     }
+    if (requiresCashOpen.present) {
+      map['requires_cash_open'] = Variable<bool>(requiresCashOpen.value);
+    }
+    if (requiresCashClose.present) {
+      map['requires_cash_close'] = Variable<bool>(requiresCashClose.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -4267,6 +4373,8 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
+          ..write('requiresCashOpen: $requiresCashOpen, ')
+          ..write('requiresCashClose: $requiresCashClose, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -19285,6 +19393,8 @@ typedef $$EmployeesTableCreateCompanionBuilder =
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
+      Value<bool> requiresCashOpen,
+      Value<bool> requiresCashClose,
       Value<DateTime> createdAt,
     });
 typedef $$EmployeesTableUpdateCompanionBuilder =
@@ -19303,6 +19413,8 @@ typedef $$EmployeesTableUpdateCompanionBuilder =
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
+      Value<bool> requiresCashOpen,
+      Value<bool> requiresCashClose,
       Value<DateTime> createdAt,
     });
 
@@ -19382,6 +19494,16 @@ class $$EmployeesTableFilterComposer
 
   ColumnFilters<bool> get requiresAttendance => $composableBuilder(
     column: $table.requiresAttendance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get requiresCashOpen => $composableBuilder(
+    column: $table.requiresCashOpen,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get requiresCashClose => $composableBuilder(
+    column: $table.requiresCashClose,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -19470,6 +19592,16 @@ class $$EmployeesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get requiresCashOpen => $composableBuilder(
+    column: $table.requiresCashOpen,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get requiresCashClose => $composableBuilder(
+    column: $table.requiresCashClose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -19531,6 +19663,16 @@ class $$EmployeesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get requiresCashOpen => $composableBuilder(
+    column: $table.requiresCashOpen,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get requiresCashClose => $composableBuilder(
+    column: $table.requiresCashClose,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -19577,6 +19719,8 @@ class $$EmployeesTableTableManager
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
+                Value<bool> requiresCashOpen = const Value.absent(),
+                Value<bool> requiresCashClose = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EmployeesCompanion(
                 id: id,
@@ -19593,6 +19737,8 @@ class $$EmployeesTableTableManager
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,
+                requiresCashOpen: requiresCashOpen,
+                requiresCashClose: requiresCashClose,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -19611,6 +19757,8 @@ class $$EmployeesTableTableManager
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
+                Value<bool> requiresCashOpen = const Value.absent(),
+                Value<bool> requiresCashClose = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EmployeesCompanion.insert(
                 id: id,
@@ -19627,6 +19775,8 @@ class $$EmployeesTableTableManager
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,
+                requiresCashOpen: requiresCashOpen,
+                requiresCashClose: requiresCashClose,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
