@@ -122,18 +122,22 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
       // Tab bar
       Container(
         height: 44,
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor, borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+        ),
         child: TabBar(
-          controller: _tabController, isScrollable: true,
-          labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          controller: _tabController, isScrollable: false, tabAlignment: TabAlignment.fill,
+          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontSize: 12),
           indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(8)),
+          indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(10)),
           labelColor: Colors.white,
-          unselectedLabelColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+          unselectedLabelColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textTertiary,
           dividerColor: Colors.transparent,
-          padding: const EdgeInsets.all(2),
+          padding: const EdgeInsets.all(4),
           tabs: _tabs.map((t) => Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(t),
             if ((_counts[t] ?? 0) > 0) ...[const SizedBox(width: 3), Text('${_counts[t]}', style: const TextStyle(fontSize: 10))],

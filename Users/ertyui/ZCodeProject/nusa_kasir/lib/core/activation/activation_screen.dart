@@ -6,6 +6,8 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
+import 'package:nusa_kasir/core/activation/activation_key.dart';
+import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
@@ -221,17 +223,32 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           return;
         }
 
-        // Has valid license → go to PIN or setup
+        // Verify the returned key is valid locally before accepting it.
+        // This guards against cross-variant license leaks where the edge
+        // function returns a key meant for a different product variant.
         final key = data['key'] as String;
+        final keyValid = await ActivationKey.verify(
+          key, nusaActivationPublicKey,
+        );
+        if (!keyValid) {
+          if (mounted) {
+            setState(() {
+              _googleLoading = false;
+              _googleError = 'Lisensi tidak valid untuk aplikasi ini.';
+              _screen = 'key';
+            });
+          }
+          return;
+        }
+
         await SecureStore.saveActivation(key);
         _goToPinOrSetup();
         return;
       }
     } catch (_) {
-      // Offline / Supabase down — fall through to local PIN flow.
-      // Google auth already verified the user identity. Don't make them
-      // re-enter an activation key they already own.
-      _goToPinOrSetup();
+      // Offline / Supabase error — show key input so user can enter manually.
+      // Never bypass activation — user must have a valid key.
+      if (mounted) setState(() => _screen = 'key');
       return;
     }
 

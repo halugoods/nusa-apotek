@@ -63,7 +63,7 @@ VARIANTS = [
     {
         "id": "fnb", "name": "NUSA F&B", "pkg": "com.nusa.fnb",
         "product": "nusa-fnb", "subtitle": "Aplikasi Kasir untuk Rumah Makan & Kafe",
-        "primary": "0xFFE63946", "dark": "0xFFC1121F", "soft": "0xFFFDE8EA",
+        "primary": "0xFFDC2626", "dark": "0xFF991B1B", "soft": "0xFFFEF2F2",
         "repo": "halugoods/nusa-fnb",
         "cat_emoji": {
             "Makanan": "🍜", "Minuman": "🥤", "Snack": "🍿",
@@ -338,7 +338,7 @@ def _escape_xml(s: str) -> str:
 def setup_logo(variant_id: str):
     """Resize variant app logo into all 5 mipmap densities + copy to splash asset.
 
-    Logo files are named `app_logo_{variant_id} {HEX}.png` (e.g. app_logo_fnb E63946.png).
+    Logo files are named `app_logo_{variant_id} {HEX}.png` (e.g. app_logo_fnb DC2626.png).
     Requires Pillow (`pip install Pillow`) for mipmap resizing.  If Pillow is absent
     the launcher-icon resize is skipped but splash_nusa.png is always copied.
     """

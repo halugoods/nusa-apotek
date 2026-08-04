@@ -45,7 +45,7 @@ abstract class NusaConfig {
       'soft': Color(0xFFFFF7ED),
     },
     'fnb': {
-      'primary': Color(0xFFDC2626), // Red (v1.7.17 deeper red)
+      'primary': Color(0xFFDC2626), // Red
       'dark': Color(0xFF991B1B),
       'soft': Color(0xFFFEF2F2),
     },

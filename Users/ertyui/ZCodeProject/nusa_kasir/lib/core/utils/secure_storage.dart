@@ -55,13 +55,29 @@ class SecureStore {
     }
   }
 
-  // -- Activation --
+  // -- Activation (namespaced per product to prevent cross-variant license leaks) --
+  static String get _activationKey =>
+      'nusa_activation_${NusaConfig.productId}';
+  static const String _legacyActivationKey = 'nusa_activation';
+
   static Future<void> saveActivation(String key) =>
-      SecureStore.write(key: AppConstants.activationKey, value: key);
-  static Future<String?> getActivation() =>
-      SecureStore.read(key: AppConstants.activationKey);
-  static Future<void> clearActivation() =>
-      SecureStore.delete(key: AppConstants.activationKey);
+      SecureStore.write(key: _activationKey, value: key);
+  static Future<String?> getActivation() async {
+    // Check namespaced key first
+    final v = await SecureStore.read(key: _activationKey);
+    if (v != null) return v;
+    // Fall back to legacy un-namespaced key, then migrate
+    final legacy = await SecureStore.read(key: _legacyActivationKey);
+    if (legacy != null) {
+      await SecureStore.write(key: _activationKey, value: legacy);
+      await SecureStore.delete(key: _legacyActivationKey);
+    }
+    return legacy;
+  }
+  static Future<void> clearActivation() async {
+    await SecureStore.delete(key: _activationKey);
+    await SecureStore.delete(key: _legacyActivationKey);
+  }
 
   // -- Pending DB restore (device migration) --
   static Future<void> savePendingRestore() =>
