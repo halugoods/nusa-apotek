@@ -19,7 +19,9 @@ class EmployeeSession {
   }) : savedAt = savedAt ?? DateTime.now();
 
   bool get isExpired {
-    if (!remember) return true;
+    // In-memory sessions (remember:false) are valid until app restart.
+    // Persisted sessions (remember:true) expire after 8 hours.
+    if (!remember) return false;
     return DateTime.now().difference(savedAt).inHours >= 8;
   }
 
