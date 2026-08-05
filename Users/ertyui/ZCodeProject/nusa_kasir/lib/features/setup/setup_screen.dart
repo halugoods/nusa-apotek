@@ -77,6 +77,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       // Auto check-in so Owner arrives at dashboard ready to use all features
       await AttendanceRepository(db).checkIn(employeeId);
 
+      // Auto-upload backup ke cloud setelah setup selesai (background)
+      try {
+        final activationRepo = ref.read(activationRepoProvider);
+        await activationRepo.uploadBackupNow(
+          storeName: store,
+          ownerName: name,
+        );
+      } catch (_) {}
+
       if (mounted) context.go('/home');
     } catch (e) {
       setState(() {

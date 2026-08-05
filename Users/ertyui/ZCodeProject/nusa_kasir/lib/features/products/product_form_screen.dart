@@ -172,10 +172,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   Future<void> _pickImage() async {
     final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
     if (result == null || result.files.single.path == null) return;
+
+    CroppedFile? cropped;
+    String? sourcePath = result.files.single.path;
+
+    // Attempt 1: Try ImageCropper directly with original path
     try {
-      // Crop ke 1:1 — user bisa adjust area yg dipakai
-      final cropped = await ImageCropper().cropImage(
-        sourcePath: result.files.single.path!,
+      cropped = await ImageCropper().cropImage(
+        sourcePath: sourcePath!,
         aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
         uiSettings: [
           AndroidUiSettings(
@@ -194,9 +198,47 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           ),
         ],
       );
+    } catch (_) {
+      // Attempt 2: Copy to temp file and try again
+      try {
+        final srcFile = File(sourcePath!);
+        final tmpDir = await getApplicationDocumentsDirectory();
+        final tmpPath = p.join(tmpDir.path, '_crop_${DateTime.now().millisecondsSinceEpoch}${p.extension(sourcePath)}');
+        await srcFile.copy(tmpPath);
+        sourcePath = tmpPath;
+        cropped = await ImageCropper().cropImage(
+          sourcePath: tmpPath,
+          aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Sesuaikan Foto',
+              toolbarColor: Color(0xFF2563EB),
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true,
+              hideBottomControls: false,
+              statusBarColor: Color(0xFF1D4ED8),
+            ),
+            IOSUiSettings(
+              title: 'Sesuaikan Foto',
+              aspectRatioLockEnabled: true,
+              resetAspectRatioEnabled: false,
+            ),
+          ],
+        );
+      } catch (_) {
+        // Both attempts failed — proceed with original uncropped image
+      } finally {
+        // Clean up temp file
+        if (sourcePath != null && sourcePath != result.files.single.path) {
+          try { await File(sourcePath!).delete(); } catch (_) {}
+        }
+      }
+    }
 
-      final srcPath = cropped?.path ?? result.files.single.path!;
-      final src = File(srcPath);
+    try {
+      final finalPath = cropped?.path ?? result.files.single.path!;
+      final src = File(finalPath);
       final dir = await getApplicationDocumentsDirectory();
       final ext = p.extension(src.path);
       final destName = 'product_${DateTime.now().millisecondsSinceEpoch}$ext';
@@ -204,21 +246,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       await src.copy(dest.path);
       setState(() => _imagePath = dest.path);
       TopToast.success(context, 'Gambar ditambahkan');
-      // Upload to cloud in background (fire-and-forget)
-      _uploadToCloud(dest.path);
     } catch (_) {
       TopToast.error(context, 'Gagal menyimpan gambar');
     }
   }
 
   void _uploadToCloud(String localPath) {
-    try {
-      final uid = Supabase.instance.client.auth.currentUser?.id;
-      if (uid != null) {
-        ImageStorageService(Supabase.instance.client, uid)
-            .uploadImage('products', localPath);
-      }
-    } catch (_) {}
+    // Skip per-image upload — full DB backup via uploadBackupNow()
+    // already includes all product images in the encrypted archive.
+    // Supabase Auth user is always null because the app uses
+    // GoogleSignIn plugin, not Supabase Auth.
   }
 
   String? _serializeVariants() {

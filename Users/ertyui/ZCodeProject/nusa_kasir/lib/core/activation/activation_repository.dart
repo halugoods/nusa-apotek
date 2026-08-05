@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -123,7 +124,9 @@ class ActivationRepository {
 
   /// Upload current local DB + product images to cloud.
   /// Packed as a single archive, encrypted with Google user ID.
-  Future<bool> uploadBackupNow() async {
+  /// Also uploads a metadata.json so the "data found" dialog can preview
+  /// store name, owner name, and backup time without decrypting the archive.
+  Future<bool> uploadBackupNow({String? storeName, String? ownerName}) async {
     if (client == null) return false;
     final uid = await _googleUserId();
     if (uid == null) return false;
@@ -166,13 +169,114 @@ class ActivationRepository {
               contentType: 'application/octet-stream',
             ),
           );
-      await SecureStore.saveLastBackupTime(DateTime.now());
+
+      // Upload metadata (non-sensitive preview info — not encrypted)
+      final now = DateTime.now();
+      await _uploadMetadata(uid, storeName ?? '', ownerName ?? '', now);
+      await SecureStore.saveLastBackupTime(now);
       debugPrint(
         '[Backup] Uploaded DB + ${files.length - 1} images (${encrypted.length} bytes encrypted)',
       );
       return true;
     } catch (e) {
       debugPrint('[Backup] uploadBackupNow error: $e');
+      return false;
+    }
+  }
+
+  /// Upload a small metadata.json alongside the encrypted backup.
+  /// This lets the activation screen preview store name, owner, and
+  /// backup time BEFORE downloading and decrypting the full archive.
+  Future<void> _uploadMetadata(
+    String uid,
+    String storeName,
+    String ownerName,
+    DateTime backupTime,
+  ) async {
+    try {
+      final meta = {
+        'storeName': storeName,
+        'ownerName': ownerName,
+        'backupTime': backupTime.toIso8601String(),
+        'appVersion': '${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+        'productId': NusaConfig.productId,
+      };
+      final jsonBytes = Uint8List.fromList(
+        const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
+      );
+      await client!.storage.from('nusa-backups').uploadBinary(
+        '$uid/${NusaConfig.productId}/metadata.json',
+        jsonBytes,
+        fileOptions: const FileOptions(
+          upsert: true,
+          contentType: 'application/json',
+        ),
+      );
+    } catch (_) {
+      // Non-critical — the encrypted backup already succeeded
+    }
+  }
+
+  /// Fetch the backup metadata (store name, owner, backup time)
+  /// without downloading the encrypted archive.
+  /// Returns null if metadata doesn't exist or fetch fails.
+  Future<Map<String, dynamic>?> getBackupMetadata() async {
+    if (client == null) return null;
+    final uid = await _googleUserId();
+    if (uid == null) return null;
+    final metaPath = '$uid/${NusaConfig.productId}/metadata.json';
+    try {
+      final bytes = await client!.storage.from('nusa-backups').download(metaPath);
+      if (bytes.isEmpty) return null;
+      final text = utf8.decode(bytes);
+      return jsonDecode(text) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Download backup from cloud and write directly to the live DB + images.
+  /// Does NOT require a restart — the restored DB is ready immediately.
+  /// Returns true on success.
+  Future<bool> restoreDirect() async {
+    if (client == null) return false;
+    final uid = await _googleUserId();
+    if (uid == null) return false;
+    final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
+    try {
+      final bytes = await client!.storage.from('nusa-backups').download(path);
+      if (bytes.isEmpty) return false;
+      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      final dir = await getApplicationDocumentsDirectory();
+
+      // Unpack archive (DB + images) directly — no restart needed
+      final packedFiles = BackupCrypto.unpackFiles(Uint8List.fromList(decrypted));
+      var imageCount = 0;
+      final rootCanonical = p.normalize(Directory(dir.path).absolute.path);
+      for (final entry in packedFiles.entries) {
+        final destination = File(p.join(dir.path, entry.key));
+        final destinationCanonical = p.normalize(destination.absolute.path);
+        if (destinationCanonical != rootCanonical &&
+            !p.isWithin(rootCanonical, destinationCanonical)) {
+          throw FormatException(
+            'Restore path escapes application directory: ${entry.key}',
+          );
+        }
+        await File(destinationCanonical).writeAsBytes(entry.value, flush: true);
+        if (entry.key != 'nusa_kasir.sqlite') imageCount++;
+      }
+
+      // Pull backup timestamp from metadata if available
+      final meta = await getBackupMetadata();
+      final ts = meta?['backupTime'] as String?;
+      if (ts != null) {
+        await SecureStore.saveLastBackupTime(DateTime.parse(ts));
+      }
+
+      debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""}');
+      return true;
+    } catch (e) {
+      debugPrint('[RestoreDirect] error: $e');
       return false;
     }
   }

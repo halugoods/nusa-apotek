@@ -11,6 +11,19 @@ class SettingsRepository {
     return row?.storeName ?? '';
   }
 
+  /// Get the Owner employee's name from the Employees table.
+  Future<String> getOwnerName() async {
+    try {
+      final owner = await (db.select(db.employees)
+            ..where((t) => t.role.equals('Owner'))
+            ..limit(1))
+          .getSingleOrNull();
+      return owner?.name ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> ensureRow() async {
     if (await db.select(db.settings).getSingleOrNull() == null) {
       await db.into(db.settings).insert(SettingsCompanion.insert());

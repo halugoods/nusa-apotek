@@ -133,64 +133,148 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     if (mounted) setState(() => _screen = 'pin');
   }
 
-  /// Auto-restore cloud backup if cloud is newer than local AND belongs to this product variant.
-  /// Uses Google user ID for decryption — no activation key needed.
+  /// Check for cloud backup, show preview dialog, and restore if user confirms.
+  /// Uses metadata.json for preview so user can see store/owner BEFORE restoring.
+  /// Returns true if restore was performed and user was redirected.
   Future<bool> _autoRestoreIfNeeded() async {
     final repo = ref.read(activationRepoProvider);
     final hasBak = await repo.hasBackup();
     if (!hasBak) return false;
 
-    // Compare timestamps — only restore if cloud is newer
-    final localTime = await SecureStore.getLastBackupTime();
-    final cloudTime = await repo.getBackupTimestamp();
-    if (cloudTime != null && localTime != null && !cloudTime.isAfter(localTime)) {
-      return false; // local is same or newer
+    // Fetch metadata for preview (non-sensitive, non-encrypted)
+    final meta = await repo.getBackupMetadata();
+    final storeName = meta?['storeName'] as String? ?? '';
+    final ownerName = meta?['ownerName'] as String? ?? '';
+    final backupTimeStr = meta?['backupTime'] as String?;
+    DateTime? backupTime;
+    if (backupTimeStr != null) {
+      backupTime = DateTime.tryParse(backupTimeStr);
     }
 
-    // Only restore if local is truly fresh (no local backup timestamp at all)
-    // AND no employees exist. This prevents cross-variant data leakage:
-    // a fresh install of a different variant should NOT pull the old variant's backup.
-    // The backup path is already namespaced per productId, but for safety we also
-    // guard against restoring when employees already exist locally.
-    if (localTime != null) {
-      return false; // local has its own backup history, don't auto-restore
-    }
+    if (!mounted) return false;
 
-    final ok = await repo.restoreFromCloud();
-    if (ok) {
-      if (mounted) {
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Icon(Icons.cloud_download_outlined, color: NusaConfig.activePrimary, size: 28),
-                SizedBox(width: 10),
-                Text('Menyinkronkan Data', style: TextStyle(fontSize: 17)),
-              ],
-            ),
-            content: Text(
-              'Data toko ditemukan di cloud.\nSedang dipulihkan...',
-              style: TextStyle(fontSize: 14, height: 1.5),
-            ),
-            actions: [
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: NusaConfig.activePrimary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () => SystemNavigator.pop(),
-                child: Text('Buka Ulang'),
-              ),
+    // Show preview dialog so user knows what data they're restoring
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.cloud_done_outlined, color: NusaConfig.activePrimary, size: 28),
+              SizedBox(width: 10),
+              Text('Data Ditemukan', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             ],
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Data toko tersimpan di cloud. Ingin membukanya sekarang?',
+                style: TextStyle(fontSize: 14, height: 1.5,
+                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+              ),
+              if (storeName.isNotEmpty || ownerName.isNotEmpty || backupTime != null) ...[
+                SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (storeName.isNotEmpty)
+                        _metaRow('Nama Toko', storeName, isDark),
+                      if (ownerName.isNotEmpty)
+                        _metaRow('Pemilik', ownerName, isDark),
+                      if (backupTime != null)
+                        _metaRow(
+                          'Terakhir Backup',
+                          '${backupTime.day}/${backupTime.month}/${backupTime.year} '
+                          '${backupTime.hour.toString().padLeft(2, '0')}:${backupTime.minute.toString().padLeft(2, '0')}',
+                          isDark,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                side: BorderSide(color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Batal'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Ya, Buka Toko Ini'),
+            ),
+          ],
         );
-      }
+      },
+    );
+
+    if (confirmed != true || !mounted) return false;
+
+    // User confirmed — download and restore directly (no restart)
+    final ok = await repo.restoreDirect();
+    if (ok && mounted) {
+      TopToast.success(context, 'Data berhasil dipulihkan!');
+      // Go to login so user can enter PIN with the restored data
+      context.go('/login');
       return true;
     }
+    if (mounted) {
+      TopToast.error(context, 'Gagal memulihkan data dari cloud');
+    }
     return false;
+  }
+
+  Widget _metaRow(String label, String value, bool isDark) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Check if this Google account already has an activated license.

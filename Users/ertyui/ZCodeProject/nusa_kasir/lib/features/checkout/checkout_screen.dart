@@ -279,6 +279,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Clear cart
       ref.read(cartProvider.notifier).clear();
 
+      // Auto-upload backup ke cloud setelah transaksi (background)
+      Future.microtask(() async {
+        try {
+          await ref.read(activationRepoProvider).uploadBackupNow();
+        } catch (_) {}
+      });
+
       if (!mounted) return;
 
       // Build receipt data
