@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-	static const String productId = "nusa-servicehp";
-	static const String appSubtitle = "Aplikasi Kasir untuk Servis Handphone";
-	static const String appVersion = "1.6.8";
-						static const int appBuildNumber = 14;
-	  static const String githubRepo = "halugoods/nusa-servicehp";
-	  static const String landingPageUrl = "https://nusa-online.vercel.app";
-	  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Kelontong";
-	  static const String applicationId = "com.nusa.servicehp"; // shared for all variants (Firebase constraint)
+		static const String productId = "nusa-servis";
+		static const String appSubtitle = "Aplikasi Kasir untuk Jasa Servis";
+		static const String appVersion = "1.6.9";
+							static const int appBuildNumber = 18;
+		  static const String githubRepo = "halugoods/nusa-servis";
+		  static const String landingPageUrl = "https://nusa-online.vercel.app";
+		  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Servis";
+		  static const String applicationId = "com.nusa.servis"; // shared for all variants (Firebase constraint)
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 
@@ -74,10 +74,10 @@ abstract class NusaConfig {
       'dark': Color(0xFF7C3AED),
       'soft': Color(0xFFF5F3FF),
     },
-    'servicehp': {
-      'primary': Color(0xFF78716C), // Stone/Warm Gray
-      'dark': Color(0xFF57534E),
-      'soft': Color(0xFFFAFAF9),
+    'servis': {
+      'primary': Color(0xFF1E3A8A), // Navy Blue
+      'dark': Color(0xFF152C5A),
+      'soft': Color(0xFFDBEAFE),
     },
   };
 
@@ -90,7 +90,7 @@ abstract class NusaConfig {
     'salon': 'Biru',
     'apotek': 'Hijau',
     'fotocopy': 'Ungu',
-    'servicehp': 'Abu',
+    'servis': 'Navy',
   };
 
   /// Apply a theme preset at runtime. Saves to SecureStore.
@@ -264,7 +264,7 @@ abstract class NusaConfig {
     'salon': ['supplier', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     'apotek': ['promo', 'piutang', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
     'fotocopy': ['cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
-    'servicehp': ['promo', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+    'servis': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
   };
 
   /// Convenience getter: hidden menus for current variant (productId).

@@ -170,32 +170,49 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
-    if (result == null || result.files.single.path == null) return;
     try {
-      // Crop ke 1:1 — user bisa adjust area yg dipakai
-      final cropped = await ImageCropper().cropImage(
-        sourcePath: result.files.single.path!,
-        aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Sesuaikan Foto',
-            toolbarColor: Color(0xFF2563EB),
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-            statusBarColor: Color(0xFF1D4ED8),
-          ),
-          IOSUiSettings(
-            title: 'Sesuaikan Foto',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
+      final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
+      if (result == null || result.files.single.path == null) return;
+      final pickedPath = result.files.single.path!;
 
-      final srcPath = cropped?.path ?? result.files.single.path!;
+      // Some Android content URIs are not directly readable by ImageCropper.
+      // Copy to app-local cache first so the cropper can access the file reliably.
+      final srcFile = File(pickedPath);
+      final tmpDir = await getApplicationDocumentsDirectory();
+      final tmpPath = p.join(tmpDir.path, '_crop_tmp_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedPath)}');
+      await srcFile.copy(tmpPath);
+
+      // Crop ke 1:1 — user bisa adjust area yg dipakai
+      CroppedFile? cropped;
+      try {
+        cropped = await ImageCropper().cropImage(
+          sourcePath: tmpPath,
+          aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Sesuaikan Foto',
+              toolbarColor: Color(0xFF2563EB),
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true,
+              hideBottomControls: false,
+              statusBarColor: Color(0xFF1D4ED8),
+            ),
+            IOSUiSettings(
+              title: 'Sesuaikan Foto',
+              aspectRatioLockEnabled: true,
+              resetAspectRatioEnabled: false,
+            ),
+          ],
+        );
+      } catch (_) {
+        // Cropper failed — fall back to original uncropped image
+      } finally {
+        // Clean up temp file
+        try { await File(tmpPath).delete(); } catch (_) {}
+      }
+
+      final srcPath = cropped?.path ?? pickedPath;
       final src = File(srcPath);
       final dir = await getApplicationDocumentsDirectory();
       final ext = p.extension(src.path);

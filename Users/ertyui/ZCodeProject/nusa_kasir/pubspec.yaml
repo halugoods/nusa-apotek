@@ -1,7 +1,7 @@
 name: nusa_kasir
 description: "NUSA - Aplikasi Kasir untuk Toko Kelontong"
 publish_to: 'none'
-version: 1.6.9+16
+version: 1.6.9+18
 
 environment:
   sdk: ^3.12.2
@@ -73,7 +73,7 @@ flutter:
     - assets/icons/salon/
     - assets/icons/apotek/
     - assets/icons/fotocopy/
-    - assets/icons/servicehp/
+    - assets/icons/servis/
   fonts:
     - family: Poppins
       fonts:
