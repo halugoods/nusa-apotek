@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -40,12 +41,14 @@ class ActivationRepository {
 
     if (client != null) {
       try {
+        final ownerEmail = await GoogleAuthService.getStoredEmail();
         final res = await client!.functions.invoke(
           'register_activation',
           body: {
             'key': key,
             'googleUserId': googleUserId,
             'product': NusaConfig.productId,
+            if (ownerEmail != null) 'ownerEmail': ownerEmail,
           },
         );
         if (res.status >= 400) {

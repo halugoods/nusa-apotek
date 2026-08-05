@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { key, product, googleUserId } = body;
+    const { key, product, googleUserId, ownerEmail } = body;
     const prod = product ?? "nusa-kasir"; // default for backward compat
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -209,7 +209,7 @@ Deno.serve(async (req: Request) => {
     // 2. Check license + product match
     const { data: lic } = await supabase
       .from("licenses")
-      .select("id,status,google_user_id,expires_at,product")
+      .select("id,status,google_user_id,owner_email,expires_at,product")
       .eq("key", key)
       .maybeSingle();
 
@@ -261,17 +261,18 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4. Link Google ID to license + set status to Active
+    const updates: Record<string, string> = { status: "Active" };
     if (!lic.google_user_id) {
-      await supabase
-        .from("licenses")
-        .update({ google_user_id: verifiedGoogleId, status: "Active" })
-        .eq("id", lic.id);
-    } else if (lic.status !== "Active") {
-      await supabase
-        .from("licenses")
-        .update({ status: "Active" })
-        .eq("id", lic.id);
+      updates.google_user_id = verifiedGoogleId;
     }
+    // Fill owner_email from Google account if still empty (for dashboard tracking)
+    if (!lic.owner_email && ownerEmail) {
+      updates.owner_email = ownerEmail;
+    }
+    await supabase
+      .from("licenses")
+      .update(updates)
+      .eq("id", lic.id);
 
     // 5. Insert activation record
     const { error: insertErr } = await supabase.from("activations").insert({

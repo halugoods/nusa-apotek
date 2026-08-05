@@ -11,13 +11,19 @@ class GoogleAuthService {
     scopes: ['email', 'profile'],
   );
 
-  /// Sign in and store the Google user ID.
+  static const _emailKey = 'nusa_google_email';
+
+  /// Sign in and store the Google user ID + email.
   /// Returns the user ID on success, null on cancellation/failure.
   Future<String?> signIn() async {
     try {
       final account = await _signIn.signIn();
       if (account == null) return null;
       await SecureStore.write(key: _key, value: account.id);
+      // Store email for license ownership tracking
+      if (account.email.isNotEmpty) {
+        await SecureStore.write(key: _emailKey, value: account.email);
+      }
       return account.id;
     } catch (e) {
       // ignore: avoid_print
@@ -40,6 +46,10 @@ class GoogleAuthService {
   /// Return the stored Google user ID, if any.
   static Future<String?> getStoredUserId() =>
       SecureStore.read(key: _key);
+
+  /// Return the stored Google email, if any.
+  static Future<String?> getStoredEmail() =>
+      SecureStore.read(key: _emailKey);
 
   /// True if a Google user ID is stored.
   static Future<bool> isLinked() async =>
