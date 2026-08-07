@@ -74,15 +74,16 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
   }
 
   Future<void> _pickQrisImage() async {
-    final result = await FilePicker.pickFiles(type: FileType.image);
-    if (result == null || result.files.single.path == null) return;
     try {
-      final src = File(result.files.single.path!);
+      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
       final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(src.path);
+      final ext = p.extension(result.files.single.name);
       final destName = 'qris_${DateTime.now().millisecondsSinceEpoch}$ext';
       final dest = File(p.join(dir.path, destName));
-      await src.copy(dest.path);
+      await dest.writeAsBytes(bytes);
       await ref.read(settingsRepoProvider).setQrisImagePath(dest.path);
       if (mounted) {
         setState(() => _qrisImagePath = dest.path);

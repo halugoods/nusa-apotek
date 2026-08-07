@@ -185,10 +185,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   Future<void> _importCSV() async {
     try {
-      final result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['csv']);
-      if (result == null || result.files.single.path == null) return;
-      final file = File(result.files.single.path!);
-      final contents = await file.readAsString();
+      final result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['csv'], withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
+      final contents = utf8.decode(bytes);
       final rows = CsvToListConverter().convert(contents);
       if (rows.isEmpty) {
         if (mounted) TopToast.error(context, 'File CSV kosong');

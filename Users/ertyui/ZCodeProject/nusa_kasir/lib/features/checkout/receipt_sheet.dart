@@ -366,7 +366,8 @@ class ReceiptSheet extends ConsumerWidget {
     final toggles = await settingsRepo.getReceiptToggles();
     final header = await settingsRepo.getReceiptHeader() ?? '';
     final footer = await settingsRepo.getReceiptFooter() ?? '';
-    final logoPath = await settingsRepo.getStoreLogoPath();
+    final logoPath = await settingsRepo.getStoreLogoPath()
+        ?? await SecureStore.getPrinterLogoPath();
     return _ReceiptSettings(
       storeName: storeName,
       showLogo: toggles['showLogo'] ?? true,
@@ -619,6 +620,11 @@ class ReceiptSheet extends ConsumerWidget {
 
       final paperSize = await SecureStore.getPaperSize();
       await printer.connect(target);
+
+      // Ensure logo is loaded for print
+      final logoPath = await SecureStore.getPrinterLogoPath();
+      if (logoPath != null) await ReceiptPrinter.loadLogo(logoPath);
+
       await printer.printReceipt(
         storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
         lines: items
@@ -666,6 +672,11 @@ class ReceiptSheet extends ConsumerWidget {
 
       final paperSize = await SecureStore.getPaperSize();
       await printer.connect(target);
+
+      // Ensure logo is loaded for print
+      final logoPath2 = await SecureStore.getPrinterLogoPath();
+      if (logoPath2 != null) await ReceiptPrinter.loadLogo(logoPath2);
+
       final ok = await printer.printReceipt(
         storeName: storeName,
         lines: items

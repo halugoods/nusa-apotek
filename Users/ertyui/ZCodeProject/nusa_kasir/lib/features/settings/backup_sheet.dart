@@ -92,11 +92,12 @@ class _BackupSheetBody extends StatelessWidget {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['sqlite', 'db', 'nus1'],
+        withData: true,
       );
-      if (result == null || result.files.single.path == null) return;
-      final picked = File(result.files.single.path!);
-      final bytes = await picked.readAsBytes();
-      final ext = p.extension(picked.path).toLowerCase();
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
+      final ext = p.extension(result.files.single.name).toLowerCase();
 
       final dir = await getApplicationDocumentsDirectory();
       final db = ref.read(databaseProvider);

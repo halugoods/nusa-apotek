@@ -6,7 +6,7 @@ abstract class NusaConfig {
 		static const String productId = "nusa-servis";
 		static const String appSubtitle = "Aplikasi Kasir untuk Jasa Servis";
 		static const String appVersion = "1.6.9";
-								static const int appBuildNumber = 20;
+								static const int appBuildNumber = 22;
 		  static const String githubRepo = "halugoods/nusa-servis";
 		  static const String landingPageUrl = "https://nusa-online.vercel.app";
 		  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Servis";
@@ -21,9 +21,9 @@ abstract class NusaConfig {
   // ── Brand colors (build-time defaults, patched by _build_all.py) ──
   // These remain const for broad compatibility with const constructors
   // across 50+ widget files. Theme switching uses overrides below.
-  static const Color primaryColor = const Color(0xFF78716C);
-  static const Color primaryDark = const Color(0xFF57534E);
-  static const Color primarySoft = const Color(0xFFFAFAF9);
+  static const Color primaryColor = const Color(0xFF152C63);
+  static const Color primaryDark = const Color(0xFF0F1E47);
+  static const Color primarySoft = const Color(0xFFDBEAFE);
   static const Color backgroundColor = const Color(0xFFF7F7F9);
 
   // ── Runtime theme override (set by user via Settings → Tema Warna) ──
@@ -75,8 +75,8 @@ abstract class NusaConfig {
       'soft': Color(0xFFF5F3FF),
     },
     'servis': {
-      'primary': Color(0xFF1E3A8A), // Navy Blue
-      'dark': Color(0xFF152C5A),
+      'primary': Color(0xFF152C63), // Deep Navy
+      'dark': Color(0xFF0F1E47),
       'soft': Color(0xFFDBEAFE),
     },
   };

@@ -277,6 +277,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       });
 
       // Clear cart
+      // Capture total & discount before clearing — getters depend on cartProvider
+      final savedTotal = _total;
+      final savedDiscount = _totalDiscount;
       ref.read(cartProvider.notifier).clear();
 
       // Auto-upload backup ke cloud setelah transaksi (background)
@@ -303,8 +306,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           context,
           sheet: ReceiptSheet.fromCart(
             cartItems: cart,
-            total: _total,
-            discount: _totalDiscount,
+            total: savedTotal,
+            discount: savedDiscount,
             paymentMethod: _paymentMethod,
             cashGiven: cashGiven,
             cashReturn: cashReturn,

@@ -136,15 +136,16 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
   }
 
   Future<void> _pickLogo() async {
-    final result = await FilePicker.pickFiles(type: FileType.image);
-    if (result == null || result.files.single.path == null) return;
     try {
-      final src = File(result.files.single.path!);
+      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
       final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(src.path);
+      final ext = p.extension(result.files.single.name);
       final destName = 'printer_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
       final destPath = p.join(dir.path, destName);
-      await src.copy(destPath);
+      await File(destPath).writeAsBytes(bytes);
 
       await ReceiptPrinter.loadLogo(destPath);
       await SecureStore.setPrinterLogoPath(destPath);

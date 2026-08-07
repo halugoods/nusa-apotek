@@ -176,7 +176,6 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
   }
 
   Future<void> _syncProducts() async {
-    if (!_isActive) return;
     setState(() => _saving = true);
     int imgSuccess = 0;
     int imgFailed = 0;
@@ -224,7 +223,7 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
               if (uploaded) {
                 imageUrl = client.storage
                     .from('nusa-images')
-                    .getPublicUrl('$uid/products/$filename');
+                    .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
                 imgSuccess++;
                 debugPrint('[OnlineStoreSetup] 📸 Uploaded: ${prod.name} → $imageUrl');
               } else {
@@ -284,15 +283,16 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
   }
 
   Future<void> _pickLogo() async {
-    final result = await FilePicker.pickFiles(type: FileType.image);
-    if (result == null || result.files.single.path == null) return;
     try {
-      final src = File(result.files.single.path!);
+      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
       final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(src.path);
+      final ext = p.extension(result.files.single.name);
       final destName = 'store_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
       final destPath = p.join(dir.path, destName);
-      await src.copy(destPath);
+      await File(destPath).writeAsBytes(bytes);
       await ref.read(settingsRepoProvider).setStoreLogoPath(destPath);
       setState(() => _logoPath = destPath);
 

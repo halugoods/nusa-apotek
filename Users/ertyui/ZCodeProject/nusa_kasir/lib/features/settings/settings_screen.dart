@@ -1495,7 +1495,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final footerCtrl = TextEditingController(
       text: await repo.getReceiptFooter() ?? '',
     );
-    final currentLogo = await repo.getStoreLogoPath();
+    final currentLogo = await repo.getStoreLogoPath()
+        ?? await SecureStore.getPrinterLogoPath();
     String paperSize = await repo.getReceiptPaperSize();
     final toggles = await repo.getReceiptToggles();
     final storeName = await repo.getStoreName();
