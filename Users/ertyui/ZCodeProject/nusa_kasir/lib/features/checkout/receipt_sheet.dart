@@ -21,7 +21,8 @@ class _ReceiptItem {
   final String name;
   final int qty;
   final int price;
-  const _ReceiptItem({required this.name, required this.qty, required this.price});
+  final String? note;
+  const _ReceiptItem({required this.name, required this.qty, required this.price, this.note});
   int get subtotal => qty * price;
 }
 
@@ -46,6 +47,10 @@ class ReceiptSheet extends ConsumerWidget {
   final int pointsUsed;
   final bool autoPrint;
 
+  final String? orderType;
+  final String? tableName;
+  final List<String?>? itemNotes;
+
   const ReceiptSheet({
     required this.items,
     required this.total,
@@ -60,6 +65,9 @@ class ReceiptSheet extends ConsumerWidget {
     this.dateStr,
     this.pointsUsed = 0,
     this.autoPrint = false,
+    this.orderType,
+    this.tableName,
+    this.itemNotes,
     super.key,
   });
 
@@ -78,9 +86,11 @@ class ReceiptSheet extends ConsumerWidget {
     String? dateStr,
     int pointsUsed = 0,
     bool autoPrint = false,
+    String? orderType,
+    String? tableName,
   }) {
     final items = cartItems
-        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price))
+        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, note: c.note))
         .toList();
     return ReceiptSheet(
       items: items,
@@ -96,6 +106,8 @@ class ReceiptSheet extends ConsumerWidget {
       dateStr: dateStr,
       pointsUsed: pointsUsed,
       autoPrint: autoPrint,
+      orderType: orderType,
+      tableName: tableName,
     );
   }
 
@@ -113,11 +125,14 @@ class ReceiptSheet extends ConsumerWidget {
     String? invoice,
     String? dateStr,
     int pointsUsed = 0,
+    String? orderType,
+    String? tableName,
   }) {
     final items = rawItems.map((m) => _ReceiptItem(
       name: '${m['name'] ?? ''}',
       qty: (m['qty'] as num?)?.toInt() ?? 0,
       price: (m['price'] as num?)?.toInt() ?? 0,
+      note: m['note'] as String?,
     )).toList();
     return ReceiptSheet(
       items: items,
@@ -131,6 +146,9 @@ class ReceiptSheet extends ConsumerWidget {
       customerPhone: customerPhone,
       invoice: invoice,
       dateStr: dateStr,
+      pointsUsed: pointsUsed,
+      orderType: orderType,
+      tableName: tableName,
     );
   }
 
@@ -456,12 +474,26 @@ class ReceiptSheet extends ConsumerWidget {
           _monoRow('Kasir:', cashierName!, mono, mono),
         if (customerName != null && customerName!.isNotEmpty)
           _monoRow('Pel  : ', customerName!, mono, mono),
+        if (orderType != null && orderType!.isNotEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                tableName != null && tableName!.isNotEmpty
+                    ? '$orderType — $tableName'
+                    : orderType!,
+                style: monoBold,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
         SizedBox(height: 6),
 
         // ── Items ──
-        ...items.map((item) => _buildItemRow(item, mono, monoGrey)),
+        ...items.asMap().entries.map((entry) =>
+            _buildItemRow(entry.value, entry.key, mono, monoGrey, subtleColor)),
 
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
@@ -557,7 +589,7 @@ class ReceiptSheet extends ConsumerWidget {
     );
   }
 
-  Widget _buildItemRow(_ReceiptItem item, TextStyle mono, TextStyle monoGrey) {
+  Widget _buildItemRow(_ReceiptItem item, int index, TextStyle mono, TextStyle monoGrey, Color subtleColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(
@@ -571,6 +603,19 @@ class ReceiptSheet extends ConsumerWidget {
               Text(formatRupiah(item.subtotal), style: mono),
             ],
           ),
+          if (item.note != null && item.note!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                '\u21B3 ${item.note}',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  fontStyle: FontStyle.italic,
+                  color: subtleColor,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -603,6 +648,9 @@ class ReceiptSheet extends ConsumerWidget {
     final db = ref.read(databaseProvider);
     final storeName = await SettingsRepository(db).getStoreName();
     if (storeName.isEmpty) return;
+
+    // Pre-flight: check Bluetooth permissions & state
+    if (!await ReceiptPrinter.ensureBluetoothReady()) return;
 
     final printer = ReceiptPrinter();
     try {
@@ -640,6 +688,9 @@ class ReceiptSheet extends ConsumerWidget {
         cashReturn: cashReturn,
         customerName: customerName,
         paperWidth: paperSize,
+        orderType: orderType,
+        tableName: tableName,
+        itemNotes: items.map((i) => i.note).toList(),
       );
     } catch (_) {
       // Silent fail on auto-print — user can still manually print
@@ -651,16 +702,25 @@ class ReceiptSheet extends ConsumerWidget {
   // ── Print (Bluetooth thermal) ──
   Future<void> _printReceipt(
       BuildContext context, WidgetRef ref, String storeName) async {
+    if (!context.mounted) return;
+
+    // Step 1: Bluetooth pre-flight
+    if (!await ReceiptPrinter.ensureBluetoothReady()) {
+      TopToast.error(context, 'Bluetooth tidak siap. Periksa izin & nyalakan Bluetooth.');
+      return;
+    }
+
+    // Step 2: Discover
     final printer = ReceiptPrinter();
     try {
       final devices = await printer.discover();
+      if (!context.mounted) return;
       if (devices.isEmpty) {
-        if (context.mounted) {
-          TopToast.error(context, 'Sambungkan printer di Pengaturan');
-        }
+        TopToast.error(context, 'Tidak ada printer. Pairing dulu di Bluetooth HP.');
         return;
       }
 
+      // Step 3: Pick target
       final saved = await SettingsRepository(ref.read(databaseProvider))
           .getPrinterAddress();
       PrinterDevice target = devices.first;
@@ -670,13 +730,21 @@ class ReceiptSheet extends ConsumerWidget {
         if (found.isNotEmpty) target = found.first;
       }
 
-      final paperSize = await SecureStore.getPaperSize();
-      await printer.connect(target);
+      // Step 4: Connect
+      final connected = await printer.connect(target);
+      if (!context.mounted) return;
+      if (!connected) {
+        TopToast.error(context, 'Gagal tersambung ke printer ${target.name}');
+        printer.dispose();
+        return;
+      }
 
-      // Ensure logo is loaded for print
+      // Step 5: Load logo
+      final paperSize = await SecureStore.getPaperSize();
       final logoPath2 = await SecureStore.getPrinterLogoPath();
       if (logoPath2 != null) await ReceiptPrinter.loadLogo(logoPath2);
 
+      // Step 6: Print
       final ok = await printer.printReceipt(
         storeName: storeName,
         lines: items
@@ -692,17 +760,19 @@ class ReceiptSheet extends ConsumerWidget {
         cashReturn: cashReturn,
         customerName: customerName,
         paperWidth: paperSize,
+        orderType: orderType,
+        tableName: tableName,
+        itemNotes: items.map((i) => i.note).toList(),
       );
-      if (context.mounted) {
-        if (ok) {
-          TopToast.success(context, 'Struk berhasil dicetak');
-        } else {
-          TopToast.error(context, 'Gagal mencetak');
-        }
+      if (!context.mounted) return;
+      if (ok) {
+        TopToast.success(context, 'Struk berhasil dicetak');
+      } else {
+        TopToast.error(context, 'Gagal mengirim data ke printer. Coba lagi.');
       }
-    } catch (_) {
+    } catch (e) {
       if (context.mounted) {
-        TopToast.error(context, 'Gagal mencetak struk');
+        TopToast.error(context, 'Gagal mencetak: $e');
       }
     } finally {
       printer.dispose();
@@ -723,10 +793,20 @@ class ReceiptSheet extends ConsumerWidget {
     if (customerName != null && customerName!.isNotEmpty) {
       sb.writeln('Pel  : $customerName');
     }
+    if (orderType != null && orderType!.isNotEmpty) {
+      if (tableName != null && tableName!.isNotEmpty) {
+        sb.writeln('*$orderType — $tableName*');
+      } else {
+        sb.writeln('*$orderType*');
+      }
+    }
     sb.writeln('━━━━━━━━━━━━━━━━━');
     for (final item in items) {
       sb.writeln(item.name);
       sb.writeln('  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}');
+      if (item.note != null && item.note!.isNotEmpty) {
+        sb.writeln('  ↳ ${item.note}');
+      }
     }
     sb.writeln('━━━━━━━━━━━━━━━━━');
     if (discount > 0) sb.writeln('Diskon      : -${formatRupiah(discount)}');
@@ -766,6 +846,9 @@ class ReceiptSheet extends ConsumerWidget {
       for (final item in items) {
         sb.writeln(item.name);
         sb.writeln('  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}');
+        if (item.note != null && item.note!.isNotEmpty) {
+          sb.writeln('  \u21B3 ${item.note}');
+        }
       }
       sb.writeln('─' * 32);
       if (discount > 0) sb.writeln('Diskon      : -${formatRupiah(discount)}');

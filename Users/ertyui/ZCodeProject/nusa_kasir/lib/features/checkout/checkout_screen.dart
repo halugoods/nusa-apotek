@@ -8,11 +8,15 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
+import 'package:nusa_kasir/data/repositories/tab_repository.dart';
+import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -52,6 +56,52 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   int _promoDiscount = 0; // computed from applied promo
   int _pointsUsed = 0; // poin yang ditukar (1 poin = Rp 1)
 
+  // FnB params
+  String? _orderType;
+  int? _tableId;
+  String? _tableName;
+  int? _activeTabId;
+
+  Future<void> _completeTab(AppDatabase db, {bool freeTable = true}) async {
+    try {
+      final tabRepo = TabRepository(db);
+      await tabRepo.complete(_activeTabId!);
+      if (freeTable && _tableId != null) {
+        await DiningTableRepository(db).updateStatus(_tableId!, 'Kosong');
+      }
+    } catch (_) {}
+  }
+
+  /// Trigger kitchen printer (FnB only). Fire-and-forget — never blocks user.
+  void _triggerKitchenPrint(List<CartItem> cart, String? orderType, String? tableName) {
+    Future.microtask(() async {
+      try {
+        // Pre-flight: check Bluetooth permissions & state
+        if (!await ReceiptPrinter.ensureBluetoothReady()) return;
+
+        final enabled = await SecureStore.getKitchenPrinterEnabled();
+        if (!enabled) return;
+        final addr = await SecureStore.getKitchenPrinterAddress();
+        if (addr == null || addr.isEmpty) return;
+
+        final printer = ReceiptPrinter();
+        final lines = cart
+            .map((c) => ReceiptLine(name: c.name, qty: c.qty, price: c.price))
+            .toList();
+        final notes = cart.map((c) => c.note).toList();
+
+        await printer.printKitchenOrder(
+          orderType: orderType ?? 'Dine In',
+          lines: lines,
+          itemNotes: notes,
+          tableName: tableName,
+        );
+      } catch (_) {
+        // Silent fail — kitchen print is best-effort
+      }
+    });
+  }
+
   int get _subtotal => ref.watch(cartProvider).fold(0, (s, e) => s + e.subtotal);
   int get _manualDiscount => int.tryParse(_discountCtrl.text) ?? 0;
   int get _tierDiscount {
@@ -69,6 +119,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void initState() {
     super.initState();
     _loadPaymentSettings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final extra = GoRouterState.of(context).uri.queryParameters;
+      if (extra['orderType'] != null) {
+        _orderType = extra['orderType'];
+        _tableId = int.tryParse(extra['tableId'] ?? '');
+        _tableName = extra['tableName'] != null ? Uri.decodeComponent(extra['tableName']!) : null;
+        _activeTabId = int.tryParse(extra['activeTabId'] ?? '');
+        if (mounted) setState(() {});
+      }
+    });
   }
 
   Future<void> _loadPaymentSettings() async {
@@ -152,43 +212,31 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final repo = CustomerRepository(ref.read(databaseProvider));
     final customers = await repo.getCustomers();
     if (!mounted) return;
-    if (customers.isEmpty) {
-      TopToast.info(context, 'Belum ada pelanggan. Tambah di menu Pelanggan.');
-      return;
-    }
-    final c = await showDialog<Customer>(
+
+    final result = await showDialog<Customer?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Pilih Pelanggan'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: customers.length,
-            itemBuilder: (_, i) => ListTile(
-              title: Text(customers[i].name,
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                  '${formatRupiah(customers[i].totalSpent)} • ${customers[i].level}'),
-              trailing: Icon(Icons.chevron_right),
-              onTap: () => Navigator.pop(ctx, customers[i]),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal'),
-          ),
-        ],
+      builder: (ctx) => _CustomerPickerDialog(
+        customers: customers,
+        onAddNew: () async {
+          Navigator.pop(ctx); // close picker first
+          final created = await _showAddCustomerSheet();
+          if (created != null) {
+            setState(() {
+              _selectedCustomer = created;
+              _pointsUsed = 0;
+            });
+            if (mounted) TopToast.success(context, 'Pelanggan: ${created.name}');
+          }
+        },
       ),
     );
-    if (c != null && mounted) {
+
+    if (result != null && mounted) {
       setState(() {
-        _selectedCustomer = c;
-        _pointsUsed = 0; // reset when switching customer
+        _selectedCustomer = result;
+        _pointsUsed = 0;
       });
-      TopToast.success(context, 'Pelanggan: ${c.name}');
+      TopToast.success(context, 'Pelanggan: ${result.name}');
     }
   }
 
@@ -251,6 +299,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           cashierName: cashierName,
           customerId: _selectedCustomer?.id,
           branchId: ref.read(activeBranchProvider)?.id,
+          orderType: _orderType,
+          tableId: _tableId,
         );
 
         // Update customer loyalty
@@ -280,6 +330,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Capture total & discount before clearing — getters depend on cartProvider
       final savedTotal = _total;
       final savedDiscount = _totalDiscount;
+      final savedOrderType = _orderType;
+      final savedTableName = _tableName;
       ref.read(cartProvider.notifier).clear();
 
       // Auto-upload backup ke cloud setelah transaksi (background)
@@ -304,22 +356,42 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         if (!mounted) return;
         await ReceiptSheet.show(
           context,
-          sheet: ReceiptSheet.fromCart(
-            cartItems: cart,
-            total: savedTotal,
-            discount: savedDiscount,
-            paymentMethod: _paymentMethod,
-            cashGiven: cashGiven,
-            cashReturn: cashReturn,
-            cashierName: cashierName,
-            customerName: _selectedCustomer?.name,
-            customerPhone: _selectedCustomer?.phone,
-            invoice: invoice,
-            dateStr: dateStr,
-            pointsUsed: _pointsUsed,
-            autoPrint: autoPrint,
-          ),
-          onDismiss: () {
+        sheet: ReceiptSheet.fromCart(
+          cartItems: cart,
+          total: savedTotal,
+          discount: savedDiscount,
+          paymentMethod: _paymentMethod,
+          cashGiven: cashGiven,
+          cashReturn: cashReturn,
+          cashierName: cashierName,
+          customerName: _selectedCustomer?.name,
+          customerPhone: _selectedCustomer?.phone,
+          invoice: invoice,
+          dateStr: dateStr,
+          pointsUsed: _pointsUsed,
+          autoPrint: autoPrint,
+          orderType: savedOrderType,
+          tableName: savedTableName,
+        ),
+          onDismiss: () async {
+            // ── FnB: complete open tab (if any) + manage table ──
+            if (NusaConfig.isFnbVariant) {
+              final payFirst = await SecureStore.getFnbPaymentFirst();
+              if (_activeTabId != null) {
+                // Complete tab; in Bayar Dulu mode don't free table yet
+                _completeTab(db, freeTable: !payFirst);
+              } else if (_tableId != null) {
+                if (payFirst) {
+                  // Bayar Dulu: mark table as Dipesan (occupied after payment)
+                  DiningTableRepository(db).updateStatus(_tableId!, 'Dipesan');
+                } else {
+                  // Pesan Dulu: direct payment → free table immediately
+                  DiningTableRepository(db).updateStatus(_tableId!, 'Kosong');
+                }
+              }
+              // ── Kitchen print (fire-and-forget) ──
+              _triggerKitchenPrint(cart, savedOrderType, savedTableName);
+            }
             // Return to POS screen after receipt is dismissed
             if (mounted && widget.sessionId != null) {
               context.go('/kasir?sessionId=${widget.sessionId}');
@@ -411,6 +483,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
           ),
           SizedBox(height: 10),
+          // ── Split Bill (FnB only) ──
+          if (NusaConfig.isFnbVariant)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: OutlinedButton.icon(
+                onPressed: _loading ? null : _showSplitBill,
+                icon: const Icon(Icons.people_outline, size: 18),
+                label: const Text('Split Bill'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
           Center(
             child: TextButton(
               onPressed: _loading ? null : () => context.pop(),
@@ -891,6 +978,127 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
+  // ── Split Bill (FnB only) ──
+
+  void _showSplitBill() {
+    final cart = ref.read(cartProvider);
+    if (cart.isEmpty) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        int numPeople = 2;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final perPerson = (_total / numPeople).ceil();
+            return Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Split Bill', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        onPressed: numPeople > 2 ? () => setSheetState(() => numPeople--) : null,
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      Text('$numPeople Orang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      IconButton(
+                        onPressed: numPeople < 6 ? () => setSheetState(() => numPeople++) : null,
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Rp ${formatRupiah(perPerson)} / orang', style: TextStyle(fontSize: 14, color: NusaConfig.activePrimary, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _printSplitBills(numPeople, perPerson, cart);
+                      },
+                      icon: const Icon(Icons.print_outlined),
+                      label: Text('Cetak $numPeople Struk'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _printSplitBills(int numPeople, int perPerson, List<CartItem> cart) async {
+    // Pre-flight: check Bluetooth permissions & state
+    if (!await ReceiptPrinter.ensureBluetoothReady()) {
+      if (mounted) TopToast.error(context, 'Bluetooth tidak siap. Periksa izin & nyalakan Bluetooth.');
+      return;
+    }
+
+    final printer = ReceiptPrinter();
+    try {
+      final devices = await printer.discover();
+      if (devices.isEmpty) {
+        if (mounted) TopToast.error(context, 'Sambungkan printer di Pengaturan');
+        return;
+      }
+
+      final saved = await SettingsRepository(ref.read(databaseProvider)).getPrinterAddress();
+      PrinterDevice target = devices.first;
+      if (saved != null && saved.contains('|')) {
+        final savedAddr = saved.split('|').last;
+        final found = devices.where((d) => d.address == savedAddr);
+        if (found.isNotEmpty) target = found.first;
+      }
+
+      final paperSize = await SecureStore.getPaperSize();
+      final logoPath2 = await SecureStore.getPrinterLogoPath();
+      if (logoPath2 != null) await ReceiptPrinter.loadLogo(logoPath2);
+      await printer.connect(target);
+
+      for (int i = 1; i <= numPeople; i++) {
+        final lines = cart.map((c) => ReceiptLine(name: c.name, qty: c.qty, price: c.price)).toList();
+        final notes = cart.map((c) => c.note).toList();
+        await printer.printReceipt(
+          storeName: 'Split ${i}/$numPeople',
+          lines: lines,
+          total: perPerson,
+          discount: 0,
+          paymentMethod: 'Split',
+          cashierName: 'Split Bill',
+          paperWidth: paperSize,
+          orderType: _orderType,
+          tableName: _tableName,
+          itemNotes: notes,
+        );
+      }
+
+      await printer.dispose();
+      if (mounted) TopToast.success(context, '$numPeople struk berhasil dicetak');
+    } catch (_) {
+      if (mounted) TopToast.error(context, 'Gagal mencetak split bill');
+    }
+  }
+
   void _showRedeemPoints() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final maxPts = _selectedCustomer?.points ?? 0;
@@ -942,6 +1150,188 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Customer quick-add from checkout ──
+
+  /// Shows a bottom sheet to register a new customer on the spot.
+  /// Returns the newly created Customer, or null if cancelled.
+  Future<Customer?> _showAddCustomerSheet() async {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return showModalBottomSheet<Customer>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Daftar Pelanggan Baru',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Nama Pelanggan',
+                  hintText: 'Cth: Dimas',
+                  filled: true,
+                  fillColor: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF9FAFB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'Telepon (opsional)',
+                  hintText: 'Cth: 0812xxxx',
+                  filled: true,
+                  fillColor: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF9FAFB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    if (nameCtrl.text.trim().isEmpty) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Nama wajib diisi')),
+                        );
+                      }
+                      return;
+                    }
+                    final repo = CustomerRepository(ref.read(databaseProvider));
+                    final id = await repo.addCustomer(
+                      name: nameCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim().isEmpty
+                          ? null
+                          : phoneCtrl.text.trim(),
+                    );
+                    final created = await repo.byId(id);
+                    Navigator.pop(ctx, created);
+                  },
+                  child: const Text('Daftar'),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Customer picker dialog with "Tambah Baru" option.
+class _CustomerPickerDialog extends StatelessWidget {
+  final List<Customer> customers;
+  final VoidCallback onAddNew;
+
+  const _CustomerPickerDialog({
+    required this.customers,
+    required this.onAddNew,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AlertDialog(
+      title: const Text('Pilih Pelanggan'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // "Tambah Baru" button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onAddNew,
+                icon: const Icon(Icons.person_add_outlined, size: 18),
+                label: const Text('Daftar Pelanggan Baru'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            if (customers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Divider(color: Colors.grey.withValues(alpha: 0.2)),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: customers.length,
+                  itemBuilder: (_, i) => ListTile(
+                    title: Text(customers[i].name,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                        '${formatRupiah(customers[i].totalSpent)} • ${customers[i].level}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(context, customers[i]),
+                  ),
+                ),
+              ),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Belum ada pelanggan',
+                  style: TextStyle(
+                    color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+      ],
     );
   }
 }

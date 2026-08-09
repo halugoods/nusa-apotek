@@ -1,18 +1,74 @@
 import 'package:flutter/material.dart';
+import 'package:nusa_kasir/core/dev/variant_data.dart';
 
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-		static const String productId = "nusa-servis";
-		static const String appSubtitle = "Aplikasi Kasir untuk Jasa Servis";
-		static const String appVersion = "1.6.9";
-								static const int appBuildNumber = 22;
-		  static const String githubRepo = "halugoods/nusa-servis";
-		  static const String landingPageUrl = "https://nusa-online.vercel.app";
-		  static const String whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Servis";
-		  static const String applicationId = "com.nusa.servis"; // shared for all variants (Firebase constraint)
+	static String _productId = "nusa-fnb";
+	static String _appSubtitle = "Aplikasi Kasir untuk Rumah Makan & Kafe";
+  static const String appVersion = "1.7.3";
+  static const int appBuildNumber = 26;
+	static String _githubRepo = "halugoods/nusa-fnb";
+	static const String landingPageUrl = "https://nusa-online.vercel.app";
+	static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20F%26B";
+	static String _applicationId = "com.nusa.fnb";
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
+
+  // ── Dev mode flag — compile-time constant, tree-shaken in production ──
+  static const bool isDevBuild = bool.fromEnvironment('NUSA_DEV', defaultValue: false);
+
+  /// Whether this is the FnB (restaurant/cafe) variant — gates FnB-specific features.
+  static bool get isFnbVariant => productId == 'nusa-fnb';
+
+  // ── Dev variant runtime overrides (null in production, set by VariantNotifier in dev) ──
+  static VariantData? _devVariant;
+  static Map<String, String>? _devCatEmoji;
+  static Map<String, List<Color>>? _devCatGradients;
+  static Map<String, IconData>? _devCatIcons;
+  static List<String>? _devHiddenMenus;
+
+  /// Apply a full VariantData override at runtime (dev mode only).
+  static void applyDevVariant(VariantData v) {
+    _devVariant = v;
+    _devCatEmoji = v.catEmoji;
+    _devCatGradients = v.catGradients;
+    _devCatIcons = v.catIcons;
+    _devHiddenMenus = v.hiddenMenus;
+    // Also apply theme preset
+    applyTheme(v.id);
+  }
+
+  /// Clear all dev variant overrides.
+  static void clearDevVariant() {
+    _devVariant = null;
+    _devCatEmoji = null;
+    _devCatGradients = null;
+    _devCatIcons = null;
+    _devHiddenMenus = null;
+    _primaryOverride = null;
+    _darkOverride = null;
+    _softOverride = null;
+  }
+
+  // ── Public getters — dev override takes priority over build-time value ──
+
+  static String get productId => _devVariant?.productId ?? _productId;
+  static String get appSubtitle => _devVariant?.subtitle ?? _appSubtitle;
+  static String get githubRepo => _devVariant?.repo ?? _githubRepo;
+  static String get whatsappOrder => _devVariant != null
+      ? 'https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20${Uri.encodeComponent(_devVariant!.name)}'
+      : _whatsappOrder;
+  static String get applicationId => _devVariant?.pkg ?? _applicationId;
+
+  // ── Midtrans / Payment config ──
+  static const String paymentUrl = "https://nusa-online.vercel.app/pay";
+  static const double price1Bulan = 49000;
+  static const double priceLifetime = 249000;
+
+  /// Get the Midtrans payment URL for the current variant + Google user.
+  static String paymentLink(String googleId, String package) =>
+      '$paymentUrl?product=$productId&package=$package&google_id=${Uri.encodeComponent(googleId)}';
 
   // ═══════════════════════════════════════════
   //  DESIGN TOKENS — Single source of truth
@@ -197,28 +253,34 @@ abstract class NusaConfig {
   }
 
   // ── Category maps (single source across all screens) ──
-	static const Map<String, String> catEmoji = {
-	  'LCD': '📱',
-	  'Baterai': '🔋',
-	  'Software': '⚡',
-	  'Aksesoris': '🎧',
+  // Build-time defaults (patched by _build_all.py)
+	static Map<String, String> _catEmoji = {
+	  'Makanan': '🍜',
+	  'Minuman': '🥤',
+	  'Snack': '🍿',
+	  'Menu Utama': '🍽️',
 	  'Lainnya': '📦',
 	};
-	  static const Map<String, List<Color>> catGradients = {
-	    'LCD': [Color(0xFFECFEFF), Color(0xFFCFFAFE), Color(0xFFF0FDFA)],
-	    'Baterai': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-	    'Software': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-	    'Aksesoris': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
-	    'Lainnya': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
+	  static Map<String, List<Color>> _catGradients = {
+	    'Makanan': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
+	    'Minuman': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+	    'Snack': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+	    'Menu Utama': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+	    'Lainnya': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
 	  };
-	  static const Map<String, IconData> catIcons = {
+	  static Map<String, IconData> _catIcons = {
 	    'Semua': Icons.grid_view_rounded,
-	    'LCD': Icons.phone_android_rounded,
-	    'Baterai': Icons.battery_charging_full_rounded,
-	    'Software': Icons.terminal_rounded,
-	    'Aksesoris': Icons.headphones_rounded,
+	    'Makanan': Icons.restaurant_rounded,
+	    'Minuman': Icons.local_drink_rounded,
+	    'Snack': Icons.bakery_dining_rounded,
+	    'Menu Utama': Icons.dinner_dining_rounded,
 	    'Lainnya': Icons.category_rounded,
 	  };
+
+  // Public getters — dev override first, then build-time default
+  static Map<String, String> get catEmoji => _devCatEmoji ?? _catEmoji;
+  static Map<String, List<Color>> get catGradients => _devCatGradients ?? _catGradients;
+  static Map<String, IconData> get catIcons => _devCatIcons ?? _catIcons;
 
   static String catEmojiFor(String cat) => catEmoji[cat] ?? '📦';
   static List<Color> catGradientFor(String cat) => catGradients[cat] ?? catGradients['Lainnya']!;
@@ -270,6 +332,7 @@ abstract class NusaConfig {
   /// Convenience getter: hidden menus for current variant (productId).
   /// Strips the `nusa-` prefix from productId to match variant keys in [variantHiddenMenus].
   static List<String> get hiddenMenus {
+    if (_devHiddenMenus != null) return _devHiddenMenus!;
     final variantId = productId.startsWith('nusa-') ? productId.substring(5) : productId;
     return variantHiddenMenus[variantId] ?? [];
   }

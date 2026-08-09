@@ -54,6 +54,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // Fingerprint
   bool _fingerprintEnabled = false;
 
+  // FnB: alur pembayaran
+  bool _fnbPayFirst = false;
+
   // Theme preset
   String _themePreset = NusaConfig.productId.replaceFirst('nusa-', '');
 
@@ -194,6 +197,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Load fingerprint state
       _fingerprintEnabled = await BiometricService.isEnabled();
+
+      // Load FnB payment flow
+      if (NusaConfig.isFnbVariant) {
+        _fnbPayFirst = await SecureStore.getFnbPaymentFirst();
+      }
 
       setState(() {});
     }
@@ -336,6 +344,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       TopToast.success(
         context,
         enable ? 'Fingerprint diaktifkan' : 'Fingerprint dinonaktifkan',
+      );
+    }
+  }
+
+  // ── FnB: Alur Pembayaran ──────────────────────────────────
+
+  Future<void> _loadFnbPayFirst() async {
+    final v = await SecureStore.getFnbPaymentFirst();
+    if (mounted) setState(() => _fnbPayFirst = v);
+  }
+
+  Future<void> _toggleFnbPayFirst() async {
+    final next = !_fnbPayFirst;
+    await SecureStore.setFnbPaymentFirst(next);
+    if (mounted) setState(() => _fnbPayFirst = next);
+    if (mounted) {
+      TopToast.success(
+        context,
+        next ? 'Alur: Bayar dulu di kasir' : 'Alur: Pesan dulu, bayar nanti',
       );
     }
   }
@@ -2612,6 +2639,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               isDark: isDark,
               onTap: () => context.push('/pengaturan_pembayaran'),
             ),
+            // Alur Pembayaran — FnB only
+            if (NusaConfig.isFnbVariant) ...[
+              const SizedBox(height: 12),
+              _menuRow(
+                icon: Icons.swap_horiz,
+                iconColor: const Color(0xFFF59E0B),
+                title: 'Alur Pembayaran',
+                subtitle: _fnbPayFirst
+                    ? 'Bayar dulu di kasir, baru pilih meja'
+                    : 'Pesan dulu, duduk di meja, bayar setelah selesai',
+                isDark: isDark,
+                onTap: null, // toggle handled by trailing switch
+                trailing: Switch(
+                  value: _fnbPayFirst,
+                  activeColor: NusaConfig.warning,
+                  onChanged: (_) => _toggleFnbPayFirst(),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             // Pengaturan Struk
             _menuRow(

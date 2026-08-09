@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:esc_pos_bluetooth/esc_pos_bluetooth.dart';
 import 'package:esc_pos_utils/esc_pos_utils.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
+import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// A single line item on a receipt.
 class ReceiptLine {
@@ -21,6 +23,22 @@ class ReceiptLine {
   final int price;
 
   int get subtotal => qty * price;
+}
+
+/// Sanitize text for thermal printer (strip non-ASCII characters).
+/// ESC/POS printers only support ASCII + CP-437 extended (0–255).
+/// Unicode characters like emoji, CJK, arrows (↳), ellipsis (…) will crash
+/// the printer or cause MethodChannel "invalid character" errors.
+String _san(String text) {
+  return text.replaceAll(RegExp(r'[^\x00-\xFF]'), '?');
+}
+
+/// Truncate text to fit thermal printer column.
+/// 58mm paper: ~2 chars per PosColumn width unit.
+String _fit(String text, int maxChars) {
+  final s = _san(text);
+  if (s.length <= maxChars) return s;
+  return '${s.substring(0, maxChars - 3)}...';
 }
 
 /// A discovered Bluetooth thermal printer.
@@ -48,6 +66,9 @@ class LastPrintParams {
   final int? cashReturn;
   final String? customerName;
   final String paperWidth;
+  final String? orderType;
+  final String? tableName;
+  final List<String?>? itemNotes;
 
   const LastPrintParams({
     required this.storeName,
@@ -62,30 +83,29 @@ class LastPrintParams {
     this.cashReturn,
     this.customerName,
     this.paperWidth = '58',
+    this.orderType,
+    this.tableName,
+    this.itemNotes,
   });
 }
 
 /// Utility for discovering, connecting to and printing receipts on a
 /// Bluetooth thermal (ESC/POS) printer.
 ///
-/// Backed by `esc_pos_bluetooth` + `esc_pos_utils`.
-///
-/// Future: WiFi/Ethernet/USB printer support via `esc_pos_printer` package.
+/// Discovery and connection use native Android SPP (RFCOMM) via
+/// `BluetoothUtils` → `MainActivity.kt` MethodChannel.
+/// ESC/POS command generation is via `esc_pos_utils`.
 class ReceiptPrinter {
-  final PrinterBluetoothManager _manager = PrinterBluetoothManager();
-
-  final Map<String, PrinterBluetooth> _discovered = {};
-  PrinterBluetooth? _selected;
-  StreamSubscription<List<PrinterBluetooth>>? _scanSubscription;
-
-  /// Cache the last print for one-tap reprint.
-  static LastPrintParams? lastPrint;
+  String? _connectedAddress;
 
   // ── Printer settings (persisted via SecureStore) ──
   static Uint8List? _logoBytes;
   static String _footerText = '';
   static bool _cashDrawerEnabled = false;
-  static int _cashDrawerPin = 2; // default: pin 2 (common on most printers)
+  static int _cashDrawerPin = 2;
+
+  /// Cache the last print for one-tap reprint.
+  static LastPrintParams? lastPrint;
 
   /// Load printer logo from app dir.
   static Future<void> loadLogo(String? path) async {
@@ -103,7 +123,7 @@ class ReceiptPrinter {
     }
   }
 
-  /// Set custom footer text (e.g. "Jam operasional: 08:00–22:00").
+  /// Set custom footer text.
   static void setFooter(String text) => _footerText = text;
 
   /// Enable/disable cash drawer auto-open after print.
@@ -112,56 +132,53 @@ class ReceiptPrinter {
     _cashDrawerPin = pin;
   }
 
-  /// Scan for paired/classic Bluetooth thermal printers and return them.
+  // ──────────────────────────────────────────────────────────
+  // Discovery — native bonded devices
+  // ──────────────────────────────────────────────────────────
+
+  /// Discover bonded (paired) Bluetooth SPP devices.
   ///
-  /// Returns an empty list if no printers are found or scanning fails.
+  /// Uses native Android `BluetoothAdapter.getBondedDevices()` which
+  /// correctly discovers classic Bluetooth thermal printers.
   Future<List<PrinterDevice>> discover({
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    _discovered.clear();
-    final devices = <PrinterDevice>[];
-
-    _scanSubscription = _manager.scanResults.listen((printers) {
-      for (final printer in printers) {
-        final address = printer.address;
-        if (address == null || address.isEmpty) continue;
-        if (_discovered.containsKey(address)) continue;
-        _discovered[address] = printer;
-        devices.add(
-          PrinterDevice(
-            name: printer.name?.isNotEmpty == true ? printer.name! : 'Printer',
-            address: address,
-          ),
-        );
-      }
-    });
-
-    _manager.startScan(timeout);
-    // Give the scan time to complete, then stop it.
-    await Future<void>.delayed(timeout + const Duration(seconds: 1));
-    await _stopScan();
-
-    return List<PrinterDevice>.unmodifiable(devices);
+    final rawDevices = await BluetoothUtils.scanDevices();
+    return rawDevices
+        .map((d) => PrinterDevice(
+              name: d['name'] ?? 'Printer',
+              address: d['address'] ?? '',
+            ))
+        .where((d) => d.address.isNotEmpty)
+        .toList();
   }
 
-  /// Connect to a printer previously returned by [discover], by address.
-  Future<void> connect(PrinterDevice device) async {
-    final printer = _discovered[device.address];
-    if (printer == null) {
-      throw StateError(
-        'Printer ${device.address} was not discovered. '
-        'Call discover() before connect().',
-      );
+  // ──────────────────────────────────────────────────────────
+  // Connect
+  // ──────────────────────────────────────────────────────────
+
+  /// Connect to a printer by its Bluetooth MAC address.
+  Future<bool> connect(PrinterDevice device) async {
+    // Disconnect previous first
+    await _disconnect();
+
+    final ok = await BluetoothUtils.connectDevice(device.address);
+    if (ok) {
+      _connectedAddress = device.address;
+      // Give the Bluetooth SPP stack a moment to fully stabilize.
+      // Without this delay some Android/device combos report
+      // isConnected()==true but drop the first write.
+      await Future.delayed(const Duration(milliseconds: 300));
     }
-    _manager.selectPrinter(printer);
-    _selected = printer;
+    return ok;
   }
+
+  // ──────────────────────────────────────────────────────────
+  // Print
+  // ──────────────────────────────────────────────────────────
 
   /// Build the ESC/POS bytes for a receipt and send them to the connected
   /// printer. Returns `true` if the print job completed successfully.
-  ///
-  /// After a successful print the parameters are cached in [lastPrint]
-  /// so that [printLastReceipt] can reprint without re-entering data.
   Future<bool> printReceipt({
     required String storeName,
     required List<ReceiptLine> lines,
@@ -178,10 +195,13 @@ class ReceiptPrinter {
     Uint8List? logo,
     String? footer,
     bool openDrawer = false,
+    String? orderType,
+    int? tableId,
+    String? tableName,
+    List<String?>? itemNotes,
   }) async {
-    if (_selected == null) {
-      return false;
-    }
+    final connected = await BluetoothUtils.isConnected();
+    if (!connected) return false;
 
     final profile = await CapabilityProfile.load();
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
@@ -195,17 +215,24 @@ class ReceiptPrinter {
       try {
         final logoImage = img.decodeImage(logoBytes);
         if (logoImage != null) {
-          bytes.addAll(generator.imageRaster(logoImage, align: PosAlign.center));
+          // Resize: max 256px wide for 58mm, 360px for 80mm.
+          // Keeping the logo compact avoids overflowing cheap printer buffers.
+          final maxWidth = paperWidth == '80' ? 360 : 200;
+          img.Image resized;
+          if (logoImage.width > maxWidth) {
+            resized = img.copyResize(logoImage, width: maxWidth);
+          } else {
+            resized = logoImage;
+          }
+          bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
           bytes.addAll(generator.feed(1));
         }
-      } catch (_) {
-        // Skip logo if decode fails
-      }
+      } catch (_) {}
     }
 
     // Header.
     bytes.addAll(generator.text(
-      storeName,
+      _san(storeName),
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
@@ -215,50 +242,75 @@ class ReceiptPrinter {
       linesAfter: 1,
     ));
     if (invoice.isNotEmpty) {
-      bytes.addAll(generator.text(invoice,
+      bytes.addAll(generator.text(_san(invoice),
           styles: const PosStyles(align: PosAlign.center)));
     }
     if (dateStr.isNotEmpty) {
-      bytes.addAll(generator.text(dateStr,
+      bytes.addAll(generator.text(_san(dateStr),
           styles: const PosStyles(align: PosAlign.center)));
     }
     if (cashierName != null && cashierName.isNotEmpty) {
-      bytes.addAll(generator.text('Kasir: $cashierName'));
+      bytes.addAll(generator.text(_san('Kasir: $cashierName')));
     }
     if (customerName != null && customerName.isNotEmpty) {
-      bytes.addAll(generator.text('Pelanggan: $customerName'));
+      bytes.addAll(generator.text(_san('Pelanggan: $customerName')));
+    }
+    if (orderType != null && orderType.isNotEmpty) {
+      String line = orderType!;
+      if (tableName != null && tableName.isNotEmpty) line += ' - $tableName';
+      bytes.addAll(generator.text(_san(line),
+          styles: const PosStyles(align: PosAlign.center, bold: true)));
     }
     bytes.addAll(generator.hr());
 
-    // Line items: name | qty x price | subtotal.
-    for (final line in lines) {
+    // Line items.
+    final isWide = paperWidth == '80';
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final nameCol = isWide ? 7 : 5;
+      final qtyCol = isWide ? 5 : 4;
+      final subCol = isWide ? 4 : 3;
+      // ~2 chars per column width unit on 58mm paper
+      final nameMax = isWide ? 14 : 9;
+      final qtyMax = isWide ? 10 : 7;
+      final subMax = isWide ? 8 : 5;
+
       bytes.addAll(generator.row([
         PosColumn(
-          text: line.name,
-          width: paperWidth == '80' ? 7 : 5,
+          text: _fit(line.name, nameMax),
+          width: nameCol,
         ),
         PosColumn(
-          text: '${line.qty} x ${formatRupiah(line.price)}',
-          width: paperWidth == '80' ? 5 : 4,
+          text: _fit('${line.qty} x ${formatRupiah(line.price)}', qtyMax),
+          width: qtyCol,
           styles: const PosStyles(align: PosAlign.right),
         ),
         PosColumn(
-          text: formatRupiah(line.subtotal),
-          width: paperWidth == '80' ? 4 : 3,
+          text: _fit(formatRupiah(line.subtotal), subMax),
+          width: subCol,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]));
-    }
 
+      if (itemNotes != null &&
+          i < itemNotes.length &&
+          itemNotes[i] != null &&
+          itemNotes[i]!.isNotEmpty) {
+        bytes.addAll(generator.text(
+          _san('  > ${itemNotes[i]}'),
+          styles: const PosStyles(align: PosAlign.left),
+        ));
+      }
+    }
     bytes.addAll(generator.hr());
 
     // Discount.
     if (discount > 0) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Diskon', width: paperWidth == '80' ? 8 : 6),
+        PosColumn(text: 'Diskon', width: isWide ? 8 : 6),
         PosColumn(
-          text: '-${formatRupiah(discount)}',
-          width: paperWidth == '80' ? 8 : 6,
+          text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]));
@@ -268,12 +320,12 @@ class ReceiptPrinter {
     bytes.addAll(generator.row([
       PosColumn(
         text: 'TOTAL',
-        width: paperWidth == '80' ? 8 : 6,
+        width: isWide ? 8 : 6,
         styles: const PosStyles(bold: true, height: PosTextSize.size2),
       ),
       PosColumn(
-        text: formatRupiah(total),
-        width: paperWidth == '80' ? 8 : 6,
+        text: _fit(formatRupiah(total), isWide ? 16 : 11),
+        width: isWide ? 8 : 6,
         styles: const PosStyles(
             bold: true, align: PosAlign.right, height: PosTextSize.size2),
       ),
@@ -282,22 +334,20 @@ class ReceiptPrinter {
     // Payment details.
     if (paymentMethod != null && paymentMethod.isNotEmpty) {
       bytes.addAll(generator.row([
+        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6),
         PosColumn(
-            text: 'Bayar ($paymentMethod)',
-            width: paperWidth == '80' ? 8 : 6),
-        PosColumn(
-          text: formatRupiah(cashGiven ?? total),
-          width: paperWidth == '80' ? 8 : 6,
+          text: _fit(formatRupiah(cashGiven ?? total), isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]));
     }
     if (cashReturn != null && cashReturn > 0) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Kembali', width: paperWidth == '80' ? 8 : 6),
+        PosColumn(text: 'Kembali', width: isWide ? 8 : 6),
         PosColumn(
-          text: formatRupiah(cashReturn),
-          width: paperWidth == '80' ? 8 : 6,
+          text: _fit(formatRupiah(cashReturn), isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]));
@@ -309,15 +359,15 @@ class ReceiptPrinter {
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
       bytes.addAll(generator.text(
-        footerText,
+        _san(footerText),
         styles: const PosStyles(align: PosAlign.center),
       ));
     }
     bytes.addAll(generator.text(
-      'Terima Kasih!',
+      _san('Terima Kasih!'),
       styles: const PosStyles(align: PosAlign.center, bold: true),
     ));
-    bytes.addAll(generator.text(storeName,
+    bytes.addAll(generator.text(_san(storeName),
         styles: const PosStyles(align: PosAlign.center)));
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
@@ -328,9 +378,10 @@ class ReceiptPrinter {
       bytes.addAll(generator.drawer(pin: pin));
     }
 
-    final result = await _manager.printTicket(bytes);
+    // Send bytes over native SPP connection.
+    final ok = await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
 
-    if (result == PosPrintResult.success) {
+    if (ok) {
       // Cache for reprint
       lastPrint = LastPrintParams(
         storeName: storeName,
@@ -345,13 +396,16 @@ class ReceiptPrinter {
         cashReturn: cashReturn,
         customerName: customerName,
         paperWidth: paperWidth,
+        orderType: orderType,
+        tableName: tableName,
+        itemNotes: itemNotes,
       );
     }
 
-    return result == PosPrintResult.success;
+    return ok;
   }
 
-  /// Reprint the last receipt (if available).
+  /// Reprint the last receipt.
   Future<bool> printLastReceipt({bool openDrawer = false}) async {
     final p = lastPrint;
     if (p == null) return false;
@@ -369,71 +423,209 @@ class ReceiptPrinter {
       customerName: p.customerName,
       paperWidth: p.paperWidth,
       openDrawer: openDrawer,
+      orderType: p.orderType,
+      tableName: p.tableName,
+      itemNotes: p.itemNotes,
     );
   }
 
-  /// Open cash drawer only (no print).
+  /// Print a kitchen order to the kitchen printer (FnB only).
+  /// No prices or totals — just item names, quantities, and notes.
+  Future<bool> printKitchenOrder({
+    required String orderType,
+    required List<ReceiptLine> lines,
+    List<String?>? itemNotes,
+    String? tableName,
+  }) async {
+    // Save main printer address before switching
+    final mainAddr = _connectedAddress;
+    final kitchenAddr = await SecureStore.getKitchenPrinterAddress();
+    final kitchenEnabled = await SecureStore.getKitchenPrinterEnabled();
+
+    if (!kitchenEnabled || kitchenAddr == null || kitchenAddr.isEmpty) {
+      return false; // No kitchen printer configured
+    }
+
+    // Disconnect current (main) and connect to kitchen printer
+    await BluetoothUtils.disconnectDevice();
+    final ok = await BluetoothUtils.connectDevice(kitchenAddr);
+    if (!ok) {
+      // Reconnect back to main if kitchen connection failed
+      if (mainAddr != null && mainAddr.isNotEmpty) {
+        await BluetoothUtils.connectDevice(mainAddr);
+        _connectedAddress = mainAddr;
+      }
+      return false;
+    }
+
+    final profile = await CapabilityProfile.load();
+    final generator = Generator(PaperSize.mm58, profile);
+
+    final List<int> bytes = [];
+
+    // Big bold header: "DAPUR"
+    bytes.addAll(generator.text(
+      _san('DAPUR'),
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size2,
+        width: PosTextSize.size2,
+      ),
+      linesAfter: 1,
+    ));
+
+    // Table name
+    if (tableName != null && tableName.isNotEmpty) {
+      bytes.addAll(generator.text(
+        _san(tableName),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
+    }
+
+    // Order type badge
+    bytes.addAll(generator.text(
+      _san(orderType),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    ));
+
+    bytes.addAll(generator.hr());
+
+    // Items: name (size2, bold) + qty, no prices
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+
+      bytes.addAll(generator.text(
+        _san(line.name),
+        styles: const PosStyles(
+          bold: true,
+          height: PosTextSize.size2,
+        ),
+      ));
+      bytes.addAll(generator.text(
+        _san('Qty: ${line.qty}'),
+        styles: const PosStyles(align: PosAlign.left),
+      ));
+
+      if (itemNotes != null &&
+          i < itemNotes.length &&
+          itemNotes[i] != null &&
+          itemNotes[i]!.isNotEmpty) {
+        bytes.addAll(generator.text(
+          _san('  > ${itemNotes[i]}'),
+          styles: const PosStyles(align: PosAlign.left),
+        ));
+      }
+    }
+
+    bytes.addAll(generator.hr());
+
+    // Timestamp
+    final now = DateTime.now();
+    bytes.addAll(generator.text(
+      '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}:${now.second}',
+      styles: const PosStyles(align: PosAlign.center),
+    ));
+
+    bytes.addAll(generator.feed(2));
+    bytes.addAll(generator.cut());
+
+    final result = await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
+
+    // Reconnect back to main printer
+    await BluetoothUtils.disconnectDevice();
+    if (mainAddr != null && mainAddr.isNotEmpty) {
+      await BluetoothUtils.connectDevice(mainAddr);
+      _connectedAddress = mainAddr;
+    }
+
+    return result;
+  }
+
+  /// Open cash drawer only.
   Future<bool> openDrawer({int pin = 2}) async {
-    if (_selected == null) return false;
+    final connected = await BluetoothUtils.isConnected();
+    if (!connected) return false;
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
       final bytes = generator.drawer(
         pin: pin == 2 ? PosDrawer.pin2 : PosDrawer.pin5,
       );
-      final result = await _manager.printTicket(bytes);
-      return result == PosPrintResult.success;
+      return await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
     } catch (_) {
       return false;
     }
   }
 
-  /// Print a test receipt to verify the printer is working.
+  /// Print a test receipt.
   Future<bool> printTest(String storeName, {String paperWidth = '58'}) async {
-    if (_selected == null) return false;
+    final connected = await BluetoothUtils.isConnected();
+    if (!connected) return false;
 
     final profile = await CapabilityProfile.load();
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paperSize, profile);
 
     final List<int> bytes = [];
-    bytes.addAll(generator.text('TEST PRINT',
+    bytes.addAll(generator.text(_san('TEST PRINT'),
         styles: const PosStyles(
             align: PosAlign.center, bold: true, height: PosTextSize.size2)));
-    bytes.addAll(generator.text(storeName,
+    bytes.addAll(generator.text(_san(storeName),
         styles: const PosStyles(align: PosAlign.center)));
     bytes.addAll(generator.hr());
-    bytes.addAll(generator.text('Printer thermal berfungsi dengan baik.',
+    bytes.addAll(generator.text(_san('Printer thermal berfungsi dengan baik.'),
         styles: const PosStyles(align: PosAlign.center)));
-    bytes.addAll(generator.text('Kertas: ${paperWidth}mm',
+    bytes.addAll(generator.text(_san('Kertas: ${paperWidth}mm'),
         styles: const PosStyles(align: PosAlign.center)));
     final now = DateTime.now();
     bytes.addAll(generator.text(
-        '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}',
+        _san('${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}'),
         styles: const PosStyles(align: PosAlign.center)));
     bytes.addAll(generator.hr());
-    bytes.addAll(generator.text('NUSA Kasir',
+    bytes.addAll(generator.text(_san('NUSA Kasir'),
         styles: const PosStyles(align: PosAlign.center, bold: true)));
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
-    final result = await _manager.printTicket(bytes);
-    return result == PosPrintResult.success;
+    return await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
   }
 
-  /// Quick check if a printer is currently selected/connected.
-  bool get isConnected => _selected != null;
+  /// Quick check if connected.
+  Future<bool> get isConnected => BluetoothUtils.isConnected();
 
-  /// Disconnect and release any active scan subscription.
+  /// The address of the currently connected device.
+  String? get connectedAddress => _connectedAddress;
+
+  /// Ensure Bluetooth permissions are granted and Bluetooth is enabled.
+  /// Call this before [discover] or [connect] to avoid silent failures
+  /// on Android 12+ where runtime permissions are required.
+  ///
+  /// Returns `true` if ready to proceed, `false` if permissions or
+  /// Bluetooth state block the operation.
+  static Future<bool> ensureBluetoothReady() async {
+    // 1. Check & request runtime Bluetooth permissions (Android 12+)
+    if (Platform.isAndroid) {
+      if (!await BluetoothUtils.hasBluetoothPermissions()) {
+        final granted = await BluetoothUtils.requestBluetoothPermissions();
+        if (!granted) return false;
+      }
+    }
+    // 2. Check Bluetooth is enabled
+    if (!await BluetoothUtils.isBluetoothEnabled()) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Disconnect the Bluetooth connection.
+  Future<void> _disconnect() async {
+    _connectedAddress = null;
+    await BluetoothUtils.disconnectDevice();
+  }
+
+  /// Disconnect and release resources.
   Future<void> dispose() async {
-    await _stopScan();
-    _selected = null;
-    _discovered.clear();
-  }
-
-  Future<void> _stopScan() async {
-    await _scanSubscription?.cancel();
-    _scanSubscription = null;
-    _manager.stopScan();
+    await _disconnect();
   }
 }

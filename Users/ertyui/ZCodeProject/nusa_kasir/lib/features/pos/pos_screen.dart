@@ -1,4 +1,5 @@
-﻿import 'dart:io';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,14 +8,17 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
-import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/tab_repository.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
-import "package:nusa_kasir/shared/widgets/top_toast.dart";
+import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
   final int? sessionId;
@@ -30,17 +34,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   String _cashierName = '';
   bool _searching = false;
   bool _cartExpanded = false;
-  final _memberPhone = TextEditingController();
-  final _promoCode = TextEditingController();
-  String? _memberName;
-  int _memberPoints = 0;
-  String _paymentMethod = 'Tunai';
-  bool _checkingMember = false;
   int _gridColumns = 2;
+  bool _productsLoading = true;
+
+  // ── FnB state ──
+  String _orderType = 'Dine In';
+  int? _selectedTableId;
+  String? _selectedTableName;
+  List<DiningTable> _diningTables = [];
+  int? _activeTabId;
 
   List<Product>? _allProducts;
-  bool _productsLoading = true;
-  List<String> _allCats = []; // dynamically loaded from CategoryRepository
+  bool _firstBuild = true;
+  List<String> _allCats = [];
 
   List<String> get _chips => ['Semua', ..._allCats];
 
@@ -50,9 +56,49 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     _loadCashier();
     _preloadProducts();
     _loadGridColumns();
+    if (NusaConfig.isFnbVariant) _loadTables();
     _searchFocus.addListener(() {
       if (mounted) setState(() => _searching = _searchFocus.hasFocus);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleFnbRouteParams();
+    });
+  }
+
+  Future<void> _handleFnbRouteParams() async {
+    if (!NusaConfig.isFnbVariant) return;
+    final extra = GoRouterState.of(context).uri.queryParameters;
+    final tabId = int.tryParse(extra['tabId'] ?? '');
+    final tableId = int.tryParse(extra['tableId'] ?? '');
+    final tableName = extra['tableName'] != null ? Uri.decodeComponent(extra['tableName']!) : null;
+
+    if (tabId != null) {
+      // Coming from "Lanjutkan" — load existing tab
+      final tab = await TabRepository(ref.read(databaseProvider)).byId(tabId);
+      if (tab != null) {
+        await _loadTab(tab);
+      }
+    } else if (tableId != null) {
+      // Coming from "Buka Pesanan" — set table
+      final db = ref.read(databaseProvider);
+      final payFirst = NusaConfig.isFnbVariant ? await SecureStore.getFnbPaymentFirst() : false;
+      if (!payFirst) {
+        // Pesan Dulu: mark table as occupied immediately
+        await DiningTableRepository(db).updateStatus(tableId, 'Dipesan');
+      }
+      // Bayar Dulu: table stays Kosong until payment completes in checkout
+      setState(() {
+        _selectedTableId = tableId;
+        _selectedTableName = tableName;
+      });
+      await _loadTables(); // refresh dropdown
+    }
+  }
+
+  Future<void> _loadTables() async {
+    final repo = DiningTableRepository(ref.read(databaseProvider));
+    final tables = await repo.getAll();
+    if (mounted) setState(() => _diningTables = tables);
   }
 
   Future<void> _loadGridColumns() async {
@@ -69,16 +115,22 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Future<void> _preloadProducts() async {
     final repo = ProductRepository(ref.read(databaseProvider));
     final all = await repo.getProducts();
+    // Dev mode: shared DB across 8 variants → filter by variant categories.
+    // e.g. when testing FNB, hide products from servis ("Smartphone", "Laptop", etc.).
+    List<Product> filtered = all;
+    if (NusaConfig.isDevBuild) {
+      final variantCats = NusaConfig.catEmoji.keys.toSet();
+      filtered = all.where((p) => variantCats.contains(p.category)).toList();
+    }
     // Also load real categories for the filter chips.
     final catRepo = CategoryRepository(ref.read(databaseProvider));
     final cats = await catRepo.getAll();
-    if (mounted) setState(() { _allProducts = all; _allCats = cats; _productsLoading = false; });
+    if (mounted) setState(() { _allProducts = filtered; _allCats = cats; _productsLoading = false; });
   }
 
   @override
   void dispose() {
     _search.dispose(); _searchFocus.dispose();
-    _memberPhone.dispose(); _promoCode.dispose();
     super.dispose();
   }
 
@@ -104,6 +156,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       return true;
     }).toList();
   }
+
+  // ── Barcode scanner ──
 
   Future<void> _scanBarcode(BuildContext context) async {
     String? scannedCode;
@@ -148,6 +202,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Future<void> _closeKasir() async {
+    // ── FnB: revert orphaned table (opened but no tab created) ──
+    if (NusaConfig.isFnbVariant && _selectedTableId != null && _activeTabId == null) {
+      try {
+        await DiningTableRepository(ref.read(databaseProvider))
+            .updateStatus(_selectedTableId!, 'Kosong');
+      } catch (_) {}
+    }
     if (widget.sessionId == null) { if (mounted) context.go('/home'); return; }
     final repo = CashierSessionRepository(ref.read(databaseProvider));
     await repo.close(widget.sessionId!);
@@ -403,7 +464,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           if (totalItems > 0) Icon(Icons.keyboard_arrow_up, color: Colors.white70, size: 28),
           SizedBox(width: 8),
           ElevatedButton(
-            onPressed: totalItems == 0 ? null : () => context.push('/checkout?sessionId=${widget.sessionId ?? ''}'),
+            onPressed: totalItems == 0 ? null : () => _goToCheckout(),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white, foregroundColor: NusaConfig.activePrimary,
               disabledBackgroundColor: Colors.white38, disabledForegroundColor: Colors.white54,
@@ -418,10 +479,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
-  // ── Unified Cart Panel (sheet for narrow, sidebar for wide) ──
+  // ── Cart Panel (sheet for narrow, sidebar for wide) ──
 
   Widget _buildCartPanel(bool isDark, List<CartItem> cart, int totalItems, int totalPrice, {required bool isSheet}) {
-    final hasMember = _memberName != null;
     final separator = Container(height: 1, color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor);
 
     Widget body = Column(children: [
@@ -449,11 +509,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         ),
         separator,
       ],
-      // Member lookup
-      _buildLookupRow(isDark, isSheet ? 16 : 12),
-      if (hasMember) _buildMemberBadge(isDark, isSheet ? 16 : 12),
-      // Promo
-      _buildPromoRow(isDark, isSheet ? 16 : 12),
+      // ── FnB: Order type chips ──
+      if (NusaConfig.isFnbVariant) ...[
+        SizedBox(height: 6),
+        _buildOrderTypeChips(isDark, isSheet ? 16 : 12),
+        if (_orderType == 'Dine In')
+          _buildTableSelector(isDark, isSheet ? 16 : 12),
+      ],
       separator,
       // Cart items
       Expanded(
@@ -471,39 +533,51 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     item: cart[i], isDark: isDark,
                     onDecrement: () => ref.read(cartProvider.notifier).changeQty(cart[i].productId, -1),
                     onIncrement: () => ref.read(cartProvider.notifier).addProduct(cart[i].productId, cart[i].name, cart[i].price),
+                    onTap: NusaConfig.isFnbVariant ? () => _showNoteDialog(cart[i]) : null,
                   ),
                 ),
               ),
       ),
-      // Payment method chips
-      Padding(
-        padding: EdgeInsets.symmetric(horizontal: isSheet ? 16.0 : 12.0, vertical: 4),
-        child: Row(children: [
-          _payChip('Tunai', Icons.money, _paymentMethod == 'Tunai', () => setState(() => _paymentMethod = 'Tunai')),
-          SizedBox(width: 8),
-          _payChip('QRIS', Icons.qr_code, _paymentMethod == 'QRIS', () => setState(() => _paymentMethod = 'QRIS')),
-          SizedBox(width: 8),
-          _payChip('Transfer', Icons.account_balance, _paymentMethod == 'Transfer', () => setState(() => _paymentMethod = 'Transfer')),
-        ]),
-      ),
-      // Summary + checkout
+      // ── Simple summary ──
       Container(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor,
-          border: Border(top: BorderSide(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor))),
+          border: Border(top: BorderSide(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('$totalItems item', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+          Text(formatRupiah(totalPrice), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary, letterSpacing: -0.5)),
+        ]),
+      ),
+      // Buttons
+      Container(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: Column(children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('$totalItems item', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-            Text(formatRupiah(totalPrice), style:  TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary, letterSpacing: -0.5)),
-          ]),
-          SizedBox(height: 12),
+          // ── FnB: Save Order button ──
+          if (NusaConfig.isFnbVariant && cart.isNotEmpty) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _saveOrder(),
+                icon: Icon(Icons.bookmark_outline, size: 18),
+                label: Text('Simpan Pesanan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            SizedBox(height: 8),
+          ],
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: totalItems == 0 ? null : () => context.push('/checkout?sessionId=${widget.sessionId ?? ''}'),
-              style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding:  EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), textStyle:  TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              child: Text('Bayar'),
+              onPressed: totalItems == 0 ? null : () => _goToCheckout(),
+              style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text('Lanjut Pembayaran'),
             ),
           ),
         ]),
@@ -536,120 +610,340 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
-  Widget _buildLookupRow(bool isDark, double padH) {
+  // ── Navigate to payment screen ──
+
+  void _goToCheckout() {
+    final cart = ref.read(cartProvider);
+    if (cart.isEmpty) {
+      TopToast.error(context, 'Keranjang kosong');
+      return;
+    }
+    final qp = <String, String>{};
+    if (widget.sessionId != null) qp['sessionId'] = widget.sessionId.toString();
+    if (NusaConfig.isFnbVariant) {
+      qp['orderType'] = _orderType;
+      if (_selectedTableId != null) qp['tableId'] = _selectedTableId.toString();
+      if (_selectedTableName != null) qp['tableName'] = Uri.encodeComponent(_selectedTableName!);
+      if (_activeTabId != null) qp['activeTabId'] = _activeTabId.toString();
+    }
+    final uri = Uri(path: '/checkout', queryParameters: qp.isNotEmpty ? qp : null);
+    context.push(uri.toString());
+  }
+
+  // ── FnB: Save order (Open Tab) ──
+
+  Future<void> _saveOrder() async {
+    final cart = ref.read(cartProvider);
+    if (cart.isEmpty) return;
+    final db = ref.read(databaseProvider);
+    final tabRepo = TabRepository(db);
+    final items = cart.map((c) => {'productId': c.productId, 'name': c.name, 'price': c.price, 'qty': c.qty, 'note': c.note}).toList();
+    final total = cart.fold<int>(0, (s, e) => s + e.subtotal);
+    await tabRepo.save(tableId: _selectedTableId, orderType: _orderType, items: items, total: total);
+    if (_selectedTableId != null) {
+      await DiningTableRepository(db).updateStatus(_selectedTableId!, 'Dipesan');
+    }
+    ref.read(cartProvider.notifier).clear();
+    final savedName = _selectedTableName;
+    _selectedTableId = null; _selectedTableName = null;
+    if (mounted) TopToast.success(context, savedName != null ? 'Pesanan disimpan — $savedName' : 'Pesanan disimpan');
+  }
+
+  // ── FnB: Load open tab into cart ──
+
+  Future<void> _loadTab(OpenTab tab) async {
+    try {
+      final items = (json.decode(tab.itemsJson) as List).cast<Map<String, dynamic>>();
+      final notifier = ref.read(cartProvider.notifier);
+      notifier.clear();
+      for (final item in items) {
+        notifier.addProduct(item['productId'] as int, item['name'] as String, item['price'] as int, note: item['note'] as String?);
+        for (var i = 1; i < (item['qty'] as int); i++) {
+          notifier.changeQty(item['productId'] as int, 1);
+        }
+      }
+      _activeTabId = tab.id;
+      _selectedTableId = tab.tableId;
+      _orderType = tab.orderType;
+      if (tab.tableId != null && _diningTables.any((t) => t.id == tab.tableId)) {
+        _selectedTableName = _diningTables.firstWhere((t) => t.id == tab.tableId).name;
+      }
+      setState(() {});
+      if (mounted) TopToast.success(context, 'Pesanan dilanjutkan — $_selectedTableName');
+    } catch (_) {
+      if (mounted) TopToast.error(context, 'Gagal melanjutkan pesanan');
+    }
+  }
+
+  // ── FnB: Note dialog per item ──
+
+  void _showNoteDialog(CartItem item) {
+    final ctrl = TextEditingController(text: item.note ?? '');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+          SizedBox(height: 16),
+          Text('Catatan — ${item.name}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          SizedBox(height: 12),
+          NusaFormField(label: 'Catatan', controller: ctrl, hintText: 'Contoh: tidak pedas, es batu terpisah', maxLines: 2),
+          SizedBox(height: 16),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () { ref.read(cartProvider.notifier).setNote(item.productId, ctrl.text.trim().isEmpty ? null : ctrl.text.trim()); Navigator.pop(ctx); },
+            child: Text('Simpan'),
+          )),
+          SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  // ── FnB: Order type chips ──
+
+  Widget _buildOrderTypeChips(bool isDark, double padH) {
+    final types = [
+      {'label': 'Dine In', 'icon': Icons.table_restaurant, 'id': 'Dine In'},
+      {'label': 'Takeaway', 'icon': Icons.takeout_dining, 'id': 'Takeaway'},
+      {'label': 'GoFood', 'icon': Icons.delivery_dining, 'id': 'GoFood'},
+    ];
     return Padding(
-      padding: EdgeInsets.fromLTRB(padH, 8, padH, 4),
-      child: Row(children: [
-        Expanded(
-          child: SizedBox(height: 42,
-            child: TextField(
-              controller: _memberPhone, keyboardType: TextInputType.phone,
-              style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'No WhatsApp member...',
-                hintStyle: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                prefixIcon: Icon(Icons.person_outline, size: 18, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusMD), borderSide: BorderSide.none),
+      padding: EdgeInsets.fromLTRB(padH, 4, padH, 4),
+      child: Row(children: types.map((t) {
+        final active = t['id'] == _orderType;
+        final chipDark = Theme.of(context).brightness == Brightness.dark;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: t != types.last ? 6 : 0),
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _orderType = t['id'] as String;
+                if (_orderType != 'Dine In') { _selectedTableId = null; _selectedTableName = null; }
+              }),
+              child: AnimatedContainer(
+                duration: Duration(milliseconds: 200),
+                padding: EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: active ? NusaConfig.activeSoft : (chipDark ? NusaConfig.darkInputFill : NusaConfig.inputFill),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: active ? NusaConfig.activePrimary : NusaConfig.dividerColor, width: active ? 2 : 1),
+                ),
+                child: Column(children: [
+                  Icon(t['icon'] as IconData, size: 18, color: active ? NusaConfig.activePrimary : chipDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  SizedBox(height: 2),
+                  Text(t['label'] as String, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: active ? NusaConfig.activePrimary : chipDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                ]),
               ),
             ),
           ),
-        ),
-        SizedBox(width: 8),
-        SizedBox(height: 42,
-          child: ElevatedButton(
-            onPressed: _checkingMember ? null : _lookupMember,
-            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.info, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusMD)), padding: EdgeInsets.symmetric(horizontal: 14), textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            child: _checkingMember ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('Cek'),
-          ),
-        ),
-      ]),
+        );
+      }).toList()),
     );
   }
 
-  Widget _buildMemberBadge(bool isDark, double padH) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: padH),
-      padding: EdgeInsets.all(10),
-      decoration: BoxDecoration(color: NusaConfig.warningSoft, borderRadius: BorderRadius.circular(NusaConfig.radiusMD), border: Border.all(color: Color(0xFFFCD34D))),
-      child: Row(children: [
-        Icon(Icons.stars_rounded, size: 18, color: NusaConfig.warning),
-        SizedBox(width: 8),
-        Expanded(child: Text(_memberName!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: NusaConfig.warningText))),
-        Container(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: NusaConfig.warning, borderRadius: BorderRadius.circular(8)), child: Text('$_memberPoints pts', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white))),
-      ]),
-    );
-  }
+  // ── FnB: Table selector ──
 
-  Widget _buildPromoRow(bool isDark, double padH) {
+  Widget _buildTableSelector(bool isDark, double padH) {
+    final available = _diningTables.where((t) => t.status == 'Kosong' || t.id == _selectedTableId).toList();
+    if (available.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(padH, 6, padH, 4),
+        child: Text('Tidak ada meja tersedia', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+      );
+    }
+
+    final selectedLabel = _selectedTableName != null
+        ? '$_selectedTableName (${_diningTables.firstWhere((t) => t.id == _selectedTableId, orElse: () => _diningTables.first).capacity})'
+        : 'Tanpa Meja';
+
     return Padding(
       padding: EdgeInsets.fromLTRB(padH, 6, padH, 4),
-      child: Row(children: [
-        Expanded(
-          child: SizedBox(height: 40,
-            child: TextField(
-              controller: _promoCode,
-              style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Kode promo...',
-                hintStyle: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                prefixIcon: Icon(Icons.local_offer_outlined, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                contentPadding: EdgeInsets.symmetric(vertical: 6),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusMD), borderSide: BorderSide.none),
-              ),
+      child: GestureDetector(
+        onTap: () => _showTablePicker(isDark),
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _selectedTableId != null
+                  ? NusaConfig.activePrimary.withOpacity(0.5)
+                  : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+              width: _selectedTableId != null ? 1.5 : 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: (isDark ? Colors.black : NusaConfig.textTertiary).withOpacity(isDark ? 0.15 : 0.06),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _selectedTableId != null ? Icons.table_restaurant : Icons.table_bar_outlined,
+                size: 16,
+                color: _selectedTableId != null
+                    ? NusaConfig.activePrimary
+                    : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  selectedLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+              ),
+            ],
           ),
         ),
-        SizedBox(width: 8),
-        SizedBox(height: 40,
-          child: ElevatedButton(
-            onPressed: null, // promo apply — not yet implemented
-            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.success.withValues(alpha: 0.5), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusMD)), padding: EdgeInsets.symmetric(horizontal: 12), textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            child: Text('Pakai'),
-          ),
-        ),
-      ]),
+      ),
     );
   }
 
-  Future<void> _lookupMember() async {
-    final phone = _memberPhone.text.trim();
-    if (phone.isEmpty) return;
-    setState(() => _checkingMember = true);
-    try {
-      final repo = CustomerRepository(ref.read(databaseProvider));
-      final customer = await repo.byPhone(phone);
-      if (customer != null && mounted) {
-        setState(() { _memberName = customer.name; _memberPoints = customer.points; });
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Member tidak ditemukan'), duration: Duration(seconds: 2)));
-        setState(() { _memberName = null; _memberPoints = 0; });
+  void _showTablePicker(bool isDark) {
+    final available = _diningTables.where((t) => t.status == 'Kosong' || t.id == _selectedTableId).toList();
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final Offset offset = button.localToGlobal(Offset.zero);
+    final Size size = button.size;
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height + 4,
+        offset.dx + size.width,
+        offset.dy + size.height + 4,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 8,
+      color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+      items: [
+        // "Tanpa Meja" option
+        PopupMenuItem<String>(
+          value: '',
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          child: _tablePickerItem(
+            icon: Icons.table_bar_outlined,
+            label: 'Tanpa Meja',
+            subtitle: 'Pesanan tanpa meja',
+            isSelected: _selectedTableId == null,
+            isDark: isDark,
+          ),
+        ),
+        ...available.map((t) {
+          final selected = t.id == _selectedTableId;
+          return PopupMenuItem<String>(
+            value: t.id.toString(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            child: _tablePickerItem(
+              icon: Icons.table_restaurant,
+              label: t.name,
+              subtitle: '${t.capacity} Kursi',
+              isSelected: selected,
+              isDark: isDark,
+            ),
+          );
+        }),
+      ],
+    ).then((value) {
+      if (value == null) return;
+      if (value.isEmpty) {
+        setState(() { _selectedTableId = null; _selectedTableName = null; });
+      } else {
+        final id = int.tryParse(value);
+        if (id != null) {
+          final t = _diningTables.firstWhere((t) => t.id == id, orElse: () => _diningTables.first);
+          setState(() { _selectedTableId = t.id; _selectedTableName = t.name; });
+        }
       }
-    } catch (_) {}
-    if (mounted) setState(() => _checkingMember = false);
+    });
   }
 
-  Widget _payChip(String label, IconData icon, bool active, VoidCallback onTap) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: active ? NusaConfig.activeSoft : (isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill),
-            borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-            border: Border.all(color: active ? NusaConfig.activePrimary : NusaConfig.dividerColor, width: active ? 2 : 1),
+  Widget _tablePickerItem({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool isSelected,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? NusaConfig.activeSoft.withOpacity(isDark ? 0.2 : 0.6)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? NusaConfig.activePrimary.withOpacity(0.12)
+                  : (isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: isSelected
+                  ? NusaConfig.activePrimary
+                  : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ),
           ),
-          child: Column(children: [
-            Icon(icon, size: 20, color: active ? NusaConfig.activePrimary : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-            SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: active ? NusaConfig.activePrimary : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-          ]),
-        ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isSelected)
+            Icon(
+              Icons.check_circle_rounded,
+              size: 18,
+              color: NusaConfig.activePrimary,
+            ),
+        ],
       ),
     );
   }
@@ -767,39 +1061,67 @@ class _ProductCard extends StatelessWidget {
 
 class _CartItemTile extends StatelessWidget {
   final CartItem item; final bool isDark;
-  final VoidCallback? onDecrement, onIncrement;
-  _CartItemTile({required this.item, required this.isDark, this.onDecrement, this.onIncrement});
+  final VoidCallback? onDecrement, onIncrement, onTap;
+  _CartItemTile({required this.item, required this.isDark, this.onDecrement, this.onIncrement, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: EdgeInsets.only(bottom: 8), padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: EdgeInsets.only(bottom: 8), padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(item.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                SizedBox(height: 2),
+                Text(formatRupiah(item.price), style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              ]),
+            ),
+            Container(
+              height: 32,
+              decoration: BoxDecoration(border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor), borderRadius: BorderRadius.circular(10), color: isDark ? NusaConfig.darkBackground : NusaConfig.backgroundColor),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                GestureDetector(onTap: onDecrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.remove, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
+                Text('${item.qty}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                GestureDetector(onTap: onIncrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.add, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
+              ]),
+            ),
+            SizedBox(width: 8),
+            Text(formatRupiah(item.subtotal), style:  TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: NusaConfig.activePrimary)),
+          ]),
+          if (item.note != null && item.note!.isNotEmpty) ...[
+            SizedBox(height: 4),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: NusaConfig.warningSoft, borderRadius: BorderRadius.circular(6)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.notes_rounded, size: 12, color: NusaConfig.warning),
+                SizedBox(width: 4),
+                Flexible(child: Text(item.note!, style: TextStyle(fontSize: 11, color: NusaConfig.warningText), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
+          ],
+          if (NusaConfig.isFnbVariant)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onTap,
+                icon: Icon(Icons.edit_note, size: 14, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                label: Text(item.note != null && item.note!.isNotEmpty ? 'Ubah catatan' : 'Tambah catatan',
+                    style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size(0, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              ),
+            ),
+        ]),
       ),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
-            SizedBox(height: 2),
-            Text(formatRupiah(item.price), style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-          ]),
-        ),
-        Container(
-          height: 32,
-          decoration: BoxDecoration(border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor), borderRadius: BorderRadius.circular(10), color: isDark ? NusaConfig.darkBackground : NusaConfig.backgroundColor),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            GestureDetector(onTap: onDecrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.remove, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
-            Text('${item.qty}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-            GestureDetector(onTap: onIncrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.add, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
-          ]),
-        ),
-        SizedBox(width: 8),
-        Text(formatRupiah(item.subtotal), style:  TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: NusaConfig.activePrimary)),
-      ]),
     );
   }
 }
