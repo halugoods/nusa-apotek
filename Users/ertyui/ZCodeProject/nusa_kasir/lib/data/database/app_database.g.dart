@@ -1636,6 +1636,37 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _orderTypeMeta = const VerificationMeta(
+    'orderType',
+  );
+  @override
+  late final GeneratedColumn<String> orderType = GeneratedColumn<String>(
+    'order_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tableIdMeta = const VerificationMeta(
+    'tableId',
+  );
+  @override
+  late final GeneratedColumn<int> tableId = GeneratedColumn<int>(
+    'table_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1653,6 +1684,9 @@ class $TransactionsTable extends Transactions
     status,
     voidReason,
     voidedAt,
+    orderType,
+    tableId,
+    notes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1763,6 +1797,24 @@ class $TransactionsTable extends Transactions
         voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta),
       );
     }
+    if (data.containsKey('order_type')) {
+      context.handle(
+        _orderTypeMeta,
+        orderType.isAcceptableOrUnknown(data['order_type']!, _orderTypeMeta),
+      );
+    }
+    if (data.containsKey('table_id')) {
+      context.handle(
+        _tableIdMeta,
+        tableId.isAcceptableOrUnknown(data['table_id']!, _tableIdMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
     return context;
   }
 
@@ -1832,6 +1884,18 @@ class $TransactionsTable extends Transactions
         DriftSqlType.dateTime,
         data['${effectivePrefix}voided_at'],
       ),
+      orderType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}order_type'],
+      ),
+      tableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}table_id'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
     );
   }
 
@@ -1857,6 +1921,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final String status;
   final String? voidReason;
   final DateTime? voidedAt;
+  final String? orderType;
+  final int? tableId;
+  final String? notes;
   const Transaction({
     required this.id,
     required this.invoice,
@@ -1873,6 +1940,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     required this.status,
     this.voidReason,
     this.voidedAt,
+    this.orderType,
+    this.tableId,
+    this.notes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1905,6 +1975,15 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     }
     if (!nullToAbsent || voidedAt != null) {
       map['voided_at'] = Variable<DateTime>(voidedAt);
+    }
+    if (!nullToAbsent || orderType != null) {
+      map['order_type'] = Variable<String>(orderType);
+    }
+    if (!nullToAbsent || tableId != null) {
+      map['table_id'] = Variable<int>(tableId);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
     }
     return map;
   }
@@ -1940,6 +2019,15 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       voidedAt: voidedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(voidedAt),
+      orderType: orderType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(orderType),
+      tableId: tableId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tableId),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
     );
   }
 
@@ -1964,6 +2052,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       status: serializer.fromJson<String>(json['status']),
       voidReason: serializer.fromJson<String?>(json['voidReason']),
       voidedAt: serializer.fromJson<DateTime?>(json['voidedAt']),
+      orderType: serializer.fromJson<String?>(json['orderType']),
+      tableId: serializer.fromJson<int?>(json['tableId']),
+      notes: serializer.fromJson<String?>(json['notes']),
     );
   }
   @override
@@ -1985,6 +2076,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'status': serializer.toJson<String>(status),
       'voidReason': serializer.toJson<String?>(voidReason),
       'voidedAt': serializer.toJson<DateTime?>(voidedAt),
+      'orderType': serializer.toJson<String?>(orderType),
+      'tableId': serializer.toJson<int?>(tableId),
+      'notes': serializer.toJson<String?>(notes),
     };
   }
 
@@ -2004,6 +2098,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     String? status,
     Value<String?> voidReason = const Value.absent(),
     Value<DateTime?> voidedAt = const Value.absent(),
+    Value<String?> orderType = const Value.absent(),
+    Value<int?> tableId = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
   }) => Transaction(
     id: id ?? this.id,
     invoice: invoice ?? this.invoice,
@@ -2020,6 +2117,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     status: status ?? this.status,
     voidReason: voidReason.present ? voidReason.value : this.voidReason,
     voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
+    orderType: orderType.present ? orderType.value : this.orderType,
+    tableId: tableId.present ? tableId.value : this.tableId,
+    notes: notes.present ? notes.value : this.notes,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
     return Transaction(
@@ -2048,6 +2148,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ? data.voidReason.value
           : this.voidReason,
       voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
+      orderType: data.orderType.present ? data.orderType.value : this.orderType,
+      tableId: data.tableId.present ? data.tableId.value : this.tableId,
+      notes: data.notes.present ? data.notes.value : this.notes,
     );
   }
 
@@ -2068,7 +2171,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('branchId: $branchId, ')
           ..write('status: $status, ')
           ..write('voidReason: $voidReason, ')
-          ..write('voidedAt: $voidedAt')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('orderType: $orderType, ')
+          ..write('tableId: $tableId, ')
+          ..write('notes: $notes')
           ..write(')'))
         .toString();
   }
@@ -2090,6 +2196,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     status,
     voidReason,
     voidedAt,
+    orderType,
+    tableId,
+    notes,
   );
   @override
   bool operator ==(Object other) =>
@@ -2109,7 +2218,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.branchId == this.branchId &&
           other.status == this.status &&
           other.voidReason == this.voidReason &&
-          other.voidedAt == this.voidedAt);
+          other.voidedAt == this.voidedAt &&
+          other.orderType == this.orderType &&
+          other.tableId == this.tableId &&
+          other.notes == this.notes);
 }
 
 class TransactionsCompanion extends UpdateCompanion<Transaction> {
@@ -2128,6 +2240,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<String> status;
   final Value<String?> voidReason;
   final Value<DateTime?> voidedAt;
+  final Value<String?> orderType;
+  final Value<int?> tableId;
+  final Value<String?> notes;
   const TransactionsCompanion({
     this.id = const Value.absent(),
     this.invoice = const Value.absent(),
@@ -2144,6 +2259,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.status = const Value.absent(),
     this.voidReason = const Value.absent(),
     this.voidedAt = const Value.absent(),
+    this.orderType = const Value.absent(),
+    this.tableId = const Value.absent(),
+    this.notes = const Value.absent(),
   });
   TransactionsCompanion.insert({
     this.id = const Value.absent(),
@@ -2161,6 +2279,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.status = const Value.absent(),
     this.voidReason = const Value.absent(),
     this.voidedAt = const Value.absent(),
+    this.orderType = const Value.absent(),
+    this.tableId = const Value.absent(),
+    this.notes = const Value.absent(),
   }) : invoice = Value(invoice),
        items = Value(items);
   static Insertable<Transaction> custom({
@@ -2179,6 +2300,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<String>? status,
     Expression<String>? voidReason,
     Expression<DateTime>? voidedAt,
+    Expression<String>? orderType,
+    Expression<int>? tableId,
+    Expression<String>? notes,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2196,6 +2320,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (status != null) 'status': status,
       if (voidReason != null) 'void_reason': voidReason,
       if (voidedAt != null) 'voided_at': voidedAt,
+      if (orderType != null) 'order_type': orderType,
+      if (tableId != null) 'table_id': tableId,
+      if (notes != null) 'notes': notes,
     });
   }
 
@@ -2215,6 +2342,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<String>? status,
     Value<String?>? voidReason,
     Value<DateTime?>? voidedAt,
+    Value<String?>? orderType,
+    Value<int?>? tableId,
+    Value<String?>? notes,
   }) {
     return TransactionsCompanion(
       id: id ?? this.id,
@@ -2232,6 +2362,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       status: status ?? this.status,
       voidReason: voidReason ?? this.voidReason,
       voidedAt: voidedAt ?? this.voidedAt,
+      orderType: orderType ?? this.orderType,
+      tableId: tableId ?? this.tableId,
+      notes: notes ?? this.notes,
     );
   }
 
@@ -2283,6 +2416,15 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (voidedAt.present) {
       map['voided_at'] = Variable<DateTime>(voidedAt.value);
     }
+    if (orderType.present) {
+      map['order_type'] = Variable<String>(orderType.value);
+    }
+    if (tableId.present) {
+      map['table_id'] = Variable<int>(tableId.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
     return map;
   }
 
@@ -2303,7 +2445,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('branchId: $branchId, ')
           ..write('status: $status, ')
           ..write('voidReason: $voidReason, ')
-          ..write('voidedAt: $voidedAt')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('orderType: $orderType, ')
+          ..write('tableId: $tableId, ')
+          ..write('notes: $notes')
           ..write(')'))
         .toString();
   }
@@ -8592,6 +8737,32 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _kitchenPrinterAddressMeta =
+      const VerificationMeta('kitchenPrinterAddress');
+  @override
+  late final GeneratedColumn<String> kitchenPrinterAddress =
+      GeneratedColumn<String>(
+        'kitchen_printer_address',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _kitchenPrinterEnabledMeta =
+      const VerificationMeta('kitchenPrinterEnabled');
+  @override
+  late final GeneratedColumn<bool> kitchenPrinterEnabled =
+      GeneratedColumn<bool>(
+        'kitchen_printer_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("kitchen_printer_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -8623,6 +8794,8 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     receiptShowInvoice,
     receiptShowDate,
     receiptShowBarcode,
+    kitchenPrinterAddress,
+    kitchenPrinterEnabled,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8864,6 +9037,24 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('kitchen_printer_address')) {
+      context.handle(
+        _kitchenPrinterAddressMeta,
+        kitchenPrinterAddress.isAcceptableOrUnknown(
+          data['kitchen_printer_address']!,
+          _kitchenPrinterAddressMeta,
+        ),
+      );
+    }
+    if (data.containsKey('kitchen_printer_enabled')) {
+      context.handle(
+        _kitchenPrinterEnabledMeta,
+        kitchenPrinterEnabled.isAcceptableOrUnknown(
+          data['kitchen_printer_enabled']!,
+          _kitchenPrinterEnabledMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -8989,6 +9180,14 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.bool,
         data['${effectivePrefix}receipt_show_barcode'],
       )!,
+      kitchenPrinterAddress: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kitchen_printer_address'],
+      ),
+      kitchenPrinterEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}kitchen_printer_enabled'],
+      )!,
     );
   }
 
@@ -9028,6 +9227,8 @@ class Setting extends DataClass implements Insertable<Setting> {
   final bool receiptShowInvoice;
   final bool receiptShowDate;
   final bool receiptShowBarcode;
+  final String? kitchenPrinterAddress;
+  final bool kitchenPrinterEnabled;
   const Setting({
     required this.id,
     required this.storeName,
@@ -9058,6 +9259,8 @@ class Setting extends DataClass implements Insertable<Setting> {
     required this.receiptShowInvoice,
     required this.receiptShowDate,
     required this.receiptShowBarcode,
+    this.kitchenPrinterAddress,
+    required this.kitchenPrinterEnabled,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9117,6 +9320,10 @@ class Setting extends DataClass implements Insertable<Setting> {
     map['receipt_show_invoice'] = Variable<bool>(receiptShowInvoice);
     map['receipt_show_date'] = Variable<bool>(receiptShowDate);
     map['receipt_show_barcode'] = Variable<bool>(receiptShowBarcode);
+    if (!nullToAbsent || kitchenPrinterAddress != null) {
+      map['kitchen_printer_address'] = Variable<String>(kitchenPrinterAddress);
+    }
+    map['kitchen_printer_enabled'] = Variable<bool>(kitchenPrinterEnabled);
     return map;
   }
 
@@ -9177,6 +9384,10 @@ class Setting extends DataClass implements Insertable<Setting> {
       receiptShowInvoice: Value(receiptShowInvoice),
       receiptShowDate: Value(receiptShowDate),
       receiptShowBarcode: Value(receiptShowBarcode),
+      kitchenPrinterAddress: kitchenPrinterAddress == null && nullToAbsent
+          ? const Value.absent()
+          : Value(kitchenPrinterAddress),
+      kitchenPrinterEnabled: Value(kitchenPrinterEnabled),
     );
   }
 
@@ -9215,6 +9426,12 @@ class Setting extends DataClass implements Insertable<Setting> {
       receiptShowInvoice: serializer.fromJson<bool>(json['receiptShowInvoice']),
       receiptShowDate: serializer.fromJson<bool>(json['receiptShowDate']),
       receiptShowBarcode: serializer.fromJson<bool>(json['receiptShowBarcode']),
+      kitchenPrinterAddress: serializer.fromJson<String?>(
+        json['kitchenPrinterAddress'],
+      ),
+      kitchenPrinterEnabled: serializer.fromJson<bool>(
+        json['kitchenPrinterEnabled'],
+      ),
     );
   }
   @override
@@ -9250,6 +9467,10 @@ class Setting extends DataClass implements Insertable<Setting> {
       'receiptShowInvoice': serializer.toJson<bool>(receiptShowInvoice),
       'receiptShowDate': serializer.toJson<bool>(receiptShowDate),
       'receiptShowBarcode': serializer.toJson<bool>(receiptShowBarcode),
+      'kitchenPrinterAddress': serializer.toJson<String?>(
+        kitchenPrinterAddress,
+      ),
+      'kitchenPrinterEnabled': serializer.toJson<bool>(kitchenPrinterEnabled),
     };
   }
 
@@ -9283,6 +9504,8 @@ class Setting extends DataClass implements Insertable<Setting> {
     bool? receiptShowInvoice,
     bool? receiptShowDate,
     bool? receiptShowBarcode,
+    Value<String?> kitchenPrinterAddress = const Value.absent(),
+    bool? kitchenPrinterEnabled,
   }) => Setting(
     id: id ?? this.id,
     storeName: storeName ?? this.storeName,
@@ -9321,6 +9544,10 @@ class Setting extends DataClass implements Insertable<Setting> {
     receiptShowInvoice: receiptShowInvoice ?? this.receiptShowInvoice,
     receiptShowDate: receiptShowDate ?? this.receiptShowDate,
     receiptShowBarcode: receiptShowBarcode ?? this.receiptShowBarcode,
+    kitchenPrinterAddress: kitchenPrinterAddress.present
+        ? kitchenPrinterAddress.value
+        : this.kitchenPrinterAddress,
+    kitchenPrinterEnabled: kitchenPrinterEnabled ?? this.kitchenPrinterEnabled,
   );
   Setting copyWithCompanion(SettingsCompanion data) {
     return Setting(
@@ -9399,6 +9626,12 @@ class Setting extends DataClass implements Insertable<Setting> {
       receiptShowBarcode: data.receiptShowBarcode.present
           ? data.receiptShowBarcode.value
           : this.receiptShowBarcode,
+      kitchenPrinterAddress: data.kitchenPrinterAddress.present
+          ? data.kitchenPrinterAddress.value
+          : this.kitchenPrinterAddress,
+      kitchenPrinterEnabled: data.kitchenPrinterEnabled.present
+          ? data.kitchenPrinterEnabled.value
+          : this.kitchenPrinterEnabled,
     );
   }
 
@@ -9433,7 +9666,9 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('receiptShowCashier: $receiptShowCashier, ')
           ..write('receiptShowInvoice: $receiptShowInvoice, ')
           ..write('receiptShowDate: $receiptShowDate, ')
-          ..write('receiptShowBarcode: $receiptShowBarcode')
+          ..write('receiptShowBarcode: $receiptShowBarcode, ')
+          ..write('kitchenPrinterAddress: $kitchenPrinterAddress, ')
+          ..write('kitchenPrinterEnabled: $kitchenPrinterEnabled')
           ..write(')'))
         .toString();
   }
@@ -9469,6 +9704,8 @@ class Setting extends DataClass implements Insertable<Setting> {
     receiptShowInvoice,
     receiptShowDate,
     receiptShowBarcode,
+    kitchenPrinterAddress,
+    kitchenPrinterEnabled,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -9502,7 +9739,9 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.receiptShowCashier == this.receiptShowCashier &&
           other.receiptShowInvoice == this.receiptShowInvoice &&
           other.receiptShowDate == this.receiptShowDate &&
-          other.receiptShowBarcode == this.receiptShowBarcode);
+          other.receiptShowBarcode == this.receiptShowBarcode &&
+          other.kitchenPrinterAddress == this.kitchenPrinterAddress &&
+          other.kitchenPrinterEnabled == this.kitchenPrinterEnabled);
 }
 
 class SettingsCompanion extends UpdateCompanion<Setting> {
@@ -9535,6 +9774,8 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<bool> receiptShowInvoice;
   final Value<bool> receiptShowDate;
   final Value<bool> receiptShowBarcode;
+  final Value<String?> kitchenPrinterAddress;
+  final Value<bool> kitchenPrinterEnabled;
   const SettingsCompanion({
     this.id = const Value.absent(),
     this.storeName = const Value.absent(),
@@ -9565,6 +9806,8 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.receiptShowInvoice = const Value.absent(),
     this.receiptShowDate = const Value.absent(),
     this.receiptShowBarcode = const Value.absent(),
+    this.kitchenPrinterAddress = const Value.absent(),
+    this.kitchenPrinterEnabled = const Value.absent(),
   });
   SettingsCompanion.insert({
     this.id = const Value.absent(),
@@ -9596,6 +9839,8 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.receiptShowInvoice = const Value.absent(),
     this.receiptShowDate = const Value.absent(),
     this.receiptShowBarcode = const Value.absent(),
+    this.kitchenPrinterAddress = const Value.absent(),
+    this.kitchenPrinterEnabled = const Value.absent(),
   });
   static Insertable<Setting> custom({
     Expression<int>? id,
@@ -9627,6 +9872,8 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<bool>? receiptShowInvoice,
     Expression<bool>? receiptShowDate,
     Expression<bool>? receiptShowBarcode,
+    Expression<String>? kitchenPrinterAddress,
+    Expression<bool>? kitchenPrinterEnabled,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -9661,6 +9908,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (receiptShowDate != null) 'receipt_show_date': receiptShowDate,
       if (receiptShowBarcode != null)
         'receipt_show_barcode': receiptShowBarcode,
+      if (kitchenPrinterAddress != null)
+        'kitchen_printer_address': kitchenPrinterAddress,
+      if (kitchenPrinterEnabled != null)
+        'kitchen_printer_enabled': kitchenPrinterEnabled,
     });
   }
 
@@ -9694,6 +9945,8 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<bool>? receiptShowInvoice,
     Value<bool>? receiptShowDate,
     Value<bool>? receiptShowBarcode,
+    Value<String?>? kitchenPrinterAddress,
+    Value<bool>? kitchenPrinterEnabled,
   }) {
     return SettingsCompanion(
       id: id ?? this.id,
@@ -9725,6 +9978,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       receiptShowInvoice: receiptShowInvoice ?? this.receiptShowInvoice,
       receiptShowDate: receiptShowDate ?? this.receiptShowDate,
       receiptShowBarcode: receiptShowBarcode ?? this.receiptShowBarcode,
+      kitchenPrinterAddress:
+          kitchenPrinterAddress ?? this.kitchenPrinterAddress,
+      kitchenPrinterEnabled:
+          kitchenPrinterEnabled ?? this.kitchenPrinterEnabled,
     );
   }
 
@@ -9818,6 +10075,16 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (receiptShowBarcode.present) {
       map['receipt_show_barcode'] = Variable<bool>(receiptShowBarcode.value);
     }
+    if (kitchenPrinterAddress.present) {
+      map['kitchen_printer_address'] = Variable<String>(
+        kitchenPrinterAddress.value,
+      );
+    }
+    if (kitchenPrinterEnabled.present) {
+      map['kitchen_printer_enabled'] = Variable<bool>(
+        kitchenPrinterEnabled.value,
+      );
+    }
     return map;
   }
 
@@ -9852,7 +10119,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('receiptShowCashier: $receiptShowCashier, ')
           ..write('receiptShowInvoice: $receiptShowInvoice, ')
           ..write('receiptShowDate: $receiptShowDate, ')
-          ..write('receiptShowBarcode: $receiptShowBarcode')
+          ..write('receiptShowBarcode: $receiptShowBarcode, ')
+          ..write('kitchenPrinterAddress: $kitchenPrinterAddress, ')
+          ..write('kitchenPrinterEnabled: $kitchenPrinterEnabled')
           ..write(')'))
         .toString();
   }
@@ -14792,6 +15061,18 @@ class $LaundryOrdersTable extends LaundryOrders
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _estimatedReadyMeta = const VerificationMeta(
+    'estimatedReady',
+  );
+  @override
+  late final GeneratedColumn<DateTime> estimatedReady =
+      GeneratedColumn<DateTime>(
+        'estimated_ready',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -14813,6 +15094,7 @@ class $LaundryOrdersTable extends LaundryOrders
     total,
     status,
     notes,
+    estimatedReady,
     createdAt,
   ];
   @override
@@ -14876,6 +15158,15 @@ class $LaundryOrdersTable extends LaundryOrders
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
       );
     }
+    if (data.containsKey('estimated_ready')) {
+      context.handle(
+        _estimatedReadyMeta,
+        estimatedReady.isAcceptableOrUnknown(
+          data['estimated_ready']!,
+          _estimatedReadyMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -14919,6 +15210,10 @@ class $LaundryOrdersTable extends LaundryOrders
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      estimatedReady: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}estimated_ready'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -14940,6 +15235,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
   final int total;
   final String status;
   final String? notes;
+  final DateTime? estimatedReady;
   final DateTime createdAt;
   const LaundryOrder({
     required this.id,
@@ -14949,6 +15245,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
     required this.total,
     required this.status,
     this.notes,
+    this.estimatedReady,
     required this.createdAt,
   });
   @override
@@ -14964,6 +15261,9 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || estimatedReady != null) {
+      map['estimated_ready'] = Variable<DateTime>(estimatedReady);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -14982,6 +15282,9 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      estimatedReady: estimatedReady == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimatedReady),
       createdAt: Value(createdAt),
     );
   }
@@ -14999,6 +15302,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
       total: serializer.fromJson<int>(json['total']),
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
+      estimatedReady: serializer.fromJson<DateTime?>(json['estimatedReady']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -15013,6 +15317,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
       'total': serializer.toJson<int>(total),
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
+      'estimatedReady': serializer.toJson<DateTime?>(estimatedReady),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -15025,6 +15330,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
     int? total,
     String? status,
     Value<String?> notes = const Value.absent(),
+    Value<DateTime?> estimatedReady = const Value.absent(),
     DateTime? createdAt,
   }) => LaundryOrder(
     id: id ?? this.id,
@@ -15036,6 +15342,9 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
     total: total ?? this.total,
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
+    estimatedReady: estimatedReady.present
+        ? estimatedReady.value
+        : this.estimatedReady,
     createdAt: createdAt ?? this.createdAt,
   );
   LaundryOrder copyWithCompanion(LaundryOrdersCompanion data) {
@@ -15051,6 +15360,9 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
       total: data.total.present ? data.total.value : this.total,
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
+      estimatedReady: data.estimatedReady.present
+          ? data.estimatedReady.value
+          : this.estimatedReady,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -15065,6 +15377,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
+          ..write('estimatedReady: $estimatedReady, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -15079,6 +15392,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
     total,
     status,
     notes,
+    estimatedReady,
     createdAt,
   );
   @override
@@ -15092,6 +15406,7 @@ class LaundryOrder extends DataClass implements Insertable<LaundryOrder> {
           other.total == this.total &&
           other.status == this.status &&
           other.notes == this.notes &&
+          other.estimatedReady == this.estimatedReady &&
           other.createdAt == this.createdAt);
 }
 
@@ -15103,6 +15418,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
   final Value<int> total;
   final Value<String> status;
   final Value<String?> notes;
+  final Value<DateTime?> estimatedReady;
   final Value<DateTime> createdAt;
   const LaundryOrdersCompanion({
     this.id = const Value.absent(),
@@ -15112,6 +15428,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
     this.total = const Value.absent(),
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
+    this.estimatedReady = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   LaundryOrdersCompanion.insert({
@@ -15122,6 +15439,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
     this.total = const Value.absent(),
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
+    this.estimatedReady = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : customerName = Value(customerName),
        itemsJson = Value(itemsJson);
@@ -15133,6 +15451,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
     Expression<int>? total,
     Expression<String>? status,
     Expression<String>? notes,
+    Expression<DateTime>? estimatedReady,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -15143,6 +15462,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
       if (total != null) 'total': total,
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
+      if (estimatedReady != null) 'estimated_ready': estimatedReady,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -15155,6 +15475,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
     Value<int>? total,
     Value<String>? status,
     Value<String?>? notes,
+    Value<DateTime?>? estimatedReady,
     Value<DateTime>? createdAt,
   }) {
     return LaundryOrdersCompanion(
@@ -15165,6 +15486,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
       total: total ?? this.total,
       status: status ?? this.status,
       notes: notes ?? this.notes,
+      estimatedReady: estimatedReady ?? this.estimatedReady,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -15193,6 +15515,9 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
+    if (estimatedReady.present) {
+      map['estimated_ready'] = Variable<DateTime>(estimatedReady.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -15209,6 +15534,7 @@ class LaundryOrdersCompanion extends UpdateCompanion<LaundryOrder> {
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
+          ..write('estimatedReady: $estimatedReady, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -17612,6 +17938,540 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
   }
 }
 
+class $OpenTabsTable extends OpenTabs with TableInfo<$OpenTabsTable, OpenTab> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OpenTabsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _tableIdMeta = const VerificationMeta(
+    'tableId',
+  );
+  @override
+  late final GeneratedColumn<int> tableId = GeneratedColumn<int>(
+    'table_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _orderTypeMeta = const VerificationMeta(
+    'orderType',
+  );
+  @override
+  late final GeneratedColumn<String> orderType = GeneratedColumn<String>(
+    'order_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('Dine In'),
+  );
+  static const VerificationMeta _itemsJsonMeta = const VerificationMeta(
+    'itemsJson',
+  );
+  @override
+  late final GeneratedColumn<String> itemsJson = GeneratedColumn<String>(
+    'items_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _totalMeta = const VerificationMeta('total');
+  @override
+  late final GeneratedColumn<int> total = GeneratedColumn<int>(
+    'total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _discountMeta = const VerificationMeta(
+    'discount',
+  );
+  @override
+  late final GeneratedColumn<int> discount = GeneratedColumn<int>(
+    'discount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('Open'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    tableId,
+    orderType,
+    itemsJson,
+    total,
+    discount,
+    status,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'open_tabs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OpenTab> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('table_id')) {
+      context.handle(
+        _tableIdMeta,
+        tableId.isAcceptableOrUnknown(data['table_id']!, _tableIdMeta),
+      );
+    }
+    if (data.containsKey('order_type')) {
+      context.handle(
+        _orderTypeMeta,
+        orderType.isAcceptableOrUnknown(data['order_type']!, _orderTypeMeta),
+      );
+    }
+    if (data.containsKey('items_json')) {
+      context.handle(
+        _itemsJsonMeta,
+        itemsJson.isAcceptableOrUnknown(data['items_json']!, _itemsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemsJsonMeta);
+    }
+    if (data.containsKey('total')) {
+      context.handle(
+        _totalMeta,
+        total.isAcceptableOrUnknown(data['total']!, _totalMeta),
+      );
+    }
+    if (data.containsKey('discount')) {
+      context.handle(
+        _discountMeta,
+        discount.isAcceptableOrUnknown(data['discount']!, _discountMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OpenTab map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OpenTab(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      tableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}table_id'],
+      ),
+      orderType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}order_type'],
+      )!,
+      itemsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}items_json'],
+      )!,
+      total: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total'],
+      )!,
+      discount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}discount'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OpenTabsTable createAlias(String alias) {
+    return $OpenTabsTable(attachedDatabase, alias);
+  }
+}
+
+class OpenTab extends DataClass implements Insertable<OpenTab> {
+  final int id;
+  final int? tableId;
+  final String orderType;
+  final String itemsJson;
+  final int total;
+  final int discount;
+  final String status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const OpenTab({
+    required this.id,
+    this.tableId,
+    required this.orderType,
+    required this.itemsJson,
+    required this.total,
+    required this.discount,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || tableId != null) {
+      map['table_id'] = Variable<int>(tableId);
+    }
+    map['order_type'] = Variable<String>(orderType);
+    map['items_json'] = Variable<String>(itemsJson);
+    map['total'] = Variable<int>(total);
+    map['discount'] = Variable<int>(discount);
+    map['status'] = Variable<String>(status);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  OpenTabsCompanion toCompanion(bool nullToAbsent) {
+    return OpenTabsCompanion(
+      id: Value(id),
+      tableId: tableId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tableId),
+      orderType: Value(orderType),
+      itemsJson: Value(itemsJson),
+      total: Value(total),
+      discount: Value(discount),
+      status: Value(status),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory OpenTab.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OpenTab(
+      id: serializer.fromJson<int>(json['id']),
+      tableId: serializer.fromJson<int?>(json['tableId']),
+      orderType: serializer.fromJson<String>(json['orderType']),
+      itemsJson: serializer.fromJson<String>(json['itemsJson']),
+      total: serializer.fromJson<int>(json['total']),
+      discount: serializer.fromJson<int>(json['discount']),
+      status: serializer.fromJson<String>(json['status']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'tableId': serializer.toJson<int?>(tableId),
+      'orderType': serializer.toJson<String>(orderType),
+      'itemsJson': serializer.toJson<String>(itemsJson),
+      'total': serializer.toJson<int>(total),
+      'discount': serializer.toJson<int>(discount),
+      'status': serializer.toJson<String>(status),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  OpenTab copyWith({
+    int? id,
+    Value<int?> tableId = const Value.absent(),
+    String? orderType,
+    String? itemsJson,
+    int? total,
+    int? discount,
+    String? status,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => OpenTab(
+    id: id ?? this.id,
+    tableId: tableId.present ? tableId.value : this.tableId,
+    orderType: orderType ?? this.orderType,
+    itemsJson: itemsJson ?? this.itemsJson,
+    total: total ?? this.total,
+    discount: discount ?? this.discount,
+    status: status ?? this.status,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  OpenTab copyWithCompanion(OpenTabsCompanion data) {
+    return OpenTab(
+      id: data.id.present ? data.id.value : this.id,
+      tableId: data.tableId.present ? data.tableId.value : this.tableId,
+      orderType: data.orderType.present ? data.orderType.value : this.orderType,
+      itemsJson: data.itemsJson.present ? data.itemsJson.value : this.itemsJson,
+      total: data.total.present ? data.total.value : this.total,
+      discount: data.discount.present ? data.discount.value : this.discount,
+      status: data.status.present ? data.status.value : this.status,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OpenTab(')
+          ..write('id: $id, ')
+          ..write('tableId: $tableId, ')
+          ..write('orderType: $orderType, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('total: $total, ')
+          ..write('discount: $discount, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    tableId,
+    orderType,
+    itemsJson,
+    total,
+    discount,
+    status,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OpenTab &&
+          other.id == this.id &&
+          other.tableId == this.tableId &&
+          other.orderType == this.orderType &&
+          other.itemsJson == this.itemsJson &&
+          other.total == this.total &&
+          other.discount == this.discount &&
+          other.status == this.status &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OpenTabsCompanion extends UpdateCompanion<OpenTab> {
+  final Value<int> id;
+  final Value<int?> tableId;
+  final Value<String> orderType;
+  final Value<String> itemsJson;
+  final Value<int> total;
+  final Value<int> discount;
+  final Value<String> status;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const OpenTabsCompanion({
+    this.id = const Value.absent(),
+    this.tableId = const Value.absent(),
+    this.orderType = const Value.absent(),
+    this.itemsJson = const Value.absent(),
+    this.total = const Value.absent(),
+    this.discount = const Value.absent(),
+    this.status = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  OpenTabsCompanion.insert({
+    this.id = const Value.absent(),
+    this.tableId = const Value.absent(),
+    this.orderType = const Value.absent(),
+    required String itemsJson,
+    this.total = const Value.absent(),
+    this.discount = const Value.absent(),
+    this.status = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : itemsJson = Value(itemsJson);
+  static Insertable<OpenTab> custom({
+    Expression<int>? id,
+    Expression<int>? tableId,
+    Expression<String>? orderType,
+    Expression<String>? itemsJson,
+    Expression<int>? total,
+    Expression<int>? discount,
+    Expression<String>? status,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (tableId != null) 'table_id': tableId,
+      if (orderType != null) 'order_type': orderType,
+      if (itemsJson != null) 'items_json': itemsJson,
+      if (total != null) 'total': total,
+      if (discount != null) 'discount': discount,
+      if (status != null) 'status': status,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  OpenTabsCompanion copyWith({
+    Value<int>? id,
+    Value<int?>? tableId,
+    Value<String>? orderType,
+    Value<String>? itemsJson,
+    Value<int>? total,
+    Value<int>? discount,
+    Value<String>? status,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return OpenTabsCompanion(
+      id: id ?? this.id,
+      tableId: tableId ?? this.tableId,
+      orderType: orderType ?? this.orderType,
+      itemsJson: itemsJson ?? this.itemsJson,
+      total: total ?? this.total,
+      discount: discount ?? this.discount,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (tableId.present) {
+      map['table_id'] = Variable<int>(tableId.value);
+    }
+    if (orderType.present) {
+      map['order_type'] = Variable<String>(orderType.value);
+    }
+    if (itemsJson.present) {
+      map['items_json'] = Variable<String>(itemsJson.value);
+    }
+    if (total.present) {
+      map['total'] = Variable<int>(total.value);
+    }
+    if (discount.present) {
+      map['discount'] = Variable<int>(discount.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OpenTabsCompanion(')
+          ..write('id: $id, ')
+          ..write('tableId: $tableId, ')
+          ..write('orderType: $orderType, ')
+          ..write('itemsJson: $itemsJson, ')
+          ..write('total: $total, ')
+          ..write('discount: $discount, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -17655,6 +18515,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AppointmentsTable appointments = $AppointmentsTable(this);
   late final $PrescriptionsTable prescriptions = $PrescriptionsTable(this);
   late final $PrintOrdersTable printOrders = $PrintOrdersTable(this);
+  late final $OpenTabsTable openTabs = $OpenTabsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -17692,6 +18553,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appointments,
     prescriptions,
     printOrders,
+    openTabs,
   ];
 }
 
@@ -18449,6 +19311,9 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> voidReason,
       Value<DateTime?> voidedAt,
+      Value<String?> orderType,
+      Value<int?> tableId,
+      Value<String?> notes,
     });
 typedef $$TransactionsTableUpdateCompanionBuilder =
     TransactionsCompanion Function({
@@ -18467,6 +19332,9 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> voidReason,
       Value<DateTime?> voidedAt,
+      Value<String?> orderType,
+      Value<int?> tableId,
+      Value<String?> notes,
     });
 
 class $$TransactionsTableFilterComposer
@@ -18550,6 +19418,21 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<DateTime> get voidedAt => $composableBuilder(
     column: $table.voidedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orderType => $composableBuilder(
+    column: $table.orderType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tableId => $composableBuilder(
+    column: $table.tableId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -18637,6 +19520,21 @@ class $$TransactionsTableOrderingComposer
     column: $table.voidedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get orderType => $composableBuilder(
+    column: $table.orderType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get tableId => $composableBuilder(
+    column: $table.tableId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TransactionsTableAnnotationComposer
@@ -18702,6 +19600,15 @@ class $$TransactionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get voidedAt =>
       $composableBuilder(column: $table.voidedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get orderType =>
+      $composableBuilder(column: $table.orderType, builder: (column) => column);
+
+  GeneratedColumn<int> get tableId =>
+      $composableBuilder(column: $table.tableId, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
 }
 
 class $$TransactionsTableTableManager
@@ -18750,6 +19657,9 @@ class $$TransactionsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> voidReason = const Value.absent(),
                 Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> orderType = const Value.absent(),
+                Value<int?> tableId = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
               }) => TransactionsCompanion(
                 id: id,
                 invoice: invoice,
@@ -18766,6 +19676,9 @@ class $$TransactionsTableTableManager
                 status: status,
                 voidReason: voidReason,
                 voidedAt: voidedAt,
+                orderType: orderType,
+                tableId: tableId,
+                notes: notes,
               ),
           createCompanionCallback:
               ({
@@ -18784,6 +19697,9 @@ class $$TransactionsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> voidReason = const Value.absent(),
                 Value<DateTime?> voidedAt = const Value.absent(),
+                Value<String?> orderType = const Value.absent(),
+                Value<int?> tableId = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
               }) => TransactionsCompanion.insert(
                 id: id,
                 invoice: invoice,
@@ -18800,6 +19716,9 @@ class $$TransactionsTableTableManager
                 status: status,
                 voidReason: voidReason,
                 voidedAt: voidedAt,
+                orderType: orderType,
+                tableId: tableId,
+                notes: notes,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -21859,6 +22778,8 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<bool> receiptShowInvoice,
       Value<bool> receiptShowDate,
       Value<bool> receiptShowBarcode,
+      Value<String?> kitchenPrinterAddress,
+      Value<bool> kitchenPrinterEnabled,
     });
 typedef $$SettingsTableUpdateCompanionBuilder =
     SettingsCompanion Function({
@@ -21891,6 +22812,8 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<bool> receiptShowInvoice,
       Value<bool> receiptShowDate,
       Value<bool> receiptShowBarcode,
+      Value<String?> kitchenPrinterAddress,
+      Value<bool> kitchenPrinterEnabled,
     });
 
 class $$SettingsTableFilterComposer
@@ -22044,6 +22967,16 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<bool> get receiptShowBarcode => $composableBuilder(
     column: $table.receiptShowBarcode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kitchenPrinterAddress => $composableBuilder(
+    column: $table.kitchenPrinterAddress,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get kitchenPrinterEnabled => $composableBuilder(
+    column: $table.kitchenPrinterEnabled,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -22201,6 +23134,16 @@ class $$SettingsTableOrderingComposer
     column: $table.receiptShowBarcode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get kitchenPrinterAddress => $composableBuilder(
+    column: $table.kitchenPrinterAddress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get kitchenPrinterEnabled => $composableBuilder(
+    column: $table.kitchenPrinterEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SettingsTableAnnotationComposer
@@ -22344,6 +23287,16 @@ class $$SettingsTableAnnotationComposer
     column: $table.receiptShowBarcode,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get kitchenPrinterAddress => $composableBuilder(
+    column: $table.kitchenPrinterAddress,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get kitchenPrinterEnabled => $composableBuilder(
+    column: $table.kitchenPrinterEnabled,
+    builder: (column) => column,
+  );
 }
 
 class $$SettingsTableTableManager
@@ -22403,6 +23356,8 @@ class $$SettingsTableTableManager
                 Value<bool> receiptShowInvoice = const Value.absent(),
                 Value<bool> receiptShowDate = const Value.absent(),
                 Value<bool> receiptShowBarcode = const Value.absent(),
+                Value<String?> kitchenPrinterAddress = const Value.absent(),
+                Value<bool> kitchenPrinterEnabled = const Value.absent(),
               }) => SettingsCompanion(
                 id: id,
                 storeName: storeName,
@@ -22433,6 +23388,8 @@ class $$SettingsTableTableManager
                 receiptShowInvoice: receiptShowInvoice,
                 receiptShowDate: receiptShowDate,
                 receiptShowBarcode: receiptShowBarcode,
+                kitchenPrinterAddress: kitchenPrinterAddress,
+                kitchenPrinterEnabled: kitchenPrinterEnabled,
               ),
           createCompanionCallback:
               ({
@@ -22465,6 +23422,8 @@ class $$SettingsTableTableManager
                 Value<bool> receiptShowInvoice = const Value.absent(),
                 Value<bool> receiptShowDate = const Value.absent(),
                 Value<bool> receiptShowBarcode = const Value.absent(),
+                Value<String?> kitchenPrinterAddress = const Value.absent(),
+                Value<bool> kitchenPrinterEnabled = const Value.absent(),
               }) => SettingsCompanion.insert(
                 id: id,
                 storeName: storeName,
@@ -22495,6 +23454,8 @@ class $$SettingsTableTableManager
                 receiptShowInvoice: receiptShowInvoice,
                 receiptShowDate: receiptShowDate,
                 receiptShowBarcode: receiptShowBarcode,
+                kitchenPrinterAddress: kitchenPrinterAddress,
+                kitchenPrinterEnabled: kitchenPrinterEnabled,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -25050,6 +26011,7 @@ typedef $$LaundryOrdersTableCreateCompanionBuilder =
       Value<int> total,
       Value<String> status,
       Value<String?> notes,
+      Value<DateTime?> estimatedReady,
       Value<DateTime> createdAt,
     });
 typedef $$LaundryOrdersTableUpdateCompanionBuilder =
@@ -25061,6 +26023,7 @@ typedef $$LaundryOrdersTableUpdateCompanionBuilder =
       Value<int> total,
       Value<String> status,
       Value<String?> notes,
+      Value<DateTime?> estimatedReady,
       Value<DateTime> createdAt,
     });
 
@@ -25105,6 +26068,11 @@ class $$LaundryOrdersTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get estimatedReady => $composableBuilder(
+    column: $table.estimatedReady,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -25158,6 +26126,11 @@ class $$LaundryOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get estimatedReady => $composableBuilder(
+    column: $table.estimatedReady,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -25197,6 +26170,11 @@ class $$LaundryOrdersTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get estimatedReady => $composableBuilder(
+    column: $table.estimatedReady,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -25240,6 +26218,7 @@ class $$LaundryOrdersTableTableManager
                 Value<int> total = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<DateTime?> estimatedReady = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => LaundryOrdersCompanion(
                 id: id,
@@ -25249,6 +26228,7 @@ class $$LaundryOrdersTableTableManager
                 total: total,
                 status: status,
                 notes: notes,
+                estimatedReady: estimatedReady,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -25260,6 +26240,7 @@ class $$LaundryOrdersTableTableManager
                 Value<int> total = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<DateTime?> estimatedReady = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => LaundryOrdersCompanion.insert(
                 id: id,
@@ -25269,6 +26250,7 @@ class $$LaundryOrdersTableTableManager
                 total: total,
                 status: status,
                 notes: notes,
+                estimatedReady: estimatedReady,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -26476,6 +27458,270 @@ typedef $$PrintOrdersTableProcessedTableManager =
       PrintOrder,
       PrefetchHooks Function()
     >;
+typedef $$OpenTabsTableCreateCompanionBuilder =
+    OpenTabsCompanion Function({
+      Value<int> id,
+      Value<int?> tableId,
+      Value<String> orderType,
+      required String itemsJson,
+      Value<int> total,
+      Value<int> discount,
+      Value<String> status,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$OpenTabsTableUpdateCompanionBuilder =
+    OpenTabsCompanion Function({
+      Value<int> id,
+      Value<int?> tableId,
+      Value<String> orderType,
+      Value<String> itemsJson,
+      Value<int> total,
+      Value<int> discount,
+      Value<String> status,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+class $$OpenTabsTableFilterComposer
+    extends Composer<_$AppDatabase, $OpenTabsTable> {
+  $$OpenTabsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tableId => $composableBuilder(
+    column: $table.tableId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orderType => $composableBuilder(
+    column: $table.orderType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get total => $composableBuilder(
+    column: $table.total,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get discount => $composableBuilder(
+    column: $table.discount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OpenTabsTableOrderingComposer
+    extends Composer<_$AppDatabase, $OpenTabsTable> {
+  $$OpenTabsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get tableId => $composableBuilder(
+    column: $table.tableId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orderType => $composableBuilder(
+    column: $table.orderType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemsJson => $composableBuilder(
+    column: $table.itemsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get total => $composableBuilder(
+    column: $table.total,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get discount => $composableBuilder(
+    column: $table.discount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OpenTabsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OpenTabsTable> {
+  $$OpenTabsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get tableId =>
+      $composableBuilder(column: $table.tableId, builder: (column) => column);
+
+  GeneratedColumn<String> get orderType =>
+      $composableBuilder(column: $table.orderType, builder: (column) => column);
+
+  GeneratedColumn<String> get itemsJson =>
+      $composableBuilder(column: $table.itemsJson, builder: (column) => column);
+
+  GeneratedColumn<int> get total =>
+      $composableBuilder(column: $table.total, builder: (column) => column);
+
+  GeneratedColumn<int> get discount =>
+      $composableBuilder(column: $table.discount, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$OpenTabsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OpenTabsTable,
+          OpenTab,
+          $$OpenTabsTableFilterComposer,
+          $$OpenTabsTableOrderingComposer,
+          $$OpenTabsTableAnnotationComposer,
+          $$OpenTabsTableCreateCompanionBuilder,
+          $$OpenTabsTableUpdateCompanionBuilder,
+          (OpenTab, BaseReferences<_$AppDatabase, $OpenTabsTable, OpenTab>),
+          OpenTab,
+          PrefetchHooks Function()
+        > {
+  $$OpenTabsTableTableManager(_$AppDatabase db, $OpenTabsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OpenTabsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OpenTabsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OpenTabsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> tableId = const Value.absent(),
+                Value<String> orderType = const Value.absent(),
+                Value<String> itemsJson = const Value.absent(),
+                Value<int> total = const Value.absent(),
+                Value<int> discount = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => OpenTabsCompanion(
+                id: id,
+                tableId: tableId,
+                orderType: orderType,
+                itemsJson: itemsJson,
+                total: total,
+                discount: discount,
+                status: status,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> tableId = const Value.absent(),
+                Value<String> orderType = const Value.absent(),
+                required String itemsJson,
+                Value<int> total = const Value.absent(),
+                Value<int> discount = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => OpenTabsCompanion.insert(
+                id: id,
+                tableId: tableId,
+                orderType: orderType,
+                itemsJson: itemsJson,
+                total: total,
+                discount: discount,
+                status: status,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OpenTabsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OpenTabsTable,
+      OpenTab,
+      $$OpenTabsTableFilterComposer,
+      $$OpenTabsTableOrderingComposer,
+      $$OpenTabsTableAnnotationComposer,
+      $$OpenTabsTableCreateCompanionBuilder,
+      $$OpenTabsTableUpdateCompanionBuilder,
+      (OpenTab, BaseReferences<_$AppDatabase, $OpenTabsTable, OpenTab>),
+      OpenTab,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -26544,4 +27790,6 @@ class $AppDatabaseManager {
       $$PrescriptionsTableTableManager(_db, _db.prescriptions);
   $$PrintOrdersTableTableManager get printOrders =>
       $$PrintOrdersTableTableManager(_db, _db.printOrders);
+  $$OpenTabsTableTableManager get openTabs =>
+      $$OpenTabsTableTableManager(_db, _db.openTabs);
 }

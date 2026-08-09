@@ -15,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
+import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
@@ -67,6 +68,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Keuangan summary
   int _financeExpense = 0;
   int _financeIncome = 0;
+
+  // Laundry stats
+  int _laundryToday = 0;
+  int _laundryPending = 0;
+  int _laundryReady = 0;
+  int _laundryDelivered = 0;
 
   // Flip card data
   EmployeeCardData? _cardData;
@@ -255,6 +262,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final financeRepo = FinanceRepository(ref.read(databaseProvider));
     final finSummary = await financeRepo.getDashboardSummary(branchId: branchId);
 
+    // Load laundry stats
+    int laundryToday = 0, laundryPending = 0, laundryReady = 0, laundryDelivered = 0;
+    if (NusaConfig.isLaundryVariant) {
+      final laundryRepo = LaundryOrderRepository(db);
+      laundryToday = await laundryRepo.countToday();
+      laundryPending = await laundryRepo.countPending();
+      laundryReady = await laundryRepo.countByStatus('Siap');
+      laundryDelivered = await laundryRepo.countByStatus('Diambil');
+    }
+
     // Load flip card data
     await _fetchCardData(ref.read(employeeSessionProvider)?.employeeId);
 
@@ -279,6 +296,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _lastCashierPhoto = lastCashierPhoto;
         _financeExpense = finSummary['totalExpense'] ?? 0;
         _financeIncome = finSummary['totalIncome'] ?? 0;
+        _laundryToday = laundryToday;
+        _laundryPending = laundryPending;
+        _laundryReady = laundryReady;
+        _laundryDelivered = laundryDelivered;
       });
     }
   }
@@ -1170,6 +1191,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                       ],
 
+                      // Laundry stats
+                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0)) ...[
+                        const SizedBox(height: 12),
+                        _LaundryStats(
+                          today: _laundryToday,
+                          pending: _laundryPending,
+                          ready: _laundryReady,
+                          delivered: _laundryDelivered,
+                        ),
+                      ],
+
                       const SizedBox(height: 16),
 
                       // Menu grid with lock indicators (responsive columns)
@@ -1392,6 +1424,52 @@ class _KeuanganSummary extends StatelessWidget {
         Text(formatRupiah(amount > 0 ? amount : 0),
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
         Text(label, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+      ]),
+    );
+  }
+}
+
+/// Laundry mini stats card — shows order pipeline counts.
+class _LaundryStats extends StatelessWidget {
+  final int today, pending, ready, delivered;
+  const _LaundryStats({required this.today, required this.pending, required this.ready, required this.delivered});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(color: const Color(0xFFEC4899).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            child: const Icon(Icons.local_laundry_service_outlined, color: Color(0xFFEC4899), size: 16),
+          ),
+          const SizedBox(width: 8),
+          const Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          _laundryStat('Hari Ini', today, NusaConfig.accentPurple),
+          _laundryStat('Diproses', pending, NusaConfig.info),
+          _laundryStat('Siap', ready, NusaConfig.success),
+          _laundryStat('Diambil', delivered, NusaConfig.activePrimary),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _laundryStat(String label, int count, Color color) {
+    return Expanded(
+      child: Column(children: [
+        Text('$count', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+        Text(label, style: TextStyle(fontSize: 10, color: NusaConfig.textTertiary)),
       ]),
     );
   }

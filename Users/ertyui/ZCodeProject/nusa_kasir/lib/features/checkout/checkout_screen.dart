@@ -1,4 +1,5 @@
-﻿import 'dart:io';
+﻿import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,7 @@ import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
+import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
@@ -55,6 +57,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Promo? _appliedPromo;
   int _promoDiscount = 0; // computed from applied promo
   int _pointsUsed = 0; // poin yang ditukar (1 poin = Rp 1)
+
+  // Split bill
+  bool _splitBill = false;
+  int _splitCount = 2;
 
   // FnB params
   String? _orderType;
@@ -332,6 +338,28 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final savedDiscount = _totalDiscount;
       final savedOrderType = _orderType;
       final savedTableName = _tableName;
+
+      // ── Laundry: auto-create LaundryOrder after successful transaction ──
+      int? _laundryOrderId;
+      if (NusaConfig.isLaundryVariant && cart.isNotEmpty) {
+        try {
+          final laundryRepo = LaundryOrderRepository(db);
+          final itemsJson = jsonEncode(cart.map((c) => {
+            'name': c.name, 'qty': c.isPerKg ? 1 : c.qty,
+            'price': c.price,
+            if (c.isPerKg) 'weightKg': c.weightKg,
+          }).toList());
+          _laundryOrderId = await laundryRepo.add(
+            customerName: _selectedCustomer?.name ?? 'Umum',
+            customerPhone: _selectedCustomer?.phone,
+            itemsJson: itemsJson,
+            total: savedTotal,
+            notes: cart.where((c) => c.note != null && c.note!.isNotEmpty)
+                .map((c) => '${c.name}: ${c.note}').join('; '),
+          );
+        } catch (_) {}
+      }
+
       ref.read(cartProvider.notifier).clear();
 
       // Auto-upload backup ke cloud setelah transaksi (background)
@@ -369,11 +397,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           invoice: invoice,
           dateStr: dateStr,
           pointsUsed: _pointsUsed,
-          autoPrint: autoPrint,
+          autoPrint: autoPrint && !_splitBill, // split bill prints separately
           orderType: savedOrderType,
           tableName: savedTableName,
+          laundryOrderId: _laundryOrderId,
         ),
           onDismiss: () async {
+            // ── Split bill: print splits after receipt shown ──
+            if (_splitBill) {
+              final perPerson = (savedTotal / _splitCount).ceil();
+              await _printSplitBills(_splitCount, perPerson, cart);
+            }
+
             // ── FnB: complete open tab (if any) + manage table ──
             if (NusaConfig.isFnbVariant) {
               final payFirst = await SecureStore.getFnbPaymentFirst();
@@ -436,6 +471,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _buildSummaryCard(isDark, subtotal),
           SizedBox(height: 14),
 
+          // ── Split Bill Toggle (above payment method) ──
+          _buildSplitToggle(isDark),
+          SizedBox(height: 14),
+
           // ── Metode Pembayaran Card ──
           _buildPaymentMethodCard(isDark),
           SizedBox(height: 14),
@@ -483,21 +522,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
           ),
           SizedBox(height: 10),
-          // ── Split Bill (FnB only) ──
-          if (NusaConfig.isFnbVariant)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: OutlinedButton.icon(
-                onPressed: _loading ? null : _showSplitBill,
-                icon: const Icon(Icons.people_outline, size: 18),
-                label: const Text('Split Bill'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: NusaConfig.activePrimary,
-                  side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-            ),
           Center(
             child: TextButton(
               onPressed: _loading ? null : () => context.pop(),
@@ -511,6 +535,68 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   // ── Card Builders ────────────────────────────────────────────────
+
+  Widget _buildSplitToggle(bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: _sectionCard(isDark),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header row with toggle
+        Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(color: NusaConfig.activePrimary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            child: Icon(Icons.people_outline, color: NusaConfig.activePrimary, size: 18),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text('Split Bill', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+          Switch(
+            value: _splitBill,
+            onChanged: (v) => setState(() => _splitBill = v),
+            activeColor: NusaConfig.activePrimary,
+          ),
+        ]),
+        // Split count input (visible when ON)
+        if (_splitBill) ...[
+          SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: _splitCount > 2
+                    ? () => setState(() => _splitCount--)
+                    : null,
+                icon: Icon(Icons.remove_circle_outline, color: NusaConfig.activePrimary),
+              ),
+              SizedBox(width: 16),
+              Text('$_splitCount Orang',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+              SizedBox(width: 16),
+              IconButton(
+                onPressed: _splitCount < 10
+                    ? () => setState(() => _splitCount++)
+                    : null,
+                icon: Icon(Icons.add_circle_outline, color: NusaConfig.activePrimary),
+              ),
+            ],
+          ),
+          SizedBox(height: 6),
+          Center(
+            child: Text('Rp ${formatRupiah((_total / _splitCount).ceil())} / orang',
+                style: TextStyle(fontSize: 14, color: NusaConfig.activePrimary, fontWeight: FontWeight.w700)),
+          ),
+          SizedBox(height: 4),
+          Center(
+            child: Text('Cetak $_splitCount struk setelah konfirmasi',
+                style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+          ),
+        ],
+      ]),
+    );
+  }
 
   Widget _buildCustomerCard(bool isDark) {
     return Container(
@@ -975,75 +1061,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           Text('${_selectedCustomer!.points} pts',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFB45309))),
       ]),
-    );
-  }
-
-  // ── Split Bill (FnB only) ──
-
-  void _showSplitBill() {
-    final cart = ref.read(cartProvider);
-    if (cart.isEmpty) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        int numPeople = 2;
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            final perPerson = (_total / numPeople).ceil();
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Split Bill', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        onPressed: numPeople > 2 ? () => setSheetState(() => numPeople--) : null,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      Text('$numPeople Orang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                      IconButton(
-                        onPressed: numPeople < 6 ? () => setSheetState(() => numPeople++) : null,
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text('Rp ${formatRupiah(perPerson)} / orang', style: TextStyle(fontSize: 14, color: NusaConfig.activePrimary, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(ctx);
-                        await _printSplitBills(numPeople, perPerson, cart);
-                      },
-                      icon: const Icon(Icons.print_outlined),
-                      label: Text('Cetak $numPeople Struk'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: NusaConfig.activePrimary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
 

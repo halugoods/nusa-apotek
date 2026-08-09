@@ -10,12 +10,12 @@ part 'app_database.g.dart';
   Employees, Attendance, Expenses, ExpenseCategories, RecurringExpenses, Payroll, Waste,
   Liquidity, Suppliers, Branches, Settings, ActivationsLocal, SyncQueue, CashierSessions,
   OnlineOrders, CustomerDebts, DebtPayments, StockCounts, StockCountItems, ChatSessions,
-  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders])
+  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -134,6 +134,17 @@ class AppDatabase extends _$AppDatabase {
       if (from < 26) {
         await m.addColumn(employees, employees.requiresCashOpen);
         await m.addColumn(employees, employees.requiresCashClose);
+      }
+      if (from < 27) {
+        await m.addColumn(transactions, transactions.orderType);
+        await m.addColumn(transactions, transactions.tableId);
+        await m.addColumn(transactions, transactions.notes);
+        await m.addColumn(settings, settings.kitchenPrinterAddress);
+        await m.addColumn(settings, settings.kitchenPrinterEnabled);
+        await m.createTable(openTabs);
+      }
+      if (from < 28) {
+        await m.addColumn(laundryOrders, laundryOrders.estimatedReady);
       }
     },
   );

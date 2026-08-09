@@ -47,6 +47,10 @@ class Transactions extends Table {
   TextColumn get status => text().withDefault(const Constant('Normal'))();
   TextColumn get voidReason => text().nullable()();
   DateTimeColumn get voidedAt => dateTime().nullable()();
+  // FnB: order type, table link, notes
+  TextColumn get orderType => text().nullable()();
+  IntColumn get tableId => integer().nullable()();
+  TextColumn get notes => text().nullable()();
 }
 class Customers extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -202,6 +206,9 @@ class Settings extends Table {
   BoolColumn get receiptShowInvoice => boolean().withDefault(const Constant(true))();
   BoolColumn get receiptShowDate => boolean().withDefault(const Constant(true))();
   BoolColumn get receiptShowBarcode => boolean().withDefault(const Constant(false))();
+  // ── Kitchen printer (FnB) ──
+  TextColumn get kitchenPrinterAddress => text().nullable()();
+  BoolColumn get kitchenPrinterEnabled => boolean().withDefault(const Constant(false))();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -317,12 +324,13 @@ class LaundryOrders extends Table {
   TextColumn get itemsJson => text()();       // JSON [{name,qty,price}]
   IntColumn get total => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Baru'))();
-    // Baru | Cuci | Kering | Setrika | Siap | Diambil
+    // Baru | Cuci | Kering | Setrika | Siap | Diantar | Diambil
   TextColumn get notes => text().nullable()();
+  DateTimeColumn get estimatedReady => dateTime().nullable()(); // estimasi selesai
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// Bengkel & Service HP: Service ticket management.
+/// Bengkel & Servis: Service ticket management.
 class ServiceTickets extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get customerName => text()();
@@ -381,4 +389,18 @@ class PrintOrders extends Table {
     // Baru | Diproses | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// FnB: Open tabs — saved orders that can be resumed later.
+class OpenTabs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get tableId => integer().nullable()();
+  TextColumn get orderType => text().withDefault(const Constant('Dine In'))();
+  TextColumn get itemsJson => text()();
+  IntColumn get total => integer().withDefault(const Constant(0))();
+  IntColumn get discount => integer().withDefault(const Constant(0))();
+  TextColumn get status => text().withDefault(const Constant('Open'))();
+    // Open | Completed | Void
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }

@@ -1,10 +1,13 @@
-/// Laundry: Status pesanan pipeline — New, Wash, Dry, Iron, Ready, Delivered.
+/// Laundry: Status pesanan pipeline — Baru, Cuci, Kering, Setrika, Siap, Diantar, Diambil.
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
@@ -27,6 +30,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     {'label': 'Kering', 'icon': Icons.air, 'color': NusaConfig.accentGreen},
     {'label': 'Setrika', 'icon': Icons.iron, 'color': NusaConfig.warning},
     {'label': 'Siap', 'icon': Icons.check_circle, 'color': NusaConfig.success},
+    {'label': 'Diantar', 'icon': Icons.local_shipping, 'color': NusaConfig.accentGold},
     {'label': 'Diambil', 'icon': Icons.delivery_dining, 'color': NusaConfig.activePrimary},
   ];
   List<LaundryOrder> _all = [];
@@ -79,7 +83,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
   }
 
   String? _nextStatus(String s) {
-    const flow = {'Baru': 'Cuci', 'Cuci': 'Kering', 'Kering': 'Setrika', 'Setrika': 'Siap', 'Siap': 'Diambil'};
+    const flow = {'Baru': 'Cuci', 'Cuci': 'Kering', 'Kering': 'Setrika', 'Setrika': 'Siap', 'Siap': 'Diantar', 'Diantar': 'Diambil'};
     return flow[s];
   }
 
@@ -98,9 +102,9 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
                 border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
               ),
               child: TabBar(
-                controller: _tabController, isScrollable: false, tabAlignment: TabAlignment.fill,
+                controller: _tabController, isScrollable: true,
                 labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                unselectedLabelStyle: const TextStyle(fontSize: 12),
+                unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 indicatorSize: TabBarIndicatorSize.tab,
                 indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(10)),
                 labelColor: Colors.white,
@@ -179,6 +183,18 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     try { items = List<Map<String, dynamic>>.from(jsonDecode(o.itemsJson)); } catch (_) {}
     final stage = _stages.firstWhere((s) => s['label'] == o.status, orElse: () => _stages[0]);
     final color = stage['color'] as Color;
+    final orderLabel = '#LND-${o.id.toString().padLeft(3, '0')}';
+    String? estString;
+    if (o.estimatedReady != null) {
+      final diff = o.estimatedReady!.difference(DateTime.now());
+      if (diff.isNegative) {
+        estString = 'Sudah lewat estimasi';
+      } else {
+        final days = diff.inDays;
+        final hours = diff.inHours % 24;
+        estString = 'Estimasi ${days > 0 ? '$days hari ' : ''}${hours > 0 ? '$hours jam' : 'sebentar lagi'}';
+      }
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -190,7 +206,11 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)), child: Icon(stage['icon'] as IconData, color: color, size: 20)),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Row(children: [
+                Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(width: 8),
+                Text(orderLabel, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+              ]),
               if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
                 Text(o.customerPhone!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
             ])),
@@ -198,11 +218,13 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             PopupMenuButton(
               itemBuilder: (_) => [
                 if (_nextStatus(o.status) != null) PopupMenuItem(value: 'next', child: Text('▶ ${_nextStatus(o.status)}')),
+                const PopupMenuItem(value: 'print', child: Text('🖨 Cetak Tag')),
                 const PopupMenuItem(value: 'edit', child: Text('✏ Edit')),
                 const PopupMenuItem(value: 'delete', child: Text('🗑 Hapus', style: TextStyle(color: Colors.red))),
               ],
               onSelected: (v) {
                 if (v == 'next') _advanceStatus(o);
+                if (v == 'print') _printTag(o);
                 if (v == 'edit') _openForm(order: o);
                 if (v == 'delete') _deleteOrder(o);
               },
@@ -212,12 +234,28 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             const SizedBox(height: 8),
             Wrap(
               spacing: 6, runSpacing: 4,
-              children: items.map((item) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill, borderRadius: BorderRadius.circular(6)),
-                child: Text('${item['name']} ${item['qty']}x', style: const TextStyle(fontSize: 11)),
-              )).toList(),
+              children: items.map((item) {
+                final w = item['weightKg'];
+                final qtyDisplay = w != null ? '${(w as num).toDouble().toStringAsFixed(1)} kg' : '${item['qty'] ?? 1}x';
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill, borderRadius: BorderRadius.circular(6)),
+                  child: Text('${item['name']} $qtyDisplay', style: const TextStyle(fontSize: 11)),
+                );
+              }).toList(),
             ),
+          ],
+          if (estString != null) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(Icons.schedule, size: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              const SizedBox(width: 4),
+              Text(estString, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+              if (o.estimatedReady != null) ...[
+                const SizedBox(width: 6),
+                Text(DateFormat('dd/MM HH:mm').format(o.estimatedReady!), style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              ],
+            ]),
           ],
           if (o.notes != null && o.notes!.isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -236,6 +274,48 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     _load();
   }
 
+  Future<void> _printTag(LaundryOrder o) async {
+    // Fire-and-forget tag print via Bluetooth thermal printer
+    try {
+      if (!await ReceiptPrinter.ensureBluetoothReady()) {
+        if (mounted) TopToast.error(context, 'Bluetooth tidak siap');
+        return;
+      }
+      final printer = ReceiptPrinter();
+      final devices = await printer.discover();
+      if (devices.isEmpty) {
+        if (mounted) TopToast.error(context, 'Tidak ada printer terhubung');
+        return;
+      }
+      // Use first available printer (tag printing doesn't need saved printer)
+      await printer.connect(devices.first);
+      // Build compact tag receipt
+      List<Map<String, dynamic>> items = [];
+      try { items = List<Map<String, dynamic>>.from(jsonDecode(o.itemsJson)); } catch (_) {}
+      final lines = <ReceiptLine>[];
+      for (final item in items) {
+        final name = '${item['name'] ?? ''}';
+        final qty = (item['qty'] as num?)?.toInt() ?? 1;
+        final price = (item['price'] as num?)?.toInt() ?? 0;
+        lines.add(ReceiptLine(name: name, qty: qty, price: price));
+      }
+      await printer.printReceipt(
+        storeName: o.customerName,
+        lines: lines,
+        total: o.total,
+        paymentMethod: 'Tag',
+        cashierName: '#LND-${o.id.toString().padLeft(3, '0')}',
+        paperWidth: '58',
+        orderType: o.status,
+        itemNotes: [o.notes],
+      );
+      await printer.dispose();
+      if (mounted) TopToast.success(context, 'Tag #LND-${o.id.toString().padLeft(3, "0")} dicetak');
+    } catch (e) {
+      if (mounted) TopToast.error(context, 'Gagal cetak tag');
+    }
+  }
+
   Future<void> _deleteOrder(LaundryOrder o) async {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Hapus Cucian?'), content: Text('Hapus cucian ${o.customerName}?'),
@@ -252,6 +332,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     final nameC = TextEditingController(text: order?.customerName ?? '');
     final phoneC = TextEditingController(text: order?.customerPhone ?? '');
     final notesC = TextEditingController(text: order?.notes ?? '');
+    DateTime? estReady = order?.estimatedReady;
     final formKey = GlobalKey<FormState>();
 
     // Parse existing items or start with one empty row
@@ -316,6 +397,52 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
           const SizedBox(height: 4),
           Divider(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
           const SizedBox(height: 12),
+          // Estimasi Selesai
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(color: NusaConfig.warningSoft, borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.schedule, color: NusaConfig.warning, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: estReady ?? DateTime.now().add(const Duration(days: 3)),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 30)),
+                  );
+                  if (picked != null) {
+                    setSheet(() => estReady = DateTime(picked.year, picked.month, picked.day, estReady?.hour ?? 17, estReady?.minute ?? 0));
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                  ),
+                  child: Text(
+                    estReady != null ? 'Estimasi: ${DateFormat('dd MMM yyyy').format(estReady!)}' : 'Estimasi selesai (opsional)',
+                    style: TextStyle(fontSize: 13, color: estReady != null
+                        ? (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)
+                        : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  ),
+                ),
+              ),
+            ),
+            if (estReady != null)
+              IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: () => setSheet(() => estReady = null),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              ),
+          ]),
+          const SizedBox(height: 12),
           NusaFormField(label: 'Catatan', controller: notesC, hintText: 'Catatan tambahan...', maxLines: 2),
           const SizedBox(height: 20),
           SizedBox(width: double.infinity, child: ElevatedButton(
@@ -338,10 +465,10 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
               final db = ref.read(databaseProvider);
               final repo = LaundryOrderRepository(db);
               if (isEdit) {
-                await repo.update(order!.id, customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim());
+                await repo.update(order!.id, customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(), estimatedReady: estReady);
                 TopToast.success(context, 'Cucian diperbarui ✓');
               } else {
-                await repo.add(customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim());
+                await repo.add(customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(), estimatedReady: estReady);
                 TopToast.success(context, 'Cucian baru ditambahkan ✓');
               }
               Navigator.pop(ctx);

@@ -22,8 +22,10 @@ class _ReceiptItem {
   final int qty;
   final int price;
   final String? note;
-  const _ReceiptItem({required this.name, required this.qty, required this.price, this.note});
-  int get subtotal => qty * price;
+  final double? weightKg;
+  const _ReceiptItem({required this.name, required this.qty, required this.price, this.note, this.weightKg});
+  bool get isPerKg => weightKg != null;
+  int get subtotal => isPerKg ? (price * weightKg!).ceil() : qty * price;
 }
 
 /// Thermal-style receipt dialog — matches GAS receipt modal design.
@@ -50,6 +52,7 @@ class ReceiptSheet extends ConsumerWidget {
   final String? orderType;
   final String? tableName;
   final List<String?>? itemNotes;
+  final int? laundryOrderId;
 
   const ReceiptSheet({
     required this.items,
@@ -68,6 +71,7 @@ class ReceiptSheet extends ConsumerWidget {
     this.orderType,
     this.tableName,
     this.itemNotes,
+    this.laundryOrderId,
     super.key,
   });
 
@@ -88,9 +92,10 @@ class ReceiptSheet extends ConsumerWidget {
     bool autoPrint = false,
     String? orderType,
     String? tableName,
+    int? laundryOrderId,
   }) {
     final items = cartItems
-        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, note: c.note))
+        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, note: c.note, weightKg: c.weightKg))
         .toList();
     return ReceiptSheet(
       items: items,
@@ -108,6 +113,7 @@ class ReceiptSheet extends ConsumerWidget {
       autoPrint: autoPrint,
       orderType: orderType,
       tableName: tableName,
+      laundryOrderId: laundryOrderId,
     );
   }
 
@@ -133,6 +139,7 @@ class ReceiptSheet extends ConsumerWidget {
       qty: (m['qty'] as num?)?.toInt() ?? 0,
       price: (m['price'] as num?)?.toInt() ?? 0,
       note: m['note'] as String?,
+      weightKg: (m['weightKg'] as num?)?.toDouble(),
     )).toList();
     return ReceiptSheet(
       items: items,
@@ -487,6 +494,17 @@ class ReceiptSheet extends ConsumerWidget {
               ),
             ),
           ),
+        if (laundryOrderId != null)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '#LND-${laundryOrderId.toString().padLeft(3, '0')} • Baru',
+                style: monoBold,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
         SizedBox(height: 6),
@@ -590,6 +608,9 @@ class ReceiptSheet extends ConsumerWidget {
   }
 
   Widget _buildItemRow(_ReceiptItem item, int index, TextStyle mono, TextStyle monoGrey, Color subtleColor) {
+    final qtyDisplay = item.isPerKg
+        ? '${item.weightKg!.toStringAsFixed(1)} kg'
+        : '${item.qty}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(
@@ -599,7 +620,12 @@ class ReceiptSheet extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${item.qty} x ${formatRupiah(item.price)}', style: monoGrey),
+              Text(
+                item.isPerKg
+                    ? '$qtyDisplay x ${formatRupiah(item.price)}/kg'
+                    : '$qtyDisplay x ${formatRupiah(item.price)}',
+                style: monoGrey,
+              ),
               Text(formatRupiah(item.subtotal), style: mono),
             ],
           ),

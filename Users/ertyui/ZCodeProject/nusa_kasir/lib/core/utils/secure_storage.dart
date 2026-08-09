@@ -3,21 +3,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nusa_kasir/core/constants/app_constants.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 
+/// DO NOT wipe the entire keystore on PlatformException.
+/// A single key failure (e.g. after OS update) should NOT delete
+/// unrelated keys like activation, Google ID, or employee session.
+/// Instead, just return null for reads and retry writes on the specific key.
 class SecureStore {
   const SecureStore._();
   static const _s = FlutterSecureStorage();
-  static bool _didReset = false;
-
-  /// Reset the entire keystore when the Android KeyStore key is corrupted
-  /// (e.g. after app reinstall or clear data — old encrypted values can't be
-  /// decrypted with the new key).  Called once per process on first PlatformException.
-  static Future<void> _resetOnKeystoreCorruption() async {
-    if (_didReset) return;
-    _didReset = true;
-    try {
-      await _s.deleteAll();
-    } catch (_) {}
-  }
 
   // -- Generic key-value wrappers (catch PlatformException) --
 
@@ -28,8 +20,9 @@ class SecureStore {
     try {
       await _s.write(key: key, value: value);
     } on PlatformException {
-      await _resetOnKeystoreCorruption();
+      // Retry once after clearing just this key (corner case: key corruption)
       try {
+        await _s.delete(key: key);
         await _s.write(key: key, value: value);
       } catch (_) {}
     }
@@ -39,7 +32,7 @@ class SecureStore {
     try {
       return await _s.read(key: key);
     } on PlatformException {
-      await _resetOnKeystoreCorruption();
+      // Never wipe — just return null. Activation/auth state is sacred.
       return null;
     }
   }
@@ -48,10 +41,7 @@ class SecureStore {
     try {
       await _s.delete(key: key);
     } on PlatformException {
-      await _resetOnKeystoreCorruption();
-      try {
-        await _s.delete(key: key);
-      } catch (_) {}
+      // Already gone or inaccessible — don't cascade
     }
   }
 
@@ -71,8 +61,18 @@ class SecureStore {
     if (legacy != null) {
       await SecureStore.write(key: _activationKey, value: legacy);
       await SecureStore.delete(key: _legacyActivationKey);
+      return legacy;
     }
-    return legacy;
+    // Migration: nusa-servicehp → nusa-servis (variant rename v1.6.9)
+    if (NusaConfig.productId == 'nusa-servis') {
+      final oldKey = await SecureStore.read(key: 'nusa_activation_nusa-servicehp');
+      if (oldKey != null) {
+        await SecureStore.write(key: _activationKey, value: oldKey);
+        await SecureStore.delete(key: 'nusa_activation_nusa-servicehp');
+        return oldKey;
+      }
+    }
+    return null;
   }
   static Future<void> clearActivation() async {
     await SecureStore.delete(key: _activationKey);
@@ -202,6 +202,44 @@ class SecureStore {
 
   static Future<String?> getPrinterLogoPath() async =>
       SecureStore.read(key: 'nusa_printer_logo_path');
+
+  // -- Kitchen printer (FnB) --
+  static const _kitchenPrinterKey = 'nusa_kitchen_printer_address';
+
+  static Future<String?> getKitchenPrinterAddress() =>
+      SecureStore.read(key: _kitchenPrinterKey);
+
+  static Future<void> setKitchenPrinterAddress(String? v) async {
+    if (v == null) {
+      await SecureStore.delete(key: _kitchenPrinterKey);
+    } else {
+      await SecureStore.write(key: _kitchenPrinterKey, value: v);
+    }
+  }
+
+  static const _kitchenPrinterEnabledKey = 'nusa_kitchen_printer_enabled';
+
+  static Future<bool> getKitchenPrinterEnabled() async =>
+      (await SecureStore.read(key: _kitchenPrinterEnabledKey)) == 'true';
+
+  static Future<void> setKitchenPrinterEnabled(bool v) =>
+      SecureStore.write(key: _kitchenPrinterEnabledKey, value: v.toString());
+
+  // ── FnB payment flow: true = bayar dulu (pay first, then table), false = pesan dulu (default) ──
+  static Future<bool> getFnbPaymentFirst() async =>
+      (await SecureStore.read(key: 'nusa_fnb_payment_first')) == 'true';
+  static Future<void> setFnbPaymentFirst(bool v) =>
+      SecureStore.write(key: 'nusa_fnb_payment_first', value: v.toString());
+
+  // ── Laundry settings ──
+  static Future<String> getLaundryDefaultPriceType() async =>
+      (await SecureStore.read(key: 'nusa_laundry_default_price_type')) ?? 'pcs';
+  static Future<void> setLaundryDefaultPriceType(String v) =>
+      SecureStore.write(key: 'nusa_laundry_default_price_type', value: v);
+  static Future<bool> getLaundryNotifyReady() async =>
+      (await SecureStore.read(key: 'nusa_laundry_notify_ready')) == 'true';
+  static Future<void> setLaundryNotifyReady(bool v) =>
+      SecureStore.write(key: 'nusa_laundry_notify_ready', value: v.toString());
 
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>

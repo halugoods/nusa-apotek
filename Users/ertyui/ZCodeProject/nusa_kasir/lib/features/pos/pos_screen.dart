@@ -548,7 +548,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     item: cart[i], isDark: isDark,
                     onDecrement: () => ref.read(cartProvider.notifier).changeQty(cart[i].productId, -1),
                     onIncrement: () => ref.read(cartProvider.notifier).addProduct(cart[i].productId, cart[i].name, cart[i].price),
-                    onTap: NusaConfig.isFnbVariant ? () => _showNoteDialog(cart[i]) : null,
+                    onTap: (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant) ? () => _showNoteDialog(cart[i]) : null,
                   ),
                 ),
               ),
@@ -705,7 +705,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           SizedBox(height: 16),
           Text('Catatan — ${item.name}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           SizedBox(height: 12),
-          NusaFormField(label: 'Catatan', controller: ctrl, hintText: 'Contoh: tidak pedas, es batu terpisah', maxLines: 2),
+          NusaFormField(label: 'Catatan', controller: ctrl, hintText: NusaConfig.isLaundryVariant ? 'Contoh: noda di lengan kiri, kain sutra delicate' : 'Contoh: tidak pedas, es batu terpisah', maxLines: 2),
           SizedBox(height: 16),
           SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -1082,6 +1082,7 @@ class _CartItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final qtyLabel = item.isPerKg ? item.weightKg!.toStringAsFixed(1) : '${item.qty}';
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1097,7 +1098,10 @@ class _CartItemTile extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(item.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
                 SizedBox(height: 2),
-                Text(formatRupiah(item.price), style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                Text(
+                  item.isPerKg ? '${formatRupiah(item.price)}/kg' : formatRupiah(item.price),
+                  style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                ),
               ]),
             ),
             Container(
@@ -1105,7 +1109,7 @@ class _CartItemTile extends StatelessWidget {
               decoration: BoxDecoration(border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor), borderRadius: BorderRadius.circular(10), color: isDark ? NusaConfig.darkBackground : NusaConfig.backgroundColor),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 GestureDetector(onTap: onDecrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.remove, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
-                Text('${item.qty}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                Text(qtyLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
                 GestureDetector(onTap: onIncrement, behavior: HitTestBehavior.opaque, child: SizedBox(width: 30, height: 32, child: Center(child: Icon(Icons.add, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))),
               ]),
             ),
@@ -1124,7 +1128,7 @@ class _CartItemTile extends StatelessWidget {
               ]),
             ),
           ],
-          if (NusaConfig.isFnbVariant)
+          if (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant)
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
