@@ -84,6 +84,17 @@ class PinKeypadState extends State<PinKeypad>
       parent: _shakeCtrl,
       curve: Curves.easeInOut,
     ));
+
+    // ── NFC auto-start: no button click needed ──
+    // When PinKeypad shows with NFC enabled, immediately start the NFC
+    // session in the background. The user just taps their card — no
+    // separate button click required. The "Dekatkan kartu NFC" text
+    // below the keypad serves as a hint, not a button.
+    if (widget.showNfc && widget.onNfc != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _autoStartNfc();
+      });
+    }
   }
 
   @override
@@ -153,6 +164,12 @@ class PinKeypadState extends State<PinKeypad>
     } finally {
       if (mounted) setState(() => _nfcScanning = false);
     }
+  }
+
+  /// Auto-start NFC session when PinKeypad appears with NFC enabled.
+  /// User just taps their card — no separate button click required.
+  void _autoStartNfc() {
+    _onNfcTap();
   }
 
   @override
@@ -268,44 +285,59 @@ class PinKeypadState extends State<PinKeypad>
             ],
           ),
 
-          // ── NFC tap card (below keypad) ────────────
-          if (widget.showNfc && !_nfcScanning) ...[
-            SizedBox(height: 10),
-            GestureDetector(
-              onTap: _onNfcTap,
-              child: Container(
+          // ── NFC: hint / retry card (below keypad) ───
+          if (widget.showNfc) ...[
+            if (_nfcScanning)
+              // NFC auto-started — passive hint, user just taps card
+              Container(
                 padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
-                  ),
-                  color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 28, height: 28,
-                      decoration: BoxDecoration(
-                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.nfc, size: 18, color: NusaConfig.accentPurple),
+                    SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: NusaConfig.accentPurple),
                     ),
-                    SizedBox(width: 10),
-                    Flexible(
-                      child: Text('Tap Kartu NFC untuk login',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          softWrap: false,
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    ),
+                    SizedBox(width: 8),
+                    Text('Dekatkan kartu NFC...',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NusaConfig.accentPurple)),
                   ],
                 ),
+              )
+            else ...[
+              // NFC stopped (error/timeout) — tap to retry
+              SizedBox(height: 10),
+              GestureDetector(
+                onTap: _onNfcTap,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+                    ),
+                    color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 28, height: 28,
+                        decoration: BoxDecoration(
+                          color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.nfc, size: 18, color: NusaConfig.accentPurple),
+                      ),
+                      SizedBox(width: 10),
+                      Text('Tap Kartu NFC',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ],
 
           // ── Cancel (card style) ──────────────────────
