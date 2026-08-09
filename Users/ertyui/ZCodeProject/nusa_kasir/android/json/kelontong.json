@@ -1,0 +1,319 @@
+{
+  "project_info": {
+    "project_number": "116430341615",
+    "project_id": "nusa-kasir-hgds-36c2f",
+    "storage_bucket": "nusa-kasir-hgds-36c2f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:d7d8a64b8fe0881b34e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.apotek"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-nfnh2dpt3ccn21g7dvls791rg00d3hla.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.apotek",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:af8a4523293afbf934e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.bengkel"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-07amjn44n97gj1m3f8ctcheqrq6us496.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.bengkel",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:670e95df4b09363634e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.fnb"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-03563isut76eh5sme8gh5f9l1fmlm7gp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.fnb",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:a81870dee229e75034e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.fotocopy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-634dv5gs7mv9h6pil4agd922i3n4ut6c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.fotocopy",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:052d44c6965cc8ca34e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.kasir"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-b7mjnngfq6vno2osf6vqh6d0bfmvp9du.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.kasir",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:764fd64149bc8e2034e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.kelontong"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-7kub9ap60lb162unrtqdsejm8olh66nb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nusa.kelontong",
+            "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
+          }
+        },
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:13f6f4c2a2293d4b34e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.laundry"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:18b1acbc5873d96734e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.salon"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116430341615:android:7cbc0ae9dc7ba18434e21a",
+        "android_client_info": {
+          "package_name": "com.nusa.servicehp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV2ob5gOYbZeOS7dMpBhc7irFLo8FG2LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "116430341615-iqlmvlvqejju8gneunlrf6977hg9us93.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -10,9 +10,11 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
+import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 class LaundryStatusScreen extends ConsumerStatefulWidget {
@@ -22,8 +24,7 @@ class LaundryStatusScreen extends ConsumerStatefulWidget {
   ConsumerState<LaundryStatusScreen> createState() => _LaundryStatusScreenState();
 }
 
-class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
   final List<Map<String, dynamic>> _stages = [
     {'label': 'Baru', 'icon': Icons.receipt_long, 'color': NusaConfig.accentPurple},
     {'label': 'Cuci', 'icon': Icons.local_laundry_service, 'color': NusaConfig.info},
@@ -38,20 +39,17 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
   bool _loading = true;
   final _search = TextEditingController();
   Map<String, int> _counts = {};
-  String? _selectedStage;
+  int _selectedIdx = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _stages.length, vsync: this);
-    _tabController.addListener(() { if (!_tabController.indexIsChanging) _selectStage(_stages[_tabController.index]['label']); });
     _search.addListener(_applyFilter);
     _load();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -67,72 +65,170 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     }
     if (!mounted) return;
     setState(() { _all = data; _counts = counts; _loading = false; });
-    _selectStage(_stages[_tabController.index]['label']);
+    _applyFilter();
   }
 
-  void _selectStage(String stage) {
-    _selectedStage = stage;
+  void _selectStage(int idx) {
+    setState(() => _selectedIdx = idx);
     _applyFilter();
   }
 
   void _applyFilter() {
     final q = _search.text.toLowerCase();
-    var list = _all.where((o) => o.status == _selectedStage).toList();
+    final stageLabel = _stages[_selectedIdx]['label'] as String;
+    var list = _all.where((o) => o.status == stageLabel).toList();
     if (q.isNotEmpty) list = list.where((o) => o.customerName.toLowerCase().contains(q) || (o.customerPhone ?? '').contains(q)).toList();
     setState(() => _filtered = list);
   }
+
+  // ── Stage flow helpers ──────────────────────────────────────────────
 
   String? _nextStatus(String s) {
     const flow = {'Baru': 'Cuci', 'Cuci': 'Kering', 'Kering': 'Setrika', 'Setrika': 'Siap', 'Siap': 'Diantar', 'Diantar': 'Diambil'};
     return flow[s];
   }
 
+  /// Get the next 2-3 stages from current status for quick-update chips.
+  List<Map<String, dynamic>> _nextStages(LaundryOrder o) {
+    final result = <Map<String, dynamic>>[];
+    var current = o.status;
+    for (int i = 0; i < 3; i++) {
+      final next = _nextStatus(current);
+      if (next == null) break;
+      final stage = _stages.firstWhere((s) => s['label'] == next, orElse: () => _stages[0]);
+      result.add(stage);
+      current = next;
+    }
+    return result;
+  }
+
+  // ── Customer picker ─────────────────────────────────────────────────
+
+  Future<void> _showCustomerPicker() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final db = ref.read(databaseProvider);
+    final customers = await CustomerRepository(db).getCustomers();
+
+    if (!mounted) return;
+
+    String pickerQuery = '';
+    List<Customer> filtered = List.from(customers);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          return Container(
+            height: MediaQuery.of(ctx).size.height * 0.6,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(children: [
+              // Drag handle
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 16),
+              Text('Pilih Pelanggan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 12),
+              // Search
+              TextField(
+                autofocus: true,
+                onChanged: (v) => setSheet(() {
+                  pickerQuery = v.toLowerCase();
+                  filtered = customers.where((c) => c.name.toLowerCase().contains(pickerQuery) || (c.phone ?? '').contains(pickerQuery)).toList();
+                }),
+                decoration: InputDecoration(
+                  hintText: 'Cari nama atau telepon...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(child: Text('Tidak ada pelanggan', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))
+                    : ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final c = filtered[i];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: NusaConfig.activePrimary.withOpacity(0.1),
+                              child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
+                                style: TextStyle(fontWeight: FontWeight.w700, color: NusaConfig.activePrimary, fontSize: 14)),
+                            ),
+                            title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                            subtitle: c.phone != null && c.phone!.isNotEmpty ? Text(c.phone!, style: const TextStyle(fontSize: 12)) : null,
+                            onTap: () {
+                              _search.text = c.name;
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ]),
+          );
+        });
+      },
+    );
+  }
+
+  // ── Build ───────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final stageDatas = _stages.map((s) => StageData(
+      label: s['label'] as String,
+      color: s['color'] as Color,
+      count: _counts[s['label']] ?? 0,
+    )).toList();
+
     return ScreenScaffold('Status Laundry', _loading
         ? const Center(child: CircularProgressIndicator())
         : Column(children: [
-            // Pipeline tabs
-            Container(
-              height: 44, margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-              ),
-              child: TabBar(
-                controller: _tabController, isScrollable: true,
-                labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                indicatorSize: TabBarIndicatorSize.tab,
-                indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(10)),
-                labelColor: Colors.white,
-                unselectedLabelColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textTertiary,
-                dividerColor: Colors.transparent, padding: const EdgeInsets.all(4),
-                tabs: _stages.map((s) => Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(s['label']),
-                  if ((_counts[s['label']] ?? 0) > 0) ...[const SizedBox(width: 3), Text('${_counts[s['label']]}', style: const TextStyle(fontSize: 10))],
-                ]))).toList(),
-              ),
+            // ── Stage Slider (replacing TabBar) ──
+            StageSlider(
+              stages: stageDatas,
+              selectedIndex: _selectedIdx,
+              onChanged: _selectStage,
+              isDark: isDark,
             ),
-            // Counts summary
+            // ── Counts summary ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(children: _stages.map((s) {
+              child: Row(children: _stages.asMap().entries.map((entry) {
+                final i = entry.key;
+                final s = entry.value;
                 final c = _counts[s['label']] ?? 0;
                 final color = s['color'] as Color;
-                return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Column(children: [
-                    Text('$c', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
-                    Text(s['label'], style: TextStyle(fontSize: 9, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                  ]),
-                )));
+                final selected = i == _selectedIdx;
+                return Expanded(child: GestureDetector(
+                  onTap: () => _selectStage(i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected ? color.withOpacity(0.18) : color.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: selected ? Border.all(color: color.withOpacity(0.4), width: 1.2) : null,
+                      ),
+                      child: Column(children: [
+                        Text('$c', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+                        Text(s['label'], style: TextStyle(fontSize: 9, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                      ]),
+                    ),
+                  ),
+                ));
               }).toList()),
             ),
-            // Search
+            // ── Search with customer picker ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: TextField(
@@ -140,6 +236,18 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
                 decoration: InputDecoration(
                   hintText: 'Cari pelanggan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
                   prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: GestureDetector(
+                    onTap: _showCustomerPicker,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.person_search_rounded, size: 20, color: NusaConfig.primaryColor),
+                    ),
+                  ),
                   filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -150,7 +258,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(children: [
-                Text('$_selectedStage', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                Text(_stages[_selectedIdx]['label'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 8),
                 Text('${_filtered.length} pesanan', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
               ]),
@@ -161,7 +269,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
                   ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.local_laundry_service, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
                       const SizedBox(height: 16),
-                      Text('Tidak ada pesanan $_selectedStage', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      Text('Tidak ada pesanan ${_stages[_selectedIdx]['label']}', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
                     ]))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
@@ -184,6 +292,8 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     final stage = _stages.firstWhere((s) => s['label'] == o.status, orElse: () => _stages[0]);
     final color = stage['color'] as Color;
     final orderLabel = '#LND-${o.id.toString().padLeft(3, '0')}';
+    final nextStages = _nextStages(o);
+
     String? estString;
     if (o.estimatedReady != null) {
       final diff = o.estimatedReady!.difference(DateTime.now());
@@ -195,6 +305,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
         estString = 'Estimasi ${days > 0 ? '$days hari ' : ''}${hours > 0 ? '$hours jam' : 'sebentar lagi'}';
       }
     }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -217,10 +328,18 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             if (o.total > 0) Text(formatRupiah(o.total), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.success)),
             PopupMenuButton(
               itemBuilder: (_) => [
-                if (_nextStatus(o.status) != null) PopupMenuItem(value: 'next', child: Text('▶ ${_nextStatus(o.status)}')),
-                const PopupMenuItem(value: 'print', child: Text('🖨 Cetak Tag')),
-                const PopupMenuItem(value: 'edit', child: Text('✏ Edit')),
-                const PopupMenuItem(value: 'delete', child: Text('🗑 Hapus', style: TextStyle(color: Colors.red))),
+                if (_nextStatus(o.status) != null) PopupMenuItem(value: 'next', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.arrow_forward_rounded, size: 18), const SizedBox(width: 8), Text(_nextStatus(o.status)!),
+                ])),
+                const PopupMenuItem(value: 'print', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.print_rounded, size: 18), SizedBox(width: 8), Text('Cetak Tag'),
+                ])),
+                const PopupMenuItem(value: 'edit', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('Edit'),
+                ])),
+                const PopupMenuItem(value: 'delete', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('Hapus', style: TextStyle(color: Colors.red)),
+                ])),
               ],
               onSelected: (v) {
                 if (v == 'next') _advanceStatus(o);
@@ -230,6 +349,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
               },
             ),
           ]),
+          // ── Items chips ──
           if (items.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
@@ -245,6 +365,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
               }).toList(),
             ),
           ],
+          // ── Estimate + notes ──
           if (estString != null) ...[
             const SizedBox(height: 6),
             Row(children: [
@@ -261,16 +382,49 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             const SizedBox(height: 4),
             Text(o.notes!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
           ],
+          // ── Quick status update chips ──
+          if (nextStages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
+              const SizedBox(width: 6),
+              Text('Update:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              const SizedBox(width: 6),
+              ...nextStages.map((ns) {
+                final nsColor = ns['color'] as Color;
+                return GestureDetector(
+                  onTap: () => _jumpToStatus(o, ns['label']),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: nsColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: nsColor.withOpacity(0.3)),
+                    ),
+                    child: Text(ns['label'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor)),
+                  ),
+                );
+              }),
+            ]),
+          ],
         ]),
       ),
     );
+  }
+
+  /// Jump directly to a specific status (not just next step).
+  Future<void> _jumpToStatus(LaundryOrder o, String targetStatus) async {
+    await LaundryOrderRepository(ref.read(databaseProvider)).updateStatus(o.id, targetStatus);
+    TopToast.success(context, 'Status -> $targetStatus');
+    _load();
   }
 
   Future<void> _advanceStatus(LaundryOrder o) async {
     final next = _nextStatus(o.status);
     if (next == null) return;
     await LaundryOrderRepository(ref.read(databaseProvider)).updateStatus(o.id, next);
-    TopToast.success(context, 'Status → $next ✓');
+    TopToast.success(context, 'Status -> $next');
     _load();
   }
 
@@ -287,9 +441,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
         if (mounted) TopToast.error(context, 'Tidak ada printer terhubung');
         return;
       }
-      // Use first available printer (tag printing doesn't need saved printer)
       await printer.connect(devices.first);
-      // Build compact tag receipt
       List<Map<String, dynamic>> items = [];
       try { items = List<Map<String, dynamic>>.from(jsonDecode(o.itemsJson)); } catch (_) {}
       final lines = <ReceiptLine>[];
@@ -335,7 +487,6 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     DateTime? estReady = order?.estimatedReady;
     final formKey = GlobalKey<FormState>();
 
-    // Parse existing items or start with one empty row
     List<_LaundryItem> items = [];
     if (order != null) {
       try {
@@ -345,7 +496,6 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
     }
     if (items.isEmpty) items.add(_LaundryItem());
 
-    // Controllers for each item row — created fresh on each open
     final itemControllers = <Map<String, TextEditingController>>[];
     for (final item in items) {
       itemControllers.add({
@@ -449,7 +599,6 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
             style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
-              // Read items from controllers
               final validItems = <Map<String, dynamic>>[];
               var total = 0;
               for (var i = 0; i < items.length; i++) {
@@ -466,10 +615,10 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> with 
               final repo = LaundryOrderRepository(db);
               if (isEdit) {
                 await repo.update(order!.id, customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(), estimatedReady: estReady);
-                TopToast.success(context, 'Cucian diperbarui ✓');
+                TopToast.success(context, 'Cucian diperbarui');
               } else {
                 await repo.add(customerName: nameC.text.trim(), customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(), itemsJson: itemsJson, total: total, notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(), estimatedReady: estReady);
-                TopToast.success(context, 'Cucian baru ditambahkan ✓');
+                TopToast.success(context, 'Cucian baru ditambahkan');
               }
               Navigator.pop(ctx);
               _load();

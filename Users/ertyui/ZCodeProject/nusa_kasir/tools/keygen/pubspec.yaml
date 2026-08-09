@@ -1,0 +1,9 @@
+name: nusa_keygen
+description: Generate & sign NUSA activation keys
+publish_to: 'none'
+environment:
+  sdk: ^3.12.2
+dependencies:
+  cryptography: ^2.7.0
+  supabase: ^2.5.0
+  args: ^2.5.0

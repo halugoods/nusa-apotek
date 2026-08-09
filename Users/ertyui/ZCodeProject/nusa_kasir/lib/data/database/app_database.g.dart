@@ -365,6 +365,18 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _priceTypeMeta = const VerificationMeta(
+    'priceType',
+  );
+  @override
+  late final GeneratedColumn<String> priceType = GeneratedColumn<String>(
+    'price_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pcs'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -394,6 +406,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     productType,
     variantsJson,
     wholesaleJson,
+    priceType,
     createdAt,
   ];
   @override
@@ -508,6 +521,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         ),
       );
     }
+    if (data.containsKey('price_type')) {
+      context.handle(
+        _priceTypeMeta,
+        priceType.isAcceptableOrUnknown(data['price_type']!, _priceTypeMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -583,6 +602,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.string,
         data['${effectivePrefix}wholesale_json'],
       ),
+      priceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}price_type'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -612,6 +635,7 @@ class Product extends DataClass implements Insertable<Product> {
   final String? productType;
   final String? variantsJson;
   final String? wholesaleJson;
+  final String priceType;
   final DateTime createdAt;
   const Product({
     required this.id,
@@ -629,6 +653,7 @@ class Product extends DataClass implements Insertable<Product> {
     this.productType,
     this.variantsJson,
     this.wholesaleJson,
+    required this.priceType,
     required this.createdAt,
   });
   @override
@@ -663,6 +688,7 @@ class Product extends DataClass implements Insertable<Product> {
     if (!nullToAbsent || wholesaleJson != null) {
       map['wholesale_json'] = Variable<String>(wholesaleJson);
     }
+    map['price_type'] = Variable<String>(priceType);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -696,6 +722,7 @@ class Product extends DataClass implements Insertable<Product> {
       wholesaleJson: wholesaleJson == null && nullToAbsent
           ? const Value.absent()
           : Value(wholesaleJson),
+      priceType: Value(priceType),
       createdAt: Value(createdAt),
     );
   }
@@ -721,6 +748,7 @@ class Product extends DataClass implements Insertable<Product> {
       productType: serializer.fromJson<String?>(json['productType']),
       variantsJson: serializer.fromJson<String?>(json['variantsJson']),
       wholesaleJson: serializer.fromJson<String?>(json['wholesaleJson']),
+      priceType: serializer.fromJson<String>(json['priceType']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -743,6 +771,7 @@ class Product extends DataClass implements Insertable<Product> {
       'productType': serializer.toJson<String?>(productType),
       'variantsJson': serializer.toJson<String?>(variantsJson),
       'wholesaleJson': serializer.toJson<String?>(wholesaleJson),
+      'priceType': serializer.toJson<String>(priceType),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -763,6 +792,7 @@ class Product extends DataClass implements Insertable<Product> {
     Value<String?> productType = const Value.absent(),
     Value<String?> variantsJson = const Value.absent(),
     Value<String?> wholesaleJson = const Value.absent(),
+    String? priceType,
     DateTime? createdAt,
   }) => Product(
     id: id ?? this.id,
@@ -782,6 +812,7 @@ class Product extends DataClass implements Insertable<Product> {
     wholesaleJson: wholesaleJson.present
         ? wholesaleJson.value
         : this.wholesaleJson,
+    priceType: priceType ?? this.priceType,
     createdAt: createdAt ?? this.createdAt,
   );
   Product copyWithCompanion(ProductsCompanion data) {
@@ -809,6 +840,7 @@ class Product extends DataClass implements Insertable<Product> {
       wholesaleJson: data.wholesaleJson.present
           ? data.wholesaleJson.value
           : this.wholesaleJson,
+      priceType: data.priceType.present ? data.priceType.value : this.priceType,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -831,6 +863,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('productType: $productType, ')
           ..write('variantsJson: $variantsJson, ')
           ..write('wholesaleJson: $wholesaleJson, ')
+          ..write('priceType: $priceType, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -853,6 +886,7 @@ class Product extends DataClass implements Insertable<Product> {
     productType,
     variantsJson,
     wholesaleJson,
+    priceType,
     createdAt,
   );
   @override
@@ -874,6 +908,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.productType == this.productType &&
           other.variantsJson == this.variantsJson &&
           other.wholesaleJson == this.wholesaleJson &&
+          other.priceType == this.priceType &&
           other.createdAt == this.createdAt);
 }
 
@@ -893,6 +928,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String?> productType;
   final Value<String?> variantsJson;
   final Value<String?> wholesaleJson;
+  final Value<String> priceType;
   final Value<DateTime> createdAt;
   const ProductsCompanion({
     this.id = const Value.absent(),
@@ -910,6 +946,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.productType = const Value.absent(),
     this.variantsJson = const Value.absent(),
     this.wholesaleJson = const Value.absent(),
+    this.priceType = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   ProductsCompanion.insert({
@@ -928,6 +965,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.productType = const Value.absent(),
     this.variantsJson = const Value.absent(),
     this.wholesaleJson = const Value.absent(),
+    this.priceType = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : name = Value(name),
        sellPrice = Value(sellPrice);
@@ -947,6 +985,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? productType,
     Expression<String>? variantsJson,
     Expression<String>? wholesaleJson,
+    Expression<String>? priceType,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -965,6 +1004,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (productType != null) 'product_type': productType,
       if (variantsJson != null) 'variants_json': variantsJson,
       if (wholesaleJson != null) 'wholesale_json': wholesaleJson,
+      if (priceType != null) 'price_type': priceType,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -985,6 +1025,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<String?>? productType,
     Value<String?>? variantsJson,
     Value<String?>? wholesaleJson,
+    Value<String>? priceType,
     Value<DateTime>? createdAt,
   }) {
     return ProductsCompanion(
@@ -1003,6 +1044,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       productType: productType ?? this.productType,
       variantsJson: variantsJson ?? this.variantsJson,
       wholesaleJson: wholesaleJson ?? this.wholesaleJson,
+      priceType: priceType ?? this.priceType,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -1055,6 +1097,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (wholesaleJson.present) {
       map['wholesale_json'] = Variable<String>(wholesaleJson.value);
     }
+    if (priceType.present) {
+      map['price_type'] = Variable<String>(priceType.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1079,6 +1124,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('productType: $productType, ')
           ..write('variantsJson: $variantsJson, ')
           ..write('wholesaleJson: $wholesaleJson, ')
+          ..write('priceType: $priceType, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -18691,6 +18737,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String?> productType,
       Value<String?> variantsJson,
       Value<String?> wholesaleJson,
+      Value<String> priceType,
       Value<DateTime> createdAt,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
@@ -18710,6 +18757,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String?> productType,
       Value<String?> variantsJson,
       Value<String?> wholesaleJson,
+      Value<String> priceType,
       Value<DateTime> createdAt,
     });
 
@@ -18794,6 +18842,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get wholesaleJson => $composableBuilder(
     column: $table.wholesaleJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get priceType => $composableBuilder(
+    column: $table.priceType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -18887,6 +18940,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get priceType => $composableBuilder(
+    column: $table.priceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -18955,6 +19013,9 @@ class $$ProductsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get priceType =>
+      $composableBuilder(column: $table.priceType, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -19002,6 +19063,7 @@ class $$ProductsTableTableManager
                 Value<String?> productType = const Value.absent(),
                 Value<String?> variantsJson = const Value.absent(),
                 Value<String?> wholesaleJson = const Value.absent(),
+                Value<String> priceType = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
@@ -19019,6 +19081,7 @@ class $$ProductsTableTableManager
                 productType: productType,
                 variantsJson: variantsJson,
                 wholesaleJson: wholesaleJson,
+                priceType: priceType,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -19038,6 +19101,7 @@ class $$ProductsTableTableManager
                 Value<String?> productType = const Value.absent(),
                 Value<String?> variantsJson = const Value.absent(),
                 Value<String?> wholesaleJson = const Value.absent(),
+                Value<String> priceType = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
@@ -19055,6 +19119,7 @@ class $$ProductsTableTableManager
                 productType: productType,
                 variantsJson: variantsJson,
                 wholesaleJson: wholesaleJson,
+                priceType: priceType,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0

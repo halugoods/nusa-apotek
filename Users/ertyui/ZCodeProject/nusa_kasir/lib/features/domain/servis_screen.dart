@@ -1,4 +1,4 @@
-/// Bengkel & Service HP: Service ticket management (status, sparepart needed, cost est).
+/// Bengkel & Servis: Service ticket management (status, sparepart needed, cost est).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -103,8 +103,7 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
           ),
           child: TabBar(
             controller: _tabController,
-            isScrollable: false,
-            tabAlignment: TabAlignment.fill,
+            isScrollable: true,
             labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
             indicatorSize: TabBarIndicatorSize.tab,

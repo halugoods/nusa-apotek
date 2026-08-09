@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_cropper/image_cropper.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -170,42 +169,31 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
-    if (result == null || result.files.single.path == null) return;
+    // Use withData:true so we get raw bytes — works on ALL devices
+    // regardless of content:// vs file:// URI schemes from the system picker.
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
 
-    CroppedFile? cropped;
-    String? sourcePath = result.files.single.path;
+    final bytes = result.files.single.bytes;
+    if (bytes == null) return;
 
-    // Attempt 1: Try ImageCropper directly with original path
+    final ext = p.extension(result.files.single.name);
+    final tmpDir = await getTemporaryDirectory();
+    final tmpPath = p.join(tmpDir.path, '_upload_${DateTime.now().millisecondsSinceEpoch}$ext');
+    final tmpSrc = File(tmpPath);
+    String? tmpForCleanup = tmpPath;
+
     try {
-      cropped = await ImageCropper().cropImage(
-        sourcePath: sourcePath!,
-        aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Sesuaikan Foto',
-            toolbarColor: Color(0xFF2563EB),
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-            statusBarColor: Color(0xFF1D4ED8),
-          ),
-          IOSUiSettings(
-            title: 'Sesuaikan Foto',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
-    } catch (_) {
-      // Attempt 2: Copy to temp file and try again
+      // Write bytes to temp file — always a real file:// path, no content URI
+      await tmpSrc.writeAsBytes(bytes);
+
+      // Try ImageCropper with the temp file
+      CroppedFile? cropped;
       try {
-        final srcFile = File(sourcePath!);
-        final tmpDir = await getApplicationDocumentsDirectory();
-        final tmpPath = p.join(tmpDir.path, '_crop_${DateTime.now().millisecondsSinceEpoch}${p.extension(sourcePath)}');
-        await srcFile.copy(tmpPath);
-        sourcePath = tmpPath;
         cropped = await ImageCropper().cropImage(
           sourcePath: tmpPath,
           aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
@@ -227,27 +215,29 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           ],
         );
       } catch (_) {
-        // Both attempts failed — proceed with original uncropped image
-      } finally {
-        // Clean up temp file
-        if (sourcePath != null && sourcePath != result.files.single.path) {
-          try { await File(sourcePath!).delete(); } catch (_) {}
-        }
+        // Crop failed — proceed with original image uncropped
       }
-    }
 
-    try {
-      final finalPath = cropped?.path ?? result.files.single.path!;
-      final src = File(finalPath);
-      final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(src.path);
+      // Copy final image (cropped or original) to permanent storage
+      final srcPath = cropped?.path ?? tmpPath;
+      final src = File(srcPath);
+      final appDir = await getApplicationDocumentsDirectory();
       final destName = 'product_${DateTime.now().millisecondsSinceEpoch}$ext';
-      final dest = File(p.join(dir.path, destName));
+      final dest = File(p.join(appDir.path, destName));
       await src.copy(dest.path);
+
+      // If cropped file is different from our temp, clean it up too
+      if (cropped != null && cropped.path != tmpPath) {
+        try { await File(cropped.path).delete(); } catch (_) {}
+      }
+
       setState(() => _imagePath = dest.path);
       TopToast.success(context, 'Gambar ditambahkan');
     } catch (_) {
       TopToast.error(context, 'Gagal menyimpan gambar');
+    } finally {
+      // Always clean up our temp file
+      try { await File(tmpForCleanup).delete(); } catch (_) {}
     }
   }
 

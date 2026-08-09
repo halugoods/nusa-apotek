@@ -86,13 +86,18 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     if (mounted) setState(() { _orders = filtered; _loading = false; });
   }
 
-  void _listenSupabase() {
+  void _listenSupabase() async {
     try {
       final supabase = Supabase.instance.client;
-      _channel = supabase.channel('online-orders').onPostgresChanges(
+      final svc = OnlineOrderService(supabase);
+      final storeId = await svc.storeId;
+      if (storeId == null) return;
+
+      _channel = supabase.channel('online-orders-$storeId').onPostgresChanges(
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'online_orders',
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'store_id', value: storeId),
         callback: (payload) {
           if (mounted) _load();
         },
@@ -100,6 +105,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
         event: PostgresChangeEvent.update,
         schema: 'public',
         table: 'online_orders',
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'store_id', value: storeId),
         callback: (payload) {
           if (mounted) _load();
         },

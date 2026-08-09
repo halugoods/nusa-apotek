@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/app.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/dev/variant_provider.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
@@ -227,7 +228,9 @@ void main() async {
     try {
       final activated = (await SecureStore.getActivation()) != null;
       if (!activated) {
-        initialLocation = '/activation';
+        // Dev mode: show variant picker first, then activation
+        // Production: go directly to activation with build-time config
+        initialLocation = NusaConfig.isDevBuild ? '/variant-picker' : '/activation';
       } else {
         final session = await EmployeeSession.restore();
         if (session != null && !session.isExpired) {

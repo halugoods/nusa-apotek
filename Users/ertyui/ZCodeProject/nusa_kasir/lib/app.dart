@@ -44,6 +44,7 @@ import 'package:nusa_kasir/features/domain/servis_screen.dart';
 import 'package:nusa_kasir/features/domain/booking_screen.dart';
 import 'package:nusa_kasir/features/domain/resep_screen.dart';
 import 'package:nusa_kasir/features/domain/print_order_screen.dart';
+import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
 
 const _publicRoutes = {
   '/splash',
@@ -51,6 +52,7 @@ const _publicRoutes = {
   '/login',
   '/onboarding',
   '/setup',
+  '/variant-picker',
 };
 
 /// Menu routes are protected centrally so deep links cannot bypass Dashboard's
@@ -152,6 +154,10 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
+    ),
+    GoRoute(
+      path: '/variant-picker',
+      pageBuilder: (_, __) => _slidePage(VariantPickerScreen()),
     ),
     GoRoute(
       path: '/activation',
@@ -289,7 +295,7 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/pengaturan_pembayaran',
       pageBuilder: (_, __) => _slidePage(PaymentSettingsScreen()),
     ),
-    // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Service HP) ──
+    // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Servis) ──
     GoRoute(
       path: '/meja',
       pageBuilder: (_, __) => _slidePage(MejaScreen()),

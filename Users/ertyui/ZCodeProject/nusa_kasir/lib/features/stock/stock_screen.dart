@@ -13,6 +13,7 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -1294,33 +1295,18 @@ class _AdjustSheetState extends State<_AdjustSheet> {
           SizedBox(width: 8),
           Text('Pindai Barcode'),
         ]),
-        content: SizedBox(
-          width: 280, height: 280,
-          child: Stack(children: [
-            MobileScanner(
-              controller: controller,
-              onDetect: (capture) {
-                if (code != null || capture.barcodes.isEmpty) return;
-                final barcode = capture.barcodes.firstOrNull;
-                if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
-                code = barcode.rawValue;
-                Navigator.pop(ctx);
-              },
-            ),
-            // Scanning animation overlay
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 200, height: 2,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ]),
+        content: AnimatedScannerOverlay(
+          size: 280,
+          child: MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              if (code != null || capture.barcodes.isEmpty) return;
+              final barcode = capture.barcodes.firstOrNull;
+              if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
+              code = barcode.rawValue;
+              Navigator.pop(ctx);
+            },
+          ),
         ),
         actions: [
           TextButton(

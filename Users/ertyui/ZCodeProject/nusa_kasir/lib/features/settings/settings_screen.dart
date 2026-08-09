@@ -57,9 +57,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // FnB: alur pembayaran
   bool _fnbPayFirst = false;
 
-  // Laundry: default price type
-  bool _laundryDefaultPcs = true; // true = per pcs, false = per kg
-
   // Theme preset
   String _themePreset = NusaConfig.productId.replaceFirst('nusa-', '');
 
@@ -206,10 +203,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _fnbPayFirst = await SecureStore.getFnbPaymentFirst();
       }
 
-      // Load laundry settings
-      if (NusaConfig.isLaundryVariant) {
-        _laundryDefaultPcs = (await SecureStore.getLaundryDefaultPriceType()) == 'pcs';
-      }
+      // (Laundry global settings removed — now per-product)
 
       setState(() {});
     }
@@ -373,73 +367,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         next ? 'Alur: Bayar dulu di kasir' : 'Alur: Pesan dulu, bayar nanti',
       );
     }
-  }
-
-  // ── Laundry: Settings ──────────────────────────────────
-
-  void _showLaundrySettings() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              const Text('Pengaturan Laundry', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 16),
-              // Default price type
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-                ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Harga Default Produk Baru', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text('Format harga produk laundry saat ditambahkan.', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: _laundryTypeChip('pcs', 'Per Pcs', _laundryDefaultPcs, () { setState(() => _laundryDefaultPcs = true); SecureStore.setLaundryDefaultPriceType('pcs'); }),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _laundryTypeChip('kg', 'Per Kg', !_laundryDefaultPcs, () { setState(() => _laundryDefaultPcs = false); SecureStore.setLaundryDefaultPriceType('kg'); }),
-                    ),
-                  ]),
-                ]),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _laundryTypeChip(String value, String label, bool active, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: active ? NusaConfig.activeSoft : (const Color(0xFFF9FAFB)),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: active ? NusaConfig.activePrimary : NusaConfig.dividerColor, width: active ? 2 : 1),
-        ),
-        child: Center(child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-            color: active ? NusaConfig.activePrimary : NusaConfig.textSecondary))),
-      ),
-    );
   }
 
   // ── Backups ───────────────────────────────────────────────
@@ -2733,20 +2660,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
             ],
-            // Laundry settings
-            if (NusaConfig.isLaundryVariant) ...[
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.local_laundry_service_outlined,
-                iconColor: NusaConfig.primaryColor,
-                title: 'Pengaturan Laundry',
-                subtitle: _laundryDefaultPcs
-                    ? 'Harga produk baru: per pcs'
-                    : 'Harga produk baru: per kg',
-                isDark: isDark,
-                onTap: _showLaundrySettings,
-              ),
-            ],
+            // Laundry settings removed — now per-product via priceType toggle on product cards.
+
             const SizedBox(height: 12),
             // Pengaturan Struk
             _menuRow(

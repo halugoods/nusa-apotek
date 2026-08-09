@@ -106,9 +106,9 @@ class _ResepScreenState extends ConsumerState<ResepScreen> with SingleTickerProv
           border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
         ),
         child: TabBar(
-          controller: _tabController, isScrollable: false, tabAlignment: TabAlignment.fill,
+          controller: _tabController, isScrollable: true,
           labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          unselectedLabelStyle: const TextStyle(fontSize: 12),
+          unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
           indicatorSize: TabBarIndicatorSize.tab,
           indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(10)),
           labelColor: Colors.white,

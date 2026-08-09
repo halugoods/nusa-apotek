@@ -1,7 +1,7 @@
 name: nusa_kasir
-description: "NUSA - Aplikasi Kasir untuk Toko Kelontong"
+description: "NUSA - Aplikasi Kasir untuk Rumah Makan & Kafe"
 publish_to: 'none'
-version: 1.6.9+22
+version: 1.7.1+24
 
 environment:
   sdk: ^3.12.2
@@ -24,6 +24,8 @@ dependencies:
   nfc_manager: ^3.0.1
   esc_pos_bluetooth: ^0.4.1
   esc_pos_utils: ^1.1.0
+  image: ^3.3.0
+  permission_handler: ^11.3.0
   barcode: ^2.2.8
   barcode_widget: ^2.0.0
   qr_flutter: ^4.1.0

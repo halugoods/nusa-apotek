@@ -18,10 +18,13 @@ class TransactionRepository {
     int? cashReturn,
     String? cashierName,
     int? branchId,
+    String? orderType,
+    int? tableId,
+    String? notes,
   }) async {
     final invoice = 'INV-${DateTime.now().millisecondsSinceEpoch}';
     final itemsJson = jsonEncode(items.map((e) => {
-      'productId': e.productId, 'name': e.name, 'qty': e.qty, 'price': e.price
+      'productId': e.productId, 'name': e.name, 'qty': e.qty, 'price': e.price, 'note': e.note,
     }).toList());
     return db.into(db.transactions).insert(TransactionsCompanion.insert(
       invoice: invoice,
@@ -34,6 +37,9 @@ class TransactionRepository {
       cashReturn: Value(cashReturn),
       cashierName: Value(cashierName),
       branchId: Value(branchId),
+      orderType: orderType != null ? Value(orderType) : const Value.absent(),
+      tableId: tableId != null ? Value(tableId) : const Value.absent(),
+      notes: notes != null ? Value(notes) : const Value.absent(),
     ));
   }
 

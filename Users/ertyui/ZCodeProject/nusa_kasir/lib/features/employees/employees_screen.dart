@@ -221,12 +221,14 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 Center(
                   child: GestureDetector(
                     onTap: () async {
-                      final picked = await _imagePicker.pickImage(
-                          source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
-                      if (picked != null) {
-                        final copied = await _copyPhotoToStorage(picked.path);
-                        if (copied != null) setSt(() => photoPath = copied);
-                      }
+                      try {
+                        final picked = await _imagePicker.pickImage(
+                            source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
+                        if (picked != null) {
+                          final copied = await _copyPhotoToStorage(picked.path);
+                          if (copied != null) setSt(() => photoPath = copied);
+                        }
+                      } catch (_) {}
                     },
                     child: Container(
                       width: 80, height: 80,
@@ -255,12 +257,14 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 SizedBox(height: 6),
                 TextButton.icon(
                   onPressed: () async {
-                    final picked = await _imagePicker.pickImage(
-                        source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
-                    if (picked != null) {
-                      final copied = await _copyPhotoToStorage(picked.path);
-                      if (copied != null) setSt(() => photoPath = copied);
-                    }
+                    try {
+                      final picked = await _imagePicker.pickImage(
+                          source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
+                      if (picked != null) {
+                        final copied = await _copyPhotoToStorage(picked.path);
+                        if (copied != null) setSt(() => photoPath = copied);
+                      }
+                    } catch (_) {}
                   },
                   icon: Icon(Icons.camera_alt_outlined, size: 16,
                       color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),

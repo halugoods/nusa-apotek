@@ -110,6 +110,12 @@ class PinKeypadState extends State<PinKeypad>
     if (oldWidget.error == null && widget.error != null) {
       HapticFeedback.heavyImpact();
     }
+    // NFC auto-start when showNfc becomes true after initial availability check.
+    // On activation screen, _nfcAvailable starts false and becomes true async —
+    // this catches that transition and auto-starts the NFC session.
+    if (!oldWidget.showNfc && widget.showNfc && widget.onNfc != null) {
+      _autoStartNfc();
+    }
   }
 
   /// Public API — read current digits (for manual submit flows).

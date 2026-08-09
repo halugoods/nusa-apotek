@@ -184,6 +184,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           customerPhone: custPhone,
           invoice: tx.invoice,
           dateStr: dateStr,
+          orderType: tx.orderType,
+          tableName: null, // table name not stored in transaction, only tableId
         ),
       );
     }

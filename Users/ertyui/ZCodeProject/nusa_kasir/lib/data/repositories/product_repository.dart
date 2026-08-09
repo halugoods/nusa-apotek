@@ -51,10 +51,13 @@ class ProductRepository {
     return q.get();
   }
 
-  Future<List<Product>> getProducts({String? category, String? status}) async {
+  Future<List<Product>> getProducts({String? category, String? status, String? productType}) async {
     final q = db.select(db.products);
     if (category != null && category != 'Semua') {
       q.where((t) => t.category.equals(category));
+    }
+    if (productType != null && productType.isNotEmpty) {
+      q.where((t) => t.productType.equals(productType));
     }
     // server-side status filter
     if (status == 'Aktif') {
@@ -86,6 +89,12 @@ class ProductRepository {
 
   Future<void> deleteProduct(int id) async {
     await (db.delete(db.products)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Set price type for a product ('pcs' or 'kg').
+  Future<void> setPriceType(int id, String type) async {
+    await (db.update(db.products)..where((t) => t.id.equals(id)))
+        .write(ProductsCompanion(priceType: Value(type)));
   }
 
   /// Get product counts grouped by category.

@@ -21,6 +21,7 @@ class Products extends Table {
   TextColumn get productType => text().nullable()();
   TextColumn get variantsJson => text().nullable()();   // JSON array: [{name,priceAdjustment,stock}]
   TextColumn get wholesaleJson => text().nullable()();  // JSON array: [{minQty,price}]
+  TextColumn get priceType => text().withDefault(const Constant('pcs'))(); // 'pcs' or 'kg'
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 class StockMovements extends Table {

@@ -240,6 +240,10 @@ class SecureStore {
       (await SecureStore.read(key: 'nusa_laundry_notify_ready')) == 'true';
   static Future<void> setLaundryNotifyReady(bool v) =>
       SecureStore.write(key: 'nusa_laundry_notify_ready', value: v.toString());
+  static Future<bool> getLaundryStatsExpanded() async =>
+      (await SecureStore.read(key: 'nusa_laundry_stats_expanded')) == 'true';
+  static Future<void> setLaundryStatsExpanded(bool v) =>
+      SecureStore.write(key: 'nusa_laundry_stats_expanded', value: v.toString());
 
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>

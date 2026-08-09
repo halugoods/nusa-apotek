@@ -15,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/core/payment/payment_sheet.dart';
@@ -397,8 +398,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           SizedBox(width: 8),
           Text('Scan Key Aktivasi'),
         ]),
-        content: SizedBox(
-          width: 280, height: 280,
+        content: AnimatedScannerOverlay(
+          size: 280,
           child: MobileScanner(
             controller: controller,
             onDetect: (c) {

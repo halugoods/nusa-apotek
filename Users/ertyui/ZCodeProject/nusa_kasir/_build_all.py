@@ -223,10 +223,10 @@ VARIANTS = [
                          "meja", "laundry_status", "servis", "booking", "resep"],
     },
     {
-        "id": "servicehp", "name": "NUSA Service HP", "pkg": "com.nusa.servicehp",
-        "product": "nusa-servicehp", "subtitle": "Aplikasi Kasir untuk Servis Handphone",
-        "primary": "0xFF78716C", "dark": "0xFF57534E", "soft": "0xFFFAFAF9",
-        "repo": "halugoods/nusa-servicehp",
+        "id": "servis", "name": "NUSA Servis", "pkg": "com.nusa.servis",
+        "product": "nusa-servis", "subtitle": "Aplikasi Kasir untuk Jasa Servis",
+        "primary": "0xFF152C63", "dark": "0xFF0F1E47", "soft": "0xFFDBEAFE",
+        "repo": "halugoods/nusa-servis",
         "cat_emoji": {
             "LCD": "📱", "Baterai": "🔋", "Software": "⚡",
             "Aksesoris": "🎧", "Lainnya": "📦",
@@ -246,26 +246,24 @@ VARIANTS = [
             "Aksesoris": "Icons.headphones_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["promo", "cabang", "pesanan_online",
-                         "meja", "laundry_status", "booking", "resep", "print_order"],
+        "hidden_menus": ["meja", "laundry_status", "booking", "resep", "print_order"],
     },
 ]
 
 
 CAT_MAP_TYPES = {
-    "catEmoji": "Map<String, String>",
-    "catGradients": "Map<String, List<Color>>",
-    "catIcons": "Map<String, IconData>",
+    "_catEmoji": "Map<String, String>",
+    "_catGradients": "Map<String, List<Color>>",
+    "_catIcons": "Map<String, IconData>",
 }
 
 
 def find_map_lines(lines: list, marker: str) -> tuple:
-    """Return (decl_line, open_brace_line, close_brace_line) for a Dart const map."""
+    """Return (decl_line, open_brace_line, close_brace_line) for a Dart map."""
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if marker in stripped and "static const" in stripped and "=" in stripped:
+        if marker in stripped and "static" in stripped and "Map<" in stripped and "=" in stripped:
             decl_line = i
-            # If '{' is on the declaration line, open_brace is same line
             if "{" in stripped:
                 open_line = i
             else:
@@ -298,7 +296,7 @@ def replace_map_section(lines: list, marker: str, entry_lines: list) -> list:
     entry_indent = base_indent + "  "
 
     map_type = CAT_MAP_TYPES.get(marker, "Map<String, dynamic>")
-    decl = f"{base_indent}static const {map_type} {marker} = {{"
+    decl = f"{base_indent}static {map_type} {marker} = {{"
 
     # Apply entry_indent to each entry line
     indented_entries = []
@@ -333,6 +331,12 @@ def _escape_xml(s: str) -> str:
     """Escape XML special characters (&, <, >, \", ') for safe manifest usage."""
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") \
             .replace('"', "&quot;").replace("'", "&apos;")
+
+
+def _escape_whatsapp_path(name: str) -> str:
+    """Escape variant name for WhatsApp URL path (spaces → %20)."""
+    import urllib.parse
+    return urllib.parse.quote(name, safe='')
 
 
 def setup_logo(variant_id: str):
@@ -393,11 +397,12 @@ def update_config(variant: dict):
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         config = f.read()
 
-    # Single-line replacements
-    config = re.sub(r'(productId\s*=\s*")[^"]+', rf'\g<1>{v["product"]}', config)
-    config = re.sub(r'(appSubtitle\s*=\s*")[^"]+', rf'\g<1>{v["subtitle"]}', config)
-    config = re.sub(r'(githubRepo\s*=\s*")[^"]+', rf'\g<1>{v["repo"]}', config)
-    config = re.sub(r'(applicationId\s*=\s*")[^"]+', rf'\g<1>{v["pkg"]}', config)
+    # Single-line replacements (field names are private: _productId, _appSubtitle, etc.)
+    config = re.sub(r'(_productId\s*=\s*")[^"]+', rf'\g<1>{v["product"]}', config)
+    config = re.sub(r'(_appSubtitle\s*=\s*")[^"]+', rf'\g<1>{v["subtitle"]}', config)
+    config = re.sub(r'(_githubRepo\s*=\s*")[^"]+', rf'\g<1>{v["repo"]}', config)
+    config = re.sub(r'(_applicationId\s*=\s*")[^"]+', rf'\g<1>{v["pkg"]}', config)
+    config = re.sub(r'(_whatsappOrder\s*=\s*")[^"]+', rf'\g<1>https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20{_escape_whatsapp_path(v["name"])}', config)
     config = re.sub(r'(primaryColor\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["primary"]}', config)
     config = re.sub(r'(primaryDark\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["dark"]}', config)
     config = re.sub(r'(primarySoft\s*=\s*(?:const\s+)?Color\()[^)]+', rf'\g<1>{v["soft"]}', config)
@@ -407,9 +412,9 @@ def update_config(variant: dict):
 
     # Category maps: use line-based replacement (regex can't handle nested braces + emoji)
     lines = config.split("\n")
-    lines = replace_map_section(lines, "catEmoji", format_emoji_entries(v["cat_emoji"]))
-    lines = replace_map_section(lines, "catGradients", format_gradient_entries(v["cat_gradients"]))
-    lines = replace_map_section(lines, "catIcons", format_icons_entries(v["cat_icons"]))
+    lines = replace_map_section(lines, "_catEmoji", format_emoji_entries(v["cat_emoji"]))
+    lines = replace_map_section(lines, "_catGradients", format_gradient_entries(v["cat_gradients"]))
+    lines = replace_map_section(lines, "_catIcons", format_icons_entries(v["cat_icons"]))
     config = "\n".join(lines)
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:

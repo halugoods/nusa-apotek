@@ -74,6 +74,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _laundryPending = 0;
   int _laundryReady = 0;
   int _laundryDelivered = 0;
+  bool _laundryStatsExpanded = false;
 
   // Flip card data
   EmployeeCardData? _cardData;
@@ -264,12 +265,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     // Load laundry stats
     int laundryToday = 0, laundryPending = 0, laundryReady = 0, laundryDelivered = 0;
+    bool laundryStatsExpanded = false;
     if (NusaConfig.isLaundryVariant) {
       final laundryRepo = LaundryOrderRepository(db);
       laundryToday = await laundryRepo.countToday();
       laundryPending = await laundryRepo.countPending();
       laundryReady = await laundryRepo.countByStatus('Siap');
       laundryDelivered = await laundryRepo.countByStatus('Diambil');
+      laundryStatsExpanded = await SecureStore.getLaundryStatsExpanded();
     }
 
     // Load flip card data
@@ -300,6 +303,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _laundryPending = laundryPending;
         _laundryReady = laundryReady;
         _laundryDelivered = laundryDelivered;
+        _laundryStatsExpanded = laundryStatsExpanded;
       });
     }
   }
@@ -1194,11 +1198,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       // Laundry stats
                       if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0)) ...[
                         const SizedBox(height: 12),
-                        _LaundryStats(
+                        _LaundryStatsCard(
                           today: _laundryToday,
                           pending: _laundryPending,
                           ready: _laundryReady,
                           delivered: _laundryDelivered,
+                          expanded: _laundryStatsExpanded,
+                          onToggle: () {
+                            setState(() => _laundryStatsExpanded = !_laundryStatsExpanded);
+                            SecureStore.setLaundryStatsExpanded(!_laundryStatsExpanded);
+                          },
                         ),
                       ],
 
@@ -1321,7 +1330,7 @@ class _MenuItem extends StatelessWidget {
                     ),
                     alignment: Alignment.center,
                     child:
-                        const Text('🔐', style: TextStyle(fontSize: 8)),
+                        const Icon(Icons.lock_rounded, size: 10, color: Colors.white),
                   ),
                 ),
               // Badge (count)
@@ -1429,47 +1438,159 @@ class _KeuanganSummary extends StatelessWidget {
   }
 }
 
-/// Laundry mini stats card — shows order pipeline counts.
-class _LaundryStats extends StatelessWidget {
+/// Laundry mini stats card with collapsible slide bar.
+/// Collapsed: thin horizontal pull bar with subtle label.
+/// Expanded: full stats card matching EmployeeStats card design.
+class _LaundryStatsCard extends StatefulWidget {
   final int today, pending, ready, delivered;
-  const _LaundryStats({required this.today, required this.pending, required this.ready, required this.delivered});
+  final bool expanded;
+  final VoidCallback onToggle;
+  const _LaundryStatsCard({required this.today, required this.pending, required this.ready, required this.delivered, required this.expanded, required this.onToggle});
+
+  @override
+  State<_LaundryStatsCard> createState() => _LaundryStatsCardState();
+}
+
+class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerProviderStateMixin {
+  late AnimationController _slideCtrl;
+  late Animation<double> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    if (widget.expanded) _slideCtrl.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _LaundryStatsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _slideCtrl.forward();
+      } else {
+        _slideCtrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _slideCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            width: 28, height: 28,
-            decoration: BoxDecoration(color: const Color(0xFFEC4899).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.local_laundry_service_outlined, color: Color(0xFFEC4899), size: 16),
+    final primaryColor = NusaConfig.primaryColor;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(children: [
+        // ── Pull bar (always visible) ──
+        GestureDetector(
+          onTap: widget.onToggle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            margin: EdgeInsets.only(bottom: widget.expanded ? 0 : 0),
+            child: Container(
+              height: widget.expanded ? 0 : 32,
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Container(
+                  width: 32, height: 3,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Laundry Stats',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 32, height: 3,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ]),
+            ),
           ),
-          const SizedBox(width: 8),
-          const Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 10),
-        Row(children: [
-          _laundryStat('Hari Ini', today, NusaConfig.accentPurple),
-          _laundryStat('Diproses', pending, NusaConfig.info),
-          _laundryStat('Siap', ready, NusaConfig.success),
-          _laundryStat('Diambil', delivered, NusaConfig.activePrimary),
-        ]),
+        ),
+
+        // ── Expanded card with slide animation ──
+        SizeTransition(
+          sizeFactor: _slideAnim,
+          axisAlignment: -1.0,
+          child: GestureDetector(
+            onTap: widget.onToggle,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.local_laundry_service_rounded, size: 18, color: primaryColor),
+                  ),
+                  const SizedBox(width: 10),
+                  Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                  const Spacer(),
+                  // Collapse indicator
+                  Container(
+                    width: 28, height: 28,
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  _laundryStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
+                  _laundryStat('Diproses', widget.pending, NusaConfig.info, isDark),
+                  _laundryStat('Siap', widget.ready, NusaConfig.success, isDark),
+                  _laundryStat('Diambil', widget.delivered, NusaConfig.activePrimary, isDark),
+                ]),
+              ]),
+            ),
+          ),
+        ),
       ]),
     );
   }
 
-  Widget _laundryStat(String label, int count, Color color) {
+  Widget _laundryStat(String label, int count, Color color, bool isDark) {
     return Expanded(
       child: Column(children: [
-        Text('$count', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-        Text(label, style: TextStyle(fontSize: 10, color: NusaConfig.textTertiary)),
+        Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
       ]),
     );
   }

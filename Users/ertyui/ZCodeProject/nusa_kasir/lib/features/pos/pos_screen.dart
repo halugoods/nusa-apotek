@@ -19,6 +19,7 @@ import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
   final int? sessionId;
@@ -167,34 +168,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           SizedBox(width: 8),
           Text('Pindai Barcode'),
         ]),
-        content: SizedBox(
-          width: 280, height: 280,
-          child: Stack(children: [
-            MobileScanner(
-              controller: controller,
-              onDetect: (capture) {
-                if (scannedCode != null) return;
-                final barcode = capture.barcodes.firstOrNull;
-                final raw = barcode?.rawValue;
-                if (raw == null || raw.isEmpty) return;
-                scannedCode = raw;
-                Navigator.pop(ctx);
-              },
-            ),
-            // Scanning animation overlay
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 200, height: 2,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ]),
+        content: AnimatedScannerOverlay(
+          size: 280,
+          child: MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              if (scannedCode != null) return;
+              final barcode = capture.barcodes.firstOrNull;
+              final raw = barcode?.rawValue;
+              if (raw == null || raw.isEmpty) return;
+              scannedCode = raw;
+              Navigator.pop(ctx);
+            },
+          ),
         ),
         actions: [
           TextButton(
@@ -209,8 +195,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
     final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(scannedCode!);
     if (product != null) {
-      ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice);
-      TopToast.success(context, '${product.name} ditambahkan');
+      _addToCart(product);
     } else if (context.mounted) {
       TopToast.error(context, 'Produk tidak ditemukan');
     }
@@ -227,7 +212,66 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     if (widget.sessionId == null) { if (mounted) context.go('/home'); return; }
     final repo = CashierSessionRepository(ref.read(databaseProvider));
     await repo.close(widget.sessionId!);
-    if (mounted) { context.go('/home'); TopToast.success(context, 'Kasir ditutup. Sampai jumpa! 👋'); }
+    if (mounted) { context.go('/home'); TopToast.success(context, 'Kasir ditutup. Sampai jumpa!'); }
+  }
+
+  /// Add product to cart — shows weight dialog for per-kg products.
+  void _addToCart(Product product) {
+    if (product.priceType == 'kg') {
+      _showWeightDialog(product);
+    } else {
+      ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice);
+    }
+  }
+
+  /// Weight input dialog for per-kg laundry products.
+  void _showWeightDialog(Product product) {
+    final ctrl = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+          SizedBox(height: 16),
+          Row(children: [
+            Container(width: 36, height: 36, decoration: BoxDecoration(color: NusaConfig.accentPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.scale_rounded, color: NusaConfig.accentPurple, size: 20)),
+            SizedBox(width: 10),
+            Expanded(child: Text(product.name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+          ]),
+          SizedBox(height: 4),
+          Text('${formatRupiah(product.sellPrice)} / kg', style: TextStyle(fontSize: 13, color: NusaConfig.textSecondary)),
+          SizedBox(height: 16),
+          NusaFormField(
+            label: 'Berat (kg)',
+            controller: ctrl,
+            hintText: 'Contoh: 2.5',
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Wajib diisi';
+              final w = double.tryParse(v);
+              if (w == null || w <= 0) return 'Berat tidak valid';
+              return null;
+            },
+          ),
+          SizedBox(height: 16),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              final w = double.tryParse(ctrl.text.trim());
+              if (w == null || w <= 0) return;
+              ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice, weightKg: w);
+              Navigator.pop(ctx);
+            },
+            child: Text('Tambah ke Keranjang'),
+          )),
+          SizedBox(height: 8),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -425,9 +469,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           final cartItem = cart.cast<CartItem?>().firstWhere((c) => c?.productId == product.id, orElse: () => null);
           return _ProductListCard(
             product: product, isDark: isDark, qtyInCart: cartItem?.qty ?? 0,
-            onAdd: () => ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice),
+            onAdd: () => _addToCart(product),
             onDecrement: () => ref.read(cartProvider.notifier).changeQty(product.id, -1),
-            onIncrement: () => ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice),
+            onIncrement: () => _addToCart(product),
           );
         },
       );
@@ -448,9 +492,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         final cartItem = cart.cast<CartItem?>().firstWhere((c) => c?.productId == product.id, orElse: () => null);
         return _ProductCard(
           product: product, isDark: isDark, qtyInCart: cartItem?.qty ?? 0,
-          onAdd: () => ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice),
+          onAdd: () => _addToCart(product),
           onDecrement: () => ref.read(cartProvider.notifier).changeQty(product.id, -1),
-          onIncrement: () => ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice),
+          onIncrement: () => _addToCart(product),
         );
       },
     );

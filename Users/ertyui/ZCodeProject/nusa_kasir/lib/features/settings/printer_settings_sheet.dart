@@ -71,6 +71,14 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
   String? _logoPath;
   bool _reprinting = false;
 
+  // Kitchen printer (FnB)
+  bool _kitchenPrinterEnabled = false;
+  List<PrinterDevice> _kitchenDevices = [];
+  bool _kitchenScanning = false;
+  String? _kitchenConnecting;
+  String? _kitchenConnectedAddr;
+  String? _kitchenStoredAddr;
+
   final _footerCtrl = TextEditingController();
 
   @override
@@ -96,6 +104,8 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     final drawer = await SecureStore.getCashDrawerEnabled();
     final footer = await SecureStore.getPrinterFooter();
     final logo = await SecureStore.getPrinterLogoPath();
+    final kitchenEnabled = await SecureStore.getKitchenPrinterEnabled();
+    final kitchenAddr = await SecureStore.getKitchenPrinterAddress();
     if (mounted) {
       setState(() {
         _autoPrint = auto;
@@ -104,6 +114,11 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
         _footerText = footer;
         _footerCtrl.text = footer;
         _logoPath = logo;
+        _kitchenPrinterEnabled = kitchenEnabled;
+        if (kitchenAddr != null && kitchenAddr.contains('|')) {
+          _kitchenStoredAddr = kitchenAddr;
+          _kitchenConnectedAddr = kitchenAddr.split('|').last;
+        }
       });
       ReceiptPrinter.setCashDrawer(enabled: drawer);
       ReceiptPrinter.setFooter(footer);
@@ -178,7 +193,41 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
   }
 
   Future<void> _scan() async {
-    // Check Bluetooth state first
+    // 1. Check runtime permissions first (Android 12+ critical)
+    final hasPerms = await BluetoothUtils.hasBluetoothPermissions();
+    if (!hasPerms) {
+      if (mounted) {
+        final grant = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text('Izin Bluetooth Diperlukan'),
+            content: Text(
+              'Aplikasi memerlukan izin Bluetooth untuk menemukan printer thermal.\n\n'
+              'Anda akan diminta memberikan izin. Silakan pilih "Izinkan" pada dialog berikutnya.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Nanti'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Lanjutkan'),
+              ),
+            ],
+          ),
+        );
+        if (grant == true) {
+          final granted = await BluetoothUtils.requestBluetoothPermissions();
+          if (mounted) setState(() {});
+          if (!granted) return; // user denied
+        } else {
+          return; // user chose "Nanti"
+        }
+      }
+    }
+
+    // 2. Check Bluetooth state
     final btOn = await BluetoothUtils.isBluetoothEnabled();
     if (mounted) setState(() => _btEnabled = btOn);
 
@@ -259,6 +308,10 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     setState(() => _testPrinting = true);
     final printer = ReceiptPrinter();
     try {
+      if (!await ReceiptPrinter.ensureBluetoothReady()) {
+        if (mounted) TopToast.error(context, 'Bluetooth tidak siap. Periksa izin pengaturan.');
+        return;
+      }
       final devices = await printer.discover();
       if (devices.isEmpty) {
         if (mounted) TopToast.error(context, 'Tidak ada printer ditemukan');
@@ -305,6 +358,10 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     setState(() => _reprinting = true);
     final printer = ReceiptPrinter();
     try {
+      if (!await ReceiptPrinter.ensureBluetoothReady()) {
+        if (mounted) TopToast.error(context, 'Bluetooth tidak siap. Periksa izin pengaturan.');
+        return;
+      }
       final devices = await printer.discover();
       final savedAddr = _storedAddr!.split('|').last;
       final found = devices.where((d) => d.address == savedAddr);
@@ -326,6 +383,78 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     } finally {
       await printer.dispose();
       if (mounted) setState(() => _reprinting = false);
+    }
+  }
+
+  // ── Kitchen printer (FnB) ──
+
+  Future<void> _setKitchenPrinterEnabled(bool v) async {
+    await SecureStore.setKitchenPrinterEnabled(v);
+    if (mounted) setState(() => _kitchenPrinterEnabled = v);
+    if (v) _kitchenScan();
+  }
+
+  Future<void> _kitchenScan() async {
+    // Reuse the same Bluetooth permission/state flow
+    final hasPerms = await BluetoothUtils.hasBluetoothPermissions();
+    if (!hasPerms) {
+      if (mounted) {
+        final grant = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text('Izin Bluetooth Diperlukan'),
+            content: Text('Aplikasi memerlukan izin Bluetooth untuk menemukan printer dapur.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Nanti')),
+              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Lanjutkan')),
+            ],
+          ),
+        );
+        if (grant == true) {
+          await BluetoothUtils.requestBluetoothPermissions();
+        } else {
+          return;
+        }
+      }
+    }
+
+    final btOn = await BluetoothUtils.isBluetoothEnabled();
+    if (!btOn) return;
+
+    setState(() => _kitchenScanning = true);
+    final printer = ReceiptPrinter();
+    try {
+      final devices = await printer.discover();
+      if (mounted) setState(() => _kitchenDevices = devices);
+    } finally {
+      await printer.dispose();
+      if (mounted) setState(() => _kitchenScanning = false);
+    }
+  }
+
+  Future<void> _kitchenConnect(PrinterDevice device) async {
+    setState(() => _kitchenConnecting = device.address);
+    final printer = ReceiptPrinter();
+    try {
+      await printer.connect(device);
+      // Store as "name|address" format matching main printer
+      final addr = '${device.name}|${device.address}';
+      await SecureStore.setKitchenPrinterAddress(addr);
+      if (mounted) {
+        setState(() {
+          _kitchenConnectedAddr = device.address;
+          _kitchenStoredAddr = addr;
+          _kitchenConnecting = null;
+        });
+        TopToast.success(context, 'Terhubung ke printer dapur: ${device.name}');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _kitchenConnecting = null);
+        TopToast.error(context, 'Gagal menyambung ke printer dapur');
+      }
+    } finally {
+      await printer.dispose();
     }
   }
 
@@ -616,6 +745,153 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
                   ),
                   SizedBox(height: 16),
 
+                  // ── Kitchen printer (FnB only) ──
+                  if (NusaConfig.isFnbVariant) ...[
+                    Container(
+                      margin: EdgeInsets.only(bottom: 12),
+                      padding: EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                        color: accentRed.withValues(alpha: 0.04),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Row(
+                            children: [
+                              Icon(Icons.kitchen_outlined, size: 20, color: accentRed),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Printer Dapur',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                            color: textColor)),
+                                    SizedBox(height: 2),
+                                    Text('Cetak pesanan langsung ke dapur',
+                                        style: TextStyle(fontSize: 11, color: subColor)),
+                                  ],
+                                ),
+                              ),
+                              if (_kitchenConnectedAddr != null)
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: NusaConfig.accentGreen.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text('Terhubung',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: NusaConfig.accentGreen)),
+                                ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+
+                          // Enable toggle
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: Text('Aktifkan Printer Dapur',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor)),
+                            value: _kitchenPrinterEnabled,
+                            activeColor: accentRed,
+                            onChanged: _setKitchenPrinterEnabled,
+                          ),
+
+                          // Show scanner + device list only when enabled
+                          if (_kitchenPrinterEnabled) ...[
+                            SizedBox(height: 6),
+
+                            // Scan button
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _kitchenScanning ? null : _kitchenScan,
+                                icon: _kitchenScanning
+                                    ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : Icon(Icons.bluetooth_searching, size: 16),
+                                label: Text(_kitchenScanning ? 'Memindai...' : 'Pindai Printer Dapur',
+                                    style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: textColor,
+                                  side: BorderSide(color: borderColor),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+
+                            // Kitchen device list
+                            if (_kitchenDevices.isNotEmpty)
+                              ..._kitchenDevices.map((d) {
+                                final isConnecting = _kitchenConnecting == d.address;
+                                final isCurrent = _kitchenConnectedAddr == d.address;
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: 6),
+                                  child: GestureDetector(
+                                    onTap: isConnecting ? null : () => _kitchenConnect(d),
+                                    child: Container(
+                                      padding: EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: isCurrent ? accentRed : borderColor),
+                                        color: isCurrent ? accentRed.withValues(alpha: 0.06) : null,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.print, size: 18, color: isCurrent ? accentRed : subColor),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(d.name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: textColor)),
+                                                Text(d.address, style: TextStyle(fontSize: 10, color: subColor)),
+                                              ],
+                                            ),
+                                          ),
+                                          if (isCurrent) Icon(Icons.check_circle, size: 18, color: accentRed),
+                                          if (isConnecting) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                                          if (!isCurrent && !isConnecting)
+                                            Text('Pilih', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accentRed)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+
+                            if (_kitchenDevices.isEmpty && !_kitchenScanning && _kitchenPrinterEnabled)
+                              Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.info_outline, size: 16, color: subColor),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Tidak ada printer ditemukan. Pastikan printer dapur menyala dan dalam mode pairing.',
+                                        style: TextStyle(fontSize: 11, color: subColor),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // ── Empty state with BT guidance ──
                   if (_devices.isEmpty && !_scanning)
                     Padding(
@@ -629,7 +905,7 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
                           SizedBox(height: 4),
                           Text(
                             _btEnabled
-                                ? 'Pastikan printer dalam mode pairing dan berada dalam jangkauan'
+                                ? 'Pastikan printer menyala, dalam mode pairing,\ndan izin Bluetooth sudah diizinkan di Pengaturan'
                                 : 'Bluetooth saat ini mati. Nyalakan untuk memindai printer',
                             style: TextStyle(fontSize: 11, color: subColor),
                             textAlign: TextAlign.center,

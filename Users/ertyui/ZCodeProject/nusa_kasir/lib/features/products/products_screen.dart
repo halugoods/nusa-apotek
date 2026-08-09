@@ -18,6 +18,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -242,29 +243,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           SizedBox(width: 8),
           Text('Scan Barcode Produk'),
         ]),
-        content: SizedBox(width: 280, height: 280,
-          child: Stack(children: [
-            MobileScanner(controller: controller, onDetect: (capture) {
-              final barcode = capture.barcodes.firstOrNull;
-              if (barcode != null && barcode.rawValue != null) {
-                scanned = barcode.rawValue;
-                Navigator.pop(context);
-              }
-            }),
-            // Scanning animation overlay
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 200, height: 2,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ]),
+        content: AnimatedScannerOverlay(
+          size: 280,
+          child: MobileScanner(controller: controller, onDetect: (capture) {
+            final barcode = capture.barcodes.firstOrNull;
+            if (barcode != null && barcode.rawValue != null) {
+              scanned = barcode.rawValue;
+              Navigator.pop(context);
+            }
+          }),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('Batal'))],
       ),
@@ -485,6 +472,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         product: _products[i],
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
+        onTogglePriceType: () => _togglePriceType(_products[i]),
       ),
     );
   }
@@ -502,6 +490,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         product: _products[i],
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
+        onTogglePriceType: () => _togglePriceType(_products[i]),
       ),
     );
   }
@@ -519,8 +508,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         product: _products[i],
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
+        onTogglePriceType: () => _togglePriceType(_products[i]),
       ),
     );
+  }
+
+  Future<void> _togglePriceType(Product product) async {
+    final newType = product.priceType == 'kg' ? 'pcs' : 'kg';
+    await ref.read(productRepoProvider).setPriceType(product.id, newType);
+    TopToast.success(context, newType == 'kg' ? 'Harga per kg' : 'Harga per pcs');
+    _load();
   }
 }
 
@@ -654,7 +651,8 @@ class _ProductGridCard extends StatelessWidget {
   final Product product;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  _ProductGridCard({required this.product, required this.onEdit, required this.onDelete});
+  final VoidCallback? onTogglePriceType;
+  _ProductGridCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType});
 
   String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -733,6 +731,14 @@ class _ProductGridCard extends StatelessWidget {
             Spacer(),
             // ── Actions ──
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              if (NusaConfig.isLaundryVariant && onTogglePriceType != null) ...[
+                _ActionButton(
+                  icon: product.priceType == 'kg' ? Icons.scale_rounded : Icons.inventory_2_rounded,
+                  color: product.priceType == 'kg' ? NusaConfig.accentPurple : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  onTap: onTogglePriceType!,
+                ),
+                SizedBox(width: 6),
+              ],
               _ActionButton(icon: Icons.edit_outlined, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, onTap: onEdit),
               SizedBox(width: 6),
               _ActionButton(icon: Icons.delete_outline, color: NusaConfig.error, onTap: onDelete),
@@ -750,7 +756,8 @@ class _ProductListCard extends StatelessWidget {
   final Product product;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  _ProductListCard({required this.product, required this.onEdit, required this.onDelete});
+  final VoidCallback? onTogglePriceType;
+  _ProductListCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType});
 
   String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -819,6 +826,14 @@ class _ProductListCard extends StatelessWidget {
           SizedBox(width: 8),
           // Actions
           Row(mainAxisSize: MainAxisSize.min, children: [
+            if (NusaConfig.isLaundryVariant && onTogglePriceType != null) ...[
+              _ActionButton(
+                icon: product.priceType == 'kg' ? Icons.scale_rounded : Icons.inventory_2_rounded,
+                color: product.priceType == 'kg' ? NusaConfig.accentPurple : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                onTap: onTogglePriceType!,
+              ),
+              SizedBox(width: 4),
+            ],
             _ActionButton(icon: Icons.edit_outlined, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, onTap: onEdit),
             SizedBox(width: 4),
             _ActionButton(icon: Icons.delete_outline, color: NusaConfig.error, onTap: onDelete),
