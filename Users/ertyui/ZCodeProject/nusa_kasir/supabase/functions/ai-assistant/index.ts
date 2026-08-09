@@ -1,8 +1,13 @@
 // Supabase Edge Function: ai-assistant
 //
-// Uses Groq API (gratis, cepat) for AI chat.
+// Uses Groq API (gratis, cepat) for AI chat with tool calling support.
 // Endpoint: https://api.groq.com/openai/v1/chat/completions
 // Default model: llama-3.1-8b-instant (free tier, fast)
+//
+// When `tools` are provided by the client, the function passes them to Groq
+// with tool_choice: "auto". If Groq returns tool_calls, they are returned
+// to the client for local execution. The client then sends results back
+// as `tool` role messages for the final text reply.
 //
 // Deploy: supabase functions deploy ai-assistant
 //
@@ -14,14 +19,16 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
 // ── Default system prompt ──────────────────────────────────────────
-const DEFAULT_SYSTEM_PROMPT = `Kamu adalah AI Assistant untuk NUSA Kasir, aplikasi Point of Sale (POS) untuk toko kelontong, UMKM, dan retail di Indonesia.
+const DEFAULT_SYSTEM_PROMPT = `Kamu adalah AI Assistant untuk NUSA Kasir, aplikasi Point of Sale (POS) untuk UMKM dan retail di Indonesia.
 
 ATURAN PENTING — WAJIB DIPATUHI:
-1. Kamu HANYA menggunakan data yang diberikan dalam konteks. JANGAN PERNAH mengarang angka, fakta, statistik, nama produk, atau data apapun yang tidak ada di konteks.
+1. Kamu HANYA menggunakan data yang diberikan dalam konteks atau hasil tool calls. JANGAN PERNAH mengarang angka, fakta, statistik, nama produk, atau data apapun yang tidak ada di konteks.
 2. Jika data yang diberikan tidak cukup untuk menjawab pertanyaan, katakan dengan jujur: "Saya tidak memiliki data untuk menjawab pertanyaan ini." Jangan mencoba menebak atau mengarang.
-3. Jawab MAKSIMAL 3 kalimat. Langsung ke intinya — tanpa pembukaan, tanpa penutup, tanpa basa-basi. Tidak perlu "Halo!", "Tentu!", "Semoga membantu!", atau kalimat serupa.
-4. Setiap angka yang kamu sebutkan HARUS berasal dari data konteks yang diberikan. Jika menyebut angka, pastikan itu ada di data.
+3. Jawab MAKSIMAL 4 kalimat. Langsung ke intinya — tanpa pembukaan, tanpa penutup, tanpa basa-basi. Tidak perlu "Halo!", "Tentu!", "Semoga membantu!", atau kalimat serupa.
+4. Setiap angka yang kamu sebutkan HARUS berasal dari data konteks atau tool results yang diberikan. Jika menyebut angka, pastikan itu ada di data.
 5. Gunakan bahasa Indonesia natural, singkat, padat.
+6. Jika user menanyakan data spesifik (produk, pelanggan, transaksi, dll), GUNAKAN TOOL yang tersedia daripada mengarang. Tools memberi data real-time akurat dari database toko.
+7. Panggil tool SEKALI per request. Jangan panggil multiple tools dalam satu response — client akan memberikan hasilnya lalu kamu bisa lanjutkan.
 
 Topik yang bisa kamu bantu: analisis penjualan, stok, keuangan, promosi, pelanggan, laporan, absensi, dan fitur NUSA Kasir lainnya.
 
@@ -38,9 +45,10 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const messages: { role: string; content: string }[] = body.messages ?? [];
+    const messages: { role: string; content: string; tool_call_id?: string; name?: string }[] = body.messages ?? [];
     const storeName: string | undefined = body.store_name;
     const dbContext: string | undefined = body.db_context;
+    const tools: any[] | undefined = body.tools;
 
     if (!messages || messages.length === 0) {
       return new Response(
@@ -75,6 +83,20 @@ serve(async (req: Request) => {
       ...messages,
     ];
 
+    // Build request body
+    const requestBody: any = {
+      model: DEFAULT_MODEL,
+      messages: apiMessages,
+      max_tokens: 512,
+      temperature: 0.3,
+    };
+
+    // Add tools if provided
+    if (tools && tools.length > 0) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = "auto";
+    }
+
     // Call Groq API (OpenAI-compatible)
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -82,12 +104,7 @@ serve(async (req: Request) => {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: apiMessages,
-        max_tokens: 512,
-        temperature: 0.3,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -100,8 +117,19 @@ serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content
-      ?? "Maaf, tidak ada jawaban dari AI.";
+    const choice = data.choices?.[0];
+    const message = choice?.message;
+
+    // Check for tool calls first
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      return new Response(
+        JSON.stringify({ tool_calls: message.tool_calls }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Text reply
+    const reply = message?.content ?? "Maaf, tidak ada jawaban dari AI.";
 
     return new Response(
       JSON.stringify({ reply }),
