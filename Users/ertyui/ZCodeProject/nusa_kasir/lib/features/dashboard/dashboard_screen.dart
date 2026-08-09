@@ -1438,9 +1438,9 @@ class _KeuanganSummary extends StatelessWidget {
   }
 }
 
-/// Laundry mini stats card with collapsible slide bar.
-/// Collapsed: thin horizontal pull bar with subtle label.
-/// Expanded: full stats card matching EmployeeStats card design.
+/// Laundry mini stats — collapsible via a phone-style nav pill bar.
+/// Collapsed: just a thin horizontal pill + animated subtle triple-chevron hint.
+/// Expanded: full stats card with collapse arrow at top.
 class _LaundryStatsCard extends StatefulWidget {
   final int today, pending, ready, delivered;
   final bool expanded;
@@ -1454,6 +1454,8 @@ class _LaundryStatsCard extends StatefulWidget {
 class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   late Animation<double> _slideAnim;
+  late AnimationController _bounceCtrl;
+  late Animation<double> _bounceAnim;
 
   @override
   void initState() {
@@ -1461,6 +1463,13 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
     _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
     _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
     if (widget.expanded) _slideCtrl.value = 1.0;
+
+    // Bouncing triple-chevron hint animation
+    _bounceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+    _bounceAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
+      CurvedAnimation(parent: _bounceCtrl, curve: Curves.easeInOut),
+    );
+    _bounceCtrl.repeat(reverse: true);
   }
 
   @override
@@ -1478,6 +1487,7 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
   @override
   void dispose() {
     _slideCtrl.dispose();
+    _bounceCtrl.dispose();
     super.dispose();
   }
 
@@ -1485,99 +1495,100 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = NusaConfig.primaryColor;
+    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(children: [
-        // ── Pull bar (always visible) ──
+        // ── Pull bar (always visible, no card wrapper) ──
         GestureDetector(
           onTap: widget.onToggle,
-          child: AnimatedContainer(
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedSize(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
-            margin: EdgeInsets.only(bottom: widget.expanded ? 0 : 0),
-            child: Container(
-              height: widget.expanded ? 0 : 32,
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
-              ),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Container(
-                  width: 32, height: 3,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(2),
+            alignment: Alignment.topCenter,
+            child: widget.expanded
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // Phone-style nav pill bar
+                      Container(
+                        width: 48, height: 5,
+                        decoration: BoxDecoration(
+                          color: hintColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // ── Animated triple chevron hint ──
+                      AnimatedBuilder(
+                        animation: _bounceAnim,
+                        builder: (_, child) => Transform.translate(
+                          offset: Offset(0, _bounceAnim.value),
+                          child: child,
+                        ),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.55)),
+                          const SizedBox(height: -6),
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.40)),
+                          const SizedBox(height: -6),
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.25)),
+                        ]),
+                      ),
+                    ]),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Text('Laundry Stats',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 32, height: 3,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ]),
-            ),
           ),
         ),
 
         // ── Expanded card with slide animation ──
         SizeTransition(
           sizeFactor: _slideAnim,
-          axisAlignment: -1.0,
-          child: GestureDetector(
-            onTap: widget.onToggle,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.local_laundry_service_rounded, size: 18, color: primaryColor),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 10),
-                  Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-                  const Spacer(),
-                  // Collapse indicator
-                  Container(
+                  child: Icon(Icons.local_laundry_service_rounded, size: 18, color: primaryColor),
+                ),
+                const SizedBox(width: 10),
+                Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                const Spacer(),
+                // Collapse arrow — tap to close
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  child: Container(
                     width: 28, height: 28,
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.08),
+                      color: primaryColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
                       color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
                   ),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  _laundryStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
-                  _laundryStat('Diproses', widget.pending, NusaConfig.info, isDark),
-                  _laundryStat('Siap', widget.ready, NusaConfig.success, isDark),
-                  _laundryStat('Diambil', widget.delivered, NusaConfig.activePrimary, isDark),
-                ]),
+                ),
               ]),
-            ),
+              const SizedBox(height: 10),
+              Row(children: [
+                _laundryStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
+                _laundryStat('Diproses', widget.pending, NusaConfig.info, isDark),
+                _laundryStat('Siap', widget.ready, NusaConfig.success, isDark),
+                _laundryStat('Diambil', widget.delivered, NusaConfig.activePrimary, isDark),
+              ]),
+            ]),
           ),
         ),
       ]),
