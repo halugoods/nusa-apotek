@@ -1437,8 +1437,7 @@ class _KeuanganSummary extends StatelessWidget {
 }
 
 /// Laundry mini stats — collapsible via a phone-style nav pill bar.
-/// Collapsed: just a thin horizontal pill + animated subtle triple-chevron hint.
-/// Expanded: full stats card with collapse arrow at top.
+/// Collapsed: just a thin horizontal pill. Tap to expand the stats card.
 class _LaundryStatsCard extends StatefulWidget {
   final int today, pending, ready, delivered;
   final bool expanded;
@@ -1452,8 +1451,6 @@ class _LaundryStatsCard extends StatefulWidget {
 class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   late Animation<double> _slideAnim;
-  late AnimationController _bounceCtrl;
-  late Animation<double> _bounceAnim;
 
   @override
   void initState() {
@@ -1461,13 +1458,6 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
     _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
     _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
     if (widget.expanded) _slideCtrl.value = 1.0;
-
-    // Bouncing triple-chevron hint animation
-    _bounceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
-    _bounceAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
-      CurvedAnimation(parent: _bounceCtrl, curve: Curves.easeInOut),
-    );
-    _bounceCtrl.repeat(reverse: true);
   }
 
   @override
@@ -1485,7 +1475,6 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
   @override
   void dispose() {
     _slideCtrl.dispose();
-    _bounceCtrl.dispose();
     super.dispose();
   }
 
@@ -1498,7 +1487,7 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(children: [
-        // ── Pull bar (always visible, no card wrapper) ──
+        // ── Pull pill bar (no card, no text, no animation — just the bar) ──
         GestureDetector(
           onTap: widget.onToggle,
           behavior: HitTestBehavior.opaque,
@@ -1509,38 +1498,19 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
             child: widget.expanded
                 ? const SizedBox.shrink()
                 : Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      // Phone-style nav pill bar
-                      Container(
-                        width: 48, height: 5,
-                        decoration: BoxDecoration(
-                          color: hintColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      width: 48, height: 5,
+                      decoration: BoxDecoration(
+                        color: hintColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(3),
                       ),
-                      const SizedBox(height: 6),
-                      // ── Animated triple chevron hint ──
-                      AnimatedBuilder(
-                        animation: _bounceAnim,
-                        builder: (_, child) => Transform.translate(
-                          offset: Offset(0, _bounceAnim.value),
-                          child: child,
-                        ),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.55)),
-                          const SizedBox(height: -8),
-                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.40)),
-                          const SizedBox(height: -8),
-                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.25)),
-                        ]),
-                      ),
-                    ]),
+                    ),
                   ),
           ),
         ),
 
-        // ── Expanded card with slide animation ──
+        // ── Expanded card (slide animation) ──
         SizeTransition(
           sizeFactor: _slideAnim,
           child: Container(
@@ -1565,7 +1535,6 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
                 Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                   color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
                 const Spacer(),
-                // Collapse arrow — tap to close
                 GestureDetector(
                   onTap: widget.onToggle,
                   child: Container(
