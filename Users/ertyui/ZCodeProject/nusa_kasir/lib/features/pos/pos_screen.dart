@@ -115,17 +115,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Future<void> _preloadProducts() async {
     final repo = ProductRepository(ref.read(databaseProvider));
     final all = await repo.getProducts();
-    // Dev mode: shared DB across 8 variants → filter by variant categories.
-    // e.g. when testing FNB, hide products from servis ("Smartphone", "Laptop", etc.).
-    List<Product> filtered = all;
-    if (NusaConfig.isDevBuild) {
-      final variantCats = NusaConfig.catEmoji.keys.toSet();
-      filtered = all.where((p) => variantCats.contains(p.category)).toList();
-    }
     // Also load real categories for the filter chips.
     final catRepo = CategoryRepository(ref.read(databaseProvider));
     final cats = await catRepo.getAll();
-    if (mounted) setState(() { _allProducts = filtered; _allCats = cats; _productsLoading = false; });
+    if (mounted) setState(() { _allProducts = all; _allCats = cats; _productsLoading = false; });
   }
 
   @override
