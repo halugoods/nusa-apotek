@@ -307,9 +307,18 @@ class ReceiptPrinter {
 
     // Line items — manual text formatting for precise wrapping.
     // generator.row()+PosColumn internally clips text; generator.text() doesn't.
-    final lineWidth = isWide ? 40 : 32;        // usable chars per line
-    final qtyPriceWidth = isWide ? 15 : 12;    // "2 x Rp10.000" max
-    final subWidth = isWide ? 10 : 8;          // "Rp20.000" max
+    //
+    // 58mm uses Font B (compressed/small) like Alfamart/Indomaret receipts —
+    // 42 chars/line vs 32 for Font A, so product names get ~2× the space
+    // without wrapping. Prices stay in full Rupiah format.
+    // 80mm stays on Font A (48 chars/line) — already spacious enough.
+    final useFontB = !isWide;
+    final itemStyles = useFontB
+        ? const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB)
+        : const PosStyles(align: PosAlign.left);
+    final lineWidth = useFontB ? 42 : 48;         // usable chars per line
+    final qtyPriceWidth = useFontB ? 12 : 15;     // "2 x Rp10.000" max
+    final subWidth = useFontB ? 10 : 10;          // "Rp20.000" max
     final nameWidth = lineWidth - qtyPriceWidth - subWidth - 4; // 4 = 2 spaces
 
     for (int i = 0; i < lines.length; i++) {
@@ -322,14 +331,14 @@ class ReceiptPrinter {
       // Pad each column to fixed width for alignment.
       bytes.addAll(generator.text(
         _san(nameParts.first.padRight(nameWidth) + '  ' + qtyPrice.padRight(qtyPriceWidth) + '  ' + subtotal.padLeft(subWidth)),
-        styles: const PosStyles(align: PosAlign.left),
+        styles: itemStyles,
       ));
 
       // Continuation lines for wrapped name
       for (var j = 1; j < nameParts.length; j++) {
         bytes.addAll(generator.text(
           _san(nameParts[j]),
-          styles: const PosStyles(align: PosAlign.left),
+          styles: itemStyles,
         ));
       }
 
@@ -342,7 +351,7 @@ class ReceiptPrinter {
         for (final part in noteParts) {
           bytes.addAll(generator.text(
             _san(part),
-            styles: const PosStyles(align: PosAlign.left),
+            styles: itemStyles,
           ));
         }
       }
