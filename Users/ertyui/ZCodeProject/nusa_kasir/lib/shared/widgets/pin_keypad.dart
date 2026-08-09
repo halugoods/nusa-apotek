@@ -285,30 +285,16 @@ class PinKeypadState extends State<PinKeypad>
             ],
           ),
 
-          // ── NFC: hint / retry card (below keypad) ───
+          // ── NFC: static hint card (below keypad) ───
+          // Always visible when NFC is enabled — serves as a persistent
+          // reminder. Tappable only when NOT scanning (retry after timeout).
+          // The scanning indicator is above the keypad (spinner + "Dekatkan...").
           if (widget.showNfc) ...[
-            if (_nfcScanning)
-              // NFC auto-started — passive hint, user just taps card
-              Container(
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: NusaConfig.accentPurple),
-                    ),
-                    SizedBox(width: 8),
-                    Text('Dekatkan kartu NFC...',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NusaConfig.accentPurple)),
-                  ],
-                ),
-              )
-            else ...[
-              // NFC stopped (error/timeout) — tap to retry
-              SizedBox(height: 10),
-              GestureDetector(
-                onTap: _onNfcTap,
+            SizedBox(height: 10),
+            AbsorbPointer(
+              absorbing: _nfcScanning,
+              child: GestureDetector(
+                onTap: _nfcScanning ? null : _onNfcTap,
                 child: Container(
                   padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                   decoration: BoxDecoration(
@@ -337,7 +323,7 @@ class PinKeypadState extends State<PinKeypad>
                   ),
                 ),
               ),
-            ],
+            ),
           ],
 
           // ── Cancel (card style) ──────────────────────

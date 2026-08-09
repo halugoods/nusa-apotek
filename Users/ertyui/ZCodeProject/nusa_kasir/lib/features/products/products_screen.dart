@@ -235,16 +235,36 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     String? scanned;
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: Text('Scan Barcode Produk'),
+        title: Row(children: [
+          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+          SizedBox(width: 8),
+          Text('Scan Barcode Produk'),
+        ]),
         content: SizedBox(width: 280, height: 280,
-          child: MobileScanner(controller: controller, onDetect: (capture) {
-            final barcode = capture.barcodes.firstOrNull;
-            if (barcode != null && barcode.rawValue != null) {
-              scanned = barcode.rawValue;
-              Navigator.pop(context);
-            }
-          }),
+          child: Stack(children: [
+            MobileScanner(controller: controller, onDetect: (capture) {
+              final barcode = capture.barcodes.firstOrNull;
+              if (barcode != null && barcode.rawValue != null) {
+                scanned = barcode.rawValue;
+                Navigator.pop(context);
+              }
+            }),
+            // Scanning animation overlay
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  width: 200, height: 2,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('Batal'))],
       ),

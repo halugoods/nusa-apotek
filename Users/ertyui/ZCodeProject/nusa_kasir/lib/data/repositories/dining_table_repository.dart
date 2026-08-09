@@ -11,10 +11,17 @@ class DiningTableRepository {
             capacity: Value(capacity),
           ));
 
-  Future<List<DiningTable>> getAll() =>
-      (db.select(db.diningTables)
-            ..orderBy([(t) => OrderingTerm(expression: t.name, mode: OrderingMode.asc)]))
-          .get();
+  Future<List<DiningTable>> getAll() async {
+    final tables = await db.select(db.diningTables).get();
+    // Sort numerically by extracting digits from name.
+    // "Meja 1" → 1, "Meja 10" → 10 — avoids lexicographic "1,10,2,3"
+    int _num(String s) {
+      final m = RegExp(r'(\d+)').firstMatch(s);
+      return m != null ? int.tryParse(m.group(1)!) ?? 0 : 0;
+    }
+    tables.sort((a, b) => _num(a.name).compareTo(_num(b.name)));
+    return tables;
+  }
 
   Future<DiningTable?> byId(int id) =>
       (db.select(db.diningTables)..where((t) => t.id.equals(id))).getSingleOrNull();

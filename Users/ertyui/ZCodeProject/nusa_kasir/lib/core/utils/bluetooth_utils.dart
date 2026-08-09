@@ -93,27 +93,31 @@ class BluetoothUtils {
 
   /// Send raw bytes over the active Bluetooth SPP connection.
   ///
-  /// Strategy: try single-write first (works for most printers).
-  /// If that fails, fall back to chunked mode with delay between chunks
-  /// to accommodate printers with small internal buffers.
+  /// Strategy: small payloads (≤256 bytes) use single-write for speed.
+  /// Large payloads (receipt with logo raster) skip single-write entirely
+  /// and use chunked mode — avoids printer buffer overflow + retry corruption
+  /// where a partially-sent single-write causes duplicate/overlapping data
+  /// when the chunked retry starts from the beginning.
   static Future<bool> sendBytes(Uint8List data) async {
     try {
-      // 1) Single-write fast path (works for 95% of thermal printers).
-      final result = await _channel.invokeMethod<bool>('sendBytes', {'data': data});
-      if (result == true) return true;
+      // Small payloads (test print, simple commands) — single-write is safe.
+      if (data.length <= 256) {
+        final result = await _channel.invokeMethod<bool>('sendBytes', {'data': data});
+        if (result == true) return true;
+        // Fall through to chunked if single-write failed even on small data.
+      }
 
-	      // 2) Chunked fallback — some cheap printers overflow on large payloads.
-	      const chunkSize = 128;
-	      for (var i = 0; i < data.length; i += chunkSize) {
-	        final end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
-	        final chunk = data.sublist(i, end);
-	        final ok = await _channel.invokeMethod<bool>('sendBytes', {'data': chunk});
-	        if (ok != true) return false;
-	        // 80ms between chunks gives cheap printers time to process each chunk.
-	        // Without this, thermal printers with <4KB buffers overflow and stay
-	        // stuck in bit-image mode after logo raster data.
-	        await Future.delayed(const Duration(milliseconds: 80));
-	      }
+      // Chunked mode — 128 bytes per chunk with 80ms delay.
+      // Cheap thermal printers have <4KB buffers; this prevents overflow and
+      // ensures each chunk is fully processed before the next arrives.
+      const chunkSize = 128;
+      for (var i = 0; i < data.length; i += chunkSize) {
+        final end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
+        final chunk = data.sublist(i, end);
+        final ok = await _channel.invokeMethod<bool>('sendBytes', {'data': chunk});
+        if (ok != true) return false;
+        await Future.delayed(const Duration(milliseconds: 80));
+      }
       return true;
     } catch (_) {
       return false;

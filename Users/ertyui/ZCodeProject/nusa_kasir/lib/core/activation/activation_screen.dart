@@ -17,6 +17,8 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/core/payment/payment_sheet.dart';
+import 'package:nusa_kasir/core/payment/payment_webview.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,9 +28,10 @@ import 'package:url_launcher/url_launcher.dart';
 ///
 ///   1. Welcome Screen — user memilih "Masuk dengan Google" secara manual
 ///   2. Setelah Google ID didapat:
-///      a. Belum aktivasi key → minta input key aktivasi
-///         → ada tombol "Belum punya key?" → buka landing page
-///      b. Sudah aktivasi key → minta PIN untuk sign in
+///      a. Sudah aktivasi key → minta PIN untuk sign in
+///      b. Belum aktivasi → tampilkan 2 pilihan:
+///         "Sudah punya lisensi key" → key input (beli dari e-commerce)
+///         "Belum punya lisensi" → PaymentSheet → WebView Midtrans → auto-activate
 ///   3. PIN → cek role → auto check-in attendance → dashboard
 ///   4. Restore prompt for cloud backup
 ///
@@ -53,14 +56,18 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   // PIN input (returning user)
   bool _pinLoading = false;
   String? _pinError;
+  bool _nfcAvailable = false;
 
-  // Screen state: 'welcome' | 'google_loading' | 'pin' | 'key'
+  // Screen state: 'welcome' | 'google_loading' | 'decision' | 'pin' | 'key'
   String _screen = 'welcome';
 
   @override
   void initState() {
     super.initState();
     _initAutoSignIn();
+    NfcTagService.isAvailable().then((ok) {
+      if (mounted) setState(() => _nfcAvailable = ok);
+    });
   }
 
   /// Auto-launch Google Sign-In silently if already activated.
@@ -287,7 +294,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       return;
     }
 
-    // Try cloud check to recover license key on fresh installs
+    // Try cloud check — user might have a license from another device
     try {
       final res = await Supabase.instance.client.functions.invoke(
         'register_activation',
@@ -297,7 +304,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       if (data?['has_license'] == true) {
         // Check if trial expired
         final isExpired = data!['is_expired'] == true;
-        
+
         if (isExpired) {
           setState(() {
             _googleLoading = false;
@@ -307,9 +314,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           return;
         }
 
-        // Verify the returned key is valid locally before accepting it.
-        // This guards against cross-variant license leaks where the edge
-        // function returns a key meant for a different product variant.
+        // Verify the returned key is valid locally
         final key = data['key'] as String;
         final keyValid = await ActivationKey.verify(
           key, nusaActivationPublicKey,
@@ -319,7 +324,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
             setState(() {
               _googleLoading = false;
               _googleError = 'Lisensi tidak valid untuk aplikasi ini.';
-              _screen = 'key';
+              _screen = 'decision';
             });
           }
           return;
@@ -330,13 +335,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         return;
       }
     } catch (_) {
-      // Offline / Supabase error — show key input so user can enter manually.
-      // Never bypass activation — user must have a valid key.
-      if (mounted) setState(() => _screen = 'key');
-      return;
+      // Offline / Supabase error — show decision screen, don't bypass activation
     }
 
-    setState(() => _screen = 'key');
+    // No license at all — show the 2-button decision screen
+    setState(() => _screen = 'decision');
   }
 
 
@@ -382,19 +385,42 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   // ── Scan / NFC ─────────────────────────────────────────────────────
 
   Future<void> _scan() async {
-    final code = await Navigator.of(context).push<String>(MaterialPageRoute(
-      builder: (_) => Scaffold(
-        appBar: AppBar(title: Text('Scan Key Aktivasi')),
-        body: MobileScanner(
-          onDetect: (c) {
-            final raw = c.barcodes.firstOrNull?.rawValue;
-            if (raw != null) Navigator.pop(context, raw);
-          },
+    // Modal popup — consistent with all barcode scanners across the app
+    final controller = MobileScannerController();
+    String? scanned;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+          SizedBox(width: 8),
+          Text('Scan Key Aktivasi'),
+        ]),
+        content: SizedBox(
+          width: 280, height: 280,
+          child: MobileScanner(
+            controller: controller,
+            onDetect: (c) {
+              final raw = c.barcodes.firstOrNull?.rawValue;
+              if (raw != null) {
+                scanned = raw;
+                Navigator.pop(ctx);
+              }
+            },
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Batal'),
+          ),
+        ],
       ),
-    ));
-    if (code != null) {
-      _keyCtrl.text = code;
+    );
+    controller.dispose();
+    if (scanned != null) {
+      _keyCtrl.text = scanned!;
       await _submitKey();
     }
   }
@@ -446,6 +472,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         return _buildGoogleLoadingScreen(isDark);
       case 'trial_expired':
         return _buildTrialExpiredScreen(isDark);
+      case 'decision':
+        return _buildDecisionScreen(isDark);
       case 'pin':
         return _buildPinScreen(isDark);
       case 'key':
@@ -749,6 +777,188 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     );
   }
 
+  // ── Decision Screen (no license — 2 options) ─────────────────────
+
+  Widget _buildDecisionScreen(bool isDark) {
+    return Scaffold(
+      backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: Column(
+              children: [
+                SizedBox(height: 40),
+                Container(
+                  width: 72, height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.35),
+                        blurRadius: 20,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 34),
+                ),
+                SizedBox(height: 20),
+                Text('NUSA',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: NusaConfig.activePrimary, fontWeight: FontWeight.w800, letterSpacing: -1)),
+                SizedBox(height: 4),
+                Text(NusaConfig.appSubtitle,
+                  style: TextStyle(fontSize: 13,
+                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                SizedBox(height: 36),
+
+                // ── Two buttons card ──
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                        blurRadius: 20,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text('Aktivasi Lisensi',
+                        style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.w700,
+                          color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                        )),
+                      SizedBox(height: 4),
+                      Text('Pilih salah satu untuk melanjutkan',
+                        style: TextStyle(fontSize: 13,
+                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      SizedBox(height: 24),
+
+                      // Option 1: Already have license key
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => _screen = 'key'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                            side: BorderSide(color: isDark ? NusaConfig.darkBorder : Color(0xFFD1D5DB), width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.vpn_key_rounded, size: 20),
+                              SizedBox(width: 10),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Sudah punya lisensi key',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                  Text('Aktivasi dengan key dari seller',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w400,
+                                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(height: 16),
+
+                      // Divider "atau"
+                      Row(children: [
+                        Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('atau',
+                            style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                        ),
+                        Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                      ]),
+
+                      SizedBox(height: 16),
+
+                      // Option 2: Buy license in-app
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () => _openPayment(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: NusaConfig.activePrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.shopping_bag_rounded, size: 20),
+                              SizedBox(width: 10),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Belum punya lisensi',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                  Text('Beli langsung dalam aplikasi',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w400,
+                                      color: Colors.white70)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: 16),
+                TextButton(
+                  onPressed: _startGoogleSignIn,
+                  child: Text('Ganti akun Google',
+                    style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPayment() async {
+    final googleId = _googleId;
+    if (googleId == null) return;
+
+    final url = await PaymentSheet.show(context, googleId: googleId);
+    if (url == null || !mounted) return;
+
+    // Open WebView for Midtrans payment
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaymentWebView(
+          paymentUrl: url,
+          googleId: googleId,
+        ),
+      ),
+    );
+  }
+
   // ── PIN Screen (returning user) ────────────────────────────────────
 
   Widget _buildPinScreen(bool isDark) {
@@ -806,7 +1016,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     PinKeypad(
                       length: 6,
                       showFingerprint: true,
-                      showNfc: true,
+                      showNfc: _nfcAvailable,
                       showCancel: false,
                       onFingerprint: () async => await _authFingerprint(),
                       onFingerprintSuccess: () => _fingerprintLogin(),
@@ -880,6 +1090,13 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 onPressed: _startGoogleSignIn,
                 child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
               ),
+              if (NusaConfig.isDevBuild)
+                TextButton.icon(
+                  onPressed: () => context.go('/variant-picker'),
+                  icon: Icon(Icons.apps_rounded, size: 16),
+                  label: Text('Pilih Varian Lain', style: TextStyle(fontSize: 13)),
+                  style: TextButton.styleFrom(foregroundColor: NusaConfig.activePrimary),
+                ),
             ],
           ),
         ),

@@ -6,8 +6,8 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 	static String _productId = "nusa-fnb";
 	static String _appSubtitle = "Aplikasi Kasir untuk Rumah Makan & Kafe";
-  static const String appVersion = "1.7.8";
-  static const int appBuildNumber = 31;
+  static const String appVersion = "1.7.9";
+  static const int appBuildNumber = 32;
 	static String _githubRepo = "halugoods/nusa-fnb";
 	static const String landingPageUrl = "https://nusa-online.vercel.app";
 	static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20F%26B";

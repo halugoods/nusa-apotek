@@ -1284,26 +1284,55 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     final controller = MobileScannerController();
     String? code;
     if (!mounted) return;
-    final scanned = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (ctx) => Scaffold(
-          appBar: AppBar(title: Text('Pindai Barcode'), leading: IconButton(icon: Icon(Icons.close), onPressed: () => Navigator.pop(ctx))),
-          body: MobileScanner(
-            controller: controller,
-            onDetect: (capture) {
-              if (code != null || capture.barcodes.isEmpty) return;
-              final barcode = capture.barcodes.firstOrNull;
-              if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
-              code = barcode.rawValue;
-              Navigator.pop(ctx, code);
-            },
-          ),
+    // Modal popup — consistent UI with products_screen barcode scanner
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+          SizedBox(width: 8),
+          Text('Pindai Barcode'),
+        ]),
+        content: SizedBox(
+          width: 280, height: 280,
+          child: Stack(children: [
+            MobileScanner(
+              controller: controller,
+              onDetect: (capture) {
+                if (code != null || capture.barcodes.isEmpty) return;
+                final barcode = capture.barcodes.firstOrNull;
+                if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
+                code = barcode.rawValue;
+                Navigator.pop(ctx);
+              },
+            ),
+            // Scanning animation overlay
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  width: 200, height: 2,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Batal'),
+          ),
+        ],
       ),
     );
     await controller.dispose();
-    if (scanned == null || !mounted) return;
-    final product = _byBarcode[scanned];
+    if (code == null || !mounted) return;
+    final product = _byBarcode[code];
     if (product != null) {
       setState(() {
         _selectedId = product.id;

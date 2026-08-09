@@ -157,35 +157,57 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final controller = MobileScannerController();
     if (!mounted) return;
 
-    // Full-screen route — avoids dialog+camera crash on Xiaomi/Redmi/Oppo
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (ctx) => Scaffold(
-          appBar: AppBar(
-            title: Text('Pindai Barcode'),
-            leading: IconButton(
-              icon: Icon(Icons.close),
-              onPressed: () => Navigator.pop(ctx),
+    // Modal popup — consistent UI with products_screen barcode scanner
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+          SizedBox(width: 8),
+          Text('Pindai Barcode'),
+        ]),
+        content: SizedBox(
+          width: 280, height: 280,
+          child: Stack(children: [
+            MobileScanner(
+              controller: controller,
+              onDetect: (capture) {
+                if (scannedCode != null) return;
+                final barcode = capture.barcodes.firstOrNull;
+                final raw = barcode?.rawValue;
+                if (raw == null || raw.isEmpty) return;
+                scannedCode = raw;
+                Navigator.pop(ctx);
+              },
             ),
-          ),
-          body: MobileScanner(
-            controller: controller,
-            onDetect: (capture) {
-              if (scannedCode != null) return;
-              final barcode = capture.barcodes.firstOrNull;
-              final raw = barcode?.rawValue;
-              if (raw == null || raw.isEmpty) return;
-              scannedCode = raw;
-              Navigator.pop(ctx, raw);
-            },
-          ),
+            // Scanning animation overlay
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  width: 200, height: 2,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, NusaConfig.activePrimary.withValues(alpha: 0.6), Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Batal'),
+          ),
+        ],
       ),
     );
     await controller.dispose();
-    if (code == null || !context.mounted) return;
+    if (scannedCode == null || !context.mounted) return;
 
-    final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(code);
+    final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(scannedCode!);
     if (product != null) {
       ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice);
       TopToast.success(context, '${product.name} ditambahkan');
