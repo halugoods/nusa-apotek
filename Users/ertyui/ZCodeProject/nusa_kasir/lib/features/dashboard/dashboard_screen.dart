@@ -1196,8 +1196,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ],
 
                       // Laundry stats
-                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0)) ...[
-                        const SizedBox(height: 12),
+                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0))
                         _LaundryStatsCard(
                           today: _laundryToday,
                           pending: _laundryPending,
@@ -1209,9 +1208,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             SecureStore.setLaundryStatsExpanded(!_laundryStatsExpanded);
                           },
                         ),
-                      ],
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 4),
 
                       // Menu grid with lock indicators (responsive columns)
                       LayoutBuilder(builder: (_, constraints) {
@@ -1531,9 +1529,9 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
                         ),
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
                           Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.55)),
-                          const SizedBox(height: -6),
+                          const SizedBox(height: -8),
                           Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.40)),
-                          const SizedBox(height: -6),
+                          const SizedBox(height: -8),
                           Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: hintColor.withValues(alpha: 0.25)),
                         ]),
                       ),
