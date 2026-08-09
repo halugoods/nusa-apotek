@@ -50,11 +50,11 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- NFC intent filters: capture tags that slip past enableReaderMode().
-                 When nfc_manager's reader mode fails to engage in time (race condition
-                 between startSession() and tag proximity), Android's tag dispatch
-                 falls back to intent dispatch. Without these filters, the tag goes
-                 to whatever app (DANA, etc.) registered for NDEF_DISCOVERED first. -->
+            <!-- NFC intent filters: backup when enableReaderMode() fails.
+                 nfc_manager calls NfcAdapter.enableReaderMode() which bypasses
+                 the intent system. But on MIUI/Samsung and some Android 14+
+                 devices, reader mode silently fails. These filters + foreground
+                 dispatch (MainActivity.kt) ensure our app always catches the tag. -->
             <intent-filter>
                 <action android:name="android.nfc.action.NDEF_DISCOVERED"/>
                 <category android:name="android.intent.category.DEFAULT"/>

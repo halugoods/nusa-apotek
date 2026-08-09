@@ -33,12 +33,34 @@ String _san(String text) {
   return text.replaceAll(RegExp(r'[^\x00-\xFF]'), '?');
 }
 
-/// Truncate text to fit thermal printer column.
+/// Truncate text to fit thermal printer column with ellipsis.
 /// 58mm paper: ~2 chars per PosColumn width unit.
 String _fit(String text, int maxChars) {
   final s = _san(text);
   if (s.length <= maxChars) return s;
   return '${s.substring(0, maxChars - 3)}...';
+}
+
+/// Wrap text into multiple lines, each ≤ maxChars.
+/// First line returns the first chunk; rest are returned as a list for
+/// follow-up rows. This prevents truncation of long product names and
+/// instead splits them across multiple printed lines.
+List<String> _wrap(String text, int maxChars) {
+  final s = _san(text).trimRight();
+  if (s.length <= maxChars) return [s];
+
+  final lines = <String>[];
+  var remaining = s;
+  while (remaining.length > maxChars) {
+    // Try to break at a space within the last ~25% of the chunk
+    var cut = maxChars;
+    final spaceIdx = remaining.lastIndexOf(' ', maxChars);
+    if (spaceIdx > maxChars * 0.75) cut = spaceIdx;
+    lines.add(remaining.substring(0, cut).trimRight());
+    remaining = remaining.substring(cut).trimLeft();
+  }
+  if (remaining.isNotEmpty) lines.add(remaining);
+  return lines;
 }
 
 /// A discovered Bluetooth thermal printer.
@@ -217,27 +239,33 @@ class ReceiptPrinter {
     bytes.addAll(generator.reset());
 
     // ── Logo ──
-    final logoBytes = logo ?? _logoBytes;
-    if (logoBytes != null) {
-      try {
-        final logoImage = img.decodeImage(logoBytes);
-        if (logoImage != null) {
-          // Resize: max 200px wide for 58mm, 360px for 80mm.
-          // Keeping the logo compact avoids overflowing cheap printer buffers.
-          final maxWidth = paperWidth == '80' ? 360 : 200;
-          img.Image resized;
-          if (logoImage.width > maxWidth) {
-            resized = img.copyResize(logoImage, width: maxWidth);
-          } else {
-            resized = logoImage;
-          }
-          bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
-          bytes.addAll(generator.feed(1));
-        }
-      } catch (_) {}
-    }
+            final logoBytes = logo ?? _logoBytes;
+            if (logoBytes != null) {
+              try {
+                final logoImage = img.decodeImage(logoBytes);
+                if (logoImage != null) {
+                  // Resize: max 160px wide for 58mm, 320px for 80mm.
+                  // Smaller than before to avoid overflowing cheap printer
+                  // buffers (~4 KB) which causes the printer to stay stuck
+                  // in bit-image mode — resulting in logo-only output with
+                  // no receipt text.
+                  final maxWidth = paperWidth == '80' ? 320 : 160;
+                  img.Image resized;
+                  if (logoImage.width > maxWidth) {
+                    resized = img.copyResize(logoImage, width: maxWidth);
+                  } else {
+                    resized = logoImage;
+                  }
+                  bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
+                  // Feed 2 lines after logo to ensure printer processes the
+                  // image before receiving text commands. Without this, cheap
+                  // printers may still be in bit-image mode when text arrives.
+                  bytes.addAll(generator.feed(2));
+                }
+              } catch (_) {}
+            }
 
-    // Header.
+    // Header — wrap long store names.
     bytes.addAll(generator.text(
       _san(storeName),
       styles: const PosStyles(
@@ -256,11 +284,20 @@ class ReceiptPrinter {
       bytes.addAll(generator.text(_san(dateStr),
           styles: const PosStyles(align: PosAlign.center)));
     }
+    final isWide = paperWidth == '80';
     if (cashierName != null && cashierName.isNotEmpty) {
-      bytes.addAll(generator.text(_san('Kasir: $cashierName')));
+      final csrParts = _wrap('Kasir: $cashierName', isWide ? 30 : 24);
+      for (final part in csrParts) {
+        bytes.addAll(generator.text(_san(part),
+            styles: const PosStyles(align: PosAlign.left)));
+      }
     }
     if (customerName != null && customerName.isNotEmpty) {
-      bytes.addAll(generator.text(_san('Pelanggan: $customerName')));
+      final custParts = _wrap('Pelanggan: $customerName', isWide ? 30 : 24);
+      for (final part in custParts) {
+        bytes.addAll(generator.text(_san(part),
+            styles: const PosStyles(align: PosAlign.left)));
+      }
     }
     if (orderType != null && orderType.isNotEmpty) {
       String line = orderType!;
@@ -270,8 +307,7 @@ class ReceiptPrinter {
     }
     bytes.addAll(generator.hr());
 
-    // Line items.
-    final isWide = paperWidth == '80';
+    // Line items — use wrapping for long product names.
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       final nameCol = isWide ? 7 : 5;
@@ -282,9 +318,13 @@ class ReceiptPrinter {
       final qtyMax = isWide ? 10 : 7;
       final subMax = isWide ? 8 : 5;
 
+      // Wrap long product names across multiple lines instead of truncating.
+      final nameParts = _wrap(line.name, nameMax);
+
+      // First line: name + qty + subtotal
       bytes.addAll(generator.row([
         PosColumn(
-          text: _fit(line.name, nameMax),
+          text: nameParts.first,
           width: nameCol,
         ),
         PosColumn(
@@ -299,14 +339,28 @@ class ReceiptPrinter {
         ),
       ]));
 
+      // Overflow lines for wrapped name (name column only, right columns empty).
+      for (var j = 1; j < nameParts.length; j++) {
+        bytes.addAll(generator.row([
+          PosColumn(text: nameParts[j], width: nameCol),
+          PosColumn(text: '', width: qtyCol),
+          PosColumn(text: '', width: subCol),
+        ]));
+      }
+
+      // Item note (FnB customizations, etc.)
       if (itemNotes != null &&
           i < itemNotes.length &&
           itemNotes[i] != null &&
           itemNotes[i]!.isNotEmpty) {
-        bytes.addAll(generator.text(
-          _san('  > ${itemNotes[i]}'),
-          styles: const PosStyles(align: PosAlign.left),
-        ));
+        // Wrap notes too — they can be long (e.g. "no sambal, extra pedas, ganti nasi")
+        final noteParts = _wrap('  > ${itemNotes[i]!}', isWide ? 28 : 20);
+        for (final part in noteParts) {
+          bytes.addAll(generator.text(
+            _san(part),
+            styles: const PosStyles(align: PosAlign.left),
+          ));
+        }
       }
     }
     bytes.addAll(generator.hr());
@@ -362,13 +416,16 @@ class ReceiptPrinter {
 
     bytes.addAll(generator.hr());
 
-    // Footer.
+    // Footer — wrap long text.
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
-      bytes.addAll(generator.text(
-        _san(footerText),
-        styles: const PosStyles(align: PosAlign.center),
-      ));
+      final footerParts = _wrap(footerText, isWide ? 40 : 32);
+      for (final part in footerParts) {
+        bytes.addAll(generator.text(
+          _san(part),
+          styles: const PosStyles(align: PosAlign.center),
+        ));
+      }
     }
     bytes.addAll(generator.text(
       _san('Terima Kasih!'),
@@ -501,17 +558,21 @@ class ReceiptPrinter {
 
     bytes.addAll(generator.hr());
 
-    // Items: name (size2, bold) + qty, no prices
+    // Items: name (size2, bold) + qty, no prices. Wrap long names.
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
 
-      bytes.addAll(generator.text(
-        _san(line.name),
-        styles: const PosStyles(
-          bold: true,
-          height: PosTextSize.size2,
-        ),
-      ));
+      // Wrap long item names across multiple lines.
+      final nameParts = _wrap(line.name, 16); // 16 chars for size2 text on 58mm
+      for (final part in nameParts) {
+        bytes.addAll(generator.text(
+          _san(part),
+          styles: const PosStyles(
+            bold: true,
+            height: PosTextSize.size2,
+          ),
+        ));
+      }
       bytes.addAll(generator.text(
         _san('Qty: ${line.qty}'),
         styles: const PosStyles(align: PosAlign.left),
@@ -521,10 +582,13 @@ class ReceiptPrinter {
           i < itemNotes.length &&
           itemNotes[i] != null &&
           itemNotes[i]!.isNotEmpty) {
-        bytes.addAll(generator.text(
-          _san('  > ${itemNotes[i]}'),
-          styles: const PosStyles(align: PosAlign.left),
-        ));
+        final noteParts = _wrap('  > ${itemNotes[i]!}', 20);
+        for (final part in noteParts) {
+          bytes.addAll(generator.text(
+            _san(part),
+            styles: const PosStyles(align: PosAlign.left),
+          ));
+        }
       }
     }
 

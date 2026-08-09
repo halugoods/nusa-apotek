@@ -1,10 +1,12 @@
 package com.example.nusa_kasir
 
 import android.Manifest
+import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.os.Bundle
@@ -33,6 +35,17 @@ class MainActivity : FlutterFragmentActivity() {
     private var btSocket: BluetoothSocket? = null
     private var btOutputStream: OutputStream? = null
 
+    // ── NFC foreground dispatch ──
+    // nfc_manager's enableReaderMode() silently fails on MIUI/Xiaomi
+    // and some Samsung devices. Foreground dispatch is the reliable
+    // fallback: while our activity is resumed, all NFC intents come
+    // to us (not DANA or other apps). nfc_manager's onTagDiscovered
+    // stream receives them via the platform channel.
+    private var nfcAdapter: NfcAdapter? = null
+    private var nfcPendingIntent: PendingIntent? = null
+    private var nfcIntentFilters: Array<IntentFilter>? = null
+    private var nfcTechLists: Array<Array<String>>? = null
+
     companion object {
         private const val TAG = "NUSA"
         private const val REQUEST_CONTACTS_PERMISSION = 1002
@@ -40,12 +53,63 @@ class MainActivity : FlutterFragmentActivity() {
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
 
-    // ── NFC: forward tag intents to Flutter engine ──
-    // When the user already has a card near the phone before enableReaderMode()
-    // engages, Android delivers the tag as an intent instead of the reader callback.
-    // Without onNewIntent, the intent gets dispatched to DANA or other NFC apps.
-    // With onNewIntent + intent filters, our activity captures it and nfc_manager
-    // can process it through its internal platform channel.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setupNfc()
+    }
+
+    private fun setupNfc() {
+        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        if (nfcAdapter == null) return
+
+        // PendingIntent that wraps our activity — when an NFC tag is
+        // discovered, Android delivers it as a new intent to this activity.
+        nfcPendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // Intent filters: match ALL NFC tag types. TECH_DISCOVERED is the
+        // broadest and catches everything; NDEF_DISCOVERED is higher priority
+        // for NDEF-formatted tags (NTAG215).
+        nfcIntentFilters = arrayOf(
+            IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED),
+            IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED),
+            IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED),
+        )
+
+        // Tech lists: tell Android which tag technologies we support.
+        // This is also declared in res/xml/nfc_tech_filter.xml for the
+        // manifest intent filter.
+        nfcTechLists = arrayOf(
+            arrayOf("android.nfc.tech.NfcA", "android.nfc.tech.Ndef", "android.nfc.tech.NdefFormatable"),
+            arrayOf("android.nfc.tech.MifareClassic", "android.nfc.tech.NfcA"),
+            arrayOf("android.nfc.tech.NfcA"),
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Enable foreground dispatch: while our activity is visible,
+        // ALL NFC tag discoveries come to us instead of being dispatched
+        // to other apps (DANA, etc.). This works alongside nfc_manager's
+        // enableReaderMode() — reader mode takes priority when active,
+        // foreground dispatch is the fallback.
+        nfcAdapter?.enableForegroundDispatch(this, nfcPendingIntent, nfcIntentFilters, nfcTechLists)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Disable foreground dispatch when we're not visible so other
+        // NFC apps (Google Pay, etc.) can work normally.
+        nfcAdapter?.disableForegroundDispatch(this)
+    }
+
+    // ── NFC: forward tag intents to the Flutter engine ──
+    // When enableReaderMode() succeeds: tag → reader callback (nfc_manager handles it).
+    // When enableReaderMode() fails: tag → foreground dispatch → this intent →
+    //   onNewIntent → setIntent → nfc_manager's platform channel picks it up.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

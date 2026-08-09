@@ -102,15 +102,18 @@ class BluetoothUtils {
       final result = await _channel.invokeMethod<bool>('sendBytes', {'data': data});
       if (result == true) return true;
 
-      // 2) Chunked fallback — some cheap printers overflow on large payloads.
-      const chunkSize = 256;
-      for (var i = 0; i < data.length; i += chunkSize) {
-        final end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
-        final chunk = data.sublist(i, end);
-        final ok = await _channel.invokeMethod<bool>('sendBytes', {'data': chunk});
-        if (ok != true) return false;
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
+	      // 2) Chunked fallback — some cheap printers overflow on large payloads.
+	      const chunkSize = 128;
+	      for (var i = 0; i < data.length; i += chunkSize) {
+	        final end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
+	        final chunk = data.sublist(i, end);
+	        final ok = await _channel.invokeMethod<bool>('sendBytes', {'data': chunk});
+	        if (ok != true) return false;
+	        // 80ms between chunks gives cheap printers time to process each chunk.
+	        // Without this, thermal printers with <4KB buffers overflow and stay
+	        // stuck in bit-image mode after logo raster data.
+	        await Future.delayed(const Duration(milliseconds: 80));
+	      }
       return true;
     } catch (_) {
       return false;

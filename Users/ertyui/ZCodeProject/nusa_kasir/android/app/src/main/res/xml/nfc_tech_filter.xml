@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tech list for nfc_manager fallback dispatch.
-     Lists all tag technologies this app can handle.
-     When enableReaderMode() fails to engage in time,
-     Android dispatches the tag intent here instead of
-     to DANA or other NFC apps. -->
+<!-- Tech filter for NFC foreground dispatch fallback.
+     Used by android.nfc.action.TECH_DISCOVERED intent filter
+     to catch tags when enableReaderMode fails on MIUI/Samsung. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <tech-list>
-        <!-- NTAG215 / NTAG21x series -->
+        <!-- NTAG215 / NTAG21x: NfcA + NDEF -->
         <tech>android.nfc.tech.NfcA</tech>
         <tech>android.nfc.tech.Ndef</tech>
         <tech>android.nfc.tech.NdefFormatable</tech>
@@ -15,10 +13,9 @@
         <!-- Mifare Classic 1K/4K -->
         <tech>android.nfc.tech.MifareClassic</tech>
         <tech>android.nfc.tech.NfcA</tech>
-        <tech>android.nfc.tech.NdefFormatable</tech>
     </tech-list>
     <tech-list>
-        <!-- Any NfcA tag (fallback) -->
+        <!-- Any NfcA tag (UID fallback) -->
         <tech>android.nfc.tech.NfcA</tech>
     </tech-list>
 </resources>
