@@ -209,13 +209,20 @@ class ReceiptPrinter {
 
     final List<int> bytes = [];
 
+    // ── ESC @ Reset: ensure printer is in a clean state ──
+    // Cheap thermal printers have small buffers (~4 KB). If a previous job
+    // left the printer in bit-image mode (ESC *), all subsequent text is
+    // rendered as garbage pixels until paper runs out. Resetting first
+    // guarantees known-good state regardless of what happened before.
+    bytes.addAll(generator.reset());
+
     // ── Logo ──
     final logoBytes = logo ?? _logoBytes;
     if (logoBytes != null) {
       try {
         final logoImage = img.decodeImage(logoBytes);
         if (logoImage != null) {
-          // Resize: max 256px wide for 58mm, 360px for 80mm.
+          // Resize: max 200px wide for 58mm, 360px for 80mm.
           // Keeping the logo compact avoids overflowing cheap printer buffers.
           final maxWidth = paperWidth == '80' ? 360 : 200;
           img.Image resized;
@@ -463,6 +470,9 @@ class ReceiptPrinter {
 
     final List<int> bytes = [];
 
+    // ── ESC @ Reset: ensure printer is in a clean state ──
+    bytes.addAll(generator.reset());
+
     // Big bold header: "DAPUR"
     bytes.addAll(generator.text(
       _san('DAPUR'),
@@ -568,6 +578,7 @@ class ReceiptPrinter {
     final generator = Generator(paperSize, profile);
 
     final List<int> bytes = [];
+    bytes.addAll(generator.reset());
     bytes.addAll(generator.text(_san('TEST PRINT'),
         styles: const PosStyles(
             align: PosAlign.center, bold: true, height: PosTextSize.size2)));

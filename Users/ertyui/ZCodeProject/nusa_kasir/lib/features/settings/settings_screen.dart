@@ -2766,6 +2766,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     : NusaConfig.textSecondary,
               ),
             ),
+            // Dev: Pilih Varian (only in dev build)
+            if (NusaConfig.isDevBuild) ...[
+              const SizedBox(height: 12),
+              _menuRow(
+                icon: Icons.apps_rounded,
+                iconColor: NusaConfig.accentGold,
+                title: 'Pilih Varian',
+                subtitle: 'Switch ke variant lain (${NusaConfig.productId.replaceFirst('nusa-', '')})',
+                isDark: isDark,
+                onTap: () => _pinGate(() => context.go('/variant-picker')),
+                trailing: Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             // Lisensi
             _menuRow(
