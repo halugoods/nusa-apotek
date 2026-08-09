@@ -239,31 +239,29 @@ class ReceiptPrinter {
     bytes.addAll(generator.reset());
 
     // ── Logo ──
-            final logoBytes = logo ?? _logoBytes;
-            if (logoBytes != null) {
-              try {
-                final logoImage = img.decodeImage(logoBytes);
-                if (logoImage != null) {
-                  // Resize: max 160px wide for 58mm, 320px for 80mm.
-                  // Smaller than before to avoid overflowing cheap printer
-                  // buffers (~4 KB) which causes the printer to stay stuck
-                  // in bit-image mode — resulting in logo-only output with
-                  // no receipt text.
-                  final maxWidth = paperWidth == '80' ? 320 : 160;
-                  img.Image resized;
-                  if (logoImage.width > maxWidth) {
-                    resized = img.copyResize(logoImage, width: maxWidth);
-                  } else {
-                    resized = logoImage;
-                  }
-                  bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
-                  // Feed 2 lines after logo to ensure printer processes the
-                  // image before receiving text commands. Without this, cheap
-                  // printers may still be in bit-image mode when text arrives.
-                  bytes.addAll(generator.feed(2));
-                }
-              } catch (_) {}
-            }
+    final logoBytes = logo ?? _logoBytes;
+    if (logoBytes != null) {
+      try {
+        final logoImage = img.decodeImage(logoBytes);
+        if (logoImage != null) {
+          final maxWidth = paperWidth == '80' ? 320 : 160;
+          img.Image resized;
+          if (logoImage.width > maxWidth) {
+            resized = img.copyResize(logoImage, width: maxWidth);
+          } else {
+            resized = logoImage;
+          }
+          bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
+          bytes.addAll(generator.feed(1));
+          // ── CRITICAL: force printer OUT of bit-image mode ──
+          // imageRaster sends ESC * rows. Cheap printers (&lt;4KB buffer) often
+          // lose the auto-reset that esc_pos_utils appends, staying stuck in
+          // bit-image mode. Calling reset() here sends ESC @ (initialize),
+          // which unconditionally exits bit-image mode before any text.
+          bytes.addAll(generator.reset());
+        }
+      } catch (_) {}
+    }
 
     // Header — wrap long store names.
     bytes.addAll(generator.text(
@@ -307,54 +305,40 @@ class ReceiptPrinter {
     }
     bytes.addAll(generator.hr());
 
-    // Line items — use wrapping for long product names.
+    // Line items — manual text formatting for precise wrapping.
+    // generator.row()+PosColumn internally clips text; generator.text() doesn't.
+    final lineWidth = isWide ? 40 : 32;        // usable chars per line
+    final qtyPriceWidth = isWide ? 15 : 12;    // "2 x Rp10.000" max
+    final subWidth = isWide ? 10 : 8;          // "Rp20.000" max
+    final nameWidth = lineWidth - qtyPriceWidth - subWidth - 4; // 4 = 2 spaces
+
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final nameCol = isWide ? 7 : 5;
-      final qtyCol = isWide ? 5 : 4;
-      final subCol = isWide ? 4 : 3;
-      // ~2 chars per column width unit on 58mm paper
-      final nameMax = isWide ? 14 : 9;
-      final qtyMax = isWide ? 10 : 7;
-      final subMax = isWide ? 8 : 5;
+      final nameParts = _wrap(line.name, nameWidth);
+      final qtyPrice = _fit('${line.qty}x${formatRupiah(line.price)}', qtyPriceWidth);
+      final subtotal = _fit(formatRupiah(line.subtotal), subWidth);
 
-      // Wrap long product names across multiple lines instead of truncating.
-      final nameParts = _wrap(line.name, nameMax);
+      // First line: name | qty x price | subtotal
+      // Pad each column to fixed width for alignment.
+      bytes.addAll(generator.text(
+        _san(nameParts.first.padRight(nameWidth) + '  ' + qtyPrice.padRight(qtyPriceWidth) + '  ' + subtotal.padLeft(subWidth)),
+        styles: const PosStyles(align: PosAlign.left),
+      ));
 
-      // First line: name + qty + subtotal
-      bytes.addAll(generator.row([
-        PosColumn(
-          text: nameParts.first,
-          width: nameCol,
-        ),
-        PosColumn(
-          text: _fit('${line.qty} x ${formatRupiah(line.price)}', qtyMax),
-          width: qtyCol,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-        PosColumn(
-          text: _fit(formatRupiah(line.subtotal), subMax),
-          width: subCol,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]));
-
-      // Overflow lines for wrapped name (name column only, right columns empty).
+      // Continuation lines for wrapped name
       for (var j = 1; j < nameParts.length; j++) {
-        bytes.addAll(generator.row([
-          PosColumn(text: nameParts[j], width: nameCol),
-          PosColumn(text: '', width: qtyCol),
-          PosColumn(text: '', width: subCol),
-        ]));
+        bytes.addAll(generator.text(
+          _san(nameParts[j]),
+          styles: const PosStyles(align: PosAlign.left),
+        ));
       }
 
-      // Item note (FnB customizations, etc.)
+      // Item notes
       if (itemNotes != null &&
           i < itemNotes.length &&
           itemNotes[i] != null &&
           itemNotes[i]!.isNotEmpty) {
-        // Wrap notes too — they can be long (e.g. "no sambal, extra pedas, ganti nasi")
-        final noteParts = _wrap('  > ${itemNotes[i]!}', isWide ? 28 : 20);
+        final noteParts = _wrap('  > ${itemNotes[i]!}', lineWidth - 2);
         for (final part in noteParts) {
           bytes.addAll(generator.text(
             _san(part),
