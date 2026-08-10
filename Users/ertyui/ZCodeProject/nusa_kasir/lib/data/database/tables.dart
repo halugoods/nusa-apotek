@@ -356,8 +356,10 @@ class Appointments extends Table {
   DateTimeColumn get date => dateTime()();
   TextColumn get timeSlot => text()();        // "HH:mm"
   TextColumn get status => text().withDefault(const Constant('Dikonfirmasi'))();
-    // Dikonfirmasi | Menunggu | Selesai | Batal
+    // Dikonfirmasi | Datang | Menunggu | Selesai | Batal
   TextColumn get notes => text().nullable()();
+  IntColumn get estimatedDuration => integer().nullable()(); // estimasi durasi dalam menit
+  IntColumn get counterId => integer().nullable()();         // nomor urut booking per hari
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

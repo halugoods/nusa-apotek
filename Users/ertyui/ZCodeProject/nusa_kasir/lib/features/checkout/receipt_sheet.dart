@@ -53,6 +53,7 @@ class ReceiptSheet extends ConsumerWidget {
   final String? tableName;
   final List<String?>? itemNotes;
   final int? laundryOrderId;
+  final int? salonBookingId;
 
   const ReceiptSheet({
     required this.items,
@@ -72,6 +73,7 @@ class ReceiptSheet extends ConsumerWidget {
     this.tableName,
     this.itemNotes,
     this.laundryOrderId,
+    this.salonBookingId,
     super.key,
   });
 
@@ -93,6 +95,7 @@ class ReceiptSheet extends ConsumerWidget {
     String? orderType,
     String? tableName,
     int? laundryOrderId,
+    int? salonBookingId,
   }) {
     final items = cartItems
         .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, note: c.note, weightKg: c.weightKg))
@@ -114,6 +117,7 @@ class ReceiptSheet extends ConsumerWidget {
       orderType: orderType,
       tableName: tableName,
       laundryOrderId: laundryOrderId,
+      salonBookingId: salonBookingId,
     );
   }
 
@@ -500,6 +504,17 @@ class ReceiptSheet extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Text(
                 '#LND-${laundryOrderId.toString().padLeft(3, '0')} • Baru',
+                style: monoBold,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        if (salonBookingId != null)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '#BKG-${salonBookingId.toString().padLeft(3, '0')} • Dikonfirmasi',
                 style: monoBold,
                 textAlign: TextAlign.center,
               ),

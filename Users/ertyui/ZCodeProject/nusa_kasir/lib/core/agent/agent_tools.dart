@@ -222,7 +222,7 @@ class AgentToolRegistry {
   static const _salonTools = <AgentTool>[
     AgentTool(
       name: 'get_appointments',
-      description: 'Get salon appointments filtered by status. Statuses: Dikonfirmasi, Menunggu, Selesai, Batal.',
+      description: 'Get salon appointments filtered by status. Statuses: Dikonfirmasi, Datang, Menunggu, Selesai, Batal.',
       parameters: {
         'type': 'object',
         'properties': {
@@ -230,6 +230,12 @@ class AgentToolRegistry {
         },
       },
       execute: _getAppointments,
+    ),
+    AgentTool(
+      name: 'get_booking_stats',
+      description: 'Get salon booking statistics: total today, confirmed, arrived, waiting, completed.',
+      parameters: {'type': 'object', 'properties': {}},
+      execute: _getBookingStats,
     ),
   ];
 
@@ -469,6 +475,22 @@ class AgentToolRegistry {
       'status': a.status, 'date': '${a.date.day}/${a.date.month}/${a.date.year}',
     }).toList();
     return jsonEncode({'total': appointments.length, 'appointments': list});
+  }
+
+  static Future<String> _getBookingStats(AppDatabase db, Map<String, dynamic> args) async {
+    final repo = AppointmentRepository(db);
+    final all = await repo.getAll();
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final today = all.where((a) => a.date.isAfter(now.subtract(const Duration(days: 1))) && a.date.isBefore(tomorrow)).length;
+    final confirmed = all.where((a) => a.status == 'Dikonfirmasi').length;
+    final arrived = all.where((a) => a.status == 'Datang').length;
+    final waiting = all.where((a) => a.status == 'Menunggu').length;
+    final done = all.where((a) => a.status == 'Selesai').length;
+    return jsonEncode({
+      'today': today, 'confirmed': confirmed, 'arrived': arrived,
+      'waiting': waiting, 'done': done, 'total': all.length,
+    });
   }
 
   static Future<String> _getPrescriptions(AppDatabase db, Map<String, dynamic> args) async {

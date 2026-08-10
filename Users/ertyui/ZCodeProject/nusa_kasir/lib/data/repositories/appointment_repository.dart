@@ -5,7 +5,17 @@ class AppointmentRepository {
   final AppDatabase db;
   AppointmentRepository(this.db);
 
-  Future<int> add({required String customerName, String? customerPhone, required String service, String? stylist, required DateTime date, required String timeSlot, String? notes}) =>
+  Future<int> add({
+    required String customerName,
+    String? customerPhone,
+    required String service,
+    String? stylist,
+    required DateTime date,
+    required String timeSlot,
+    String? notes,
+    int? estimatedDuration,
+    int? counterId,
+  }) =>
       db.into(db.appointments).insert(AppointmentsCompanion.insert(
             customerName: customerName,
             customerPhone: Value(customerPhone),
@@ -14,6 +24,8 @@ class AppointmentRepository {
             date: date,
             timeSlot: timeSlot,
             notes: Value(notes),
+            estimatedDuration: Value(estimatedDuration),
+            counterId: Value(counterId),
           ));
 
   Future<List<Appointment>> getAll() =>
@@ -42,6 +54,20 @@ class AppointmentRepository {
           ..where((t) => t.status.equals(status)))
         .get();
     return rows.length;
+  }
+
+  Future<List<Appointment>> getByCustomer(String customerName) =>
+      (db.select(db.appointments)
+            ..where((t) => t.customerName.equals(customerName))
+            ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
+          .get();
+
+  Future<int> getNextCounter(DateTime date) async {
+    final next = DateTime(date.year, date.month, date.day + 1);
+    final today = await (db.select(db.appointments)
+          ..where((t) => t.date.isBiggerOrEqualValue(date) & t.date.isSmallerThanValue(next)))
+        .get();
+    return today.length + 1;
   }
 
   Future<void> delete(int id) =>

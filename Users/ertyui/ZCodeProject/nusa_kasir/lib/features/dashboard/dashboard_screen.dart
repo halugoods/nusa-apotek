@@ -16,6 +16,7 @@ import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
+import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
@@ -75,6 +76,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _laundryReady = 0;
   int _laundryDelivered = 0;
   bool _laundryStatsExpanded = false;
+
+  // Salon stats
+  int _salonToday = 0;
+  int _salonConfirmed = 0;
+  int _salonWaiting = 0;
+  int _salonDone = 0;
+  bool _salonStatsExpanded = false;
 
   // Flip card data
   EmployeeCardData? _cardData;
@@ -275,6 +283,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       laundryStatsExpanded = await SecureStore.getLaundryStatsExpanded();
     }
 
+    // Load salon stats
+    int salonToday = 0, salonConfirmed = 0, salonWaiting = 0, salonDone = 0;
+    bool salonStatsExpanded = false;
+    if (NusaConfig.isSalonVariant) {
+      final salonRepo = AppointmentRepository(db);
+      salonToday = await salonRepo.getNextCounter(DateTime.now()) - 1;
+      salonConfirmed = await salonRepo.countByStatus('Dikonfirmasi');
+      salonWaiting = await salonRepo.countByStatus('Menunggu');
+      salonDone = await salonRepo.countByStatus('Selesai');
+      salonStatsExpanded = await SecureStore.getSalonStatsExpanded();
+    }
+
     // Load flip card data
     await _fetchCardData(ref.read(employeeSessionProvider)?.employeeId);
 
@@ -304,6 +324,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _laundryReady = laundryReady;
         _laundryDelivered = laundryDelivered;
         _laundryStatsExpanded = laundryStatsExpanded;
+        _salonToday = salonToday;
+        _salonConfirmed = salonConfirmed;
+        _salonWaiting = salonWaiting;
+        _salonDone = salonDone;
+        _salonStatsExpanded = salonStatsExpanded;
       });
     }
   }
@@ -1211,6 +1236,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                       ],
 
+                      // Salon stats
+                      if (NusaConfig.isSalonVariant && (_salonToday > 0 || _salonConfirmed > 0)) ...[
+                        const SizedBox(height: 12),
+                        _SalonStatsCard(
+                          today: _salonToday,
+                          confirmed: _salonConfirmed,
+                          waiting: _salonWaiting,
+                          done: _salonDone,
+                          expanded: _salonStatsExpanded,
+                          onToggle: () {
+                            setState(() => _salonStatsExpanded = !_salonStatsExpanded);
+                            SecureStore.setSalonStatsExpanded(!_salonStatsExpanded);
+                          },
+                        ),
+                      ],
+
                       const SizedBox(height: 12),
 
                       // Menu grid with lock indicators (responsive columns)
@@ -1565,6 +1606,121 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
   }
 
   Widget _laundryStat(String label, int count, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+        ),
+        child: Column(children: [
+          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Salon stats mini-card on dashboard.
+class _SalonStatsCard extends StatelessWidget {
+  const _SalonStatsCard({
+    required this.today, required this.confirmed, required this.waiting,
+    required this.done, required this.expanded, required this.onToggle,
+  });
+  final int today, confirmed, waiting, done;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = NusaConfig.activePrimary;
+    return Column(children: [
+      if (!expanded)
+        GestureDetector(
+          onTap: onToggle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+            ),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
+              ),
+              const SizedBox(width: 10),
+              Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+              const Spacer(),
+              Text('$today booking hari ini', style: TextStyle(fontSize: 12,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              const SizedBox(width: 8),
+              Icon(Icons.keyboard_arrow_down_rounded, size: 18,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ]),
+          ),
+        )
+      else
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
+              ),
+              const SizedBox(width: 10),
+              Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+              const Spacer(),
+              GestureDetector(
+                onTap: onToggle,
+                child: Container(
+                  width: 28, height: 28,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
+                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              _salonStat('Hari Ini', today, NusaConfig.accentPurple, isDark),
+              _salonStat('Dikonfirmasi', confirmed, NusaConfig.info, isDark),
+              _salonStat('Menunggu', waiting, NusaConfig.warning, isDark),
+              _salonStat('Selesai', done, NusaConfig.success, isDark),
+            ]),
+          ]),
+        ),
+    ]);
+  }
+
+  Widget _salonStat(String label, int count, Color color, bool isDark) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),

@@ -57,6 +57,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // FnB: alur pembayaran
   bool _fnbPayFirst = false;
 
+  // Salon: estimasi & notifikasi
+  int _salonDefaultDuration = 60;
+  bool _salonNotifyBooking = true;
+
   // Theme preset
   String _themePreset = NusaConfig.productId.replaceFirst('nusa-', '');
 
@@ -201,6 +205,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Load FnB payment flow
       if (NusaConfig.isFnbVariant) {
         _fnbPayFirst = await SecureStore.getFnbPaymentFirst();
+      }
+
+      // Load Salon settings
+      if (NusaConfig.isSalonVariant) {
+        _salonDefaultDuration = await SecureStore.getSalonDefaultDuration();
+        _salonNotifyBooking = await SecureStore.getSalonNotifyBooking();
       }
 
       // (Laundry global settings removed — now per-product)
@@ -2661,6 +2671,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
             // Laundry settings removed — now per-product via priceType toggle on product cards.
+
+            // Salon settings
+            if (NusaConfig.isSalonVariant) ...[
+              const SizedBox(height: 12),
+              _menuRow(
+                icon: Icons.timer_outlined,
+                iconColor: const Color(0xFF8B5CF6),
+                title: 'Estimasi Default',
+                subtitle: '$_salonDefaultDuration menit — durasi estimasi standar per booking',
+                isDark: isDark,
+                onTap: () async {
+                  final opts = [30, 45, 60, 90, 120];
+                  final current = _salonDefaultDuration;
+                  final sel = await showModalBottomSheet<String>(
+                    context: context,
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                    builder: (ctx) => Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Text('Estimasi Default', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 12),
+                        ...opts.map((o) => ListTile(
+                          title: Text('$o menit'),
+                          trailing: o == current ? Icon(Icons.check, color: NusaConfig.activePrimary) : null,
+                          onTap: () => Navigator.pop(ctx, '$o'),
+                        )),
+                      ]),
+                    ),
+                  );
+                  if (sel != null && mounted) {
+                    final v = int.parse(sel);
+                    await SecureStore.setSalonDefaultDuration(v);
+                    setState(() => _salonDefaultDuration = v);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              _menuRow(
+                icon: Icons.notifications_outlined,
+                iconColor: const Color(0xFF3B82F6),
+                title: 'Notifikasi Booking',
+                subtitle: _salonNotifyBooking ? 'Notif H-30 menit sebelum booking' : 'Notifikasi dimatikan',
+                isDark: isDark,
+                onTap: null,
+                trailing: Switch(
+                  value: _salonNotifyBooking,
+                  activeColor: NusaConfig.info,
+                  onChanged: (v) async {
+                    await SecureStore.setSalonNotifyBooking(v);
+                    setState(() => _salonNotifyBooking = v);
+                  },
+                ),
+              ),
+            ],
 
             const SizedBox(height: 12),
             // Pengaturan Struk

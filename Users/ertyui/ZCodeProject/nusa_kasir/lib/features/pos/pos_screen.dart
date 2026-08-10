@@ -592,7 +592,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     item: cart[i], isDark: isDark,
                     onDecrement: () => ref.read(cartProvider.notifier).changeQty(cart[i].productId, -1),
                     onIncrement: () => ref.read(cartProvider.notifier).addProduct(cart[i].productId, cart[i].name, cart[i].price),
-                    onTap: (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant) ? () => _showNoteDialog(cart[i]) : null,
+                    onTap: (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant || NusaConfig.isSalonVariant) ? () => _showNoteDialog(cart[i]) : null,
                   ),
                 ),
               ),
@@ -749,7 +749,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           SizedBox(height: 16),
           Text('Catatan — ${item.name}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           SizedBox(height: 12),
-          NusaFormField(label: 'Catatan', controller: ctrl, hintText: NusaConfig.isLaundryVariant ? 'Contoh: noda di lengan kiri, kain sutra delicate' : 'Contoh: tidak pedas, es batu terpisah', maxLines: 2),
+          NusaFormField(label: 'Catatan', controller: ctrl, hintText: NusaConfig.isLaundryVariant ? 'Contoh: noda di lengan kiri, kain sutra delicate' : NusaConfig.isSalonVariant ? 'Contoh: model two-block undercut, fade rendah' : 'Contoh: tidak pedas, es batu terpisah', maxLines: 2),
           SizedBox(height: 16),
           SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -1172,7 +1172,7 @@ class _CartItemTile extends StatelessWidget {
               ]),
             ),
           ],
-          if (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant)
+          if (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant || NusaConfig.isSalonVariant)
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(

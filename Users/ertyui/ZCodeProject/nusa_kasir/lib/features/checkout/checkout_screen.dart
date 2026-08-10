@@ -14,6 +14,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
+import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
@@ -360,6 +361,25 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         } catch (_) {}
       }
 
+      // ── Salon: auto-create Appointment after successful transaction ──
+      int? _bookingId;
+      if (NusaConfig.isSalonVariant && cart.isNotEmpty) {
+        try {
+          final aptRepo = AppointmentRepository(db);
+          final services = cart.map((c) => c.name).join(', ');
+          final timeSlot = '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
+          _bookingId = await aptRepo.add(
+            customerName: _selectedCustomer?.name ?? 'Umum',
+            customerPhone: _selectedCustomer?.phone,
+            service: services,
+            date: DateTime.now(),
+            timeSlot: timeSlot,
+            notes: cart.where((c) => c.note != null && c.note!.isNotEmpty)
+                .map((c) => '${c.name}: ${c.note}').join('; '),
+          );
+        } catch (_) {}
+      }
+
       ref.read(cartProvider.notifier).clear();
 
       // Auto-upload backup ke cloud setelah transaksi (background)
@@ -401,6 +421,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           orderType: savedOrderType,
           tableName: savedTableName,
           laundryOrderId: _laundryOrderId,
+          salonBookingId: _bookingId,
         ),
           onDismiss: () async {
             // ── Split bill: print splits after receipt shown ──

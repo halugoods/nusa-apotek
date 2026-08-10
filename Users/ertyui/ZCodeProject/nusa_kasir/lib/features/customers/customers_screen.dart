@@ -10,6 +10,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
+import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -758,6 +759,26 @@ class _CustomerDetailSheet extends StatelessWidget {
                 ),
               ),
             ),
+          // Salon booking history
+          if (NusaConfig.isSalonVariant) ...[
+            SizedBox(height: 24),
+            FutureBuilder<List<Appointment>>(
+              future: AppointmentRepository(db).getByCustomer(customer.name),
+              builder: (context, snap) {
+                final data = snap.data ?? [];
+                if (data.isEmpty) return SizedBox.shrink();
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Riwayat Salon',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15, fontWeight: FontWeight.w700,
+                      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                    )),
+                  SizedBox(height: 10),
+                  ...data.take(5).map((a) => _salonHistoryRow(a, isDark)),
+                ]);
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -797,6 +818,40 @@ class _CustomerDetailSheet extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+
+  // ── Salon booking history row ──
+  Widget _salonHistoryRow(Appointment a, bool isDark) {
+    Color sc;
+    switch (a.status) {
+      case 'Dikonfirmasi': sc = NusaConfig.info; break;
+      case 'Datang': sc = NusaConfig.accentGreen; break;
+      case 'Menunggu': sc = NusaConfig.warning; break;
+      case 'Selesai': sc = NusaConfig.success; break;
+      case 'Batal': sc = Colors.red; break;
+      default: sc = NusaConfig.activePrimary;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(a.service, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('${a.date.day}/${a.date.month}/${a.date.year} ${a.timeSlot}', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+          ])),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: sc.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+            child: Text(a.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: sc)),
+          ),
+        ]),
+      ),
     );
   }
 

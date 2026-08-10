@@ -245,6 +245,22 @@ class SecureStore {
   static Future<void> setLaundryStatsExpanded(bool v) =>
       SecureStore.write(key: 'nusa_laundry_stats_expanded', value: v.toString());
 
+  // ── Salon settings ──
+  static Future<int> getSalonDefaultDuration() async {
+    final v = await SecureStore.read(key: 'nusa_salon_default_duration');
+    return v != null ? int.tryParse(v) ?? 60 : 60;
+  }
+  static Future<void> setSalonDefaultDuration(int v) =>
+      SecureStore.write(key: 'nusa_salon_default_duration', value: v.toString());
+  static Future<bool> getSalonNotifyBooking() async =>
+      (await SecureStore.read(key: 'nusa_salon_notify_booking')) == 'true';
+  static Future<void> setSalonNotifyBooking(bool v) =>
+      SecureStore.write(key: 'nusa_salon_notify_booking', value: v.toString());
+  static Future<bool> getSalonStatsExpanded() async =>
+      (await SecureStore.read(key: 'nusa_salon_stats_expanded')) == 'true';
+  static Future<void> setSalonStatsExpanded(bool v) =>
+      SecureStore.write(key: 'nusa_salon_stats_expanded', value: v.toString());
+
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>
       (await SecureStore.read(key: 'nusa_images_migrated')) == 'true';

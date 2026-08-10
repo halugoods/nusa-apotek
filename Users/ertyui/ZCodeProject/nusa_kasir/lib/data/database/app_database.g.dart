@@ -16294,6 +16294,28 @@ class $AppointmentsTable extends Appointments
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _estimatedDurationMeta = const VerificationMeta(
+    'estimatedDuration',
+  );
+  @override
+  late final GeneratedColumn<int> estimatedDuration = GeneratedColumn<int>(
+    'estimated_duration',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _counterIdMeta = const VerificationMeta(
+    'counterId',
+  );
+  @override
+  late final GeneratedColumn<int> counterId = GeneratedColumn<int>(
+    'counter_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -16317,6 +16339,8 @@ class $AppointmentsTable extends Appointments
     timeSlot,
     status,
     notes,
+    estimatedDuration,
+    counterId,
     createdAt,
   ];
   @override
@@ -16396,6 +16420,21 @@ class $AppointmentsTable extends Appointments
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
       );
     }
+    if (data.containsKey('estimated_duration')) {
+      context.handle(
+        _estimatedDurationMeta,
+        estimatedDuration.isAcceptableOrUnknown(
+          data['estimated_duration']!,
+          _estimatedDurationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('counter_id')) {
+      context.handle(
+        _counterIdMeta,
+        counterId.isAcceptableOrUnknown(data['counter_id']!, _counterIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -16447,6 +16486,14 @@ class $AppointmentsTable extends Appointments
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      estimatedDuration: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}estimated_duration'],
+      ),
+      counterId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}counter_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -16470,6 +16517,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
   final String timeSlot;
   final String status;
   final String? notes;
+  final int? estimatedDuration;
+  final int? counterId;
   final DateTime createdAt;
   const Appointment({
     required this.id,
@@ -16481,6 +16530,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     required this.timeSlot,
     required this.status,
     this.notes,
+    this.estimatedDuration,
+    this.counterId,
     required this.createdAt,
   });
   @override
@@ -16500,6 +16551,12 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || estimatedDuration != null) {
+      map['estimated_duration'] = Variable<int>(estimatedDuration);
+    }
+    if (!nullToAbsent || counterId != null) {
+      map['counter_id'] = Variable<int>(counterId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -16522,6 +16579,12 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      estimatedDuration: estimatedDuration == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimatedDuration),
+      counterId: counterId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(counterId),
       createdAt: Value(createdAt),
     );
   }
@@ -16541,6 +16604,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       timeSlot: serializer.fromJson<String>(json['timeSlot']),
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
+      estimatedDuration: serializer.fromJson<int?>(json['estimatedDuration']),
+      counterId: serializer.fromJson<int?>(json['counterId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -16557,6 +16622,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       'timeSlot': serializer.toJson<String>(timeSlot),
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
+      'estimatedDuration': serializer.toJson<int?>(estimatedDuration),
+      'counterId': serializer.toJson<int?>(counterId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -16571,6 +16638,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     String? timeSlot,
     String? status,
     Value<String?> notes = const Value.absent(),
+    Value<int?> estimatedDuration = const Value.absent(),
+    Value<int?> counterId = const Value.absent(),
     DateTime? createdAt,
   }) => Appointment(
     id: id ?? this.id,
@@ -16584,6 +16653,10 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     timeSlot: timeSlot ?? this.timeSlot,
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
+    estimatedDuration: estimatedDuration.present
+        ? estimatedDuration.value
+        : this.estimatedDuration,
+    counterId: counterId.present ? counterId.value : this.counterId,
     createdAt: createdAt ?? this.createdAt,
   );
   Appointment copyWithCompanion(AppointmentsCompanion data) {
@@ -16601,6 +16674,10 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       timeSlot: data.timeSlot.present ? data.timeSlot.value : this.timeSlot,
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
+      estimatedDuration: data.estimatedDuration.present
+          ? data.estimatedDuration.value
+          : this.estimatedDuration,
+      counterId: data.counterId.present ? data.counterId.value : this.counterId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -16617,6 +16694,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           ..write('timeSlot: $timeSlot, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
+          ..write('estimatedDuration: $estimatedDuration, ')
+          ..write('counterId: $counterId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -16633,6 +16712,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     timeSlot,
     status,
     notes,
+    estimatedDuration,
+    counterId,
     createdAt,
   );
   @override
@@ -16648,6 +16729,8 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           other.timeSlot == this.timeSlot &&
           other.status == this.status &&
           other.notes == this.notes &&
+          other.estimatedDuration == this.estimatedDuration &&
+          other.counterId == this.counterId &&
           other.createdAt == this.createdAt);
 }
 
@@ -16661,6 +16744,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
   final Value<String> timeSlot;
   final Value<String> status;
   final Value<String?> notes;
+  final Value<int?> estimatedDuration;
+  final Value<int?> counterId;
   final Value<DateTime> createdAt;
   const AppointmentsCompanion({
     this.id = const Value.absent(),
@@ -16672,6 +16757,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     this.timeSlot = const Value.absent(),
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
+    this.estimatedDuration = const Value.absent(),
+    this.counterId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   AppointmentsCompanion.insert({
@@ -16684,6 +16771,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     required String timeSlot,
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
+    this.estimatedDuration = const Value.absent(),
+    this.counterId = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : customerName = Value(customerName),
        service = Value(service),
@@ -16699,6 +16788,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Expression<String>? timeSlot,
     Expression<String>? status,
     Expression<String>? notes,
+    Expression<int>? estimatedDuration,
+    Expression<int>? counterId,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -16711,6 +16802,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       if (timeSlot != null) 'time_slot': timeSlot,
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
+      if (estimatedDuration != null) 'estimated_duration': estimatedDuration,
+      if (counterId != null) 'counter_id': counterId,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -16725,6 +16818,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Value<String>? timeSlot,
     Value<String>? status,
     Value<String?>? notes,
+    Value<int?>? estimatedDuration,
+    Value<int?>? counterId,
     Value<DateTime>? createdAt,
   }) {
     return AppointmentsCompanion(
@@ -16737,6 +16832,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       timeSlot: timeSlot ?? this.timeSlot,
       status: status ?? this.status,
       notes: notes ?? this.notes,
+      estimatedDuration: estimatedDuration ?? this.estimatedDuration,
+      counterId: counterId ?? this.counterId,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -16771,6 +16868,12 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
+    if (estimatedDuration.present) {
+      map['estimated_duration'] = Variable<int>(estimatedDuration.value);
+    }
+    if (counterId.present) {
+      map['counter_id'] = Variable<int>(counterId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -16789,6 +16892,8 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
           ..write('timeSlot: $timeSlot, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
+          ..write('estimatedDuration: $estimatedDuration, ')
+          ..write('counterId: $counterId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -26653,6 +26758,8 @@ typedef $$AppointmentsTableCreateCompanionBuilder =
       required String timeSlot,
       Value<String> status,
       Value<String?> notes,
+      Value<int?> estimatedDuration,
+      Value<int?> counterId,
       Value<DateTime> createdAt,
     });
 typedef $$AppointmentsTableUpdateCompanionBuilder =
@@ -26666,6 +26773,8 @@ typedef $$AppointmentsTableUpdateCompanionBuilder =
       Value<String> timeSlot,
       Value<String> status,
       Value<String?> notes,
+      Value<int?> estimatedDuration,
+      Value<int?> counterId,
       Value<DateTime> createdAt,
     });
 
@@ -26720,6 +26829,16 @@ class $$AppointmentsTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get estimatedDuration => $composableBuilder(
+    column: $table.estimatedDuration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get counterId => $composableBuilder(
+    column: $table.counterId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -26783,6 +26902,16 @@ class $$AppointmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get estimatedDuration => $composableBuilder(
+    column: $table.estimatedDuration,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get counterId => $composableBuilder(
+    column: $table.counterId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -26829,6 +26958,14 @@ class $$AppointmentsTableAnnotationComposer
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
 
+  GeneratedColumn<int> get estimatedDuration => $composableBuilder(
+    column: $table.estimatedDuration,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get counterId =>
+      $composableBuilder(column: $table.counterId, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -26873,6 +27010,8 @@ class $$AppointmentsTableTableManager
                 Value<String> timeSlot = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<int?> estimatedDuration = const Value.absent(),
+                Value<int?> counterId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => AppointmentsCompanion(
                 id: id,
@@ -26884,6 +27023,8 @@ class $$AppointmentsTableTableManager
                 timeSlot: timeSlot,
                 status: status,
                 notes: notes,
+                estimatedDuration: estimatedDuration,
+                counterId: counterId,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -26897,6 +27038,8 @@ class $$AppointmentsTableTableManager
                 required String timeSlot,
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<int?> estimatedDuration = const Value.absent(),
+                Value<int?> counterId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => AppointmentsCompanion.insert(
                 id: id,
@@ -26908,6 +27051,8 @@ class $$AppointmentsTableTableManager
                 timeSlot: timeSlot,
                 status: status,
                 notes: notes,
+                estimatedDuration: estimatedDuration,
+                counterId: counterId,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
