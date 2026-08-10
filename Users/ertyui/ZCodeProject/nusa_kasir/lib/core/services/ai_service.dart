@@ -8,6 +8,7 @@ class ChatMessage {
   final DateTime timestamp;
   final String? toolCallId;   // for 'tool' role messages
   final String? toolName;     // metadata from assistant tool_calls
+  final Map<String, dynamic>? toolArgs; // arguments for assistant tool_calls
 
   ChatMessage({
     required this.role,
@@ -15,14 +16,40 @@ class ChatMessage {
     DateTime? timestamp,
     this.toolCallId,
     this.toolName,
+    this.toolArgs,
   }) : timestamp = timestamp ?? DateTime.now();
 
-  Map<String, dynamic> toJson() => {
-        'role': role,
-        'content': content,
-        if (toolCallId != null) 'tool_call_id': toolCallId,
-        if (toolName != null) 'name': toolName,
-      };
+  /// Whether this message should be hidden from chat UI (internal tool messages).
+  bool get isInternal => role == 'tool' || (role == 'assistant' && toolCallId != null);
+
+  /// Serialize to OpenAI-compatible format for sending to Groq.
+  Map<String, dynamic> toJson() {
+    final m = <String, dynamic>{'role': role};
+    if (role == 'tool') {
+      // Tool result message: {role: "tool", tool_call_id: "...", content: "..."}
+      m['tool_call_id'] = toolCallId;
+      m['content'] = content;
+    } else if (role == 'assistant' && toolCallId != null && toolName != null) {
+      // Assistant message with tool_calls: {role: "assistant", content: null, tool_calls: [...]}
+      m['content'] = null;
+      m['tool_calls'] = [
+        {
+          'id': toolCallId,
+          'type': 'function',
+          'function': {
+            'name': toolName,
+            'arguments': toolArgs != null && toolArgs!.isNotEmpty
+                ? const JsonEncoder().convert(toolArgs)
+                : '{}',
+          },
+        },
+      ];
+    } else {
+      // Regular message (user or assistant text): {role: "...", content: "..."}
+      m['content'] = content;
+    }
+    return m;
+  }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(

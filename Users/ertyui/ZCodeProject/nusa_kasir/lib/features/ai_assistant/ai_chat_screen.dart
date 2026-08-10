@@ -75,8 +75,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     super.dispose();
   }
 
-  int get _totalChars => _messages.fold<int>(0, (s, m) => s + m.content.length);
+  int get _totalChars => _visibleMessages.fold<int>(0, (s, m) => s + m.content.length);
   double get _contextUsage => (_totalChars / _maxContextChars).clamp(0.0, 1.0);
+  List<ChatMessage> get _visibleMessages => _messages.where((m) => !m.isInternal).toList();
 
   void _toggleDrawer() {
     if (_showSessions) {
@@ -102,11 +103,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   }
 
   Future<void> _saveSession() async {
-    if (_messages.length <= 1) return;
+    if (_visibleMessages.length <= 1) return;
     try {
       final db = ref.read(databaseProvider);
       final title = _autoTitle();
-      final json = jsonEncode(_messages.map((m) => m.toJson()).toList());
+      final json = jsonEncode(_visibleMessages.map((m) => m.toJson()).toList());
       if (_activeSessionId != null) {
         await (db.update(db.chatSessions)..where((t) => t.id.equals(_activeSessionId!)))
             .write(ChatSessionsCompanion(
@@ -164,7 +165,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   }
 
   String _autoTitle() {
-    final firstUser = _messages.where((m) => m.role == 'user').firstOrNull;
+    final firstUser = _visibleMessages.where((m) => m.role == 'user').firstOrNull;
     if (firstUser == null) return 'Chat Baru';
     final words = firstUser.content.split(' ');
     return words.take(6).join(' ') + (words.length > 6 ? '...' : '');
@@ -280,11 +281,15 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
       final tools = AgentToolRegistry.forVariant();
       final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
+      // Build db context for the first call only (so AI has data without forcing tool calls)
+      final dbContext = await _buildDbContext();
+
       // Agent loop: up to 3 tool-calling rounds
       for (int round = 0; round < 3; round++) {
         final res = await svc.chat(
           messages: _messages,
           storeName: _storeName,
+          dbContext: round == 0 ? dbContext : null,
           tools: toolDefs,
         );
 
@@ -300,12 +305,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
             try {
               final result = await tool.execute(db, tc.arguments);
 
-              // Add assistant tool_call + tool result to messages
+              // Add internal messages (assistant tool_call + tool result)
               _messages.add(ChatMessage(
                 role: 'assistant',
                 content: '',
                 toolCallId: tc.id,
                 toolName: tc.name,
+                toolArgs: tc.arguments,
               ));
               _messages.add(ChatMessage(
                 role: 'tool',
@@ -536,7 +542,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 ),
               ),
               // Context usage
-              if (_messages.length > 2) ...[
+              if (_visibleMessages.length > 2) ...[
                 Container(
                   width: 48, height: 3,
                   decoration: BoxDecoration(
@@ -579,17 +585,17 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           ),
         ),
 
-        // Messages
+        // Messages (filter out internal tool messages from UI)
         Expanded(
           child: ListView.builder(
             controller: _scrollCtrl,
             padding: const EdgeInsets.all(16),
-            itemCount: _messages.length + (_loading ? 1 : 0),
+            itemCount: _visibleMessages.length + (_loading ? 1 : 0),
             itemBuilder: (_, i) {
-              if (i >= _messages.length) {
+              if (i >= _visibleMessages.length) {
                 return _thinkingBubble(isDark);
               }
-              return _bubble(_messages[i], isDark);
+              return _bubble(_visibleMessages[i], isDark);
             },
           ),
         ),

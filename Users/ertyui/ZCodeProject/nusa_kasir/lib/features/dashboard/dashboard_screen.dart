@@ -1196,7 +1196,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ],
 
                       // Laundry stats
-                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0))
+                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0)) ...[
+                        const SizedBox(height: 12),
                         _LaundryStatsCard(
                           today: _laundryToday,
                           pending: _laundryPending,
@@ -1208,8 +1209,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             SecureStore.setLaundryStatsExpanded(!_laundryStatsExpanded);
                           },
                         ),
+                      ],
 
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 12),
 
                       // Menu grid with lock indicators (responsive columns)
                       LayoutBuilder(builder: (_, constraints) {
@@ -1564,12 +1566,21 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
 
   Widget _laundryStat(String label, int count, Color color, bool isDark) {
     return Expanded(
-      child: Column(children: [
-        Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-      ]),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+        ),
+        child: Column(children: [
+          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+        ]),
+      ),
     );
   }
 }
