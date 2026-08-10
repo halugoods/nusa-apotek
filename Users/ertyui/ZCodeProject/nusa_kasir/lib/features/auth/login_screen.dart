@@ -60,8 +60,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (emp == null) {
       setState(() {
         _error = 'PIN salah';
-        _keypadKey.currentState?.clear();
       });
+      // Dots + shake handled by PinKeypad: passing a fresh error triggers
+      // didUpdateWidget → haptic + shake + reset dots to 0.
+      _keypadKey.currentState?.clear();
       return;
     }
     await _doLogin(emp, remember: _remember);

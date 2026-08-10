@@ -45,6 +45,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   List<DiningTable> _diningTables = [];
   int? _activeTabId;
 
+  // ── Route customer (dari servis / booking: "Kasir" trigger) ──
+  String? _routeCustomer;
+  String? _routeCustomerPhone;
+
   List<Product>? _allProducts;
   bool _firstBuild = true;
   List<String> _allCats = [];
@@ -62,12 +66,28 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       if (mounted) setState(() => _searching = _searchFocus.hasFocus);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _handleFnbRouteParams();
+      _handleRouteParams();
     });
   }
 
+  /// Reads route query params for both FnB (tab/table) and the "Kasir"
+  /// trigger from servis/booking (customer name + phone). The customer
+  /// params are forwarded to checkout so the ticket's customer is
+  /// automatically selected at payment time.
+  Future<void> _handleRouteParams() async {
+    final extra = GoRouterState.of(context).uri.queryParameters;
+    final customer = extra['customer'];
+    final customerPhone = extra['customerPhone'];
+    if (customer != null || customerPhone != null) {
+      setState(() {
+        _routeCustomer = customer != null ? Uri.decodeComponent(customer) : null;
+        _routeCustomerPhone = customerPhone != null ? Uri.decodeComponent(customerPhone) : null;
+      });
+    }
+    if (NusaConfig.isFnbVariant) await _handleFnbRouteParams();
+  }
+
   Future<void> _handleFnbRouteParams() async {
-    if (!NusaConfig.isFnbVariant) return;
     final extra = GoRouterState.of(context).uri.queryParameters;
     final tabId = int.tryParse(extra['tabId'] ?? '');
     final tableId = int.tryParse(extra['tableId'] ?? '');
@@ -684,6 +704,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       if (_selectedTableId != null) qp['tableId'] = _selectedTableId.toString();
       if (_selectedTableName != null) qp['tableName'] = Uri.encodeComponent(_selectedTableName!);
       if (_activeTabId != null) qp['activeTabId'] = _activeTabId.toString();
+    }
+    if (_routeCustomer != null && _routeCustomer!.isNotEmpty) {
+      qp['customer'] = Uri.encodeComponent(_routeCustomer!);
+    }
+    if (_routeCustomerPhone != null && _routeCustomerPhone!.isNotEmpty) {
+      qp['customerPhone'] = Uri.encodeComponent(_routeCustomerPhone!);
     }
     final uri = Uri(path: '/checkout', queryParameters: qp.isNotEmpty ? qp : null);
     context.push(uri.toString());

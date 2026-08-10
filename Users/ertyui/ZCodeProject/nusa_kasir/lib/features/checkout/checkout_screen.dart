@@ -142,7 +142,46 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         _activeTabId = int.tryParse(extra['activeTabId'] ?? '');
         if (mounted) setState(() {});
       }
+      // ── Route customer (dari servis/booking: "Kasir" trigger) ──
+      final customer = extra['customer'];
+      final customerPhone = extra['customerPhone'];
+      if ((customer != null && customer.isNotEmpty) ||
+          (customerPhone != null && customerPhone.isNotEmpty)) {
+        _preselectCustomer(
+          name: customer != null ? Uri.decodeComponent(customer) : null,
+          phone: customerPhone != null ? Uri.decodeComponent(customerPhone) : null,
+        );
+      }
     });
+  }
+
+  /// Auto-select the customer passed via route params (servis/booking →
+  /// POS → checkout). If a customer with that phone exists, use it; otherwise
+  /// create a lightweight record so the transaction still records the name.
+  Future<void> _preselectCustomer({String? name, String? phone}) async {
+    final repo = CustomerRepository(ref.read(databaseProvider));
+    Customer? found;
+    final cleanPhone = phone != null && phone.isNotEmpty ? phone : null;
+    if (cleanPhone != null) {
+      found = await repo.byPhone(cleanPhone);
+    }
+    if (found == null && name != null && name.isNotEmpty) {
+      final all = await repo.getCustomers();
+      found = all.cast<Customer?>().firstWhere(
+            (c) => c!.name.toLowerCase() == name.toLowerCase(),
+            orElse: () => null,
+          );
+    }
+    if (found == null && name != null && name.isNotEmpty) {
+      final id = await repo.addCustomer(name: name, phone: cleanPhone);
+      found = await repo.byId(id);
+    }
+    if (found != null && mounted) {
+      setState(() {
+        _selectedCustomer = found;
+        _pointsUsed = 0;
+      });
+    }
   }
 
   Future<void> _loadPaymentSettings() async {

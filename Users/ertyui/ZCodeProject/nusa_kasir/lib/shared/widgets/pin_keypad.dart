@@ -106,9 +106,13 @@ class PinKeypadState extends State<PinKeypad>
   @override
   void didUpdateWidget(covariant PinKeypad oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Haptic vibrate when error appears (null → non-null)
+    // Wrong PIN (error null → non-null): vibrate, shake, reset dots to 0.
+    // Re-typed digits are cleared by the host via key change; this is the
+    // single source of truth for the shake + dot reset on every attempt.
     if (oldWidget.error == null && widget.error != null) {
       HapticFeedback.heavyImpact();
+      _triggerShake();
+      setState(() => _digits = '');
     }
     // NFC auto-start when showNfc becomes true after initial availability check.
     // On activation screen, _nfcAvailable starts false and becomes true async —
@@ -185,8 +189,8 @@ class PinKeypadState extends State<PinKeypad>
     final len = _digits.length;
     final hasError = widget.error != null;
 
-    // Trigger shake when error first appears
-    if (hasError && _digits.isEmpty && !_shakeCtrl.isAnimating) {
+    // Shake the keypad whenever an error is shown (wrong PIN).
+    if (hasError && !_shakeCtrl.isAnimating) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _triggerShake());
     }
 

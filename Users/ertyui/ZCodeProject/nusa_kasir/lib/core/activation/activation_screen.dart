@@ -58,6 +58,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   bool _pinLoading = false;
   String? _pinError;
   bool _nfcAvailable = false;
+  final _keypadKey = GlobalKey<PinKeypadState>();
 
   // Screen state: 'welcome' | 'google_loading' | 'decision' | 'pin' | 'key'
   String _screen = 'welcome';
@@ -1015,7 +1016,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
                     SizedBox(height: 16),
                     PinKeypad(
+                      key: _keypadKey,
                       length: 6,
+                      error: _pinError,
                       showFingerprint: true,
                       showNfc: _nfcAvailable,
                       showCancel: false,
@@ -1071,18 +1074,16 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                           final storeName = await settingsRepo.getStoreName();
                           if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
                         } else {
-                          if (mounted) setState(() {
-                            _pinLoading = false;
-                            _pinError = 'PIN salah';
-                          });
+                          if (mounted) {
+                            setState(() {
+                              _pinLoading = false;
+                              _pinError = 'PIN salah';
+                            });
+                            _keypadKey.currentState?.clear();
+                          }
                         }
                       },
                     ),
-                    if (_pinError != null) ...[
-                      SizedBox(height: 8),
-                      Text(_pinError!,
-                          style:  TextStyle(color: NusaConfig.activePrimary, fontSize: 13)),
-                    ],
                   ],
                 ),
               ),

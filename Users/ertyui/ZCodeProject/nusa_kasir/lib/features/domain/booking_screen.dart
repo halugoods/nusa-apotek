@@ -6,15 +6,16 @@ import 'package:drift/drift.dart' show Value;
 import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
-import 'package:nusa_kasir/core/utils/format_rupiah.dart';
-import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
   const BookingScreen({super.key});
@@ -37,6 +38,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   final _search = TextEditingController();
   Map<String, int> _counts = {};
   int _selectedIdx = 0;
+  List<String> _stylists = [];
+  bool _stylistsLoading = true;
 
   // Month/date navigation
   DateTime _selectedDate = DateTime.now();
@@ -48,12 +51,27 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     super.initState();
     _search.addListener(_applyFilter);
     _load();
+    _loadStylists();
   }
 
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  /// Stylist options come from the Karyawan system — all active staff,
+  /// filtered by the salon's default working roles (Owner, Manager,
+  /// Kasir, Finance) + any custom roles the user added.
+  Future<void> _loadStylists() async {
+    final emps = await AttendanceRepository(ref.read(databaseProvider)).getEmployees();
+    const excluded = {'Gudang'};
+    final names = emps.where((e) => !excluded.contains(e.role)).map((e) => e.name.trim()).where((n) => n.isNotEmpty).toSet();
+    if (!mounted) return;
+    setState(() {
+      _stylists = names.toList()..sort();
+      _stylistsLoading = false;
+    });
   }
 
   Future<void> _load() async {
@@ -122,6 +140,16 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   void _quickPos(Appointment a) {
     context.push('/kasir', extra: {'bookingCustomer': a.customerName, 'bookingPhone': a.customerPhone});
     TopToast.success(context, 'Buka kasir untuk ${a.customerName}');
+  }
+
+  /// Tap-to-call pelanggan (pola suppliers_screen).
+  Future<void> _callCustomer(String phone) async {
+    final uri = Uri.parse('tel:$phone');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      TopToast.error(context, 'Tidak bisa membuka dialer');
+    }
   }
 
   Future<void> _deleteBooking(Appointment a) async {
@@ -326,26 +354,16 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () async {
-                    final contact = await pickContact();
-                    if (contact != null) {
-                      final phone = contact['phone'] ?? '';
-                      if (phone.isNotEmpty) {
-                        _search.text = phone;
-                        _applyFilter();
-                        setState(() {});
-                      }
+                CustomerPickerButton(
+                  onPick: (r) {
+                    if (!mounted) return;
+                    final q = r.phone.isNotEmpty ? r.phone : r.name;
+                    if (q.isNotEmpty) {
+                      _search.text = q;
+                      _applyFilter();
+                      setState(() {});
                     }
                   },
-                  child: Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: NusaConfig.activePrimary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(Icons.contacts_outlined, color: NusaConfig.activePrimary, size: 20),
-                  ),
                 ),
               ]),
             ),
@@ -418,7 +436,14 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 Text(bookingLabel, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
               ]),
               if (a.customerPhone != null && a.customerPhone!.isNotEmpty)
-                Text(a.customerPhone!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                GestureDetector(
+                  onTap: () => _callCustomer(a.customerPhone!),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.phone_outlined, size: 11, color: NusaConfig.activePrimary),
+                    const SizedBox(width: 4),
+                    Text(a.customerPhone!, style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary)),
+                  ]),
+                ),
             ])),
             PopupMenuButton(
               itemBuilder: (_) => [
@@ -608,7 +633,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           const SizedBox(height: 4),
           Divider(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
           const SizedBox(height: 12),
-          // ── Stylist ──
+          // ── Stylist (from Karyawan) ──
           Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             Container(
               width: 32, height: 32,
@@ -616,8 +641,52 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
               child: Icon(Icons.person, color: NusaConfig.accentGreen, size: 18),
             ),
             const SizedBox(width: 10),
-            Expanded(child: NusaInput('Stylist (opsional)', controller: stylistC, hint: 'Nama stylist')),
+            Expanded(
+              child: _stylistsLoading
+                  ? Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                      ),
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Text('Memuat stylist...', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _stylists.contains(stylistC.text) ? stylistC.text : null,
+                          isExpanded: true,
+                          icon: Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                          style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                          hint: Text('Pilih stylist (opsional)', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                          items: [
+                            const DropdownMenuItem<String?>(value: null, child: Text('Pilih stylist (opsional)')),
+                            ..._stylists.map((s) => DropdownMenuItem<String?>(value: s, child: Text(s))),
+                          ],
+                          onChanged: (v) => setModalState(() => stylistC.text = v ?? ''),
+                        ),
+                      ),
+                    ),
+            ),
           ]),
+          if (_stylists.isNotEmpty == false && !_stylistsLoading) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Icon(Icons.info_outline, size: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              const SizedBox(width: 4),
+              Expanded(child: Text('Belum ada karyawan. Tambah di menu Karyawan agar bisa jadi stylist.',
+                style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary))),
+            ]),
+          ],
           const SizedBox(height: 12),
           // ── Date + Time ──
           Row(crossAxisAlignment: CrossAxisAlignment.center, children: [

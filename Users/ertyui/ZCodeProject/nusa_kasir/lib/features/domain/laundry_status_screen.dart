@@ -5,18 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
-import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
-import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
-import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LaundryStatusScreen extends ConsumerStatefulWidget {
   const LaundryStatusScreen({super.key});
@@ -84,8 +83,7 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
 
   // ── Stage flow helpers ──────────────────────────────────────────────
 
-  String? _nextStatus(String s) {
-    const flow = {'Baru': 'Cuci', 'Cuci': 'Kering', 'Kering': 'Setrika', 'Setrika': 'Siap', 'Siap': 'Diantar', 'Diantar': 'Diambil'};
+  String? _nextStatus(String s) {    const flow = {'Baru': 'Cuci', 'Cuci': 'Kering', 'Kering': 'Setrika', 'Setrika': 'Siap', 'Siap': 'Diantar', 'Diantar': 'Diambil'};
     return flow[s];
   }
 
@@ -101,80 +99,6 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
       current = next;
     }
     return result;
-  }
-
-  // ── Customer picker ─────────────────────────────────────────────────
-
-  Future<void> _showCustomerPicker() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final db = ref.read(databaseProvider);
-    final customers = await CustomerRepository(db).getCustomers();
-
-    if (!mounted) return;
-
-    String pickerQuery = '';
-    List<Customer> filtered = List.from(customers);
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setSheet) {
-          return Container(
-            height: MediaQuery.of(ctx).size.height * 0.6,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(children: [
-              // Drag handle
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Pilih Pelanggan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              // Search
-              TextField(
-                autofocus: true,
-                onChanged: (v) => setSheet(() {
-                  pickerQuery = v.toLowerCase();
-                  filtered = customers.where((c) => c.name.toLowerCase().contains(pickerQuery) || (c.phone ?? '').contains(pickerQuery)).toList();
-                }),
-                decoration: InputDecoration(
-                  hintText: 'Cari nama atau telepon...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: filtered.isEmpty
-                    ? Center(child: Text('Tidak ada pelanggan', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)))
-                    : ListView.builder(
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) {
-                          final c = filtered[i];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              radius: 18,
-                              backgroundColor: NusaConfig.activePrimary.withOpacity(0.1),
-                              child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
-                                style: TextStyle(fontWeight: FontWeight.w700, color: NusaConfig.activePrimary, fontSize: 14)),
-                            ),
-                            title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                            subtitle: c.phone != null && c.phone!.isNotEmpty ? Text(c.phone!, style: const TextStyle(fontSize: 12)) : null,
-                            onTap: () {
-                              _search.text = c.name;
-                              Navigator.pop(ctx);
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ]),
-          );
-        });
-      },
-    );
   }
 
   // ── Build ───────────────────────────────────────────────────────────
@@ -239,18 +163,6 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
                     decoration: InputDecoration(
                       hintText: 'Cari pelanggan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
                       prefixIcon: const Icon(Icons.search, size: 20),
-                      suffixIcon: GestureDetector(
-                        onTap: _showCustomerPicker,
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 4),
-                          width: 36, height: 36,
-                          decoration: BoxDecoration(
-                            color: NusaConfig.primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(Icons.person_search_rounded, size: 20, color: NusaConfig.primaryColor),
-                        ),
-                      ),
                       filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -258,26 +170,16 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () async {
-                    final contact = await pickContact();
-                    if (contact != null) {
-                      final phone = contact['phone'] ?? '';
-                      if (phone.isNotEmpty) {
-                        _search.text = phone;
-                        _applyFilter();
-                        setState(() {});
-                      }
+                CustomerPickerButton(
+                  onPick: (r) {
+                    if (!mounted) return;
+                    final q = r.phone.isNotEmpty ? r.phone : r.name;
+                    if (q.isNotEmpty) {
+                      _search.text = q;
+                      _applyFilter();
+                      setState(() {});
                     }
                   },
-                  child: Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: NusaConfig.activePrimary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(Icons.contacts_outlined, color: NusaConfig.activePrimary, size: 20),
-                  ),
                 ),
               ]),
             ),
@@ -350,7 +252,14 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
                 Text(orderLabel, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
               ]),
               if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
-                Text(o.customerPhone!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                GestureDetector(
+                  onTap: () => _callCustomer(o.customerPhone!),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.phone_outlined, size: 11, color: NusaConfig.activePrimary),
+                    const SizedBox(width: 4),
+                    Text(o.customerPhone!, style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary)),
+                  ]),
+                ),
             ])),
             if (o.total > 0) Text(formatRupiah(o.total), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.success)),
             PopupMenuButton(
@@ -453,6 +362,16 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
     await LaundryOrderRepository(ref.read(databaseProvider)).updateStatus(o.id, next);
     TopToast.success(context, 'Status -> $next');
     _load();
+  }
+
+  /// Tap-to-call pelanggan (pola suppliers_screen).
+  Future<void> _callCustomer(String phone) async {
+    final uri = Uri.parse('tel:$phone');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      TopToast.error(context, 'Tidak bisa membuka dialer');
+    }
   }
 
   Future<void> _printTag(LaundryOrder o) async {

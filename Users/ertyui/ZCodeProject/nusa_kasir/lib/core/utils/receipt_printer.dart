@@ -486,6 +486,117 @@ class ReceiptPrinter {
     );
   }
 
+  /// Print a servis/workshop ticket (bengkel) to the connected thermal
+  /// printer. Unlike a sales receipt there are no per-item prices — the
+  /// ticket shows vehicle info, complaint, technician and cost breakdown.
+  /// Uses only static/global state, so it can be called without an instance.
+  static Future<bool> printTicket({
+    required String storeName,
+    required List<ReceiptLine> lines,
+    required int total,
+    String paperWidth = '58',
+    String dateStr = '',
+    String ticketNo = '',
+    String? customerName,
+    String? customerPhone,
+  }) async {
+    final connected = await BluetoothUtils.isConnected();
+    if (!connected) return false;
+
+    final profile = await CapabilityProfile.load();
+    final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
+    final generator = Generator(paperSize, profile);
+
+    final List<int> bytes = [];
+    bytes.addAll(generator.reset());
+
+    // Header
+    bytes.addAll(generator.text(
+      _san('TIKET SERVIS'),
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size2,
+        width: PosTextSize.size2,
+      ),
+      linesAfter: 1,
+    ));
+    bytes.addAll(generator.text(
+      _san(storeName),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    ));
+    if (ticketNo.isNotEmpty) {
+      bytes.addAll(generator.text(
+        _san(ticketNo),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
+    }
+    if (dateStr.isNotEmpty) {
+      bytes.addAll(generator.text(
+        _san(dateStr),
+        styles: const PosStyles(align: PosAlign.center),
+      ));
+    }
+    if (customerName != null && customerName.isNotEmpty) {
+      final custParts = _wrap('Pelanggan: $customerName', 24);
+      for (final part in custParts) {
+        bytes.addAll(generator.text(
+          _san(part),
+          styles: const PosStyles(align: PosAlign.left),
+        ));
+      }
+    }
+    if (customerPhone != null && customerPhone.isNotEmpty) {
+      bytes.addAll(generator.text(
+        _san('HP: $customerPhone'),
+        styles: const PosStyles(align: PosAlign.left),
+      ));
+    }
+    bytes.addAll(generator.hr());
+
+    // Ticket lines (info rows, wrapped)
+    for (final line in lines) {
+      final nameParts = _wrap(line.name, 32);
+      for (final part in nameParts) {
+        bytes.addAll(generator.text(
+          _san(part),
+          styles: const PosStyles(align: PosAlign.left),
+        ));
+      }
+    }
+
+    bytes.addAll(generator.hr());
+
+    // Total (bold, size2)
+    bytes.addAll(generator.row([
+      PosColumn(
+        text: 'TOTAL',
+        width: 6,
+        styles: const PosStyles(bold: true, height: PosTextSize.size2),
+      ),
+      PosColumn(
+        text: _fit(formatRupiah(total), 11),
+        width: 6,
+        styles: const PosStyles(
+            bold: true, align: PosAlign.right, height: PosTextSize.size2),
+      ),
+    ]));
+
+    bytes.addAll(generator.feed(1));
+    bytes.addAll(generator.text(
+      _san('Simpan tiket ini untuk pengambilan'),
+      styles: const PosStyles(align: PosAlign.center),
+    ));
+    bytes.addAll(generator.text(
+      _san('Terima Kasih!'),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    ));
+    bytes.addAll(generator.feed(2));
+    bytes.addAll(generator.cut());
+
+    return BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
+  }
+
   /// Print a kitchen order to the kitchen printer (FnB only).
   /// No prices or totals — just item names, quantities, and notes.
   Future<bool> printKitchenOrder({
