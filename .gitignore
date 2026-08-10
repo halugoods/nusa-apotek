@@ -67,3 +67,22 @@
 /Users/ertyui/02-result-adapted.html
 /Users/ertyui/03-setup-adapted.html
 /Users/ertyui/04-wizard-adapted.html
+
+# ── Folder & file system di root C:/ ─────────────────────────────────
+/Windows/
+/c/
+/flutter/
+/tmp/
+/tools/
+/hiberfil.sys
+/pagefile.sys
+/swapfile.sys
+
+# File ngambang di root (bukan bagian proyek)
+/index.html
+/main.js
+/style.css
+
+# Nusa Kasir build artifacts (sudah ada di .gitignore nusa_kasir, aman)
+/Users/ertyui/ZCodeProject/nusa_kasir/build/
+/Users/ertyui/ZCodeProject/nusa_kasir/.dart_tool/
