@@ -1,0 +1,69 @@
+# ── Root C:/ ignore (repo worktree = C:/) ─────────────────────────────
+# Lepas folder non-proyek dari git status. File di disk TIDAK dihapus.
+
+# Hanya proyek ini yang dilacak: Users/ertyui/ZCodeProject/nusa_kasir/
+# (dan .gitignore di root ini sendiri)
+/*.log.tmp
+
+# Windows system dirs & junctions di root C:/
+/Documents and Settings/
+/OneDriveTemp/
+/Program Files/
+/Program Files (x86)/
+/ProgramData/
+/Recovery/
+/\$GetCurrent/
+/\$Recycle.Bin/
+/System Volume Information/
+/DumpStack.log.tmp
+
+# Semua folder di /Users/ kecuali ertyui
+/Users/*
+!/Users/ertyui/
+
+# Semua isi home user kecuali ZCodeProject
+/Users/ertyui/*
+!/Users/ertyui/ZCodeProject/
+
+# Semua isi ZCodeProject kecuali nusa_kasir
+/Users/ertyui/ZCodeProject/*
+!/Users/ertyui/ZCodeProject/nusa_kasir/
+
+# ── Eksplisit: folder & file user yang bukan proyek ──────────────────
+/Users/ertyui/prdkit/
+/Users/ertyui/OneDrive/
+/Users/ertyui/OneDriveTemp/
+/Users/ertyui/Desktop/
+/Users/ertyui/Documents/
+/Users/ertyui/Downloads/
+/Users/ertyui/Pictures/
+/Users/ertyui/Music/
+/Users/ertyui/Videos/
+/Users/ertyui/AppData/
+/Users/ertyui/Contacts/
+/Users/ertyui/Favorites/
+/Users/ertyui/Links/
+/Users/ertyui/Saved Games/
+/Users/ertyui/3D Objects/
+/Users/ertyui/IntelGraphicsProfiles/
+/Users/ertyui/Android/
+/Users/ertyui/Searches/
+/Users/ertyui/NTUSER.DAT
+/Users/ertyui/NTUSER.DAT*
+/Users/ertyui/ntuser.dat*
+/Users/ertyui/ntuser.ini
+/Users/ertyui/desktop.ini
+/Users/ertyui/DumpStack.log.tmp
+/Users/ertyui/.bash_history
+/Users/ertyui/.bash_profile
+/Users/ertyui/.bashrc
+/Users/ertyui/.git-credentials
+/Users/ertyui/.gitconfig
+/Users/ertyui/.wslconfig
+/Users/ertyui/SOUL.md
+/Users/ertyui/9router*
+/Users/ertyui/Nusa dart.md
+/Users/ertyui/01-home-adapted.html
+/Users/ertyui/02-result-adapted.html
+/Users/ertyui/03-setup-adapted.html
+/Users/ertyui/04-wizard-adapted.html
