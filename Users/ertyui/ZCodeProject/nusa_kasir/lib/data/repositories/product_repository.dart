@@ -97,6 +97,12 @@ class ProductRepository {
         .write(ProductsCompanion(priceType: Value(type)));
   }
 
+  /// Set product type ('jasa' or 'produk'). Used by salon variant.
+  Future<void> setProductType(int id, String? type) async {
+    await (db.update(db.products)..where((t) => t.id.equals(id)))
+        .write(ProductsCompanion(productType: Value(type)));
+  }
+
   /// Get product counts grouped by category.
   Future<Map<String, int>> categoryProductCounts() async {
     final all = await db.select(db.products).get();

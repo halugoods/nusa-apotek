@@ -473,6 +473,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
+        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -491,6 +492,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
+        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -509,6 +511,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => context.push('/produk/edit/${_products[i].id}'),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
+        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -517,6 +520,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final newType = product.priceType == 'kg' ? 'pcs' : 'kg';
     await ref.read(productRepoProvider).setPriceType(product.id, newType);
     TopToast.success(context, newType == 'kg' ? 'Harga per kg' : 'Harga per pcs');
+    _load();
+  }
+
+  Future<void> _toggleProductType(Product product) async {
+    final current = product.productType;
+    final newType = (current == 'jasa' || current == 'Jasa') ? null : 'jasa';
+    await ref.read(productRepoProvider).setProductType(product.id, newType);
+    TopToast.success(context, newType == 'jasa' ? 'Jasa' : 'Produk');
     _load();
   }
 }
@@ -652,7 +663,8 @@ class _ProductGridCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTogglePriceType;
-  _ProductGridCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType});
+  final VoidCallback? onToggleProductType;
+  _ProductGridCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType, this.onToggleProductType});
 
   String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -731,6 +743,14 @@ class _ProductGridCard extends StatelessWidget {
             Spacer(),
             // ── Actions ──
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              if (NusaConfig.isSalonVariant && onToggleProductType != null) ...[
+                _ActionButton(
+                  icon: (product.productType == 'jasa' || product.productType == 'Jasa') ? Icons.design_services_rounded : Icons.inventory_2_rounded,
+                  color: (product.productType == 'jasa' || product.productType == 'Jasa') ? NusaConfig.accentPurple : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  onTap: onToggleProductType!,
+                ),
+                SizedBox(width: 6),
+              ],
               if (NusaConfig.isLaundryVariant && onTogglePriceType != null) ...[
                 _ActionButton(
                   icon: product.priceType == 'kg' ? Icons.scale_rounded : Icons.inventory_2_rounded,
@@ -757,7 +777,8 @@ class _ProductListCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTogglePriceType;
-  _ProductListCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType});
+  final VoidCallback? onToggleProductType;
+  _ProductListCard({required this.product, required this.onEdit, required this.onDelete, this.onTogglePriceType, this.onToggleProductType});
 
   String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -826,6 +847,14 @@ class _ProductListCard extends StatelessWidget {
           SizedBox(width: 8),
           // Actions
           Row(mainAxisSize: MainAxisSize.min, children: [
+            if (NusaConfig.isSalonVariant && onToggleProductType != null) ...[
+              _ActionButton(
+                icon: (product.productType == 'jasa' || product.productType == 'Jasa') ? Icons.design_services_rounded : Icons.inventory_2_rounded,
+                color: (product.productType == 'jasa' || product.productType == 'Jasa') ? NusaConfig.accentPurple : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                onTap: onToggleProductType!,
+              ),
+              SizedBox(width: 4),
+            ],
             if (NusaConfig.isLaundryVariant && onTogglePriceType != null) ...[
               _ActionButton(
                 icon: product.priceType == 'kg' ? Icons.scale_rounded : Icons.inventory_2_rounded,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
@@ -68,6 +69,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   int? _tableId;
   String? _tableName;
   int? _activeTabId;
+
+  // Salon booking params
+  DateTime _salonDate = DateTime.now();
+  final _salonTimeCtrl = TextEditingController(text: '09:00');
+  final _salonStylistCtrl = TextEditingController();
+  int _salonDuration = 60;
 
   Future<void> _completeTab(AppDatabase db, {bool freeTable = true}) async {
     try {
@@ -159,6 +166,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _discountCtrl.dispose();
     _cashCtrl.dispose();
     _promoCtrl.dispose();
+    _salonTimeCtrl.dispose();
+    _salonStylistCtrl.dispose();
     super.dispose();
   }
 
@@ -367,13 +376,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         try {
           final aptRepo = AppointmentRepository(db);
           final services = cart.map((c) => c.name).join(', ');
-          final timeSlot = '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
           _bookingId = await aptRepo.add(
             customerName: _selectedCustomer?.name ?? 'Umum',
             customerPhone: _selectedCustomer?.phone,
             service: services,
-            date: DateTime.now(),
-            timeSlot: timeSlot,
+            stylist: _salonStylistCtrl.text.trim().isEmpty ? null : _salonStylistCtrl.text.trim(),
+            date: _salonDate,
+            timeSlot: _salonTimeCtrl.text,
+            estimatedDuration: _salonDuration,
             notes: cart.where((c) => c.note != null && c.note!.isNotEmpty)
                 .map((c) => '${c.name}: ${c.note}').join('; '),
           );
@@ -488,6 +498,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _buildCustomerCard(isDark),
           SizedBox(height: 14),
 
+          // ── Salon Booking Card (salon variant with jasa items) ──
+          if (NusaConfig.isSalonVariant && _subtotal > 0) ...[
+            _buildSalonBookingCard(isDark),
+            SizedBox(height: 14),
+          ],
+
           // ── Ringkasan Belanja Card ──
           _buildSummaryCard(isDark, subtotal),
           SizedBox(height: 14),
@@ -552,6 +568,108 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Salon Booking Card ─────────────────────────────────────────────
+
+  Widget _buildSalonBookingCard(bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: _sectionCard(isDark),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(color: NusaConfig.info.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+            child: Icon(Icons.event_available, color: NusaConfig.info, size: 18),
+          ),
+          SizedBox(width: 10),
+          Text('Booking', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          Spacer(),
+          Text('#BKG-...', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+        ]),
+        SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: InkWell(
+              onTap: () async {
+                final d = await showDatePicker(context: context, initialDate: _salonDate, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+                if (d != null) setState(() => _salonDate = d);
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                ),
+                child: Text(DateFormat('dd MMM yyyy').format(_salonDate), style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+              ),
+            ),
+          ),
+          SizedBox(width: 8),
+          SizedBox(
+            width: 72,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+              ),
+              child: TextField(
+                controller: _salonTimeCtrl,
+                keyboardType: TextInputType.datetime,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                decoration: const InputDecoration.collapsed(hintText: 'HH:mm'),
+              ),
+            ),
+          ),
+          SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _salonDuration,
+                  isExpanded: true,
+                  icon: Icon(Icons.arrow_drop_down, size: 18, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                  items: const [
+                    DropdownMenuItem(value: 30, child: Text('30mnt')),
+                    DropdownMenuItem(value: 45, child: Text('45mnt')),
+                    DropdownMenuItem(value: 60, child: Text('60mnt')),
+                    DropdownMenuItem(value: 90, child: Text('90mnt')),
+                    DropdownMenuItem(value: 120, child: Text('2jam')),
+                  ],
+                  onChanged: (v) { if (v != null) setState(() => _salonDuration = v); },
+                ),
+              ),
+            ),
+          ),
+        ]),
+        SizedBox(height: 10),
+        TextField(
+          controller: _salonStylistCtrl,
+          decoration: InputDecoration(
+            hintText: 'Stylist (opsional)',
+            hintStyle: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+            filled: true,
+            fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          ),
+          style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+        ),
+      ]),
     );
   }
 

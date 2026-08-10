@@ -7,6 +7,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
@@ -231,28 +232,54 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
             // ── Search with customer picker ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: TextField(
-                controller: _search,
-                decoration: InputDecoration(
-                  hintText: 'Cari pelanggan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: GestureDetector(
-                    onTap: _showCustomerPicker,
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: NusaConfig.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Expanded(
+                  child: TextField(
+                    controller: _search,
+                    decoration: InputDecoration(
+                      hintText: 'Cari pelanggan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: GestureDetector(
+                        onTap: _showCustomerPicker,
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 4),
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: NusaConfig.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.person_search_rounded, size: 20, color: NusaConfig.primaryColor),
+                        ),
                       ),
-                      child: Icon(Icons.person_search_rounded, size: 20, color: NusaConfig.primaryColor),
+                      filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                   ),
-                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
-              ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final contact = await pickContact();
+                    if (contact != null) {
+                      final phone = contact['phone'] ?? '';
+                      if (phone.isNotEmpty) {
+                        _search.text = phone;
+                        _applyFilter();
+                        setState(() {});
+                      }
+                    }
+                  },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.contacts_outlined, color: NusaConfig.activePrimary, size: 20),
+                  ),
+                ),
+              ]),
             ),
             // Header
             Padding(

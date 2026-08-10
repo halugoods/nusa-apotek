@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' show Value;
+import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -149,7 +152,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     return ScreenScaffold('Booking', _loading
         ? const Center(child: CircularProgressIndicator())
         : Column(children: [
-            // ── Date strip ──
+            // ── Date strip: scrollable full month + month dropdown ──
             Container(
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -158,40 +161,114 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
               ),
-              child: Row(children: [
-                Text('${_bulan(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                const Spacer(),
-                IconButton(icon: const Icon(Icons.chevron_left, size: 20), onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+              child: Column(children: [
+                // Month/Year dropdown row
+                Row(children: [
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showDialog<DateTime>(context: context, builder: (ctx) {
+                        final months = List.generate(12, (i) => DateTime(_selectedDate.year, i + 1, 1));
+                        return SimpleDialog(
+                          title: Text('${_selectedDate.year}', textAlign: TextAlign.center),
+                          children: [
+                            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              IconButton(icon: const Icon(Icons.chevron_left), onPressed: () {
+                                Navigator.pop(ctx);
+                                showDialog(context: context, builder: (_) {
+                                  final prevMonths = List.generate(12, (i) => DateTime(_selectedDate.year - 1, i + 1, 1));
+                                  return _MonthYearPicker(months: prevMonths, onPick: (d) => Navigator.pop(context, d));
+                                });
+                              }),
+                              Text('${_selectedDate.year}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                              IconButton(icon: const Icon(Icons.chevron_right), onPressed: () {
+                                Navigator.pop(ctx);
+                                showDialog(context: context, builder: (_) {
+                                  final nextMonths = List.generate(12, (i) => DateTime(_selectedDate.year + 1, i + 1, 1));
+                                  return _MonthYearPicker(months: nextMonths, onPick: (d) => Navigator.pop(context, d));
+                                });
+                              }),
+                            ]),
+                            ...List.generate(3, (row) => Row(children: List.generate(4, (col) {
+                              final idx = row * 4 + col;
+                              if (idx >= 12) return const Spacer();
+                              final m = months[idx];
+                              final isSel = m.month == _selectedDate.month && m.year == _selectedDate.year;
+                              return Expanded(child: Padding(
+                                padding: const EdgeInsets.all(3),
+                                child: Material(
+                                  color: isSel ? NusaConfig.activePrimary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () => Navigator.pop(ctx, m),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      child: Text(_bulan(m.month), textAlign: TextAlign.center, style: TextStyle(
+                                        fontSize: 12, fontWeight: FontWeight.w600,
+                                        color: isSel ? Colors.white : (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                                      )),
+                                    ),
+                                  ),
+                                ),
+                              ));
+                            }))),
+                          ],
+                        );
+                      });
+                      if (picked != null) setState(() => _selectedDate = picked);
+                    },
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('${_bulan(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    ]),
+                  ),
+                  const Spacer(),
+                  // Quick jump to today
+                  if (!isToday)
+                    GestureDetector(
+                      onTap: () => setState(() => _selectedDate = now),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: NusaConfig.activePrimary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('Hari ini', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.activePrimary)),
+                      ),
+                    ),
+                ]),
+                // Scrollable date strip — all dates in selected month
                 SizedBox(
-                  height: 40,
+                  height: 42,
                   child: ListView.builder(
                     shrinkWrap: true,
                     scrollDirection: Axis.horizontal,
-                    itemCount: 7,
+                    itemCount: DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day,
                     itemBuilder: (_, i) {
-                      final d = _selectedDate.add(Duration(days: i));
+                      final day = i + 1;
+                      final d = DateTime(_selectedDate.year, _selectedDate.month, day);
                       final sel = d.day == _selectedDate.day && d.month == _selectedDate.month && d.year == _selectedDate.year;
                       final isNow = d.day == now.day && d.month == now.month && d.year == now.year;
                       return GestureDetector(
                         onTap: () => setState(() => _selectedDate = d),
                         child: Container(
                           width: 40, height: 40,
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
                           decoration: BoxDecoration(
                             color: sel ? NusaConfig.activePrimary : Colors.transparent,
                             borderRadius: BorderRadius.circular(10),
-                            border: isNow && !sel ? Border.all(color: NusaConfig.activePrimary.withOpacity(0.3), width: 1.5) : null,
+                            border: isNow && !sel ? Border.all(color: NusaConfig.activePrimary.withOpacity(0.4), width: 1.5) : null,
                           ),
                           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Text('${d.day}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: sel ? Colors.white : (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary))),
-                            Text(const ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][d.weekday], style: TextStyle(fontSize: 8, color: sel ? Colors.white70 : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary))),
+                            Text('$day', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: sel ? Colors.white : (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary))),
+                            Text(const ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][d.weekday], style: TextStyle(fontSize: 7, color: sel ? Colors.white70 : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary))),
                           ]),
                         ),
                       );
                     },
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.chevron_right, size: 20), onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
               ]),
             ),
             const SizedBox(height: 8),
@@ -232,19 +309,45 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 ));
               }).toList()),
             ),
-            // ── Search ──
+            // ── Search with contact picker ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: TextField(
-                controller: _search,
-                decoration: InputDecoration(
-                  hintText: 'Cari nama atau layanan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Expanded(
+                  child: TextField(
+                    controller: _search,
+                    decoration: InputDecoration(
+                      hintText: 'Cari nama atau layanan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final contact = await pickContact();
+                    if (contact != null) {
+                      final phone = contact['phone'] ?? '';
+                      if (phone.isNotEmpty) {
+                        _search.text = phone;
+                        _applyFilter();
+                        setState(() {});
+                      }
+                    }
+                  },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.contacts_outlined, color: NusaConfig.activePrimary, size: 20),
+                  ),
+                ),
+              ]),
             ),
             // Header
             Padding(
@@ -424,13 +527,25 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final isEdit = appointment != null;
     final nameC = TextEditingController(text: appointment?.customerName ?? '');
     final phoneC = TextEditingController(text: appointment?.customerPhone ?? '');
-    final serviceC = TextEditingController(text: appointment?.service ?? '');
     final stylistC = TextEditingController(text: appointment?.stylist ?? '');
     final notesC = TextEditingController(text: appointment?.notes ?? '');
     final formKey = GlobalKey<FormState>();
     DateTime date = appointment?.date ?? DateTime.now();
     final timeSlotCtrl = TextEditingController(text: appointment?.timeSlot ?? '09:00');
     int selectedDuration = appointment?.estimatedDuration ?? 60;
+
+    // Services items (like laundry items editor)
+    List<_ServiceItem> items = [];
+    if (appointment != null && appointment.service.isNotEmpty) {
+      final parts = appointment.service.split(', ');
+      items = parts.map((p) => _ServiceItem(name: p.trim())).toList();
+    }
+    if (items.isEmpty) items.add(_ServiceItem());
+
+    final itemControllers = <Map<String, TextEditingController>>[];
+    for (final item in items) {
+      itemControllers.add({'name': TextEditingController(text: item.name)});
+    }
 
     // Generate booking number for new bookings
     String? bookingNumber;
@@ -450,65 +565,135 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),
           Row(children: [
-            Expanded(child: Text(isEdit ? 'Edit Booking' : 'Booking Baru', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-            if (bookingNumber != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: NusaConfig.activePrimary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(bookingNumber!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
-              ),
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: NusaConfig.info.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.event_available, color: NusaConfig.info, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(isEdit ? 'Edit Booking' : 'Booking Baru', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              if (bookingNumber != null)
+                Text(bookingNumber!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
+            ])),
           ]),
+          const SizedBox(height: 18),
+          NusaInput('Nama Pelanggan', controller: nameC, hint: 'Nama pelanggan'),
+          const SizedBox(height: 12),
+          NusaInput('No. Telepon', controller: phoneC, type: TextInputType.phone, hint: 'Contoh: 0812-3456-7890'),
           const SizedBox(height: 16),
-          NusaFormField(label: 'Nama Pelanggan', controller: nameC, hintText: 'Nama pelanggan', validator: (v) => v == null || v!.isEmpty ? 'Wajib diisi' : null),
-          const SizedBox(height: 12),
-          NusaFormField(label: 'No. Telepon', controller: phoneC, hintText: 'Contoh: 0812-3456-7890', keyboardType: TextInputType.phone),
-          const SizedBox(height: 12),
-          NusaFormField(label: 'Layanan', controller: serviceC, hintText: 'Contoh: Haircut, Coloring, Creambath', validator: (v) => v == null || v!.isEmpty ? 'Wajib diisi' : null),
-          const SizedBox(height: 12),
-          NusaFormField(label: 'Stylist', controller: stylistC, hintText: 'Nama stylist (opsional)'),
-          const SizedBox(height: 12),
+          // ── Services editor ──
           Row(children: [
+            const Text('Layanan', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => setModalState(() { items.add(_ServiceItem()); itemControllers.add({'name': TextEditingController()}); }),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Tambah Layanan', style: TextStyle(fontSize: 12)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          ...items.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final ctrls = itemControllers[idx];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Expanded(child: NusaInput('Layanan ${idx + 1}', controller: ctrls['name'], hint: 'Contoh: Haircut, Coloring')),
+                if (items.length > 1)
+                  IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20), onPressed: () => setModalState(() { items.removeAt(idx); itemControllers.removeAt(idx); }), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+              ]),
+            );
+          }),
+          const SizedBox(height: 4),
+          Divider(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+          const SizedBox(height: 12),
+          // ── Stylist ──
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(color: NusaConfig.accentGreen.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.person, color: NusaConfig.accentGreen, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: NusaInput('Stylist (opsional)', controller: stylistC, hint: 'Nama stylist')),
+          ]),
+          const SizedBox(height: 12),
+          // ── Date + Time ──
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(color: NusaConfig.info.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.calendar_today, color: NusaConfig.info, size: 18),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: InkWell(
                 onTap: () async { final d = await showDatePicker(context: ctx, initialDate: date, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) { setModalState(() => date = d); } },
-                child: NusaFormField(label: 'Tanggal', controller: TextEditingController(text: '${date.day}/${date.month}/${date.year}'), hintText: 'Pilih tanggal', readOnly: true),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                  ),
+                  child: Text(DateFormat('dd MMM yyyy').format(date), style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                ),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: NusaFormField(
-                label: 'Jam',
-                controller: timeSlotCtrl,
-                hintText: 'HH:mm',
-                keyboardType: TextInputType.datetime,
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 80,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                ),
+                child: TextField(
+                  controller: timeSlotCtrl,
+                  keyboardType: TextInputType.datetime,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                  decoration: const InputDecoration.collapsed(hintText: 'HH:mm'),
+                ),
               ),
             ),
           ]),
           const SizedBox(height: 12),
-          // Estimated duration dropdown
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Estimasi Durasi', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textPrimary)),
-            const SizedBox(height: 6),
+          // ── Duration ──
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: selectedDuration,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(value: 30, child: Text('30 menit')),
-                    DropdownMenuItem(value: 45, child: Text('45 menit')),
-                    DropdownMenuItem(value: 60, child: Text('60 menit (1 jam)')),
-                    DropdownMenuItem(value: 90, child: Text('90 menit')),
-                    DropdownMenuItem(value: 120, child: Text('120 menit (2 jam)')),
-                  ],
-                  onChanged: (v) { if (v != null) setModalState(() => selectedDuration = v); },
+              width: 32, height: 32,
+              decoration: BoxDecoration(color: NusaConfig.warningSoft, borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.timer, color: NusaConfig.warning, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: selectedDuration,
+                    isExpanded: true,
+                    icon: Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                    items: const [
+                      DropdownMenuItem(value: 30, child: Text('30 menit')),
+                      DropdownMenuItem(value: 45, child: Text('45 menit')),
+                      DropdownMenuItem(value: 60, child: Text('60 menit (1 jam)')),
+                      DropdownMenuItem(value: 90, child: Text('90 menit')),
+                      DropdownMenuItem(value: 120, child: Text('120 menit (2 jam)')),
+                    ],
+                    onChanged: (v) { if (v != null) setModalState(() => selectedDuration = v); },
+                  ),
                 ),
               ),
             ),
@@ -519,7 +704,15 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
+              // Collect services from items
+              final validItems = <String>[];
+              for (var i = 0; i < items.length; i++) {
+                final name = itemControllers[i]['name']!.text.trim();
+                if (name.isNotEmpty) validItems.add(name);
+              }
+              if (validItems.isEmpty) { TopToast.error(context, 'Minimal 1 layanan'); return; }
+              final serviceText = validItems.join(', ');
+
               final db = ref.read(databaseProvider);
               final repo = AppointmentRepository(db);
               final nextCounter = isEdit ? (appointment?.counterId) : await repo.getNextCounter(date);
@@ -527,7 +720,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 await db.update(db.appointments).replace(appointment.copyWith(
                   customerName: nameC.text.trim(),
                   customerPhone: Value(phoneC.text.trim().isEmpty ? null : phoneC.text.trim()),
-                  service: serviceC.text.trim(),
+                  service: serviceText,
                   stylist: Value(stylistC.text.trim().isEmpty ? null : stylistC.text.trim()),
                   date: date,
                   timeSlot: timeSlotCtrl.text,
@@ -539,7 +732,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 await repo.add(
                   customerName: nameC.text.trim(),
                   customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(),
-                  service: serviceC.text.trim(),
+                  service: serviceText,
                   stylist: stylistC.text.trim().isEmpty ? null : stylistC.text.trim(),
                   date: date,
                   timeSlot: timeSlotCtrl.text,
@@ -558,5 +751,47 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
         ]))));
       });
     });
+  }
+}
+
+class _ServiceItem { String name; _ServiceItem({this.name = ''}); }
+
+/// Simple month/year grid picker dialog content.
+class _MonthYearPicker extends StatelessWidget {
+  final List<DateTime> months;
+  final void Function(DateTime) onPick;
+  const _MonthYearPicker({required this.months, required this.onPick});
+
+  String _bulan(int m) => const ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][m];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SimpleDialog(
+      title: Text('${months.first.year}', textAlign: TextAlign.center),
+      children: List.generate(3, (row) => Row(children: List.generate(4, (col) {
+        final idx = row * 4 + col;
+        if (idx >= 12) return const Spacer();
+        final m = months[idx];
+        return Expanded(child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => onPick(m),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(_bulan(m.month), textAlign: TextAlign.center, style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                )),
+              ),
+            ),
+          ),
+        ));
+      }))),
+    );
   }
 }
