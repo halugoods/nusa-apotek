@@ -1627,97 +1627,128 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
 }
 
 /// Salon stats mini-card on dashboard.
-class _SalonStatsCard extends StatelessWidget {
-  const _SalonStatsCard({
-    required this.today, required this.confirmed, required this.waiting,
-    required this.done, required this.expanded, required this.onToggle,
-  });
+class _SalonStatsCard extends StatefulWidget {
   final int today, confirmed, waiting, done;
   final bool expanded;
   final VoidCallback onToggle;
+  const _SalonStatsCard({required this.today, required this.confirmed, required this.waiting, required this.done, required this.expanded, required this.onToggle});
+
+  @override
+  State<_SalonStatsCard> createState() => _SalonStatsCardState();
+}
+
+class _SalonStatsCardState extends State<_SalonStatsCard> with SingleTickerProviderStateMixin {
+  late AnimationController _slideCtrl;
+  late Animation<double> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    if (widget.expanded) _slideCtrl.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SalonStatsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _slideCtrl.forward();
+      } else {
+        _slideCtrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _slideCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = NusaConfig.activePrimary;
-    return Column(children: [
-      if (!expanded)
+    final primaryColor = NusaConfig.primaryColor;
+    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(children: [
+        // ── Pull pill bar ──
         GestureDetector(
-          onTap: onToggle,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-            ),
-            child: Row(children: [
-              Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
-              ),
-              const SizedBox(width: 10),
-              Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-              const Spacer(),
-              Text('$today booking hari ini', style: TextStyle(fontSize: 12,
-                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-              const SizedBox(width: 8),
-              Icon(Icons.keyboard_arrow_down_rounded, size: 18,
-                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-            ]),
-          ),
-        )
-      else
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
-              ),
-              const SizedBox(width: 10),
-              Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-              const Spacer(),
-              GestureDetector(
-                onTap: onToggle,
-                child: Container(
-                  width: 28, height: 28,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(6),
+          onTap: widget.onToggle,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: widget.expanded
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      width: 48, height: 5,
+                      decoration: BoxDecoration(
+                        color: hintColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
                   ),
-                  child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
-                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Row(children: [
-              _salonStat('Hari Ini', today, NusaConfig.accentPurple, isDark),
-              _salonStat('Dikonfirmasi', confirmed, NusaConfig.info, isDark),
-              _salonStat('Menunggu', waiting, NusaConfig.warning, isDark),
-              _salonStat('Selesai', done, NusaConfig.success, isDark),
-            ]),
-          ]),
+          ),
         ),
-    ]);
+
+        // ── Expanded card (slide animation) ──
+        SizeTransition(
+          sizeFactor: _slideAnim,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
+                ),
+                const SizedBox(width: 10),
+                Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  child: Container(
+                    width: 28, height: 28,
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                _salonStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
+                _salonStat('Dikonfirmasi', widget.confirmed, NusaConfig.info, isDark),
+                _salonStat('Menunggu', widget.waiting, NusaConfig.warning, isDark),
+                _salonStat('Selesai', widget.done, NusaConfig.success, isDark),
+              ]),
+            ]),
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _salonStat(String label, int count, Color color, bool isDark) {

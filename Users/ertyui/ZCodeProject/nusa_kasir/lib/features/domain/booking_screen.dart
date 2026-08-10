@@ -1,14 +1,16 @@
-/// Salon: Appointment booking calendar with stylist slot view.
+/// Salon: Appointment booking with stylist slot view.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
@@ -18,35 +20,35 @@ class BookingScreen extends ConsumerStatefulWidget {
   ConsumerState<BookingScreen> createState() => _BookingScreenState();
 }
 
-class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final List<String> _tabs = ['Semua', 'Dikonfirmasi', 'Datang', 'Menunggu', 'Selesai', 'Batal'];
+class _BookingScreenState extends ConsumerState<BookingScreen> {
+  final List<Map<String, dynamic>> _stages = [
+    {'label': 'Dikonfirmasi', 'icon': Icons.event_available, 'color': NusaConfig.info},
+    {'label': 'Datang', 'icon': Icons.login_rounded, 'color': NusaConfig.accentGreen},
+    {'label': 'Menunggu', 'icon': Icons.hourglass_bottom, 'color': NusaConfig.warning},
+    {'label': 'Selesai', 'icon': Icons.check_circle, 'color': NusaConfig.success},
+    {'label': 'Batal', 'icon': Icons.cancel, 'color': Colors.red},
+  ];
   List<Appointment> _all = [];
   List<Appointment> _filtered = [];
   bool _loading = true;
   final _search = TextEditingController();
   Map<String, int> _counts = {};
+  int _selectedIdx = 0;
+
+  // Month/date navigation
   DateTime _selectedDate = DateTime.now();
 
-  // Bulk selection
-  bool _selectionMode = false;
-  final Set<int> _selectedIds = {};
-
   String _bulan(int m) => const ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][m];
-  String _hari(int w) => const ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][w];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
-    _tabController.addListener(() { if (!_tabController.indexIsChanging) _applyFilter(); });
     _search.addListener(_applyFilter);
     _load();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -57,65 +59,66 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
     final repo = AppointmentRepository(db);
     final data = await repo.getAll();
     final counts = <String, int>{};
-    for (final s in _tabs) {
-      if (s == 'Semua') { counts[s] = data.length; } else { counts[s] = await repo.countByStatus(s); }
+    for (final stage in _stages) {
+      counts[stage['label']] = await repo.countByStatus(stage['label']);
     }
     if (!mounted) return;
     setState(() { _all = data; _counts = counts; _loading = false; });
     _applyFilter();
   }
 
+  void _selectStage(int idx) {
+    setState(() => _selectedIdx = idx);
+    _applyFilter();
+  }
+
   void _applyFilter() {
     final q = _search.text.toLowerCase();
-    final idx = _tabController.index;
-    var list = _all;
-    if (idx > 0) list = list.where((a) => a.status == _tabs[idx]).toList();
+    final stageLabel = _stages[_selectedIdx]['label'] as String;
+    var list = _all.where((a) => a.status == stageLabel).toList();
     if (q.isNotEmpty) list = list.where((a) => a.customerName.toLowerCase().contains(q) || (a.customerPhone ?? '').contains(q) || a.service.toLowerCase().contains(q)).toList();
     setState(() => _filtered = list);
   }
 
-  Color _statusColor(String s) {
-    switch (s) {
-      case 'Dikonfirmasi': return NusaConfig.info;
-      case 'Datang': return NusaConfig.accentGreen;
-      case 'Menunggu': return NusaConfig.warning;
-      case 'Selesai': return NusaConfig.success;
-      case 'Batal': return Colors.red;
-      default: return NusaConfig.activePrimary;
-    }
-  }
+  // ── Stage flow helpers ──────────────────────────────────────────────
 
   String? _nextStatus(String s) {
     const flow = {'Dikonfirmasi': 'Datang', 'Datang': 'Menunggu', 'Menunggu': 'Selesai'};
     return flow[s];
   }
 
+  List<Map<String, dynamic>> _nextStages(Appointment a) {
+    final result = <Map<String, dynamic>>[];
+    var current = a.status;
+    for (int i = 0; i < 3; i++) {
+      final next = _nextStatus(current);
+      if (next == null) break;
+      final stage = _stages.firstWhere((s) => s['label'] == next, orElse: () => _stages[0]);
+      result.add(stage);
+      current = next;
+    }
+    return result;
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────────
+
+  Future<void> _jumpToStatus(Appointment a, String targetStatus) async {
+    await AppointmentRepository(ref.read(databaseProvider)).updateStatus(a.id, targetStatus);
+    TopToast.success(context, 'Status → $targetStatus');
+    _load();
+  }
+
   Future<void> _advanceStatus(Appointment a) async {
     final next = _nextStatus(a.status);
     if (next == null) return;
     await AppointmentRepository(ref.read(databaseProvider)).updateStatus(a.id, next);
-    TopToast.success(context, 'Status → $next ✓');
+    TopToast.success(context, 'Status → $next');
     _load();
   }
 
-  Future<void> _advanceSelected() async {
-    if (_selectedIds.isEmpty) return;
-    final db = ref.read(databaseProvider);
-    final repo = AppointmentRepository(db);
-    int updated = 0;
-    for (final id in _selectedIds) {
-      final a = _all.firstWhere((x) => x.id == id);
-      final next = _nextStatus(a.status);
-      if (next != null) {
-        await repo.updateStatus(id, next);
-        updated++;
-      }
-    }
-    if (mounted) {
-      TopToast.success(context, '$updated booking dilanjutkan ✓');
-      setState(() { _selectionMode = false; _selectedIds.clear(); });
-      _load();
-    }
+  void _quickPos(Appointment a) {
+    context.push('/kasir', extra: {'bookingCustomer': a.customerName, 'bookingPhone': a.customerPhone});
+    TopToast.success(context, 'Buka kasir untuk ${a.customerName}');
   }
 
   Future<void> _deleteBooking(Appointment a) async {
@@ -129,15 +132,150 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
     if (ok == true) { await AppointmentRepository(ref.read(databaseProvider)).delete(a.id); TopToast.success(context, 'Booking dihapus'); _load(); }
   }
 
-  void _cetakAntrian(Appointment a) {
-    // Compact receipt-style print for salon queue ticket
-    TopToast.success(context, 'Cetak antrian #BKG-${a.counterId?.toString().padLeft(3, '0') ?? a.id.toString().padLeft(3, '0')}');
-    // TODO: integrate with ReceiptPrinter.printBookingTicket() when thermal printer is connected
-  }
+  // ── Build ───────────────────────────────────────────────────────────
 
-  void _quickPos(Appointment a) {
-    context.push('/kasir', extra: {'bookingCustomer': a.customerName, 'bookingPhone': a.customerPhone});
-    TopToast.success(context, 'Buka kasir untuk ${a.customerName}');
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+    final isToday = _selectedDate.day == now.day && _selectedDate.month == now.month && _selectedDate.year == now.year;
+
+    final stageDatas = _stages.map((s) => StageData(
+      label: s['label'] as String,
+      color: s['color'] as Color,
+      count: _counts[s['label']] ?? 0,
+    )).toList();
+
+    return ScreenScaffold('Booking', _loading
+        ? const Center(child: CircularProgressIndicator())
+        : Column(children: [
+            // ── Date strip ──
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+              ),
+              child: Row(children: [
+                Text('${_bulan(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.chevron_left, size: 20), onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+                SizedBox(
+                  height: 40,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: 7,
+                    itemBuilder: (_, i) {
+                      final d = _selectedDate.add(Duration(days: i));
+                      final sel = d.day == _selectedDate.day && d.month == _selectedDate.month && d.year == _selectedDate.year;
+                      final isNow = d.day == now.day && d.month == now.month && d.year == now.year;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedDate = d),
+                        child: Container(
+                          width: 40, height: 40,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            color: sel ? NusaConfig.activePrimary : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: isNow && !sel ? Border.all(color: NusaConfig.activePrimary.withOpacity(0.3), width: 1.5) : null,
+                          ),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Text('${d.day}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: sel ? Colors.white : (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary))),
+                            Text(const ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][d.weekday], style: TextStyle(fontSize: 8, color: sel ? Colors.white70 : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary))),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                IconButton(icon: const Icon(Icons.chevron_right, size: 20), onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            // ── Stage Slider ──
+            StageSlider(
+              stages: stageDatas,
+              selectedIndex: _selectedIdx,
+              onChanged: _selectStage,
+              isDark: isDark,
+            ),
+            // ── Counts summary ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(children: _stages.asMap().entries.map((entry) {
+                final i = entry.key;
+                final s = entry.value;
+                final c = _counts[s['label']] ?? 0;
+                final color = s['color'] as Color;
+                final selected = i == _selectedIdx;
+                return Expanded(child: GestureDetector(
+                  onTap: () => _selectStage(i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected ? color.withOpacity(0.18) : color.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: selected ? Border.all(color: color.withOpacity(0.4), width: 1.2) : null,
+                      ),
+                      child: Column(children: [
+                        Text('$c', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+                        Text(s['label'], style: TextStyle(fontSize: 9, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                      ]),
+                    ),
+                  ),
+                ));
+              }).toList()),
+            ),
+            // ── Search ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  hintText: 'Cari nama atau layanan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(children: [
+                Text(_stages[_selectedIdx]['label'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                Text('${_filtered.length} booking', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              ]),
+            ),
+            // List
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.content_cut_rounded, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                      const SizedBox(height: 16),
+                      Text('Tidak ada booking ${_stages[_selectedIdx]['label']}', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                    ]))
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                      itemCount: _filtered.length,
+                      itemBuilder: (_, i) => _bookingCard(_filtered[i], isDark),
+                    ),
+            ),
+          ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openForm(),
+        backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white,
+        icon: const Icon(Icons.add), label: const Text('Booking Baru'),
+      ),
+    );
   }
 
   String _formatFinishTime(String timeSlot, int? estDuration) {
@@ -153,241 +291,134 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
     }
   }
 
-  // ── Bulk selection toolbar ──
+  Widget _bookingCard(Appointment a, bool isDark) {
+    final stage = _stages.firstWhere((s) => s['label'] == a.status, orElse: () => _stages[0]);
+    final color = stage['color'] as Color;
+    final bookingLabel = a.counterId != null ? '#BKG-${a.counterId.toString().padLeft(3, '0')}' : '#${a.id}';
+    final nextStages = _nextStages(a);
+    final finishTime = a.estimatedDuration != null ? _formatFinishTime(a.timeSlot, a.estimatedDuration) : null;
 
-  Widget? _selectionToolbar(bool isDark) {
-    if (!_selectionMode) return null;
-    final canAdvance = _selectedIds.any((id) {
-      final a = _all.firstWhere((x) => x.id == id);
-      return _nextStatus(a.status) != null;
-    });
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: NusaConfig.activePrimary.withOpacity(0.1),
-      child: Row(children: [
-        Text('${_selectedIds.length} dipilih', style: TextStyle(fontWeight: FontWeight.w600, color: NusaConfig.activePrimary)),
-        const Spacer(),
-        if (canAdvance)
-          TextButton.icon(
-            onPressed: _advanceSelected,
-            icon: const Icon(Icons.skip_next, size: 18),
-            label: const Text('Lanjutkan'),
-            style: TextButton.styleFrom(foregroundColor: NusaConfig.success),
-          ),
-        const SizedBox(width: 8),
-        TextButton(
-          onPressed: () => setState(() { _selectionMode = false; _selectedIds.clear(); }),
-          child: const Text('Batal'),
-        ),
-      ]),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ScreenScaffold('Booking', Column(children: [
-      // Selection toolbar
-      if (_selectionToolbar(isDark) != null) _selectionToolbar(isDark)!,
-      // Month + nav
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Row(children: [
-          Text('${_bulan(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          IconButton(icon: const Icon(Icons.chevron_left), onPressed: () { setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1)); }),
-          IconButton(icon: const Icon(Icons.chevron_right), onPressed: () { setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1)); }),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)), child: Icon(stage['icon'] as IconData, color: color, size: 20)),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text(a.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(width: 8),
+                Text(bookingLabel, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+              ]),
+              if (a.customerPhone != null && a.customerPhone!.isNotEmpty)
+                Text(a.customerPhone!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+            ])),
+            PopupMenuButton(
+              itemBuilder: (_) => [
+                if (_nextStatus(a.status) != null) PopupMenuItem(value: 'next', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.arrow_forward_rounded, size: 18), const SizedBox(width: 8), Text(_nextStatus(a.status)!),
+                ])),
+                const PopupMenuItem(value: 'pos', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.shopping_cart_rounded, size: 18), SizedBox(width: 8), Text('Buat Pesanan'),
+                ])),
+                const PopupMenuItem(value: 'edit', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('Edit'),
+                ])),
+                const PopupMenuItem(value: 'delete', child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('Hapus', style: TextStyle(color: Colors.red)),
+                ])),
+              ],
+              onSelected: (v) {
+                if (v == 'next') _advanceStatus(a);
+                if (v == 'pos') _quickPos(a);
+                if (v == 'edit') _openForm(appointment: a);
+                if (v == 'delete') _deleteBooking(a);
+              },
+            ),
+          ]),
+          // ── Service chips ──
+          if (a.service.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6, runSpacing: 4,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(6)),
+                  child: Text(a.service, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+                ),
+                if (a.stylist != null && a.stylist!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill, borderRadius: BorderRadius.circular(6)),
+                    child: Text('👤 ${a.stylist}', style: const TextStyle(fontSize: 11)),
+                  ),
+              ],
+            ),
+          ],
+          // ── Estimate + time slot ──
+          if (finishTime != null) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(Icons.schedule, size: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              const SizedBox(width: 4),
+              Text('${a.timeSlot} → $finishTime', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+              if (a.estimatedDuration != null) ...[
+                const SizedBox(width: 6),
+                Text('${a.estimatedDuration} mnt', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              ],
+            ]),
+          ] else if (a.timeSlot.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Icon(Icons.schedule, size: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              const SizedBox(width: 4),
+              Text(a.timeSlot, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+            ]),
+          ] else ...[
+            const SizedBox(height: 4),
+            Text('${a.date.day}/${a.date.month}/${a.date.year}', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+          ],
+          if (a.notes != null && a.notes!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(a.notes!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+          ],
+          // ── Quick status update chips ──
+          if (nextStages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
+              const SizedBox(width: 6),
+              Text('Update:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+              const SizedBox(width: 6),
+              ...nextStages.map((ns) {
+                final nsColor = ns['color'] as Color;
+                return GestureDetector(
+                  onTap: () => _jumpToStatus(a, ns['label']),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: nsColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: nsColor.withOpacity(0.3)),
+                    ),
+                    child: Text(ns['label'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor)),
+                  ),
+                );
+              }),
+            ]),
+          ],
         ]),
       ),
-      // Date strip
-      SizedBox(
-        height: 72,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: 14,
-          itemBuilder: (_, i) {
-            final d = _selectedDate.add(Duration(days: i));
-            final sel = d.day == DateTime.now().day && d.month == DateTime.now().month && d.year == DateTime.now().year;
-            return GestureDetector(
-              onTap: () { setState(() { _selectedDate = d; }); _applyFilter(); },
-              child: Container(
-                width: 52, margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(
-                  color: sel ? NusaConfig.activePrimary : (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(_hari(d.weekday), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: sel ? Colors.white : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
-                  Text('${d.day}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: sel ? Colors.white : (isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary))),
-                ]),
-              ),
-            );
-          },
-        ),
-      ),
-      // Tab bar
-      Container(
-        height: 44,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-        ),
-        child: TabBar(
-          controller: _tabController, isScrollable: true,
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-          indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(color: NusaConfig.activePrimary, borderRadius: BorderRadius.circular(10)),
-          labelColor: Colors.white,
-          unselectedLabelColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textTertiary,
-          dividerColor: Colors.transparent,
-          padding: const EdgeInsets.all(4),
-          tabs: _tabs.map((t) => Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(t),
-            if ((_counts[t] ?? 0) > 0) ...[const SizedBox(width: 3), Text('${_counts[t]}', style: const TextStyle(fontSize: 10))],
-          ]))).toList(),
-        ),
-      ),
-      // Search
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: TextField(
-          controller: _search,
-          decoration: InputDecoration(
-            hintText: 'Cari nama atau layanan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-            prefixIcon: const Icon(Icons.search, size: 20),
-            filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          ),
-        ),
-      ),
-      // List
-      Expanded(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _filtered.isEmpty
-                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.event_available, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                    const SizedBox(height: 16),
-                    Text('Belum ada booking', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                  ]))
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                    itemCount: _filtered.length,
-                    itemBuilder: (_, i) => _bookingCard(_filtered[i], isDark),
-                  ),
-      ),
-    ]),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white,
-        icon: const Icon(Icons.add), label: const Text('Booking Baru'),
-      ),
     );
   }
 
-  Widget _bookingCard(Appointment a, bool isDark) {
-    final sc = _statusColor(a.status);
-    final isSel = _selectedIds.contains(a.id);
-    final finishTime = a.estimatedDuration != null ? _formatFinishTime(a.timeSlot, a.estimatedDuration) : null;
-    final bookingNum = a.counterId != null ? '#BKG-${a.counterId.toString().padLeft(3, '0')}' : '#${a.id}';
-
-    return GestureDetector(
-      onLongPress: () {
-        setState(() {
-          _selectionMode = true;
-          _selectedIds.add(a.id);
-        });
-      },
-      onTap: _selectionMode
-          ? () {
-              setState(() {
-                if (isSel) {
-                  _selectedIds.remove(a.id);
-                  if (_selectedIds.isEmpty) _selectionMode = false;
-                } else {
-                  _selectedIds.add(a.id);
-                }
-              });
-            }
-          : null,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: isSel ? BorderSide(color: NusaConfig.activePrimary, width: 2) : BorderSide.none,
-        ),
-        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            // Checkbox (selection mode)
-            if (_selectionMode)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(isSel ? Icons.check_circle : Icons.circle_outlined, color: isSel ? NusaConfig.activePrimary : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-              ),
-            // Date box
-            Container(
-              width: 50, height: 50,
-              decoration: BoxDecoration(color: NusaConfig.activePrimary.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text('${a.date.day}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
-                Text('${a.timeSlot}', style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary)),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text(a.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  const SizedBox(width: 6),
-                  Text(bookingNum, style: TextStyle(fontSize: 10, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                ]),
-                if (a.customerPhone != null && a.customerPhone!.isNotEmpty)
-                  Text(a.customerPhone!, style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                const SizedBox(height: 4),
-                Row(children: [
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: NusaConfig.info.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(a.service, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.info))),
-                  if (a.stylist != null) ...[const SizedBox(width: 6), Text('👤 ${a.stylist}', style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))],
-                ]),
-                if (finishTime != null) ...[
-                  const SizedBox(height: 2),
-                  Text(finishTime, style: TextStyle(fontSize: 10, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                ],
-              ]),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: sc.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
-              child: Text(a.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: sc)),
-            ),
-            if (!_selectionMode)
-              PopupMenuButton(
-                itemBuilder: (_) => [
-                  if (a.status != 'Selesai' && a.status != 'Batal') const PopupMenuItem(value: 'next', child: Text('▶ Lanjutkan')),
-                  const PopupMenuItem(value: 'pos', child: Text('🛒 Buat Pesanan')),
-                  const PopupMenuItem(value: 'print', child: Text('🖨 Cetak Antrian')),
-                  const PopupMenuItem(value: 'edit', child: Text('✏ Edit')),
-                  const PopupMenuItem(value: 'delete', child: Text('🗑 Hapus', style: TextStyle(color: Colors.red))),
-                ],
-                onSelected: (v) {
-                  if (v == 'next') _advanceStatus(a);
-                  if (v == 'pos') _quickPos(a);
-                  if (v == 'print') _cetakAntrian(a);
-                  if (v == 'edit') _openForm(appointment: a);
-                  if (v == 'delete') _deleteBooking(a);
-                },
-              ),
-          ]),
-        ),
-      ),
-    );
-  }
+  // ── Form ────────────────────────────────────────────────────────────
 
   Future<void> _openForm({Appointment? appointment}) async {
     final isEdit = appointment != null;
@@ -493,7 +524,6 @@ class _BookingScreenState extends ConsumerState<BookingScreen> with SingleTicker
               final repo = AppointmentRepository(db);
               final nextCounter = isEdit ? (appointment?.counterId) : await repo.getNextCounter(date);
               if (isEdit && appointment != null) {
-                // Edit: update existing
                 await db.update(db.appointments).replace(appointment.copyWith(
                   customerName: nameC.text.trim(),
                   customerPhone: Value(phoneC.text.trim().isEmpty ? null : phoneC.text.trim()),
