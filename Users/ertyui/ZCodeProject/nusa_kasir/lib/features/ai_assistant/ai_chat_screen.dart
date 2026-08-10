@@ -15,7 +15,7 @@ import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 
-int _maxContextChars = 260000; // ~65K tokens
+int _maxContextChars = 4000; // ~1K tokens — keep dbContext lean
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -172,87 +172,62 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   }
 
   // ── Database context ─────────────────────────────────────────────────
+  // Keep this LEAN — max ~500 tokens. Detail queries go through tools.
 
   Future<String> _buildDbContext() async {
     final sb = StringBuffer();
-    sb.writeln('=== DATA TOKO REAL-TIME ===');
     try {
       final db = ref.read(databaseProvider);
       final today = DateTime.now();
 
-      if (_storeName != null) sb.writeln('NAMA TOKO: $_storeName');
+      if (_storeName != null && _storeName!.isNotEmpty) {
+        sb.writeln('Toko: $_storeName');
+      }
 
+      // Products — count only
       final products = await ProductRepository(db).getProducts();
-      final total = products.length;
       final habis = products.where((p) => p.stock == 0).length;
       final menipis = products.where((p) => p.stock > 0 && p.stock <= p.minStock).length;
-      sb.writeln('\nPRODUK: $total total, $habis habis, $menipis menipis');
-      if (products.isNotEmpty) {
-        sb.writeln('Daftar produk:');
-        for (final p in products) {
-          sb.writeln('  - ${p.name} (${p.category}) | Rp${p.sellPrice} | Stok: ${p.stock}'
-              '${p.stock == 0 ? " [HABIS]" : p.stock <= p.minStock ? " [MENIPIS]" : ""}');
-        }
-      } else { sb.writeln('Belum ada produk.'); }
+      sb.writeln('Produk: ${products.length} total, $habis habis, $menipis menipis');
 
+      // Today + month summary (count + revenue only)
       final transactions = await ref.read(transactionRepoProvider).getTransactions();
       final todayTrx = transactions.where((t) => t.date.year == today.year && t.date.month == today.month && t.date.day == today.day).toList();
-      sb.writeln('\nTRANSAKSI HARI INI: ${todayTrx.length} transaksi, total Rp${todayTrx.fold<int>(0, (s,t) => s+t.total)}');
+      sb.writeln('Transaksi hari ini: ${todayTrx.length}, Rp${todayTrx.fold<int>(0, (s,t) => s+t.total)}');
       final monthTrx = transactions.where((t) => t.date.year == today.year && t.date.month == today.month).toList();
-      sb.writeln('TRANSAKSI BULAN INI: ${monthTrx.length} transaksi, total Rp${monthTrx.fold<int>(0, (s,t) => s+t.total)}');
+      sb.writeln('Transaksi bln ini: ${monthTrx.length}, Rp${monthTrx.fold<int>(0, (s,t) => s+t.total)}');
 
+      // Customer + employee counts
       try {
         final customers = await CustomerRepository(db).getCustomers();
-        if (customers.isNotEmpty) {
-          sb.writeln('\nPELANGGAN (${customers.length} orang):');
-          for (final c in customers) {
-            sb.writeln('  - ${c.name} | ${c.phone} | Level: ${c.level} | Poin: ${c.points}');
-          }
-        } else { sb.writeln('\nPELANGGAN: Belum ada.'); }
-      } catch (_) { sb.writeln('\nPELANGGAN: (error)'); }
-
+        sb.writeln('Pelanggan: ${customers.length} orang');
+      } catch (_) {}
       try {
-        final employees = await (db.select(db.employees)).get();
-        if (employees.isNotEmpty) {
-          sb.writeln('\nKARYAWAN (${employees.length} orang):');
-          for (final e in employees) {
-            sb.writeln('  - ${e.name} | Role: ${e.role} | ${e.phone}');
-          }
-        } else { sb.writeln('\nKARYAWAN: Belum ada.'); }
-      } catch (_) { sb.writeln('\nKARYAWAN: (error)'); }
+        final emps = await (db.select(db.employees)).get();
+        sb.writeln('Karyawan: ${emps.length} orang');
+      } catch (_) {}
 
-      try {
-        final suppliers = await (db.select(db.suppliers)).get();
-        if (suppliers.isNotEmpty) {
-          sb.writeln('\nSUPPLIER (${suppliers.length}):');
-          for (final s in suppliers) sb.writeln('  - ${s.name} | ${s.phone}');
-        } else { sb.writeln('\nSUPPLIER: Belum ada.'); }
-      } catch (_) { sb.writeln('\nSUPPLIER: (error)'); }
-
+      // Promo count
       try {
         final promos = await PromoRepository(db).getPromos();
-        if (promos.isNotEmpty) {
-          sb.writeln('\nPROMO:');
-          for (final p in promos) {
-            sb.writeln('  - ${p.name} (${p.code}) | ${p.type == "persen" ? "${p.value}%" : "Rp${p.value}"} off | ${p.status} | Terpakai: ${p.usedCount}x');
-          }
-        } else { sb.writeln('\nPROMO: Belum ada.'); }
-      } catch (_) { sb.writeln('\nPROMO: (error)'); }
+        final active = promos.where((p) => p.status == 'Aktif').length;
+        if (active > 0) sb.writeln('Promo aktif: $active');
+      } catch (_) {}
 
+      // Attendance
       try {
         final att = await (db.select(db.attendance)).get();
         final todayAtt = att.where((a) => a.date.year == today.year && a.date.month == today.month && a.date.day == today.day).toList();
-        sb.writeln('\nPRESENSI HARI INI: ${todayAtt.length} hadir');
-      } catch (_) { sb.writeln('\nPRESENSI: (error)'); }
+        sb.writeln('Presensi hari ini: ${todayAtt.length} hadir');
+      } catch (_) {}
 
-      sb.writeln('\n[INSTRUKSI AI: Kamu punya akses ke SEMUA data di atas. '
-          'Kalau user tanya "siapa pelanggan saya" atau "karyawan siapa aja", '
-          'JAWAB dengan daftar nama dari data. JANGAN bilang "saya tidak tahu" '
-          'atau "saya tidak punya akses" — kamu PUNYA akses.]');
+      sb.writeln('[GUNAKAN TOOLS untuk data detail — JANGAN mengarang. '
+          'Tools: get_products, get_customers, get_transactions, get_summary, '
+          'get_low_stock, get_top_products, get_promos, get_employees, get_attendance, '
+          'get_expenses, get_debts, get_suppliers]');
     } catch (_) {
-      sb.writeln('(Data toko tidak tersedia)');
+      sb.writeln('(Data toko tidak tersedia — gunakan tools jika ada)');
     }
-    sb.writeln('=== AKHIR DATA TOKO ===');
     return sb.toString();
   }
 
@@ -281,16 +256,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
       final tools = AgentToolRegistry.forVariant();
       final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
-      // Build db context for the first call only (so AI has data without forcing tool calls)
-      final dbContext = await _buildDbContext();
-
-      // Agent loop: up to 3 tool-calling rounds
+      // No dbContext — lean system prompt only, detail via tools (avoids 429)
+      // Round 0-1: with tools. Round 2: no tools (text-only final reply).
       for (int round = 0; round < 3; round++) {
         final res = await svc.chat(
           messages: _messages,
           storeName: _storeName,
-          dbContext: round == 0 ? dbContext : null,
-          tools: toolDefs,
+          tools: round < 2 ? toolDefs : null,
         );
 
         // Tool calls?
@@ -305,7 +277,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
             try {
               final result = await tool.execute(db, tc.arguments);
 
-              // Add internal messages (assistant tool_call + tool result)
               _messages.add(ChatMessage(
                 role: 'assistant',
                 content: '',
@@ -328,9 +299,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
               ));
             }
           } else {
-            break; // tool not found — stop
+            break;
           }
-          continue; // next round
+          continue;
         }
 
         // Text reply — done
@@ -347,7 +318,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         return;
       }
 
-      // Exhausted rounds without text reply
+      // Exhausted rounds
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
@@ -359,8 +330,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _messages.add(ChatMessage(
-              role: 'assistant', content: 'Gagal: $e'));
+          _messages.add(ChatMessage(role: 'assistant', content: 'Gagal: $e'));
           _loading = false;
           _thinkingLabel = '';
         });

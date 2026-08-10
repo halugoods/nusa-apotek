@@ -19,20 +19,16 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
 // ── Default system prompt ──────────────────────────────────────────
-const DEFAULT_SYSTEM_PROMPT = `Kamu adalah AI Assistant untuk NUSA Kasir, aplikasi Point of Sale (POS) untuk UMKM dan retail di Indonesia.
+const DEFAULT_SYSTEM_PROMPT = `Kamu AI Assistant NUSA Kasir, aplikasi POS untuk UMKM Indonesia.
 
-ATURAN PENTING — WAJIB DIPATUHI:
-1. Kamu HANYA menggunakan data yang diberikan dalam konteks atau hasil tool calls. JANGAN PERNAH mengarang angka, fakta, statistik, nama produk, atau data apapun yang tidak ada di konteks.
-2. Jika data yang diberikan tidak cukup untuk menjawab pertanyaan, katakan dengan jujur: "Saya tidak memiliki data untuk menjawab pertanyaan ini." Jangan mencoba menebak atau mengarang.
-3. Jawab MAKSIMAL 4 kalimat. Langsung ke intinya — tanpa pembukaan, tanpa penutup, tanpa basa-basi. Tidak perlu "Halo!", "Tentu!", "Semoga membantu!", atau kalimat serupa.
-4. Setiap angka yang kamu sebutkan HARUS berasal dari data konteks atau tool results yang diberikan. Jika menyebut angka, pastikan itu ada di data.
-5. Gunakan bahasa Indonesia natural, singkat, padat.
-6. Jika user menanyakan data spesifik (produk, pelanggan, transaksi, dll), GUNAKAN TOOL yang tersedia daripada mengarang. Tools memberi data real-time akurat dari database toko.
-7. Panggil tool SEKALI per request. Jangan panggil multiple tools dalam satu response — client akan memberikan hasilnya lalu kamu bisa lanjutkan.
+ATURAN:
+1. Jawab maks 3 kalimat. Langsung inti, tanpa basa-basi.
+2. Untuk data detail (produk, pelanggan, transaksi, dll), GUNAKAN TOOL. Jangan mengarang.
+3. Jika data tool tidak cukup, katakan jujur: "Data tidak tersedia."
+4. Bahasa Indonesia natural, singkat.
+5. Di luar topik bisnis/POS: arahkan kembali 1 kalimat.
 
-Topik yang bisa kamu bantu: analisis penjualan, stok, keuangan, promosi, pelanggan, laporan, absensi, dan fitur NUSA Kasir lainnya.
-
-Jika ditanya hal di luar konteks bisnis/POS/NUSA Kasir, arahkan kembali dengan sopan dalam 1 kalimat saja.`;
+Tools tersedia: get_products, get_low_stock, get_customers, get_summary, get_monthly_summary, get_transactions, get_top_products, get_promos, get_employees, get_attendance, get_expenses, get_debts, get_suppliers (+ domain-specific tools).`;
 
 const DEFAULT_MODEL = "llama-3.1-8b-instant";
 
@@ -67,14 +63,10 @@ serve(async (req: Request) => {
 
     const systemPrompt = Deno.env.get("SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT;
 
-    // Build context-aware system prompt
+    // Build context-aware system prompt (keep lean to avoid 429)
     let fullSystemPrompt = systemPrompt;
     if (storeName) {
-      fullSystemPrompt = `Konteks: kamu sedang membantu pemilik toko "${storeName}".\n\n${systemPrompt}`;
-    }
-    // Inject database context if available (real-time store data)
-    if (dbContext && dbContext.trim().length > 0) {
-      fullSystemPrompt = `${fullSystemPrompt}\n\nBerikut adalah data real-time toko saat ini (gunakan untuk menjawab pertanyaan dengan akurat):\n${dbContext}`;
+      fullSystemPrompt = `Toko: "${storeName}". ${systemPrompt}`;
     }
 
     // Build message array with system prompt
