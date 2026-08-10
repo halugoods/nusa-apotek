@@ -256,14 +256,29 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
       final tools = AgentToolRegistry.forVariant();
       final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
-      // No dbContext — lean system prompt only, detail via tools (avoids 429)
-      // Round 0-1: with tools. Round 2: no tools (text-only final reply).
-      for (int round = 0; round < 3; round++) {
-        final res = await svc.chat(
-          messages: _messages,
-          storeName: _storeName,
-          tools: round < 2 ? toolDefs : null,
-        );
+      // Sliding window: send only last 6 visible messages to avoid token bloat.
+      // Groq free tier = ~6K tokens/min. Each full-message pass adds 3-5 messages
+      // (user + tool_call + tool_result + assistant). After 2 turns that's 8-10 messages
+      // of 800-2K chars each = 5K-12K tokens → instant 429.
+      final visible = _visibleMessages;
+      final recent = visible.length > 6 ? visible.sublist(visible.length - 6) : visible;
+
+      for (int round = 0; round < 2; round++) {
+        var res = AiResponse(reply: 'Maaf, AI Assistant sedang sibuk (error 429). Coba lagi nanti ya.');
+        // Retry once with backoff on 429
+        for (int attempt = 0; attempt < 2; attempt++) {
+          res = await svc.chat(
+            messages: recent,
+            storeName: _storeName,
+            tools: round == 0 ? toolDefs : null,
+          );
+          // 429 comes back as text reply with "sedang sibuk". If we got tool calls,
+          // it's a real response — proceed immediately.
+          if (res.hasToolCalls) break;
+          final r = res.reply ?? '';
+          if (!r.contains('sedang sibuk')) break;
+          if (attempt == 0) await Future.delayed(const Duration(seconds: 3));
+        }
 
         // Tool calls?
         if (res.hasToolCalls) {
@@ -275,7 +290,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
             _scrollToBottom();
 
             try {
-              final result = await tool.execute(db, tc.arguments);
+              final rawResult = await tool.execute(db, tc.arguments);
+              // Cap tool result to ~300 chars to prevent context explosion
+              final result = rawResult.length > 350
+                  ? '${rawResult.substring(0, 350)}...'
+                  : rawResult;
 
               _messages.add(ChatMessage(
                 role: 'assistant',
@@ -284,7 +303,22 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 toolName: tc.name,
                 toolArgs: tc.arguments,
               ));
-              _messages.add(ChatMessage(
+              final toolMsg = ChatMessage(
+                role: 'tool',
+                content: result,
+                toolCallId: tc.id,
+                toolName: tc.name,
+              );
+              _messages.add(toolMsg);
+              // Also feed into sliding window for next round
+              recent.add(ChatMessage(
+                role: 'assistant',
+                content: '',
+                toolCallId: tc.id,
+                toolName: tc.name,
+                toolArgs: tc.arguments,
+              ));
+              recent.add(ChatMessage(
                 role: 'tool',
                 content: result,
                 toolCallId: tc.id,
@@ -292,6 +326,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
               ));
             } catch (e) {
               _messages.add(ChatMessage(
+                role: 'tool',
+                content: '{"error": "$e"}',
+                toolCallId: tc.id,
+                toolName: tc.name,
+              ));
+              recent.add(ChatMessage(
                 role: 'tool',
                 content: '{"error": "$e"}',
                 toolCallId: tc.id,

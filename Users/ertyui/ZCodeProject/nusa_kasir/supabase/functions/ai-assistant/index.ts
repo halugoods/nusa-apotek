@@ -79,7 +79,7 @@ serve(async (req: Request) => {
     const requestBody: any = {
       model: DEFAULT_MODEL,
       messages: apiMessages,
-      max_tokens: 512,
+      max_tokens: 200,
       temperature: 0.3,
     };
 
