@@ -15703,6 +15703,85 @@ class $ServiceTicketsTable extends ServiceTickets
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _plateNumberMeta = const VerificationMeta(
+    'plateNumber',
+  );
+  @override
+  late final GeneratedColumn<String> plateNumber = GeneratedColumn<String>(
+    'plate_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vehicleBrandMeta = const VerificationMeta(
+    'vehicleBrand',
+  );
+  @override
+  late final GeneratedColumn<String> vehicleBrand = GeneratedColumn<String>(
+    'vehicle_brand',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vehicleYearMeta = const VerificationMeta(
+    'vehicleYear',
+  );
+  @override
+  late final GeneratedColumn<int> vehicleYear = GeneratedColumn<int>(
+    'vehicle_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _technicianMeta = const VerificationMeta(
+    'technician',
+  );
+  @override
+  late final GeneratedColumn<String> technician = GeneratedColumn<String>(
+    'technician',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sparepartCostMeta = const VerificationMeta(
+    'sparepartCost',
+  );
+  @override
+  late final GeneratedColumn<int> sparepartCost = GeneratedColumn<int>(
+    'sparepart_cost',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _serviceCostMeta = const VerificationMeta(
+    'serviceCost',
+  );
+  @override
+  late final GeneratedColumn<int> serviceCost = GeneratedColumn<int>(
+    'service_cost',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _queueNumberMeta = const VerificationMeta(
+    'queueNumber',
+  );
+  @override
+  late final GeneratedColumn<int> queueNumber = GeneratedColumn<int>(
+    'queue_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -15715,6 +15794,13 @@ class $ServiceTicketsTable extends ServiceTickets
     status,
     notes,
     createdAt,
+    plateNumber,
+    vehicleBrand,
+    vehicleYear,
+    technician,
+    sparepartCost,
+    serviceCost,
+    queueNumber,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -15800,6 +15886,66 @@ class $ServiceTicketsTable extends ServiceTickets
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('plate_number')) {
+      context.handle(
+        _plateNumberMeta,
+        plateNumber.isAcceptableOrUnknown(
+          data['plate_number']!,
+          _plateNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('vehicle_brand')) {
+      context.handle(
+        _vehicleBrandMeta,
+        vehicleBrand.isAcceptableOrUnknown(
+          data['vehicle_brand']!,
+          _vehicleBrandMeta,
+        ),
+      );
+    }
+    if (data.containsKey('vehicle_year')) {
+      context.handle(
+        _vehicleYearMeta,
+        vehicleYear.isAcceptableOrUnknown(
+          data['vehicle_year']!,
+          _vehicleYearMeta,
+        ),
+      );
+    }
+    if (data.containsKey('technician')) {
+      context.handle(
+        _technicianMeta,
+        technician.isAcceptableOrUnknown(data['technician']!, _technicianMeta),
+      );
+    }
+    if (data.containsKey('sparepart_cost')) {
+      context.handle(
+        _sparepartCostMeta,
+        sparepartCost.isAcceptableOrUnknown(
+          data['sparepart_cost']!,
+          _sparepartCostMeta,
+        ),
+      );
+    }
+    if (data.containsKey('service_cost')) {
+      context.handle(
+        _serviceCostMeta,
+        serviceCost.isAcceptableOrUnknown(
+          data['service_cost']!,
+          _serviceCostMeta,
+        ),
+      );
+    }
+    if (data.containsKey('queue_number')) {
+      context.handle(
+        _queueNumberMeta,
+        queueNumber.isAcceptableOrUnknown(
+          data['queue_number']!,
+          _queueNumberMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -15849,6 +15995,34 @@ class $ServiceTicketsTable extends ServiceTickets
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      plateNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plate_number'],
+      ),
+      vehicleBrand: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}vehicle_brand'],
+      ),
+      vehicleYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}vehicle_year'],
+      ),
+      technician: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}technician'],
+      ),
+      sparepartCost: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sparepart_cost'],
+      )!,
+      serviceCost: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}service_cost'],
+      )!,
+      queueNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}queue_number'],
+      ),
     );
   }
 
@@ -15869,6 +16043,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
   final String status;
   final String? notes;
   final DateTime createdAt;
+  final String? plateNumber;
+  final String? vehicleBrand;
+  final int? vehicleYear;
+  final String? technician;
+  final int sparepartCost;
+  final int serviceCost;
+  final int? queueNumber;
   const ServiceTicket({
     required this.id,
     required this.customerName,
@@ -15880,6 +16061,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
     required this.status,
     this.notes,
     required this.createdAt,
+    this.plateNumber,
+    this.vehicleBrand,
+    this.vehicleYear,
+    this.technician,
+    required this.sparepartCost,
+    required this.serviceCost,
+    this.queueNumber,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -15898,6 +16086,23 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || plateNumber != null) {
+      map['plate_number'] = Variable<String>(plateNumber);
+    }
+    if (!nullToAbsent || vehicleBrand != null) {
+      map['vehicle_brand'] = Variable<String>(vehicleBrand);
+    }
+    if (!nullToAbsent || vehicleYear != null) {
+      map['vehicle_year'] = Variable<int>(vehicleYear);
+    }
+    if (!nullToAbsent || technician != null) {
+      map['technician'] = Variable<String>(technician);
+    }
+    map['sparepart_cost'] = Variable<int>(sparepartCost);
+    map['service_cost'] = Variable<int>(serviceCost);
+    if (!nullToAbsent || queueNumber != null) {
+      map['queue_number'] = Variable<int>(queueNumber);
+    }
     return map;
   }
 
@@ -15917,6 +16122,23 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      plateNumber: plateNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(plateNumber),
+      vehicleBrand: vehicleBrand == null && nullToAbsent
+          ? const Value.absent()
+          : Value(vehicleBrand),
+      vehicleYear: vehicleYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(vehicleYear),
+      technician: technician == null && nullToAbsent
+          ? const Value.absent()
+          : Value(technician),
+      sparepartCost: Value(sparepartCost),
+      serviceCost: Value(serviceCost),
+      queueNumber: queueNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(queueNumber),
     );
   }
 
@@ -15936,6 +16158,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      plateNumber: serializer.fromJson<String?>(json['plateNumber']),
+      vehicleBrand: serializer.fromJson<String?>(json['vehicleBrand']),
+      vehicleYear: serializer.fromJson<int?>(json['vehicleYear']),
+      technician: serializer.fromJson<String?>(json['technician']),
+      sparepartCost: serializer.fromJson<int>(json['sparepartCost']),
+      serviceCost: serializer.fromJson<int>(json['serviceCost']),
+      queueNumber: serializer.fromJson<int?>(json['queueNumber']),
     );
   }
   @override
@@ -15952,6 +16181,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'plateNumber': serializer.toJson<String?>(plateNumber),
+      'vehicleBrand': serializer.toJson<String?>(vehicleBrand),
+      'vehicleYear': serializer.toJson<int?>(vehicleYear),
+      'technician': serializer.toJson<String?>(technician),
+      'sparepartCost': serializer.toJson<int>(sparepartCost),
+      'serviceCost': serializer.toJson<int>(serviceCost),
+      'queueNumber': serializer.toJson<int?>(queueNumber),
     };
   }
 
@@ -15966,6 +16202,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
     String? status,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> plateNumber = const Value.absent(),
+    Value<String?> vehicleBrand = const Value.absent(),
+    Value<int?> vehicleYear = const Value.absent(),
+    Value<String?> technician = const Value.absent(),
+    int? sparepartCost,
+    int? serviceCost,
+    Value<int?> queueNumber = const Value.absent(),
   }) => ServiceTicket(
     id: id ?? this.id,
     customerName: customerName ?? this.customerName,
@@ -15979,6 +16222,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    plateNumber: plateNumber.present ? plateNumber.value : this.plateNumber,
+    vehicleBrand: vehicleBrand.present ? vehicleBrand.value : this.vehicleBrand,
+    vehicleYear: vehicleYear.present ? vehicleYear.value : this.vehicleYear,
+    technician: technician.present ? technician.value : this.technician,
+    sparepartCost: sparepartCost ?? this.sparepartCost,
+    serviceCost: serviceCost ?? this.serviceCost,
+    queueNumber: queueNumber.present ? queueNumber.value : this.queueNumber,
   );
   ServiceTicket copyWithCompanion(ServiceTicketsCompanion data) {
     return ServiceTicket(
@@ -16000,6 +16250,27 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      plateNumber: data.plateNumber.present
+          ? data.plateNumber.value
+          : this.plateNumber,
+      vehicleBrand: data.vehicleBrand.present
+          ? data.vehicleBrand.value
+          : this.vehicleBrand,
+      vehicleYear: data.vehicleYear.present
+          ? data.vehicleYear.value
+          : this.vehicleYear,
+      technician: data.technician.present
+          ? data.technician.value
+          : this.technician,
+      sparepartCost: data.sparepartCost.present
+          ? data.sparepartCost.value
+          : this.sparepartCost,
+      serviceCost: data.serviceCost.present
+          ? data.serviceCost.value
+          : this.serviceCost,
+      queueNumber: data.queueNumber.present
+          ? data.queueNumber.value
+          : this.queueNumber,
     );
   }
 
@@ -16015,7 +16286,14 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
           ..write('finalCost: $finalCost, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('plateNumber: $plateNumber, ')
+          ..write('vehicleBrand: $vehicleBrand, ')
+          ..write('vehicleYear: $vehicleYear, ')
+          ..write('technician: $technician, ')
+          ..write('sparepartCost: $sparepartCost, ')
+          ..write('serviceCost: $serviceCost, ')
+          ..write('queueNumber: $queueNumber')
           ..write(')'))
         .toString();
   }
@@ -16032,6 +16310,13 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
     status,
     notes,
     createdAt,
+    plateNumber,
+    vehicleBrand,
+    vehicleYear,
+    technician,
+    sparepartCost,
+    serviceCost,
+    queueNumber,
   );
   @override
   bool operator ==(Object other) =>
@@ -16046,7 +16331,14 @@ class ServiceTicket extends DataClass implements Insertable<ServiceTicket> {
           other.finalCost == this.finalCost &&
           other.status == this.status &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.plateNumber == this.plateNumber &&
+          other.vehicleBrand == this.vehicleBrand &&
+          other.vehicleYear == this.vehicleYear &&
+          other.technician == this.technician &&
+          other.sparepartCost == this.sparepartCost &&
+          other.serviceCost == this.serviceCost &&
+          other.queueNumber == this.queueNumber);
 }
 
 class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
@@ -16060,6 +16352,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
   final Value<String> status;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<String?> plateNumber;
+  final Value<String?> vehicleBrand;
+  final Value<int?> vehicleYear;
+  final Value<String?> technician;
+  final Value<int> sparepartCost;
+  final Value<int> serviceCost;
+  final Value<int?> queueNumber;
   const ServiceTicketsCompanion({
     this.id = const Value.absent(),
     this.customerName = const Value.absent(),
@@ -16071,6 +16370,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.plateNumber = const Value.absent(),
+    this.vehicleBrand = const Value.absent(),
+    this.vehicleYear = const Value.absent(),
+    this.technician = const Value.absent(),
+    this.sparepartCost = const Value.absent(),
+    this.serviceCost = const Value.absent(),
+    this.queueNumber = const Value.absent(),
   });
   ServiceTicketsCompanion.insert({
     this.id = const Value.absent(),
@@ -16083,6 +16389,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.plateNumber = const Value.absent(),
+    this.vehicleBrand = const Value.absent(),
+    this.vehicleYear = const Value.absent(),
+    this.technician = const Value.absent(),
+    this.sparepartCost = const Value.absent(),
+    this.serviceCost = const Value.absent(),
+    this.queueNumber = const Value.absent(),
   }) : customerName = Value(customerName),
        deviceName = Value(deviceName),
        issue = Value(issue);
@@ -16097,6 +16410,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
     Expression<String>? status,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<String>? plateNumber,
+    Expression<String>? vehicleBrand,
+    Expression<int>? vehicleYear,
+    Expression<String>? technician,
+    Expression<int>? sparepartCost,
+    Expression<int>? serviceCost,
+    Expression<int>? queueNumber,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -16109,6 +16429,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (plateNumber != null) 'plate_number': plateNumber,
+      if (vehicleBrand != null) 'vehicle_brand': vehicleBrand,
+      if (vehicleYear != null) 'vehicle_year': vehicleYear,
+      if (technician != null) 'technician': technician,
+      if (sparepartCost != null) 'sparepart_cost': sparepartCost,
+      if (serviceCost != null) 'service_cost': serviceCost,
+      if (queueNumber != null) 'queue_number': queueNumber,
     });
   }
 
@@ -16123,6 +16450,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
     Value<String>? status,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<String?>? plateNumber,
+    Value<String?>? vehicleBrand,
+    Value<int?>? vehicleYear,
+    Value<String?>? technician,
+    Value<int>? sparepartCost,
+    Value<int>? serviceCost,
+    Value<int?>? queueNumber,
   }) {
     return ServiceTicketsCompanion(
       id: id ?? this.id,
@@ -16135,6 +16469,13 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
       status: status ?? this.status,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      plateNumber: plateNumber ?? this.plateNumber,
+      vehicleBrand: vehicleBrand ?? this.vehicleBrand,
+      vehicleYear: vehicleYear ?? this.vehicleYear,
+      technician: technician ?? this.technician,
+      sparepartCost: sparepartCost ?? this.sparepartCost,
+      serviceCost: serviceCost ?? this.serviceCost,
+      queueNumber: queueNumber ?? this.queueNumber,
     );
   }
 
@@ -16171,6 +16512,27 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (plateNumber.present) {
+      map['plate_number'] = Variable<String>(plateNumber.value);
+    }
+    if (vehicleBrand.present) {
+      map['vehicle_brand'] = Variable<String>(vehicleBrand.value);
+    }
+    if (vehicleYear.present) {
+      map['vehicle_year'] = Variable<int>(vehicleYear.value);
+    }
+    if (technician.present) {
+      map['technician'] = Variable<String>(technician.value);
+    }
+    if (sparepartCost.present) {
+      map['sparepart_cost'] = Variable<int>(sparepartCost.value);
+    }
+    if (serviceCost.present) {
+      map['service_cost'] = Variable<int>(serviceCost.value);
+    }
+    if (queueNumber.present) {
+      map['queue_number'] = Variable<int>(queueNumber.value);
+    }
     return map;
   }
 
@@ -16186,7 +16548,14 @@ class ServiceTicketsCompanion extends UpdateCompanion<ServiceTicket> {
           ..write('finalCost: $finalCost, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('plateNumber: $plateNumber, ')
+          ..write('vehicleBrand: $vehicleBrand, ')
+          ..write('vehicleYear: $vehicleYear, ')
+          ..write('technician: $technician, ')
+          ..write('sparepartCost: $sparepartCost, ')
+          ..write('serviceCost: $serviceCost, ')
+          ..write('queueNumber: $queueNumber')
           ..write(')'))
         .toString();
   }
@@ -26460,6 +26829,13 @@ typedef $$ServiceTicketsTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> plateNumber,
+      Value<String?> vehicleBrand,
+      Value<int?> vehicleYear,
+      Value<String?> technician,
+      Value<int> sparepartCost,
+      Value<int> serviceCost,
+      Value<int?> queueNumber,
     });
 typedef $$ServiceTicketsTableUpdateCompanionBuilder =
     ServiceTicketsCompanion Function({
@@ -26473,6 +26849,13 @@ typedef $$ServiceTicketsTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> plateNumber,
+      Value<String?> vehicleBrand,
+      Value<int?> vehicleYear,
+      Value<String?> technician,
+      Value<int> sparepartCost,
+      Value<int> serviceCost,
+      Value<int?> queueNumber,
     });
 
 class $$ServiceTicketsTableFilterComposer
@@ -26531,6 +26914,41 @@ class $$ServiceTicketsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get plateNumber => $composableBuilder(
+    column: $table.plateNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get vehicleBrand => $composableBuilder(
+    column: $table.vehicleBrand,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get vehicleYear => $composableBuilder(
+    column: $table.vehicleYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get technician => $composableBuilder(
+    column: $table.technician,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sparepartCost => $composableBuilder(
+    column: $table.sparepartCost,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serviceCost => $composableBuilder(
+    column: $table.serviceCost,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get queueNumber => $composableBuilder(
+    column: $table.queueNumber,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -26593,6 +27011,41 @@ class $$ServiceTicketsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get plateNumber => $composableBuilder(
+    column: $table.plateNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get vehicleBrand => $composableBuilder(
+    column: $table.vehicleBrand,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get vehicleYear => $composableBuilder(
+    column: $table.vehicleYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get technician => $composableBuilder(
+    column: $table.technician,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sparepartCost => $composableBuilder(
+    column: $table.sparepartCost,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serviceCost => $composableBuilder(
+    column: $table.serviceCost,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get queueNumber => $composableBuilder(
+    column: $table.queueNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ServiceTicketsTableAnnotationComposer
@@ -26641,6 +27094,41 @@ class $$ServiceTicketsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get plateNumber => $composableBuilder(
+    column: $table.plateNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get vehicleBrand => $composableBuilder(
+    column: $table.vehicleBrand,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get vehicleYear => $composableBuilder(
+    column: $table.vehicleYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get technician => $composableBuilder(
+    column: $table.technician,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sparepartCost => $composableBuilder(
+    column: $table.sparepartCost,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get serviceCost => $composableBuilder(
+    column: $table.serviceCost,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get queueNumber => $composableBuilder(
+    column: $table.queueNumber,
+    builder: (column) => column,
+  );
 }
 
 class $$ServiceTicketsTableTableManager
@@ -26686,6 +27174,13 @@ class $$ServiceTicketsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> plateNumber = const Value.absent(),
+                Value<String?> vehicleBrand = const Value.absent(),
+                Value<int?> vehicleYear = const Value.absent(),
+                Value<String?> technician = const Value.absent(),
+                Value<int> sparepartCost = const Value.absent(),
+                Value<int> serviceCost = const Value.absent(),
+                Value<int?> queueNumber = const Value.absent(),
               }) => ServiceTicketsCompanion(
                 id: id,
                 customerName: customerName,
@@ -26697,6 +27192,13 @@ class $$ServiceTicketsTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                plateNumber: plateNumber,
+                vehicleBrand: vehicleBrand,
+                vehicleYear: vehicleYear,
+                technician: technician,
+                sparepartCost: sparepartCost,
+                serviceCost: serviceCost,
+                queueNumber: queueNumber,
               ),
           createCompanionCallback:
               ({
@@ -26710,6 +27212,13 @@ class $$ServiceTicketsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> plateNumber = const Value.absent(),
+                Value<String?> vehicleBrand = const Value.absent(),
+                Value<int?> vehicleYear = const Value.absent(),
+                Value<String?> technician = const Value.absent(),
+                Value<int> sparepartCost = const Value.absent(),
+                Value<int> serviceCost = const Value.absent(),
+                Value<int?> queueNumber = const Value.absent(),
               }) => ServiceTicketsCompanion.insert(
                 id: id,
                 customerName: customerName,
@@ -26721,6 +27230,13 @@ class $$ServiceTicketsTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                plateNumber: plateNumber,
+                vehicleBrand: vehicleBrand,
+                vehicleYear: vehicleYear,
+                technician: technician,
+                sparepartCost: sparepartCost,
+                serviceCost: serviceCost,
+                queueNumber: queueNumber,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -6,8 +6,8 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 		static String _productId = "nusa-laundry";
 		static String _appSubtitle = "Aplikasi Kasir untuk Usaha Laundry";
-  static const String appVersion = "2.0.4";
-  static const int appBuildNumber = 45;
+  static const String appVersion = "2.1.0";
+  static const int appBuildNumber = 46;
 		static String _githubRepo = "halugoods/nusa-laundry";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
 		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Laundry";
@@ -26,6 +26,9 @@ abstract class NusaConfig {
 
   /// Whether this is the Salon variant — gates salon-specific features.
   static bool get isSalonVariant => productId == 'nusa-salon';
+
+  /// Whether this is the Bengkel variant — gates workshop/vehicle-service features.
+  static bool get isBengkelVariant => productId == 'nusa-bengkel';
 
   // ── Dev variant runtime overrides (null in production, set by VariantNotifier in dev) ──
   static VariantData? _devVariant;

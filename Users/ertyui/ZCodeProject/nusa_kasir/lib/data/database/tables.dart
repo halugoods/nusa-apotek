@@ -331,7 +331,7 @@ class LaundryOrders extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// Bengkel & Servis: Service ticket management.
+/// Bengkel & Servis: Service ticket management (vehicle workshop context).
 class ServiceTickets extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get customerName => text()();
@@ -344,6 +344,14 @@ class ServiceTickets extends Table {
     // Diagnosa | Estimasi | Perbaikan | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  // ── Bengkel (vehicle workshop) columns ──
+  TextColumn get plateNumber => text().nullable()();   // plat nomor kendaraan (e.g. B 1234 XYZ)
+  TextColumn get vehicleBrand => text().nullable()();  // merk/model kendaraan (e.g. Honda Beat, Toyota Avanza)
+  IntColumn get vehicleYear => integer().nullable()(); // tahun kendaraan
+  TextColumn get technician => text().nullable()();    // nama teknisi
+  IntColumn get sparepartCost => integer().withDefault(const Constant(0))(); // biaya suku cadang
+  IntColumn get serviceCost => integer().withDefault(const Constant(0))();   // biaya jasa
+  IntColumn get queueNumber => integer().nullable()(); // nomor antrian harian
 }
 
 /// Salon: Appointment booking with stylist + time slot.

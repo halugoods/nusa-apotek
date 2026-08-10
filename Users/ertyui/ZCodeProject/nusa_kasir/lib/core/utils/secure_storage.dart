@@ -261,6 +261,12 @@ class SecureStore {
   static Future<void> setSalonStatsExpanded(bool v) =>
       SecureStore.write(key: 'nusa_salon_stats_expanded', value: v.toString());
 
+  // ── Bengkel settings ──
+  static Future<bool> getBengkelStatsExpanded() async =>
+      (await SecureStore.read(key: 'nusa_bengkel_stats_expanded')) == 'true';
+  static Future<void> setBengkelStatsExpanded(bool v) =>
+      SecureStore.write(key: 'nusa_bengkel_stats_expanded', value: v.toString());
+
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>
       (await SecureStore.read(key: 'nusa_images_migrated')) == 'true';

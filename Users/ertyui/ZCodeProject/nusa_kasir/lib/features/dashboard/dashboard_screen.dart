@@ -17,6 +17,7 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
+import 'package:nusa_kasir/data/repositories/service_ticket_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
@@ -83,6 +84,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _salonWaiting = 0;
   int _salonDone = 0;
   bool _salonStatsExpanded = false;
+
+  // Bengkel stats
+  int _bengkelToday = 0;
+  int _bengkelQueue = 0;
+  int _bengkelInProgress = 0;
+  int _bengkelDone = 0;
+  int _bengkelEstimate = 0;
+  bool _bengkelStatsExpanded = false;
 
   // Flip card data
   EmployeeCardData? _cardData;
@@ -295,6 +304,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       salonStatsExpanded = await SecureStore.getSalonStatsExpanded();
     }
 
+    // Load bengkel stats
+    int bengkelToday = 0, bengkelQueue = 0, bengkelInProgress = 0, bengkelDone = 0, bengkelEstimate = 0;
+    bool bengkelStatsExpanded = false;
+    if (NusaConfig.isBengkelVariant) {
+      final bengkelRepo = ServiceTicketRepository(db);
+      bengkelToday = await bengkelRepo.countToday();
+      bengkelQueue = await bengkelRepo.countByStatus('Diagnosa') + await bengkelRepo.countByStatus('Estimasi');
+      bengkelInProgress = await bengkelRepo.countByStatus('Perbaikan');
+      bengkelDone = await bengkelRepo.countByStatus('Selesai');
+      bengkelEstimate = await bengkelRepo.sumByStatus('Perbaikan', costOf: (t) => t.sparepartCost + t.serviceCost)
+          + await bengkelRepo.sumByStatus('Estimasi', costOf: (t) => t.sparepartCost + t.serviceCost);
+      bengkelStatsExpanded = await SecureStore.getBengkelStatsExpanded();
+    }
+
     // Load flip card data
     await _fetchCardData(ref.read(employeeSessionProvider)?.employeeId);
 
@@ -329,6 +352,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _salonWaiting = salonWaiting;
         _salonDone = salonDone;
         _salonStatsExpanded = salonStatsExpanded;
+        _bengkelToday = bengkelToday;
+        _bengkelQueue = bengkelQueue;
+        _bengkelInProgress = bengkelInProgress;
+        _bengkelDone = bengkelDone;
+        _bengkelEstimate = bengkelEstimate;
+        _bengkelStatsExpanded = bengkelStatsExpanded;
       });
     }
   }
@@ -1252,6 +1281,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                       ],
 
+                      // Bengkel stats
+                      if (NusaConfig.isBengkelVariant && (_bengkelToday > 0 || _bengkelQueue > 0)) ...[
+                        const SizedBox(height: 12),
+                        _BengkelStatsCard(
+                          today: _bengkelToday,
+                          queue: _bengkelQueue,
+                          inProgress: _bengkelInProgress,
+                          done: _bengkelDone,
+                          estimate: _bengkelEstimate,
+                          expanded: _bengkelStatsExpanded,
+                          onToggle: () {
+                            setState(() => _bengkelStatsExpanded = !_bengkelStatsExpanded);
+                            SecureStore.setBengkelStatsExpanded(!_bengkelStatsExpanded);
+                          },
+                        ),
+                      ],
+
                       const SizedBox(height: 12),
 
                       // Menu grid with lock indicators (responsive columns)
@@ -1752,6 +1798,169 @@ class _SalonStatsCardState extends State<_SalonStatsCard> with SingleTickerProvi
   }
 
   Widget _salonStat(String label, int count, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+        ),
+        child: Column(children: [
+          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Bengkel dashboard stats card — expandable with slide animation (mirror of salon).
+class _BengkelStatsCard extends StatefulWidget {
+  final int today, queue, inProgress, done, estimate;
+  final bool expanded;
+  final VoidCallback onToggle;
+  const _BengkelStatsCard({required this.today, required this.queue, required this.inProgress, required this.done, required this.estimate, required this.expanded, required this.onToggle});
+
+  @override
+  State<_BengkelStatsCard> createState() => _BengkelStatsCardState();
+}
+
+class _BengkelStatsCardState extends State<_BengkelStatsCard> with SingleTickerProviderStateMixin {
+  late AnimationController _slideCtrl;
+  late Animation<double> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    if (widget.expanded) _slideCtrl.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _BengkelStatsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _slideCtrl.forward();
+      } else {
+        _slideCtrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _slideCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = NusaConfig.primaryColor;
+    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(children: [
+        // ── Pull pill bar ──
+        GestureDetector(
+          onTap: widget.onToggle,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: widget.expanded
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      width: 48, height: 5,
+                      decoration: BoxDecoration(
+                        color: hintColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+
+        // ── Expanded card (slide animation) ──
+        SizeTransition(
+          sizeFactor: _slideAnim,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.directions_car_filled_outlined, size: 18, color: primaryColor),
+                ),
+                const SizedBox(width: 10),
+                Text('Bengkel', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  child: Container(
+                    width: 28, height: 28,
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                _bengkelStat('Hari Ini', widget.today, NusaConfig.warning, isDark),
+                _bengkelStat('Antrian', widget.queue, NusaConfig.info, isDark),
+                _bengkelStat('Dikerjakan', widget.inProgress, NusaConfig.accentPurple, isDark),
+                _bengkelStat('Selesai', widget.done, NusaConfig.success, isDark),
+              ]),
+              if (widget.estimate > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentGold.withValues(alpha: isDark ? 0.12 : 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: NusaConfig.accentGold.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.receipt_long_outlined, size: 16, color: NusaConfig.accentGold),
+                    const SizedBox(width: 8),
+                    Text('Estimasi berjalan: ', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                    Text(formatRupiah(widget.estimate), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: NusaConfig.accentGold)),
+                  ]),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _bengkelStat(String label, int count, Color color, bool isDark) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),

@@ -1,14 +1,36 @@
-/// Bengkel & Servis: Service ticket management (status, sparepart needed, cost est).
+/// Bengkel & Servis: Service ticket management.
+/// - Bengkel variant: vehicle workshop context (plate, brand, category, technician,
+///   sparepart+jasa cost split, daily queue #SRV-xxx).
+/// - Other variants (e.g. "servis" electronics repair): legacy device context.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/service_ticket_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+
+/// Servis categories (bengkel variant).
+const List<String> kServisCategories = [
+  'Servis Rutin', 'Ganti Oli', 'Ban & Kaki', 'Kelistrikan',
+  'AC', 'Body', 'Mesin', 'Lainnya',
+];
+
+const Map<String, Color> kServisCatColors = {
+  'Servis Rutin': Color(0xFF3B82F6),
+  'Ganti Oli': Color(0xFFF59E0B),
+  'Ban & Kaki': Color(0xFF8B5CF6),
+  'Kelistrikan': Color(0xFF10B981),
+  'AC': Color(0xFF06B6D4),
+  'Body': Color(0xFFF97316),
+  'Mesin': Color(0xFFEF4444),
+  'Lainnya': Color(0xFF6B7280),
+};
 
 class ServisScreen extends ConsumerStatefulWidget {
   const ServisScreen({super.key});
@@ -18,6 +40,8 @@ class ServisScreen extends ConsumerStatefulWidget {
 }
 
 class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerProviderStateMixin {
+  bool get _isBengkel => NusaConfig.isBengkelVariant;
+
   late TabController _tabController;
   final List<String> _tabs = ['Semua', 'Diagnosa', 'Estimasi', 'Perbaikan', 'Selesai', 'Diambil'];
   List<ServiceTicket> _all = [];
@@ -25,6 +49,10 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
   bool _loading = true;
   final _search = TextEditingController();
   Map<String, int> _counts = {};
+
+  // ── Bengkel: technician filter ──
+  List<String> _technicians = [];
+  String? _technicianFilter;
 
   @override
   void initState() {
@@ -55,8 +83,14 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
         counts[s] = await repo.countByStatus(s);
       }
     }
+    final technicians = _isBengkel ? await repo.getTechnicians() : <String>[];
     if (!mounted) return;
-    setState(() { _all = data; _counts = counts; _loading = false; });
+    setState(() {
+      _all = data;
+      _counts = counts;
+      _technicians = technicians;
+      _loading = false;
+    });
     _applyFilter();
   }
 
@@ -65,12 +99,16 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     final idx = _tabController.index;
     var list = _all;
     if (idx > 0) list = list.where((t) => t.status == _tabs[idx]).toList();
+    if (_isBengkel && _technicianFilter != null) {
+      list = list.where((t) => t.technician == _technicianFilter).toList();
+    }
     if (q.isNotEmpty) {
       list = list.where((t) =>
           t.customerName.toLowerCase().contains(q) ||
           (t.customerPhone ?? '').contains(q) ||
           t.deviceName.toLowerCase().contains(q) ||
-          t.issue.toLowerCase().contains(q)).toList();
+          t.issue.toLowerCase().contains(q) ||
+          (_isBengkel && (t.plateNumber ?? '').toLowerCase().contains(q))).toList();
     }
     setState(() => _filtered = list);
   }
@@ -86,11 +124,16 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     }
   }
 
+  Color _catColor(String? cat) {
+    if (cat == null || cat.isEmpty) return NusaConfig.activePrimary;
+    return kServisCatColors[cat] ?? NusaConfig.activePrimary;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
-      'Tiket Servis',
+      _isBengkel ? 'Tiket Servis Bengkel' : 'Tiket Servis',
       Column(children: [
         // Tab bar
         Container(
@@ -135,31 +178,89 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
             )).toList(),
           ),
         ),
-        // Search
+        // Search + contact picker
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextField(
-            controller: _search,
-            decoration: InputDecoration(
-              hintText: 'Cari pelanggan, device, atau masalah...',
-              hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              filled: true,
-              fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  hintText: _isBengkel ? 'Cari pelanggan, kendaraan, plat...' : 'Cari pelanggan, device, atau masalah...',
+                  hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true,
+                  fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () async {
+                final contact = await pickContact();
+                if (contact != null && mounted) {
+                  final phone = contact['phone'] ?? '';
+                  if (phone.isNotEmpty) {
+                    _search.text = phone;
+                    _applyFilter();
+                  }
+                }
+              },
+              child: Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(
+                  color: NusaConfig.activePrimary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.contacts_outlined, color: NusaConfig.activePrimary, size: 20),
+              ),
+            ),
+          ]),
         ),
+        // Bengkel: technician filter
+        if (_isBengkel && _technicians.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Icon(Icons.engineering_outlined, size: 16, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _technicianFilter,
+                      isExpanded: true,
+                      icon: Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                      style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                      hint: Text('Semua teknisi', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('Semua teknisi')),
+                        ..._technicians.map((t) => DropdownMenuItem<String?>(value: t, child: Text(t))),
+                      ],
+                      onChanged: (v) { setState(() => _technicianFilter = v); _applyFilter(); },
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
         // List
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _filtered.isEmpty
                   ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.build_circle_outlined, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                      Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.build_circle_outlined, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
                       const SizedBox(height: 16),
-                      Text('Belum ada tiket servis', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      Text(_isBengkel ? 'Belum ada tiket servis' : 'Belum ada tiket servis', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
                     ]))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
@@ -180,6 +281,10 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
 
   Widget _ticketCard(ServiceTicket t, bool isDark) {
     final statusColor = _chipColor(t.status);
+    final catColor = _isBengkel ? _catColor(t.deviceName) : null;
+    final hasVehicle = _isBengkel && (t.plateNumber?.isNotEmpty ?? false);
+    final hasBrand = _isBengkel && (t.vehicleBrand?.isNotEmpty ?? false);
+    final total = t.sparepartCost + t.serviceCost;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -189,17 +294,80 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(t.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+            if (t.queueNumber != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(
+                  color: NusaConfig.accentGold.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: NusaConfig.accentGold.withOpacity(0.3)),
+                ),
+                child: Text('#SRV-${t.queueNumber.toString().padLeft(3, '0')}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: NusaConfig.accentGold)),
+              ),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: statusColor.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
               child: Text(t.status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor)),
             ),
           ]),
+          // Vehicle row (bengkel): plate + brand + year
+          if (hasVehicle || hasBrand) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              if (hasVehicle)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.warning.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: NusaConfig.warning.withOpacity(0.35)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.local_taxi_outlined, size: 12, color: NusaConfig.warning),
+                    const SizedBox(width: 4),
+                    Text(t.plateNumber!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: NusaConfig.warning)),
+                  ]),
+                ),
+              if (hasBrand)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: catColor!.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(t.vehicleBrand!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: catColor)),
+                ),
+              if (t.vehicleYear != null && t.vehicleYear! > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('${t.vehicleYear}', style: const TextStyle(fontSize: 11)),
+                ),
+              if (t.technician != null && t.technician!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.info.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.engineering_outlined, size: 12, color: NusaConfig.info),
+                    const SizedBox(width: 4),
+                    Text('👤 ${t.technician}', style: const TextStyle(fontSize: 11, color: NusaConfig.info)),
+                  ]),
+                ),
+            ]),
+          ],
           if (t.customerPhone != null && t.customerPhone!.isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 4), child: Text(t.customerPhone!, style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
+            Padding(padding: const EdgeInsets.only(top: 6), child: Text(t.customerPhone!, style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
           const SizedBox(height: 6),
           Row(children: [
-            Icon(Icons.devices, size: 16, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+            Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.devices, size: 16, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
             const SizedBox(width: 4),
             Expanded(child: Text(t.deviceName, style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
           ]),
@@ -209,20 +377,47 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
             const SizedBox(width: 4),
             Expanded(child: Text(t.issue, style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
-          if (t.estimatedCost > 0 || t.finalCost > 0) ...[
+          if (t.estimatedCost > 0 || t.finalCost > 0 || (_isBengkel && total > 0)) ...[
             const SizedBox(height: 6),
-            Row(children: [
-              if (t.estimatedCost > 0)
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              if (_isBengkel && total > 0)
+                Chip(label: Text('Estimasi: ${formatRupiah(total)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.warning.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
+              if (_isBengkel && t.sparepartCost > 0)
+                Chip(label: Text('Sparepart: ${formatRupiah(t.sparepartCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.info.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
+              if (_isBengkel && t.serviceCost > 0)
+                Chip(label: Text('Jasa: ${formatRupiah(t.serviceCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.accentGreen.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
+              if (!_isBengkel && t.estimatedCost > 0)
                 Chip(label: Text('Estimasi: ${formatRupiah(t.estimatedCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.warning.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              if (t.finalCost > 0) ...[const SizedBox(width: 6),
+              if (t.finalCost > 0) ...[
                 Chip(label: Text('Final: ${formatRupiah(t.finalCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.success.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
               ],
             ]),
           ],
           const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            _nextStatusButton(t),
+          // ── Quick status chips (pola salon) ──
+          Row(children: [
+            Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
             const SizedBox(width: 6),
+            Expanded(
+              child: Wrap(spacing: 6, runSpacing: 4, children: _nextStages(t).map((ns) {
+                final nsColor = ns['color'] as Color;
+                return GestureDetector(
+                  onTap: () => _jumpToStatus(t, ns['label']),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: nsColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: nsColor.withOpacity(0.3)),
+                    ),
+                    child: Text(ns['label'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor)),
+                  ),
+                );
+              }).toList()),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             _actionButton(Icons.edit_outlined, 'Edit', () => _openForm(ticket: t), isDark),
             const SizedBox(width: 4),
             _actionButton(Icons.delete_outline, 'Hapus', () => _deleteTicket(t), isDark),
@@ -232,20 +427,16 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     );
   }
 
-  Widget _nextStatusButton(ServiceTicket t) {
-    final next = _nextStatus(t.status);
-    if (next == null) return const SizedBox.shrink();
-    return OutlinedButton.icon(
-      onPressed: () => _advanceStatus(t, next),
-      icon: Icon(Icons.arrow_forward, size: 14, color: NusaConfig.activePrimary),
-      label: Text(next, style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary)),
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(color: NusaConfig.activePrimary),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      ),
-    );
+  List<Map<String, dynamic>> _nextStages(ServiceTicket t) {
+    final result = <Map<String, dynamic>>[];
+    var current = t.status;
+    for (int i = 0; i < 4; i++) {
+      final next = _nextStatus(current);
+      if (next == null) break;
+      result.add({'label': next, 'color': _chipColor(next)});
+      current = next;
+    }
+    return result;
   }
 
   Widget _actionButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark) {
@@ -268,9 +459,8 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     return flow[s];
   }
 
-  Future<void> _advanceStatus(ServiceTicket t, String to) async {
-    final db = ref.read(databaseProvider);
-    await ServiceTicketRepository(db).updateStatus(t.id, to);
+  Future<void> _jumpToStatus(ServiceTicket t, String to) async {
+    await ServiceTicketRepository(ref.read(databaseProvider)).updateStatus(t.id, to);
     TopToast.success(context, 'Status → $to ✓');
     _load();
   }
@@ -291,7 +481,9 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     }
   }
 
-  void _openForm({ServiceTicket? ticket}) {
+  // ── Form ────────────────────────────────────────────────────────────
+
+  Future<void> _openForm({ServiceTicket? ticket}) async {
     final isEdit = ticket != null;
     final nameC = TextEditingController(text: ticket?.customerName ?? '');
     final phoneC = TextEditingController(text: ticket?.customerPhone ?? '');
@@ -300,7 +492,27 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     final estC = TextEditingController(text: ticket != null && ticket.estimatedCost > 0 ? '${ticket.estimatedCost}' : '');
     final finalC = TextEditingController(text: ticket != null && ticket.finalCost > 0 ? '${ticket.finalCost}' : '');
     final notesC = TextEditingController(text: ticket?.notes ?? '');
+
+    // ── Bengkel fields ──
+    final plateC = TextEditingController(text: ticket?.plateNumber ?? '');
+    final brandC = TextEditingController(text: ticket?.vehicleBrand ?? '');
+    final yearC = TextEditingController(text: (ticket?.vehicleYear ?? 0) > 0 ? '${ticket?.vehicleYear}' : '');
+    final spareC = TextEditingController(text: (ticket?.sparepartCost ?? 0) > 0 ? '${ticket?.sparepartCost}' : '');
+    final svcC = TextEditingController(text: (ticket?.serviceCost ?? 0) > 0 ? '${ticket?.serviceCost}' : '');
+    String? category = _isBengkel ? (ticket?.deviceName != null && kServisCategories.contains(ticket!.deviceName) ? ticket.deviceName : null) : null;
+    String? technician = ticket?.technician;
+
     final formKey = GlobalKey<FormState>();
+
+    // Queue number for new bengkel tickets
+    String? queueLabel;
+    if (!isEdit && _isBengkel) {
+      final repo = ServiceTicketRepository(ref.read(databaseProvider));
+      final nextQ = await repo.getNextQueue();
+      queueLabel = '#SRV-${nextQ.toString().padLeft(3, '0')}';
+    }
+
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -308,71 +520,233 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 16),
-                Text(isEdit ? 'Edit Tiket' : 'Tiket Servis Baru', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                NusaFormField(label: 'Nama Pelanggan', controller: nameC, hintText: 'Nama pelanggan', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                const SizedBox(height: 12),
-                NusaFormField(label: 'No. Telepon', controller: phoneC, hintText: 'Contoh: 0812-3456-7890', keyboardType: TextInputType.phone),
-                const SizedBox(height: 12),
-                NusaFormField(label: 'Nama Perangkat', controller: deviceC, hintText: 'Contoh: iPhone 13, Samsung A52', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                const SizedBox(height: 12),
-                NusaFormField(label: 'Keluhan / Masalah', controller: issueC, hintText: 'Deskripsikan masalah perangkat...', maxLines: 3, validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(child: NusaFormField(label: 'Estimasi Biaya', controller: estC, hintText: 'Rp', keyboardType: TextInputType.number)),
-                  const SizedBox(width: 12),
-                  Expanded(child: NusaFormField(label: 'Biaya Final', controller: finalC, hintText: 'Rp', keyboardType: TextInputType.number)),
-                ]),
-                const SizedBox(height: 12),
-                NusaFormField(label: 'Catatan', controller: notesC, hintText: 'Catatan tambahan...', maxLines: 2),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: NusaConfig.activePrimary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        return StatefulBuilder(builder: (ctx, setModalState) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: (_isBengkel ? NusaConfig.warning : NusaConfig.info).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.build_outlined, color: _isBengkel ? NusaConfig.warning : NusaConfig.info, size: 20),
                     ),
-                    onPressed: () async {
-                      if (!formKey.currentState!.validate()) return;
-                      final db = ref.read(databaseProvider);
-                      final repo = ServiceTicketRepository(db);
-                      final estCost = int.tryParse(estC.text) ?? 0;
-                      if (isEdit) {
-                        await repo.updateCost(ticket!.id, finalCost: int.tryParse(finalC.text), notes: notesC.text.isNotEmpty ? notesC.text : null);
-                        TopToast.success(context, 'Tiket diperbarui ✓');
-                      } else {
-                        await repo.add(
-                          customerName: nameC.text.trim(),
-                          customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(),
-                          deviceName: deviceC.text.trim(),
-                          issue: issueC.text.trim(),
-                          estimatedCost: estCost,
-                          notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(),
-                        );
-                        TopToast.success(context, 'Tiket servis baru ditambahkan ✓');
-                      }
-                      Navigator.pop(ctx);
-                      _load();
-                    },
-                    child: Text(isEdit ? 'Simpan Perubahan' : 'Tambah Tiket'),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(isEdit ? 'Edit Tiket' : 'Tiket Servis Baru', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                      if (queueLabel != null)
+                        Text(queueLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NusaConfig.accentGold)),
+                    ])),
+                  ]),
+                  const SizedBox(height: 18),
+                  if (_isBengkel) ...[
+                    // ── Vehicle identity (bengkel) ──
+                    NusaInput('Plat Nomor', controller: plateC, hint: 'Contoh: B 1234 XYZ'),
+                    const SizedBox(height: 12),
+                    NusaInput('Merk / Model Kendaraan', controller: brandC, hint: 'Contoh: Honda Beat, Toyota Avanza'),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(child: NusaInput('Tahun', controller: yearC, type: TextInputType.number, hint: 'Contoh: 2020')),
+                      const SizedBox(width: 12),
+                      Expanded(child: NusaInput('Nama Pelanggan', controller: nameC, hint: 'Nama pemilik')),
+                    ]),
+                    const SizedBox(height: 12),
+                    NusaInput('No. Telepon', controller: phoneC, type: TextInputType.phone, hint: 'Contoh: 0812-3456-7890'),
+                    const SizedBox(height: 12),
+                    // Kategori servis
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(color: NusaConfig.warning.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                        child: Icon(Icons.build_rounded, color: NusaConfig.warning, size: 18),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String?>(
+                              value: category,
+                              isExpanded: true,
+                              icon: Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                              style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                              hint: Text('Kategori servis', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                              items: [
+                                const DropdownMenuItem<String?>(value: null, child: Text('Kategori servis')),
+                                ...kServisCategories.map((c) => DropdownMenuItem<String?>(value: c, child: Text(c))),
+                              ],
+                              onChanged: (v) => setModalState(() => category = v),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    // Teknisi
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(color: NusaConfig.info.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                        child: Icon(Icons.engineering_outlined, color: NusaConfig.info, size: 18),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String?>(
+                              value: technician,
+                              isExpanded: true,
+                              icon: Icon(Icons.arrow_drop_down, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                              style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                              hint: Text('Pilih teknisi (opsional)', style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                              items: [
+                                const DropdownMenuItem<String?>(value: null, child: Text('Pilih teknisi (opsional)')),
+                                ..._technicians.map((t) => DropdownMenuItem<String?>(value: t, child: Text(t))),
+                              ],
+                              onChanged: (v) => setModalState(() => technician = v),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    NusaFormField(label: 'Keluhan / Pekerjaan', controller: issueC, hintText: 'Deskripsikan pekerjaan servis...', maxLines: 3, validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
+                    const SizedBox(height: 12),
+                    // ── Cost split: sparepart + jasa ──
+                    Row(children: [
+                      Expanded(child: NusaFormField(label: 'Biaya Sparepart', controller: spareC, hintText: 'Rp', keyboardType: TextInputType.number)),
+                      const SizedBox(width: 12),
+                      Expanded(child: NusaFormField(label: 'Biaya Jasa', controller: svcC, hintText: 'Rp', keyboardType: TextInputType.number)),
+                    ]),
+                    const SizedBox(height: 12),
+                    NusaFormField(label: 'Biaya Final (setelah selesai)', controller: finalC, hintText: 'Rp', keyboardType: TextInputType.number),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    // ── Legacy device form ──
+                    NusaFormField(label: 'Nama Pelanggan', controller: nameC, hintText: 'Nama pelanggan', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
+                    const SizedBox(height: 12),
+                    NusaFormField(label: 'No. Telepon', controller: phoneC, hintText: 'Contoh: 0812-3456-7890', keyboardType: TextInputType.phone),
+                    const SizedBox(height: 12),
+                    NusaFormField(label: 'Nama Perangkat', controller: deviceC, hintText: 'Contoh: iPhone 13, Samsung A52', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
+                    const SizedBox(height: 12),
+                    NusaFormField(label: 'Keluhan / Masalah', controller: issueC, hintText: 'Deskripsikan masalah perangkat...', maxLines: 3, validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(child: NusaFormField(label: 'Estimasi Biaya', controller: estC, hintText: 'Rp', keyboardType: TextInputType.number)),
+                      const SizedBox(width: 12),
+                      Expanded(child: NusaFormField(label: 'Biaya Final', controller: finalC, hintText: 'Rp', keyboardType: TextInputType.number)),
+                    ]),
+                    const SizedBox(height: 12),
+                  ],
+                  NusaFormField(label: 'Catatan', controller: notesC, hintText: 'Catatan tambahan...', maxLines: 2),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        if (!formKey.currentState!.validate()) return;
+                        final db = ref.read(databaseProvider);
+                        final repo = ServiceTicketRepository(db);
+                        if (_isBengkel) {
+                          // ── Bengkel save ──
+                          final spare = int.tryParse(spareC.text) ?? 0;
+                          final svc = int.tryParse(svcC.text) ?? 0;
+                          final totalEst = spare + svc;
+                          final plate = plateC.text.trim().toUpperCase();
+                          final brand = brandC.text.trim();
+                          final year = int.tryParse(yearC.text);
+                          final cat = category ?? 'Lainnya';
+                          if (isEdit) {
+                            await repo.updateCost(
+                              ticket.id,
+                              customerName: nameC.text.trim(),
+                              customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(),
+                              deviceName: cat,
+                              issue: issueC.text.trim(),
+                              estimatedCost: totalEst,
+                              finalCost: int.tryParse(finalC.text),
+                              notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(),
+                              plateNumber: plate.isEmpty ? null : plate,
+                              vehicleBrand: brand.isEmpty ? null : brand,
+                              vehicleYear: (year ?? 0) > 0 ? year : null,
+                              technician: technician?.isEmpty ?? true ? null : technician,
+                              sparepartCost: spare,
+                              serviceCost: svc,
+                            );
+                            TopToast.success(context, 'Tiket diperbarui ✓');
+                          } else {
+                            final nextQ = await repo.getNextQueue();
+                            await repo.add(
+                              customerName: nameC.text.trim(),
+                              customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(),
+                              deviceName: cat,
+                              issue: issueC.text.trim(),
+                              estimatedCost: totalEst,
+                              notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(),
+                              plateNumber: plate.isEmpty ? null : plate,
+                              vehicleBrand: brand.isEmpty ? null : brand,
+                              vehicleYear: (year ?? 0) > 0 ? year : null,
+                              technician: technician?.isEmpty ?? true ? null : technician,
+                              sparepartCost: spare,
+                              serviceCost: svc,
+                              queueNumber: nextQ,
+                            );
+                            TopToast.success(context, 'Tiket servis baru ditambahkan ✓');
+                          }
+                        } else {
+                          // ── Legacy device save ──
+                          final estCost = int.tryParse(estC.text) ?? 0;
+                          if (isEdit) {
+                            await repo.updateCost(ticket.id, finalCost: int.tryParse(finalC.text), notes: notesC.text.isNotEmpty ? notesC.text : null);
+                            TopToast.success(context, 'Tiket diperbarui ✓');
+                          } else {
+                            await repo.add(
+                              customerName: nameC.text.trim(),
+                              customerPhone: phoneC.text.trim().isEmpty ? null : phoneC.text.trim(),
+                              deviceName: deviceC.text.trim(),
+                              issue: issueC.text.trim(),
+                              estimatedCost: estCost,
+                              notes: notesC.text.trim().isEmpty ? null : notesC.text.trim(),
+                            );
+                            TopToast.success(context, 'Tiket servis baru ditambahkan ✓');
+                          }
+                        }
+                        Navigator.pop(ctx);
+                        _load();
+                      },
+                      child: Text(isEdit ? 'Simpan Perubahan' : 'Tambah Tiket'),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-              ]),
+                  const SizedBox(height: 8),
+                ]),
+              ),
             ),
-          ),
-        );
+          );
+        });
       },
     );
   }
