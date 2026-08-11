@@ -650,7 +650,7 @@ class _ProductCard extends StatelessWidget {
               aspectRatio: 1,
               child: Stack(children: [
                 if (hasImage)
-                  Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity)
+                  Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity, cacheWidth: 400)
                 else
                   Container(
                     decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),

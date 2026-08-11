@@ -236,6 +236,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
         }
 
         // Record transaction locally
+        // employeeId = null → online order counts toward ALL cashiers'
+        // dashboards (shared revenue, not tied to one shift).
         await trxRepo.addTransaction(
           invoice: order.invoice,
           items: jsonEncode(cartItems),
@@ -246,6 +248,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
           branchId: null,
           cashGiven: order.total,
           cashReturn: 0,
+          employeeId: null,
         );
 
         // Add loyalty points for customer (if phone exists)

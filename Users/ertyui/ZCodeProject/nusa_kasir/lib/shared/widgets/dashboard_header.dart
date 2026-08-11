@@ -14,6 +14,7 @@ class DashboardHeader extends StatelessWidget {
   final String branch;
   final bool hasNotification;
   final VoidCallback? onBellTap;
+  final VoidCallback? onLogout;
 
   DashboardHeader({
     super.key,
@@ -22,6 +23,7 @@ class DashboardHeader extends StatelessWidget {
     this.branch = '',
     this.hasNotification = false,
     this.onBellTap,
+    this.onLogout,
   });
 
   @override
@@ -87,6 +89,25 @@ class DashboardHeader extends StatelessWidget {
               ),
             ),
           ),
+          if (onLogout != null) ...[
+            SizedBox(width: 4),
+            // Logout / Ganti Pengguna — switch role tanpa buka ulang app
+            GestureDetector(
+              onTap: onLogout,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Icon(
+                  Icons.logout_rounded,
+                  size: 22,
+                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -7,7 +7,6 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
-import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/core/activation/activation_screen.dart';
 import 'package:nusa_kasir/core/widgets/splash_screen.dart';
 import 'package:nusa_kasir/features/auth/login_screen.dart';
@@ -121,22 +120,11 @@ Future<String?> _redirectForAuth(WidgetRef ref, GoRouterState state) async {
     session = ref.read(employeeSessionProvider);
   }
 
-  // **Security**: Remembered sessions are only valid if fingerprint is enabled.
-  // Without biometric backing, "Ingat PIN" is a gaping security hole — anyone
-  // who picks up the phone can open the app. Clear the session and force login.
-  if (session != null && session.remember) {
-    final fpEnabled = await BiometricService.isEnabled();
-    if (!fpEnabled) {
-      ref.read(employeeSessionProvider.notifier).logout();
-      session = null;
-    }
-  }
-
   if (session == null || session.isExpired) return '/login';
 
   if (routeKey != null &&
       (NusaConfig.hiddenMenus.contains(routeKey) ||
-          !hasAccess(session.role, routeKey))) {
+          !hasAccess(ref, session.role, routeKey))) {
     return '/home';
   }
   return null;

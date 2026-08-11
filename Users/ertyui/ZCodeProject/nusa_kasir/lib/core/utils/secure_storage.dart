@@ -179,6 +179,15 @@ class SecureStore {
   static Future<String> getPaperSize() async =>
       (await SecureStore.read(key: 'nusa_printer_paper_size')) ?? '58';
 
+  /// Selected printer address ("Name|MAC") — single source of truth for both
+  /// the settings sheet and auto-print, so a printer picked on one device
+  /// isn't lost when the receipt sheet runs on another screen/device.
+  static const _printerAddressKey = 'nusa_printer_address';
+  static Future<void> setPrinterAddress(String v) =>
+      SecureStore.write(key: _printerAddressKey, value: v);
+  static Future<String?> getPrinterAddress() =>
+      SecureStore.read(key: _printerAddressKey);
+
   // -- Cash drawer --
   static Future<void> setCashDrawerEnabled(bool v) =>
       SecureStore.write(key: 'nusa_cash_drawer_enabled', value: v.toString());

@@ -146,7 +146,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 : Color(0xFF151717),
                           )),
                       const SizedBox(height: 4),
-                      Text('Masukkan PIN, gunakan fingerprint, atau tap NFC',
+                      Text('Masukkan PIN, gunakan biometrik, atau tap NFC',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13,
@@ -165,7 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         showNfc: _nfcAvailable,
                         showCancel: false,
                         onFingerprint: () => BiometricService.authenticate(
-                          reason: 'Verifikasi sidik jari untuk melanjutkan',
+                          reason: 'Verifikasi biometrik untuk melanjutkan',
                         ),
                         onFingerprintSuccess: _fingerprintLogin,
                         onNfc: () async {

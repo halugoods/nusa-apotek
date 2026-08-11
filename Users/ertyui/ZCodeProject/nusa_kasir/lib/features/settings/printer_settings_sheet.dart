@@ -1,13 +1,11 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
+import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -152,20 +150,13 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
 
   Future<void> _pickLogo() async {
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
-      if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.single.bytes;
-      if (bytes == null) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(result.files.single.name);
-      final destName = 'printer_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
-      final destPath = p.join(dir.path, destName);
-      await File(destPath).writeAsBytes(bytes);
+      final path = await pickAndSaveImage(maxSize: 512, prefix: 'printer_logo_');
+      if (path == null) return; // cancelled or failed
 
-      await ReceiptPrinter.loadLogo(destPath);
-      await SecureStore.setPrinterLogoPath(destPath);
+      await ReceiptPrinter.loadLogo(path);
+      await SecureStore.setPrinterLogoPath(path);
       if (mounted) {
-        setState(() => _logoPath = destPath);
+        setState(() => _logoPath = path);
         TopToast.success(context, 'Logo disimpan');
       }
 
@@ -174,7 +165,7 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
         final uid = Supabase.instance.client.auth.currentUser?.id;
         if (uid != null) {
           ImageStorageService(Supabase.instance.client, uid)
-              .uploadImage('settings', destPath);
+              .uploadImage('settings', path);
         }
       } catch (_) {}
     } catch (_) {
@@ -282,6 +273,9 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     try {
       await printer.connect(device);
       widget.onPrinterSelected(device);
+      // Persist to the single source of truth so auto-print on other
+      // screens (receipt sheet, checkout) uses the SAME saved printer.
+      await SecureStore.setPrinterAddress('${device.name}|${device.address}');
       if (mounted) {
         setState(() {
           _connectedAddr = device.address;

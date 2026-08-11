@@ -1108,7 +1108,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
   Future<bool> _authFingerprint() async {
     return BiometricService.authenticate(
-      reason: 'Verifikasi sidik jari untuk melanjutkan',
+      reason: 'Verifikasi biometrik untuk melanjutkan',
     );
   }
 

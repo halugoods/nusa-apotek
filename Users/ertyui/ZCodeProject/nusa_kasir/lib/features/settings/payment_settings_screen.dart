@@ -1,13 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
@@ -75,18 +73,11 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
 
   Future<void> _pickQrisImage() async {
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
-      if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.single.bytes;
-      if (bytes == null) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(result.files.single.name);
-      final destName = 'qris_${DateTime.now().millisecondsSinceEpoch}$ext';
-      final dest = File(p.join(dir.path, destName));
-      await dest.writeAsBytes(bytes);
-      await ref.read(settingsRepoProvider).setQrisImagePath(dest.path);
+      final path = await pickAndSaveImage(maxSize: 1024, prefix: 'qris_');
+      if (path == null) return; // cancelled or failed
+      await ref.read(settingsRepoProvider).setQrisImagePath(path);
       if (mounted) {
-        setState(() => _qrisImagePath = dest.path);
+        setState(() => _qrisImagePath = path);
         TopToast.success(context, 'QRIS disimpan ✅');
       }
       // Upload to cloud
@@ -94,7 +85,7 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
         final uid = Supabase.instance.client.auth.currentUser?.id;
         if (uid != null) {
           ImageStorageService(Supabase.instance.client, uid)
-              .uploadImage('settings', dest.path);
+              .uploadImage('settings', path);
         }
       } catch (_) {}
     } catch (_) {
@@ -260,7 +251,7 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Image.file(File(_qrisImagePath!), fit: BoxFit.contain),
+                        child: Image.file(File(_qrisImagePath!), fit: BoxFit.contain, cacheWidth: 400),
                       ),
                     ),
                     Row(children: [

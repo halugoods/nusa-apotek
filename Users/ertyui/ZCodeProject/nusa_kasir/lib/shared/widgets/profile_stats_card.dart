@@ -69,6 +69,7 @@ class ProfileStatsCard extends StatefulWidget {
   final VoidCallback? onAbsenMasuk;
   final VoidCallback? onAbsenKeluar;
   final VoidCallback? onKontakWa;
+  final VoidCallback? onLogout;
 
   ProfileStatsCard({
     super.key,
@@ -90,6 +91,7 @@ class ProfileStatsCard extends StatefulWidget {
     this.onAbsenMasuk,
     this.onAbsenKeluar,
     this.onKontakWa,
+    this.onLogout,
   });
 
   @override
@@ -220,8 +222,9 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
             ),
             image: hasPhoto
                 ? DecorationImage(
-                    image: FileImage(File(widget.photoPath!)),
-                    fit: BoxFit.cover)
+                    image: FileImage(File(widget.photoPath!), scale: 1.0),
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low)
                 : null,
           ),
           alignment: Alignment.center,
@@ -433,6 +436,14 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
               ),
             ],
           ),
+          if (widget.onLogout != null) ...[
+            SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: _backButton('Ganti Pengguna', Icons.switch_account,
+                  Colors.white.withValues(alpha: 0.9), widget.onLogout),
+            ),
+          ],
         ],
       ),
     );

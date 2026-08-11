@@ -848,7 +848,7 @@ class _LowStockCard extends StatelessWidget {
                   child: Stack(children: [
                     if (hasImage)
                       Image.file(File(product.imagePath!),
-                          fit: BoxFit.cover, width: 72, height: 72)
+                          fit: BoxFit.cover, width: 72, height: 72, cacheWidth: 200)
                     else
                       Container(
                         decoration: BoxDecoration(
@@ -1128,7 +1128,7 @@ class _ProductThumb extends StatelessWidget {
         width: size,
         height: size,
         child: hasImage
-            ? Image.file(File(product.imagePath!), fit: BoxFit.cover, width: size, height: size)
+            ? Image.file(File(product.imagePath!), fit: BoxFit.cover, width: size, height: size, cacheWidth: 400)
             : Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -1282,41 +1282,119 @@ class _AdjustSheetState extends State<_AdjustSheet> {
       widget.products.where((p) => p.id == _selectedId).firstOrNull;
 
   Future<void> _scan() async {
-    final controller = MobileScannerController();
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    final manualCtrl = TextEditingController();
     String? code;
     if (!mounted) return;
-    // Modal popup — consistent UI with products_screen barcode scanner
+    // Modal popup — consistent UI with products_screen barcode scanner.
+    // Manual input lets stock-in/out continue when the camera is unusable.
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
-          SizedBox(width: 8),
-          Text('Pindai Barcode'),
-        ]),
-        content: AnimatedScannerOverlay(
-          size: 280,
-          child: MobileScanner(
-            controller: controller,
-            onDetect: (capture) {
-              if (code != null || capture.barcodes.isEmpty) return;
-              final barcode = capture.barcodes.firstOrNull;
-              if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
-              code = barcode.rawValue;
-              Navigator.pop(ctx);
-            },
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(children: [
+            Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+            SizedBox(width: 8),
+            Text('Pindai Barcode'),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (code != null || capture.barcodes.isEmpty) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    if (barcode == null || barcode.rawValue == null || barcode.rawValue!.isEmpty) return;
+                    code = barcode.rawValue;
+                    Navigator.pop(ctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Stock] scanner error: $error');
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.no_photography_outlined,
+                                size: 36, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 12),
+              TextField(
+                controller: manualCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Masukkan kode barcode manual',
+                  hintText: 'contoh: 8991002101234',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+                onSubmitted: (v) {
+                  final t = v.trim();
+                  if (t.isNotEmpty) {
+                    code = t;
+                    Navigator.pop(ctx);
+                  }
+                },
+              ),
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final t = manualCtrl.text.trim();
+                if (t.isNotEmpty) {
+                  code = t;
+                  Navigator.pop(ctx);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Gunakan'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal'),
-          ),
-        ],
       ),
     );
     await controller.dispose();
+    manualCtrl.dispose();
     if (code == null || !mounted) return;
     final product = _byBarcode[code];
     if (product != null) {
@@ -1612,7 +1690,7 @@ class _ProductRow extends StatelessWidget {
                         width: 44,
                         height: 44,
                         child: hasImage
-                            ? Image.file(File(product.imagePath!), fit: BoxFit.cover)
+                            ? Image.file(File(product.imagePath!), fit: BoxFit.cover, cacheWidth: 150)
                             : Container(
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(

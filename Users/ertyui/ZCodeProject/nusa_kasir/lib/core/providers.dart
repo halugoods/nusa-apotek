@@ -48,6 +48,11 @@ final onlineOrderRepoProvider = Provider(
   (ref) => OnlineOrderRepository(ref.watch(databaseProvider)),
 );
 
+/// Role permissions (RBAC) — per-role menu access map.
+/// Loaded from the SQLite Roles table on startup and refreshed whenever an
+/// Owner edits roles, so the dashboard menu rebuilds reactively.
+final roleAccessProvider = StateProvider<Map<String, List<String>>>((ref) => {});
+
 /// Feature toggles — which menu items show on Home Screen.
 final featureTogglesProvider = StateProvider<Map<String, bool>>((ref) => {});
 

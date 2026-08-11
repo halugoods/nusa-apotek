@@ -216,6 +216,7 @@ class ReceiptPrinter {
     String paperWidth = '58',
     Uint8List? logo,
     String? footer,
+    bool? showLogo,
     bool openDrawer = false,
     String? orderType,
     int? tableId,
@@ -239,25 +240,42 @@ class ReceiptPrinter {
     bytes.addAll(generator.reset());
 
     // ── Logo ──
+    // showLogo=false explicitly skips the logo block entirely (no pixels
+    // on paper), while still honoring a configured logo for other receipts.
+    final renderLogo = showLogo ?? true;
     final logoBytes = logo ?? _logoBytes;
-    if (logoBytes != null) {
+    if (renderLogo && logoBytes != null) {
       try {
         final logoImage = img.decodeImage(logoBytes);
         if (logoImage != null) {
           final maxWidth = paperWidth == '80' ? 320 : 160;
-          img.Image resized;
-          if (logoImage.width > maxWidth) {
-            resized = img.copyResize(logoImage, width: maxWidth);
-          } else {
-            resized = logoImage;
+          // Cap BOTH dimensions: raster height is limited by the printer's
+          // bit-image buffer (~3 bytes/column); a tall logo would otherwise
+          // be cut off or produce garbage. Proportional resize keeps the
+          // aspect ratio.
+          final maxHeight = paperWidth == '80' ? 160 : 96;
+          var resized = logoImage;
+          if (logoImage.width > maxWidth ||
+              logoImage.height > maxHeight) {
+            final scale =
+                (maxWidth / logoImage.width).clamp(0.0, 1.0);
+            final hScale = maxHeight / logoImage.height;
+            final s = scale < hScale ? scale : hScale;
+            resized = img.copyResize(logoImage,
+                width: (logoImage.width * s).round(),
+                height: (logoImage.height * s).round());
           }
-          bytes.addAll(generator.imageRaster(resized, align: PosAlign.center));
+          // ESC * bit-image (image()) is far more widely supported than
+          // GS v 0 raster (imageRaster()) on cheap thermal printers — many
+          // Epson/SNBC clones render GS v 0 as garbage. Bit image renders
+          // cleanly and the explicit reset() below exits bit-image mode.
+          bytes.addAll(generator.image(resized, align: PosAlign.center));
           bytes.addAll(generator.feed(1));
           // ── CRITICAL: force printer OUT of bit-image mode ──
-          // imageRaster sends ESC * rows. Cheap printers (&lt;4KB buffer) often
-          // lose the auto-reset that esc_pos_utils appends, staying stuck in
-          // bit-image mode. Calling reset() here sends ESC @ (initialize),
-          // which unconditionally exits bit-image mode before any text.
+          // Cheap printers (&lt;4KB buffer) often lose the auto-reset that
+          // esc_pos_utils appends, staying stuck in bit-image mode. Calling
+          // reset() here sends ESC @ (initialize), which unconditionally
+          // exits bit-image mode before any text.
           bytes.addAll(generator.reset());
         }
       } catch (_) {}
@@ -298,7 +316,7 @@ class ReceiptPrinter {
       }
     }
     if (orderType != null && orderType.isNotEmpty) {
-      String line = orderType!;
+      String line = orderType;
       if (tableName != null && tableName.isNotEmpty) line += ' - $tableName';
       bytes.addAll(generator.text(_san(line),
           styles: const PosStyles(align: PosAlign.center, bold: true)));
@@ -430,12 +448,18 @@ class ReceiptPrinter {
     bytes.addAll(generator.cut());
 
     // ── Cash drawer trigger ──
+    // Standard ESC/POS kick command: ESC p m t1 t2  → 1B 70 00 19 19 (pin 2)
+    // or 1B 70 01 19 19 (pin 5). esc_pos_utils' drawer() emits the text form
+    // 1B 70 30 33 30 ('p030') which many cheap Epson-compatible printers
+    // reject — so we send the binary form directly.
     if (openDrawer || _cashDrawerEnabled) {
-      final pin = _cashDrawerPin == 2 ? PosDrawer.pin2 : PosDrawer.pin5;
-      bytes.addAll(generator.drawer(pin: pin));
+      final ok = await BluetoothUtils.sendBytes(_drawerBytes(_cashDrawerPin));
+      if (!ok) {
+        debugPrint('[ReceiptPrinter] Cash drawer trigger failed to send');
+      }
     }
 
-    // Send bytes over native SPP connection.
+    // Send receipt bytes over native SPP connection.
     final ok = await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
 
     if (ok) {
@@ -725,15 +749,17 @@ class ReceiptPrinter {
     final connected = await BluetoothUtils.isConnected();
     if (!connected) return false;
     try {
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      final bytes = generator.drawer(
-        pin: pin == 2 ? PosDrawer.pin2 : PosDrawer.pin5,
-      );
-      return await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
+      return await BluetoothUtils.sendBytes(_drawerBytes(pin));
     } catch (_) {
       return false;
     }
+  }
+
+  /// Standard ESC/POS cash drawer kick: 1B 70 m t1 t2.
+  /// pin 2 → m=0x00, t1=0x19 (25), t2=0x19 (25); pin 5 → m=0x01.
+  static Uint8List _drawerBytes(int pin) {
+    final m = pin == 2 ? 0x00 : 0x01;
+    return Uint8List.fromList([0x1B, 0x70, m, 0x19, 0x19]);
   }
 
   /// Print a test receipt.

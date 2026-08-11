@@ -9,6 +9,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
@@ -144,12 +145,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Future<void> _exportCSV() async {
     try {
       final rows = <List<String>>[
-        ['Nama', 'SKU', 'Barcode', 'Kategori', 'Harga Beli', 'Harga Jual', 'Stok', 'Tipe', 'Kadaluarsa'],
+        ['Nama', 'SKU', 'Barcode', 'Kategori', 'Harga Beli', 'Harga Jual', 'Diskon %', 'Stok', 'Tipe', 'Kadaluarsa'],
       ];
       for (final p in _products) {
         rows.add([
           p.name, p.sku ?? '', p.barcode ?? '', p.category,
-          p.buyPrice.toString(), p.sellPrice.toString(), p.stock.toString(),
+          p.buyPrice.toString(), p.sellPrice.toString(), p.discountPercent.toString(), p.stock.toString(),
           p.productType ?? 'Regular',
           p.expiryDate != null ? DateFormat('dd/MM/yyyy').format(p.expiryDate!) : '',
         ]);
@@ -209,11 +210,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           final category = row.length > 3 ? row[3].toString().trim() : 'Lainnya';
           final buyPrice = row.length > 4 ? int.tryParse(row[4].toString().trim()) ?? 0 : 0;
           final sellPrice = row.length > 5 ? int.tryParse(row[5].toString().trim()) ?? 0 : 0;
-          final stock = row.length > 6 ? int.tryParse(row[6].toString().trim()) ?? 0 : 0;
+          final discountPercent = row.length > 6 ? (int.tryParse(row[6].toString().trim()) ?? 0).clamp(0, 100) : 0;
+          final stock = row.length > 7 ? int.tryParse(row[7].toString().trim()) ?? 0 : 0;
           if (name.isEmpty || sellPrice == 0) continue;
           await repo.addProduct(
             name: name, category: category, buyPrice: buyPrice,
             sellPrice: sellPrice, stock: stock, minStock: 0,
+            discountPercent: discountPercent,
             sku: sku.isEmpty ? null : sku,
             barcode: barcode.isEmpty ? null : barcode,
           );
@@ -232,31 +235,113 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   // ── Barcode scan ──
 
   Future<void> _scanBarcode() async {
-    final controller = MobileScannerController();
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    final manualCtrl = TextEditingController();
     String? scanned;
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: Row(children: [
-          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
-          SizedBox(width: 8),
-          Text('Scan Barcode Produk'),
-        ]),
-        content: AnimatedScannerOverlay(
-          size: 280,
-          child: MobileScanner(controller: controller, onDetect: (capture) {
-            final barcode = capture.barcodes.firstOrNull;
-            if (barcode != null && barcode.rawValue != null) {
-              scanned = barcode.rawValue;
-              Navigator.pop(context);
-            }
-          }),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(children: [
+            Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+            SizedBox(width: 8),
+            Text('Scan Barcode Produk'),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    final barcode = capture.barcodes.firstOrNull;
+                    if (barcode != null && barcode.rawValue != null) {
+                      scanned = barcode.rawValue;
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Products] scanner error: $error');
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.no_photography_outlined,
+                                size: 36, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 12),
+              TextField(
+                controller: manualCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Masukkan kode barcode manual',
+                  hintText: 'contoh: 8991002101234',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+                onSubmitted: (v) {
+                  final t = v.trim();
+                  if (t.isNotEmpty) {
+                    scanned = t;
+                    Navigator.pop(ctx);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Batal')),
+            ElevatedButton(
+              onPressed: () {
+                final t = manualCtrl.text.trim();
+                if (t.isNotEmpty) {
+                  scanned = t;
+                  Navigator.pop(ctx);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Gunakan'),
+            ),
+          ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('Batal'))],
       ),
     );
-    controller.dispose();
+    await controller.dispose();
+    manualCtrl.dispose();
     if (scanned == null || !mounted) return;
 
     final repo = ref.read(productRepoProvider);
@@ -703,7 +788,7 @@ class _ProductGridCard extends StatelessWidget {
                 aspectRatio: 1,
                 child: Stack(children: [
                   if (hasImage)
-                    Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity)
+                    Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity, cacheWidth: 400)
                   else
                     Container(
                       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
@@ -738,8 +823,29 @@ class _ProductGridCard extends StatelessWidget {
             Text(product.category, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
             SizedBox(height: 6),
             // ── Price ──
-            Text(formatRupiah(product.sellPrice),
-              style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+            product.hasDiscount
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(formatRupiah(product.effectivePrice),
+                        style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+                      SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 1),
+                        child: Text(formatRupiah(product.sellPrice),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                          )),
+                      ),
+                    ],
+                  )
+                : Text(formatRupiah(product.sellPrice),
+                    style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
             Spacer(),
             // ── Actions ──
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -810,7 +916,7 @@ class _ProductListCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: SizedBox(width: 60, height: 60,
               child: hasImage
-                  ? Image.file(File(product.imagePath!), fit: BoxFit.cover)
+                  ? Image.file(File(product.imagePath!), fit: BoxFit.cover, cacheWidth: 200)
                   : Container(
                       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
                       alignment: Alignment.center,
@@ -841,7 +947,26 @@ class _ProductListCard extends StatelessWidget {
                 ),
               ]),
               SizedBox(height: 2),
-              Text(formatRupiah(product.sellPrice), style:  TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
+              product.hasDiscount
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(formatRupiah(product.effectivePrice), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
+                        SizedBox(width: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 1),
+                          child: Text(formatRupiah(product.sellPrice),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                            )),
+                        ),
+                      ],
+                    )
+                  : Text(formatRupiah(product.sellPrice), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
             ]),
           ),
           SizedBox(width: 8),

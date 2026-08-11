@@ -15,6 +15,7 @@ class PromoRepository {
     DateTime? endDate,
     int? maxUses,
     String status = 'Aktif',
+    String mode = 'otomatis', // 'otomatis' | 'kode' | 'bebas'
   }) {
     return db.into(db.promos).insert(PromosCompanion.insert(
           name: name,
@@ -26,6 +27,7 @@ class PromoRepository {
           endDate: Value(endDate),
           maxUses: Value(maxUses),
           status: Value(status),
+          mode: Value(mode),
         ));
   }
 
@@ -59,7 +61,8 @@ class PromoRepository {
       DateTime? startDate,
       DateTime? endDate,
       int? maxUses,
-      String? status}) async {
+      String? status,
+      String? mode}) async {
     var companion = const PromosCompanion();
     if (name != null) companion = companion.copyWith(name: Value(name));
     if (code != null) companion = companion.copyWith(code: Value(code));
@@ -76,6 +79,7 @@ class PromoRepository {
     }
     if (maxUses != null) companion = companion.copyWith(maxUses: Value(maxUses));
     if (status != null) companion = companion.copyWith(status: Value(status));
+    if (mode != null) companion = companion.copyWith(mode: Value(mode));
     await (db.update(db.promos)..where((t) => t.id.equals(id))).write(companion);
   }
 

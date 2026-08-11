@@ -12,6 +12,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/dev/variant_provider.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -222,6 +223,13 @@ void main() async {
       if (preset != null && NusaConfig.themePresets.containsKey(preset)) {
         NusaConfig.applyTheme(preset);
       }
+    } catch (_) {}
+    // Restore cash drawer auto-open flag so the setting survives app restarts
+    // (ReceiptPrinter._cashDrawerEnabled is static and otherwise only set when
+    // the printer settings sheet is opened).
+    try {
+      final drawer = await SecureStore.getCashDrawerEnabled();
+      ReceiptPrinter.setCashDrawer(enabled: drawer);
     } catch (_) {}
 
     // Determine initial route.

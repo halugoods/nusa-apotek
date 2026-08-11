@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/backup_crypto.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import "package:nusa_kasir/shared/widgets/top_toast.dart";
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -54,6 +56,18 @@ class _BackupSheetBody extends StatelessWidget {
       // Pack SQLite + images into NUS1 archive
       final archiveFiles = <String, Uint8List>{};
       archiveFiles['nusa_kasir.sqlite'] = await dbFile.readAsBytes();
+
+      // Include feature toggles + menu order so phone ↔ tablet layouts sync
+      final togglesJson = await SecureStore.getFeatureToggles();
+      if (togglesJson != null) {
+        archiveFiles['feature_toggles.json'] =
+            Uint8List.fromList(utf8.encode(togglesJson));
+      }
+      final orderJson = await SecureStore.getMenuOrder();
+      if (orderJson != null) {
+        archiveFiles['menu_order.json'] =
+            Uint8List.fromList(utf8.encode(orderJson));
+      }
 
       final dirContents = dir.listSync();
       for (final entity in dirContents) {
@@ -113,6 +127,17 @@ class _BackupSheetBody extends StatelessWidget {
           } else if (_isImageFile(entry.key)) {
             final imgFile = File(p.join(dir.path, entry.key));
             await imgFile.writeAsBytes(entry.value, flush: true);
+          } else if (entry.key == 'feature_toggles.json') {
+            final json = utf8.decode(entry.value);
+            await SecureStore.saveFeatureToggles(json);
+            ref.read(featureTogglesProvider.notifier).state =
+                (jsonDecode(json) as Map<String, dynamic>).map(
+                    (k, v) => MapEntry(k, v as bool));
+          } else if (entry.key == 'menu_order.json') {
+            final json = utf8.decode(entry.value);
+            await SecureStore.saveMenuOrder(json);
+            ref.read(menuOrderProvider.notifier).state =
+                (jsonDecode(json) as List<dynamic>).cast<String>();
           }
         }
       } else {

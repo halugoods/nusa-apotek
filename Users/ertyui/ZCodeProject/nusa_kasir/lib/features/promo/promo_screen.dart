@@ -91,6 +91,7 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
     final maxC = TextEditingController(
         text: existing?.maxUses?.toString() ?? '');
     String type = existing?.type ?? 'persen';
+    String mode = existing?.mode ?? 'otomatis'; // 'otomatis' | 'kode' | 'bebas'
     DateTime? start = existing?.startDate;
     DateTime? end = existing?.endDate;
 
@@ -149,7 +150,57 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                     children: [
                       NusaInput('Nama Promo', controller: nameC, hint: 'Cth: Diskon Spesial'),
                       SizedBox(height: 12),
-                      NusaInput('Kode', controller: codeC, hint: 'Cth: HEMAT10'),
+                      NusaInput(
+                        mode == 'kode'
+                            ? 'Kode Promo (wajib)'
+                            : mode == 'otomatis'
+                                ? 'Kode Promo (opsional — dipakai otomatis)'
+                                : 'Kode Promo (opsional)',
+                        controller: codeC,
+                        hint: mode == 'kode' ? 'Cth: HEMAT10' : 'Opsional',
+                      ),
+                      SizedBox(height: 12),
+                      // ── Mode Promo (3-arah hybrid) ──
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Cara Pakai Promo',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                              )),
+                          SizedBox(height: 6),
+                          Container(
+                            padding: EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
+                              ),
+                            ),
+                            child: Row(children: [
+                              _modeChip('Otomatis', 'otomatis', mode, () => setSt(() => mode = 'otomatis'), isDark),
+                              _modeChip('Kode', 'kode', mode, () => setSt(() => mode = 'kode'), isDark),
+                              _modeChip('Pilih di Kasir', 'bebas', mode, () => setSt(() => mode = 'bebas'), isDark),
+                            ]),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            mode == 'otomatis'
+                                ? '⚡ Dipakai otomatis saat belanja memenuhi syarat'
+                                : mode == 'kode'
+                                    ? '🔑 Hanya bisa dipakai lewat kode promo'
+                                    : '🛒 Muncul di daftar "Pilih Diskon" saat kasir',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ),
                       SizedBox(height: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,7 +268,8 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                       GestureDetector(
                         onTap: () async {
                           final picked = await showDateRangePicker(
-                            context: ctx,
+                            context: context,
+                            useRootNavigator: true,
                             initialDateRange: start != null && end != null
                                 ? DateTimeRange(start: start!, end: end!)
                                 : null,
@@ -299,8 +351,8 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                                   TopToast.error(context, 'Nama promo wajib diisi');
                                   return;
                                 }
-                                if (code.isEmpty) {
-                                  TopToast.error(context, 'Kode promo wajib diisi');
+                                if (mode == 'kode' && code.isEmpty) {
+                                  TopToast.error(context, 'Kode promo wajib diisi untuk mode Kode');
                                   return;
                                 }
                                 if (value == null) {
@@ -312,26 +364,31 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                                 final max = maxC.text.trim().isEmpty
                                     ? null
                                     : int.tryParse(maxC.text.trim());
+                                // Kode hanya wajib untuk mode 'kode'; mode lain
+                                // boleh kosong (kolom DB non-null → simpan '').
+                                final finalCode = code.trim();
                                 if (isEdit) {
                                   await repo.updatePromo(existing.id,
                                       name: name,
-                                      code: code,
+                                      code: finalCode,
                                       type: type,
                                       value: value,
                                       minBelanja: min,
                                       startDate: start,
                                       endDate: end,
-                                      maxUses: max);
+                                      maxUses: max,
+                                      mode: mode);
                                 } else {
                                   await repo.addPromo(
                                     name: name,
-                                    code: code,
+                                    code: finalCode,
                                     type: type,
                                     value: value,
                                     minBelanja: min,
                                     startDate: start,
                                     endDate: end,
                                     maxUses: max,
+                                    mode: mode,
                                   );
                                 }
                                 if (mounted) Navigator.of(ctx).pop();
@@ -484,11 +541,11 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                     fontWeight: FontWeight.w600,
                     color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
             SizedBox(height: 10),
-            _quickTemplate(isDark, 'Diskon 10%', 'HEMAT10', 'persen', 10, 50000),
+            _quickTemplate(isDark, 'Diskon 10%', 'HEMAT10', 'persen', 10, 50000, mode: 'kode'),
             SizedBox(height: 8),
-            _quickTemplate(isDark, 'Potongan 5rb', 'FLASH5', 'nominal', 5000, 30000),
+            _quickTemplate(isDark, 'Potongan 5rb', 'FLASH5', 'nominal', 5000, 30000, mode: 'kode'),
             SizedBox(height: 8),
-            _quickTemplate(isDark, 'Beli 2 Gratis 1', 'B2G1', 'persen', 50, 0),
+            _quickTemplate(isDark, 'Beli 2 Gratis 1', 'B2G1', 'persen', 50, 0, mode: 'otomatis'),
           ] else ...[
             // Button to add promo
             ElevatedButton.icon(
@@ -509,13 +566,13 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
     );
   }
 
-  Widget _quickTemplate(bool isDark, String title, String code, String type, int value, int minBelanja) {
+  Widget _quickTemplate(bool isDark, String title, String code, String type, int value, int minBelanja, {String mode = 'otomatis'}) {
     return GestureDetector(
       onTap: () async {
         final repo = PromoRepository(ref.read(databaseProvider));
         await repo.addPromo(
           name: title, code: code, type: type, value: value,
-          minBelanja: minBelanja, maxUses: 100,
+          minBelanja: minBelanja, maxUses: 100, mode: mode,
         );
         _load();
         if (mounted) TopToast.success(context, 'Promo "$title" dibuat!');
@@ -546,7 +603,9 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
                   Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   SizedBox(height: 2),
                   Text(
-                    'Kode: $code • ${type == 'persen' ? '$value%' : formatRupiah(value)} • Min: ${formatRupiah(minBelanja)}',
+                    mode == 'otomatis'
+                        ? '${type == 'persen' ? '$value%' : formatRupiah(value)} • Auto saat belanja memenuhi syarat'
+                        : 'Kode: $code • ${type == 'persen' ? '$value%' : formatRupiah(value)} • Min: ${formatRupiah(minBelanja)}',
                     style: TextStyle(
                         fontSize: 11,
                         color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
@@ -557,6 +616,32 @@ class _PromoScreenState extends ConsumerState<PromoScreen> {
             Icon(Icons.add_circle_outline, size: 20,
                 color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _modeChip(String label, String value, String current, VoidCallback onSelect, bool isDark) {
+    final active = current == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onSelect,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? NusaConfig.activePrimary : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: active ? Colors.white : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ),
+          ),
         ),
       ),
     );
@@ -637,14 +722,31 @@ class _PromoTile extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 4),
-                // ── Discount label ──
-                Text(_discountLabel(promo),
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: active && !expired
-                            ? NusaConfig.accentGreen
-                            : NusaConfig.activePrimary)),
+                // ── Discount label + mode badge ──
+                Row(children: [
+                  Flexible(
+                    child: Text(_discountLabel(promo),
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: active && !expired
+                                ? NusaConfig.accentGreen
+                                : NusaConfig.activePrimary)),
+                  ),
+                  SizedBox(width: 8),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(_modeLabel(promo),
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: NusaConfig.activePrimary)),
+                  ),
+                ]),
                 SizedBox(height: 3),
                 // ── Info row ──
                 Text(
@@ -761,6 +863,9 @@ class _ActionChip extends StatelessWidget {
 
 String _discountLabel(Promo p) =>
     p.type == 'persen' ? 'Diskon ${p.value}%' : 'Potongan ${formatRupiah(p.value)}';
+
+String _modeLabel(Promo p) =>
+    p.mode == 'otomatis' ? '⚡ Otomatis' : p.mode == 'kode' ? '🔑 Kode' : '🛒 Pilih di Kasir';
 
 String _fmtDate(DateTime? d) =>
     d == null ? '-' : '${d.day}/${d.month}/${d.year}';

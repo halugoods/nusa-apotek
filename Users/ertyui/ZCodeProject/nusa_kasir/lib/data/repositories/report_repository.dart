@@ -10,11 +10,18 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? employeeId,
   }) async {
     final q = db.select(db.transactions)
       ..where((t) => t.status.equals('Normal'));
     if (branchId != null) {
       q.where((t) => t.branchId.equals(branchId));
+    }
+    if (employeeId != null) {
+      // Cashier scoping: own sales + shared online orders (employeeId null).
+      q.where((t) =>
+          t.employeeId.equals(employeeId) |
+          t.employeeId.isNull());
     }
     if (from != null || to != null) {
       q.where((t) {
@@ -42,12 +49,16 @@ class ReportRepository {
 
   /// Returns summary stats for a period.
   /// Keys: omzet (int), count (int), avg (int), items (List<Transaction>).
+  /// When [employeeId] is set, only transactions attributed to that employee
+  /// (plus shared online orders with null employeeId) are counted.
   Future<Map<String, dynamic>> summary({
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? employeeId,
   }) async {
-    final list = await getTransactions(from: from, to: to, branchId: branchId);
+    final list = await getTransactions(
+        from: from, to: to, branchId: branchId, employeeId: employeeId);
     final omzet = list.fold(0, (int sum, t) => sum + t.total);
     final count = list.length;
     final avg = count == 0 ? 0 : (omzet / count).round();

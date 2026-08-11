@@ -13,6 +13,7 @@ class Products extends Table {
   TextColumn get category => text().withDefault(const Constant('Lainnya'))();
   IntColumn get buyPrice => integer().withDefault(const Constant(0))();
   IntColumn get sellPrice => integer()();
+  IntColumn get discountPercent => integer().withDefault(const Constant(0))();
   IntColumn get stock => integer().withDefault(const Constant(0))();
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   TextColumn get imagePath => text().nullable()();
@@ -45,6 +46,10 @@ class Transactions extends Table {
   IntColumn get cashReturn => integer().nullable()();
   TextColumn get cashierName => text().nullable()();
   IntColumn get branchId => integer().nullable()();
+  // Sales attribution — which employee/cashier shift owns this transaction.
+  // null employeeId = online order (shared across all cashiers).
+  IntColumn get employeeId => integer().nullable()();
+  IntColumn get sessionId => integer().nullable()();
   TextColumn get status => text().withDefault(const Constant('Normal'))();
   TextColumn get voidReason => text().nullable()();
   DateTimeColumn get voidedAt => dateTime().nullable()();
@@ -52,6 +57,16 @@ class Transactions extends Table {
   TextColumn get orderType => text().nullable()();
   IntColumn get tableId => integer().nullable()();
   TextColumn get notes => text().nullable()();
+}
+/// Role permissions — per-role menu access, stored in SQLite so role
+/// permissions ride along with the cloud DB backup/restore (phone ↔ tablet).
+class Roles extends Table {
+  TextColumn get name => text()();
+  TextColumn get color => text().nullable()();
+  TextColumn get accessJson => text().withDefault(const Constant('[]'))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  @override
+  Set<Column> get primaryKey => {name};
 }
 class Customers extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -75,6 +90,8 @@ class Promos extends Table {
   IntColumn get maxUses => integer().nullable()();
   IntColumn get usedCount => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Aktif'))();
+  // 'otomatis' (auto-apply saat cart penuhi syarat) | 'kode' (hanya via kode) | 'bebas' (bisa dipilih di kasir)
+  TextColumn get mode => text().withDefault(const Constant('otomatis'))();
 }
 class Employees extends Table {
   IntColumn get id => integer().autoIncrement()();

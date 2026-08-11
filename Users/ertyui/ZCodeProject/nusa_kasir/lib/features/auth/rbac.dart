@@ -1,19 +1,13 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-
-/// Dynamic per-role access map. Loaded from RoleRepository on startup
-/// and refreshed whenever Owner modifies roles via Employees screen.
-/// Falls back to NusaConfig.roleAccess when empty.
-Map<String, List<String>> _dynamicAccess = {};
-
-/// Replace the dynamic access map (called from providers/startup after loading).
-void setDynamicRoleAccess(Map<String, List<String>> access) {
-  _dynamicAccess = Map.from(access);
-}
+import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/data/repositories/role_repository.dart';
 
 /// Check if user has basic access to a screen.
-/// Checks dynamic (Owner-configured) access first, then falls back to hardcoded defaults.
-bool hasAccess(String role, String screen) {
-  final dyn = _dynamicAccess[role];
+/// Checks the reactive [roleAccessProvider] map (loaded from the SQLite Roles
+/// table) first, then falls back to hardcoded defaults.
+bool hasAccess(WidgetRef ref, String role, String screen) {
+  final dyn = ref.read(roleAccessProvider)[role];
   if (dyn != null) return dyn.contains(screen);
   // Fallback to hardcoded defaults
   final access = NusaConfig.roleAccess[role];
@@ -30,11 +24,13 @@ bool isOwnerOnly(String screen) {
   return NusaConfig.ownerOnlyScreens.contains(screen);
 }
 
-/// Legacy pin-to-role map (deprecated — now queries DB).
-const Map<String, String> pinToRole = {
-  '1234': 'Owner',
-  '5678': 'Manager',
-  '9012': 'Kasir',
-  '1111': 'Gudang',
-  '2222': 'Finance',
-};
+/// Load roles from the SQLite Roles table into the reactive provider.
+/// Called at startup and after every role save so the dashboard rebuilds.
+Future<void> loadRoleAccess(WidgetRef ref) async {
+  final roles = await RoleRepository(ref.read(databaseProvider)).getRoles();
+  final map = <String, List<String>>{};
+  for (final r in roles) {
+    map[r['name'] as String] = (r['access'] as List).cast<String>();
+  }
+  ref.read(roleAccessProvider.notifier).state = map;
+}

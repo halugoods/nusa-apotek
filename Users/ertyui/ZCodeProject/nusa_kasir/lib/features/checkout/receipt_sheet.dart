@@ -458,6 +458,7 @@ class ReceiptSheet extends ConsumerWidget {
               File(s.logoPath!),
               height: 48,
               fit: BoxFit.contain,
+              cacheWidth: 200,
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
           ),
@@ -691,30 +692,55 @@ class ReceiptSheet extends ConsumerWidget {
     if (storeName.isEmpty) return;
 
     // Pre-flight: check Bluetooth permissions & state
-    if (!await ReceiptPrinter.ensureBluetoothReady()) return;
+    if (!await ReceiptPrinter.ensureBluetoothReady()) {
+      debugPrint('[ReceiptSheet] auto-print: Bluetooth not ready');
+      return;
+    }
 
     final printer = ReceiptPrinter();
     try {
-      final devices = await printer.discover(timeout: const Duration(seconds: 4));
-      if (devices.isEmpty) return;
+      final savedAddr = await SecureStore.getPrinterAddress();
 
-      final saved = await SettingsRepository(ref.read(databaseProvider))
-          .getPrinterAddress();
-      PrinterDevice target = devices.first;
-      if (saved != null && saved.contains('|')) {
-        final savedAddr = saved.split('|').last;
-        final found = devices.where((d) => d.address == savedAddr);
+      final devices = await printer.discover(timeout: const Duration(seconds: 4));
+      PrinterDevice? target;
+      if (savedAddr != null && savedAddr.contains('|')) {
+        final addr = savedAddr.split('|').last;
+        final found = devices.where((d) => d.address == addr);
         if (found.isNotEmpty) target = found.first;
       }
+      target ??= devices.isNotEmpty ? devices.first : null;
+
+      // If discovery came back empty but a printer address was previously
+      // saved, try connecting straight to that address — some Android
+      // builds hide bonded devices until an explicit connect is attempted.
+      if (target == null && savedAddr != null && savedAddr.contains('|')) {
+        final addr = savedAddr.split('|').last;
+        debugPrint('[ReceiptSheet] auto-print: bonded list empty — direct connect $addr');
+        target = PrinterDevice(name: savedAddr.split('|').first, address: addr);
+      }
+      if (target == null) {
+        debugPrint('[ReceiptSheet] auto-print: no printer available');
+        return;
+      }
+      debugPrint('[ReceiptSheet] auto-print: target ${target.name} (${target.address})');
 
       final paperSize = await SecureStore.getPaperSize();
-      await printer.connect(target);
+      final connected = await printer.connect(target);
+      if (!connected) {
+        debugPrint('[ReceiptSheet] auto-print: connect FAILED');
+        return;
+      }
 
-      // Ensure logo is loaded for print
+      // Ensure logo + footer are loaded for print
       final logoPath = await SecureStore.getPrinterLogoPath();
       if (logoPath != null) await ReceiptPrinter.loadLogo(logoPath);
+      ReceiptPrinter.setFooter(await SecureStore.getPrinterFooter());
 
-      await printer.printReceipt(
+      // Respect the "show logo on receipt" toggle from Pengaturan Struk
+      final toggles = await SettingsRepository(db).getReceiptToggles();
+      final showLogo = toggles['showLogo'] ?? true;
+
+      final ok = await printer.printReceipt(
         storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
         lines: items
             .map((i) => ReceiptLine(name: i.name, qty: i.qty, price: i.price))
@@ -729,12 +755,14 @@ class ReceiptSheet extends ConsumerWidget {
         cashReturn: cashReturn,
         customerName: customerName,
         paperWidth: paperSize,
+        showLogo: showLogo,
         orderType: orderType,
         tableName: tableName,
         itemNotes: items.map((i) => i.note).toList(),
       );
-    } catch (_) {
-      // Silent fail on auto-print — user can still manually print
+      if (!ok) debugPrint('[ReceiptSheet] auto-print: sendBytes FAILED');
+    } catch (e) {
+      debugPrint('[ReceiptSheet] auto-print error: $e');
     } finally {
       printer.dispose();
     }
@@ -761,13 +789,13 @@ class ReceiptSheet extends ConsumerWidget {
         return;
       }
 
-      // Step 3: Pick target
-      final saved = await SettingsRepository(ref.read(databaseProvider))
-          .getPrinterAddress();
+      // Step 3: Pick target — prefer the SAVED printer (single source of
+      // truth, kept in sync by printer settings sheet + auto-print).
+      final savedAddr = await SecureStore.getPrinterAddress();
       PrinterDevice target = devices.first;
-      if (saved != null && saved.contains('|')) {
-        final savedAddr = saved.split('|').last;
-        final found = devices.where((d) => d.address == savedAddr);
+      if (savedAddr != null && savedAddr.contains('|')) {
+        final addr = savedAddr.split('|').last;
+        final found = devices.where((d) => d.address == addr);
         if (found.isNotEmpty) target = found.first;
       }
 
@@ -780,10 +808,13 @@ class ReceiptSheet extends ConsumerWidget {
         return;
       }
 
-      // Step 5: Load logo
+      // Step 5: Load logo + footer, honor show-logo toggle
       final paperSize = await SecureStore.getPaperSize();
       final logoPath2 = await SecureStore.getPrinterLogoPath();
       if (logoPath2 != null) await ReceiptPrinter.loadLogo(logoPath2);
+      ReceiptPrinter.setFooter(await SecureStore.getPrinterFooter());
+      final toggles2 = await SettingsRepository(ref.read(databaseProvider)).getReceiptToggles();
+      final showLogo2 = toggles2['showLogo'] ?? true;
 
       // Step 6: Print
       final ok = await printer.printReceipt(
@@ -801,6 +832,7 @@ class ReceiptSheet extends ConsumerWidget {
         cashReturn: cashReturn,
         customerName: customerName,
         paperWidth: paperSize,
+        showLogo: showLogo2,
         orderType: orderType,
         tableName: tableName,
         itemNotes: items.map((i) => i.note).toList(),

@@ -27,6 +27,7 @@ import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
@@ -300,7 +301,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<bool> _authFingerprint() async {
     return BiometricService.authenticate(
-      reason: 'Verifikasi sidik jari untuk melanjutkan',
+      reason: 'Verifikasi biometrik untuk melanjutkan',
     );
   }
 
@@ -312,12 +313,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// Toggle fingerprint login for Owner — direct, no PIN gate.
+  /// Toggle biometric login for Owner — direct, no PIN gate.
   /// ON → langsung muncul dialog biometric OS, sukses = enable, gagal = balik OFF.
   /// OFF → langsung disable.
   Future<void> _toggleFingerprint(EmployeeSession session) async {
     if (session.role != 'Owner') {
-      TopToast.info(context, 'Hanya Owner yang bisa mengatur fingerprint');
+      TopToast.info(context, 'Hanya Owner yang bisa mengatur biometrik');
       return;
     }
 
@@ -334,13 +335,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Validate via system biometric dialog directly
       final scanned = await BiometricService.authenticate(
-        reason: 'Pindai sidik jari untuk mengaktifkan Login Fingerprint',
+        reason: 'Pindai biometrik untuk mengaktifkan Login Biometrik',
       );
       if (!scanned) {
         if (mounted) {
           final msg =
               BiometricService.lastResult.message ??
-              'Pemindaian sidik jari gagal atau dibatalkan';
+              'Pemindaian biometrik gagal atau dibatalkan';
           TopToast.error(context, msg);
         }
         return;
@@ -355,7 +356,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() => _fingerprintEnabled = enable);
       TopToast.success(
         context,
-        enable ? 'Fingerprint diaktifkan' : 'Fingerprint dinonaktifkan',
+        enable ? 'Biometrik diaktifkan' : 'Biometrik dinonaktifkan',
       );
     }
   }
@@ -1537,6 +1538,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final currentLogo = await repo.getStoreLogoPath()
         ?? await SecureStore.getPrinterLogoPath();
     String paperSize = await repo.getReceiptPaperSize();
+    // Normalize '58'/'80' (SecureStore) → '58mm'/'80mm' (DB) so the sheet
+    // always opens showing the value that printing actually uses.
+    if (paperSize == '58' || paperSize == '80') paperSize = '${paperSize}mm';
     final toggles = await repo.getReceiptToggles();
     final storeName = await repo.getStoreName();
     if (!mounted) return;
@@ -1846,6 +1850,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 File(logoPath!),
                                 height: 44,
                                 fit: BoxFit.contain,
+                                cacheWidth: 200,
                               ),
                             ),
 
@@ -2106,6 +2111,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         await repo.setReceiptFooter(footerCtrl.text.trim());
                         await repo.setReceiptPaperSize(paper);
                         await repo.setReceiptToggles(togs);
+                        // ── Sync to SecureStore (single source for printing) ──
+                        // DB stores '58mm'/'80mm'; SecureStore stores '58'/'80'.
+                        // Printing reads SecureStore, so mirror both ways to keep
+                        // "Pengaturan Struk" and the receipt printer in sync.
+                        final norm = paper.replaceAll('mm', '');
+                        await SecureStore.setPaperSize(norm);
+                        await SecureStore.setPrinterFooter(footerCtrl.text.trim());
+                        if (logoPath != null && logoPath!.isNotEmpty) {
+                          await SecureStore.setPrinterLogoPath(logoPath);
+                        }
                         if (mounted) Navigator.pop(ctx);
                       },
                     ),
@@ -2261,7 +2276,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ── Role Management ───────────────────────────────────────
 
   Future<void> _showManageRoles() async {
-    final roleRepo = RoleRepository();
+    final roleRepo = RoleRepository(ref.read(databaseProvider));
     final roles = await roleRepo.getRoles();
     if (!mounted) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2433,6 +2448,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (existing != null)
       accessList.addAll((existing['access'] as List).cast<String>());
 
+    // Only show menus relevant to this variant — same list as Karyawan screen
+    final hidden = NusaConfig.hiddenMenus;
     const allScreens = [
       'home',
       'kasir',
@@ -2450,7 +2467,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'spreadsheet',
       'pesanan_online',
       'ai_chat',
+      'piutang',
+      'cabang',
+      'meja',
+      'laundry_status',
+      'servis',
+      'booking',
+      'resep',
+      'print_order',
     ];
+    final visibleScreens =
+        allScreens.where((s) => !hidden.contains(s)).toList();
 
     if (!mounted) return;
 
@@ -2517,7 +2544,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
-                ...allScreens.map(
+                ...visibleScreens.map(
                   (s) => CheckboxListTile(
                     title: Text(s, style: const TextStyle(fontSize: 13)),
                     value: accessList.contains(s),
@@ -2551,6 +2578,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 } else {
                   await roleRepo.addRole(name, selectedColor, accessList);
                 }
+                // Refresh RBAC provider so access changes apply immediately
+                await loadRoleAccess(ref);
                 if (mounted) Navigator.of(ctx).pop();
               },
               style: ElevatedButton.styleFrom(
@@ -2737,15 +2766,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: _showReceiptSettings,
             ),
 
-            // Fingerprint — Owner only, no PIN gate, direct toggle
+            // Biometrik (fingerprint / Face ID) — Owner only, direct toggle
             if (session?.role == 'Owner') ...[
               const SizedBox(height: 12),
               _menuRow(
                 icon: Icons.fingerprint,
                 iconColor: NusaConfig.accentPurple,
-                title: 'Login Fingerprint',
+                title: 'Login Biometrik',
                 subtitle: _fingerprintEnabled
-                    ? 'Aktif — akses cepat pakai sidik jari'
+                    ? 'Aktif — akses cepat pakai sidik jari / Face ID'
                     : 'Aktifkan akses cepat Owner',
                 isDark: isDark,
                 onTap: () => _toggleFingerprint(session!),
@@ -2932,6 +2961,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   await ref
                       .read(settingsRepoProvider)
                       .setPrinterAddress('${d.name}|${d.address}');
+                  // Mirror into SecureStore — single source of truth for
+                  // receipt-sheet auto-print (printer_settings_sheet already
+                  // writes it too; this covers older flows).
+                  await SecureStore.setPrinterAddress('${d.name}|${d.address}');
                   setState(() => _printerName = '${d.name}|${d.address}');
                 },
               ),

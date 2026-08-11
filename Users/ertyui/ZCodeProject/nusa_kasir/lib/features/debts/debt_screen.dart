@@ -203,7 +203,8 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
                     GestureDetector(
                       onTap: () async {
                         final picked = await showDatePicker(
-                          context: ctx,
+                          context: context,
+                          useRootNavigator: true,
                           initialDate: DateTime.now().add(Duration(days: 7)),
                           firstDate: DateTime.now(),
                           lastDate: DateTime.now().add(Duration(days: 365 * 2)),

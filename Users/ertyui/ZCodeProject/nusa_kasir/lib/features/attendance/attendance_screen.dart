@@ -238,8 +238,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                     color: _avatarCol(e.name).withValues(alpha: 0.15),
                     image: e.photoPath != null && e.photoPath!.isNotEmpty
                         ? DecorationImage(
-                            image: FileImage(File(e.photoPath!)),
+                            image: FileImage(File(e.photoPath!), scale: 1.0),
                             fit: BoxFit.cover,
+                            filterQuality: FilterQuality.low,
                           )
                         : null,
                   ),
@@ -370,7 +371,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
 
   Future<bool> _authFingerprint() async {
     return BiometricService.authenticate(
-      reason: 'Verifikasi sidik jari untuk melanjutkan',
+      reason: 'Verifikasi biometrik untuk melanjutkan',
     );
   }
 
@@ -931,8 +932,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                 color: _avatarCol(e.name).withValues(alpha: 0.15),
                 image: e.photoPath != null && e.photoPath!.isNotEmpty
                     ? DecorationImage(
-                        image: FileImage(File(e.photoPath!)),
+                        image: FileImage(File(e.photoPath!), scale: 1.0),
                         fit: BoxFit.cover,
+                        filterQuality: FilterQuality.low,
                       )
                     : null,
               ),
@@ -1308,8 +1310,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                         color: _avatarCol(empName).withValues(alpha: 0.15),
                         image: emp?.photoPath != null && emp!.photoPath!.isNotEmpty
                             ? DecorationImage(
-                                image: FileImage(File(emp.photoPath!)),
+                                image: FileImage(File(emp.photoPath!), scale: 1.0),
                                 fit: BoxFit.cover,
+                                filterQuality: FilterQuality.low,
                               )
                             : null,
                       ),

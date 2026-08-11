@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -24,7 +25,10 @@ class BiometricService {
   const BiometricService._();
 
   static final _auth = LocalAuthentication();
-  static const _keyEnabled = 'nusa_fingerprint_enabled';
+
+  // New canonical key; legacy `nusa_fingerprint_enabled` read for migration.
+  static const _keyEnabled = 'nusa_biometric_enabled';
+  static const _legacyKeyEnabled = 'nusa_fingerprint_enabled';
 
   // ── Settings ────────────────────────────────────────────────────
 
@@ -32,7 +36,11 @@ class BiometricService {
   static Future<bool> isEnabled() async {
     try {
       final v = await SecureStore.read(key: _keyEnabled);
-      return v == 'true';
+      if (v != null) return v == 'true';
+      // Migration: read the legacy fingerprint flag so enabling Face ID
+      // on an upgraded install doesn't silently turn the toggle off.
+      final legacy = await SecureStore.read(key: _legacyKeyEnabled);
+      return legacy == 'true';
     } catch (_) {
       return false;
     }
@@ -41,11 +49,26 @@ class BiometricService {
   /// Enable biometric login for Owner.
   static Future<void> enable() async {
     await SecureStore.write(key: _keyEnabled, value: 'true');
+    // Clear legacy key so the new key becomes authoritative
+    await SecureStore.delete(key: _legacyKeyEnabled);
   }
 
   /// Disable biometric login for Owner.
   static Future<void> disable() async {
     await SecureStore.write(key: _keyEnabled, value: 'false');
+  }
+
+  /// Pick the unlock icon that matches what the device actually has:
+  /// face → face icon, otherwise the generic fingerprint symbol.
+  static Future<IconData> getUnlockIcon() async {
+    try {
+      final types = await _auth.getAvailableBiometrics();
+      if (types.contains(BiometricType.face) ||
+          types.contains(BiometricType.iris)) {
+        return Icons.face_retouching_natural;
+      }
+    } catch (_) {}
+    return Icons.fingerprint;
   }
 
   // ── Authentication ──────────────────────────────────────────────
@@ -116,7 +139,7 @@ class BiometricService {
 
   /// After calling this, read [lastResult] for a user-facing error message.
   static Future<bool> authenticate({
-    String reason = 'Gunakan sidik jari untuk masuk',
+    String reason = 'Verifikasi biometrik untuk melanjutkan',
   }) async {
     try {
       // Diagnostic: log device capabilities (does NOT block auth)

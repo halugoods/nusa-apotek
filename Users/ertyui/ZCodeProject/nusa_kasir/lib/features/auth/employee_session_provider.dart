@@ -17,7 +17,7 @@ class EmployeeSessionNotifier extends StateNotifier<EmployeeSession?> {
     }
   }
 
-  void login(EmployeeSession session, {bool remember = false}) {
+  Future<void> login(EmployeeSession session, {bool remember = false}) async {
     final s = EmployeeSession(
       employeeId: session.employeeId,
       name: session.name,
@@ -28,7 +28,9 @@ class EmployeeSessionNotifier extends StateNotifier<EmployeeSession?> {
     );
     state = s;
     if (remember) {
-      EmployeeSession.save(s);
+      // Await the write so a slow secure-storage flush can't race an app
+      // restart — otherwise "Ingat PIN 8 jam" may never get persisted.
+      await EmployeeSession.save(s);
     }
   }
 

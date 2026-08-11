@@ -16,6 +16,18 @@ class AttendanceRepository {
     db.employees,
   )..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  /// Find an active Owner/Manager whose PIN can be used as a secure override
+  /// when a cashier's PIN is blocked/unavailable. This grants access to the
+  /// PIN-gated action WITHOUT switching the current session.
+  Future<Employee?> findOverrideEmployee() async {
+    final emps = await getEmployees();
+    for (final e in emps) {
+      if (e.status == 'Nonaktif') continue;
+      if (e.role == 'Owner' || e.role == 'Manager') return e;
+    }
+    return null;
+  }
+
   Future<int> addEmployee({
     required String name,
     required String pin,

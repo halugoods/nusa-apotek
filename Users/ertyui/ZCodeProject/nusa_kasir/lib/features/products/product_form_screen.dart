@@ -2,15 +2,15 @@
 import 'dart:io';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:drift/drift.dart' hide Column;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/utils/image_utils.dart';
+import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
@@ -58,6 +58,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   final _sku = TextEditingController();
   final _buy = TextEditingController();
   final _sell = TextEditingController();
+  final _discount = TextEditingController();
   final _stock = TextEditingController();
   final _min = TextEditingController();
   String _category = '';
@@ -120,6 +121,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       _sku.text = p.sku ?? '';
       _buy.text = p.buyPrice > 0 ? p.buyPrice.toString() : '';
       _sell.text = p.sellPrice.toString();
+      _discount.text = p.discountPercent > 0 ? p.discountPercent.toString() : '';
       _stock.text = p.stock.toString();
       _min.text = p.minStock > 0 ? p.minStock.toString() : '';
       _category = _availableCategories.contains(p.category) ? p.category : (_availableCategories.isNotEmpty ? _availableCategories.first : '');
@@ -169,76 +171,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _pickImage() async {
-    // Use withData:true so we get raw bytes — works on ALL devices
-    // regardless of content:// vs file:// URI schemes from the system picker.
-    final result = await FilePicker.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) return;
-
-    final bytes = result.files.single.bytes;
-    if (bytes == null) return;
-
-    final ext = p.extension(result.files.single.name);
-    final tmpDir = await getTemporaryDirectory();
-    final tmpPath = p.join(tmpDir.path, '_upload_${DateTime.now().millisecondsSinceEpoch}$ext');
-    final tmpSrc = File(tmpPath);
-    String? tmpForCleanup = tmpPath;
-
-    try {
-      // Write bytes to temp file — always a real file:// path, no content URI
-      await tmpSrc.writeAsBytes(bytes);
-
-      // Try ImageCropper with the temp file
-      CroppedFile? cropped;
-      try {
-        cropped = await ImageCropper().cropImage(
-          sourcePath: tmpPath,
-          aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Sesuaikan Foto',
-              toolbarColor: Color(0xFF2563EB),
-              toolbarWidgetColor: Colors.white,
-              initAspectRatio: CropAspectRatioPreset.square,
-              lockAspectRatio: true,
-              hideBottomControls: false,
-              statusBarColor: Color(0xFF1D4ED8),
-            ),
-            IOSUiSettings(
-              title: 'Sesuaikan Foto',
-              aspectRatioLockEnabled: true,
-              resetAspectRatioEnabled: false,
-            ),
-          ],
-        );
-      } catch (_) {
-        // Crop failed — proceed with original image uncropped
-      }
-
-      // Copy final image (cropped or original) to permanent storage
-      final srcPath = cropped?.path ?? tmpPath;
-      final src = File(srcPath);
-      final appDir = await getApplicationDocumentsDirectory();
-      final destName = 'product_${DateTime.now().millisecondsSinceEpoch}$ext';
-      final dest = File(p.join(appDir.path, destName));
-      await src.copy(dest.path);
-
-      // If cropped file is different from our temp, clean it up too
-      if (cropped != null && cropped.path != tmpPath) {
-        try { await File(cropped.path).delete(); } catch (_) {}
-      }
-
-      setState(() => _imagePath = dest.path);
-      TopToast.success(context, 'Gambar ditambahkan');
-    } catch (_) {
-      TopToast.error(context, 'Gagal menyimpan gambar');
-    } finally {
-      // Always clean up our temp file
-      try { await File(tmpForCleanup).delete(); } catch (_) {}
-    }
+    // Downscale via ImagePicker (maxWidth) instead of file_picker withData:
+    // avoids OOM on low-RAM devices (Samsung A14 50MP photos crash the app).
+    final path = await pickAndSaveImage(maxSize: 1024, prefix: 'product_');
+    if (path == null) return;
+    setState(() => _imagePath = path);
+    TopToast.success(context, 'Gambar ditambahkan');
   }
 
   void _uploadToCloud(String localPath) {
@@ -268,6 +206,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     final buy = _toInt(_buy.text) ?? 0;
     final stock = _toInt(_stock.text) ?? 0;
     final min = _toInt(_min.text) ?? 0;
+    final discount = (_toInt(_discount.text) ?? 0).clamp(0, 100);
     final sku = _sku.text.trim().isEmpty ? null : _sku.text.trim();
     final variants = _serializeVariants();
     final wholesale = _serializeWholesale();
@@ -283,6 +222,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             expiryDate: Value(_expiryDate),
             productType: Value(pType == 'Regular' ? null : pType),
             variantsJson: Value(variants), wholesaleJson: Value(wholesale),
+            discountPercent: Value(discount),
           ));
     } else {
       await db.into(db.products).insert(ProductsCompanion.insert(
@@ -293,6 +233,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         isOnline: Value(_isOnline), expiryDate: Value(_expiryDate),
         productType: Value(pType == 'Regular' ? null : pType),
         variantsJson: Value(variants), wholesaleJson: Value(wholesale),
+        discountPercent: Value(discount),
       ));
     }
     // Upload image to cloud in background
@@ -368,6 +309,15 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
                 // ── 5. Harga Jual ──
                 NusaFormField(label: 'Harga Jual', controller: _sell, keyboardType: TextInputType.number),
+                SizedBox(height: NusaConfig.spaceSM),
+
+                // ── 5b. Diskon Standalone (opsional) ──
+                NusaFormField(
+                  label: 'Diskon % (opsional)',
+                  controller: _discount,
+                  keyboardType: TextInputType.number,
+                  hintText: 'Cth: 10 → harga otomatis jadi ${_sell.text.trim().isNotEmpty && _toInt(_sell.text) != null ? formatRupiah((_toInt(_sell.text)! * 9 / 10).round()) : '…'}',
+                ),
                 SizedBox(height: NusaConfig.spaceSM),
 
                 // ── 6. Stok ──
@@ -496,7 +446,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             ? Stack(fit: StackFit.expand, children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: Image.file(File(_imagePath!), fit: BoxFit.cover),
+                  child: Image.file(File(_imagePath!), fit: BoxFit.cover, cacheWidth: 600),
                 ),
                 Positioned(bottom: 12, left: 0, right: 0,
                   child: Center(

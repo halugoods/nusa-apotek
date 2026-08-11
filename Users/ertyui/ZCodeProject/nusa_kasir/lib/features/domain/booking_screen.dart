@@ -698,7 +698,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: InkWell(
-                onTap: () async { final d = await showDatePicker(context: ctx, initialDate: date, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) { setModalState(() => date = d); } },
+                onTap: () async { final d = await showDatePicker(context: context, useRootNavigator: true, initialDate: date, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) { setModalState(() => date = d); } },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),

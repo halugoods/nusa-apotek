@@ -505,7 +505,8 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
               child: InkWell(
                 onTap: () async {
                   final picked = await showDatePicker(
-                    context: ctx,
+                    context: context,
+                    useRootNavigator: true,
                     initialDate: estReady ?? DateTime.now().add(const Duration(days: 3)),
                     firstDate: DateTime.now(),
                     lastDate: DateTime.now().add(const Duration(days: 30)),

@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
@@ -175,42 +176,136 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   Future<void> _scanBarcode(BuildContext context) async {
     String? scannedCode;
-    final controller = MobileScannerController();
+    // Include the full common barcode family + QR. Restricting formats avoids
+    // the "no codes found" timeout some cheap scanners hit with the default
+    // all-format detector.
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    final manualCtrl = TextEditingController();
+    String? errorMsg;
     if (!mounted) return;
 
-    // Modal popup — consistent UI with products_screen barcode scanner
+    // Modal popup — consistent UI with products_screen barcode scanner.
+    // Includes a manual barcode input so a broken camera or unreadable label
+    // never blocks checkout: type the code and tap "Gunakan".
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
-          SizedBox(width: 8),
-          Text('Pindai Barcode'),
-        ]),
-        content: AnimatedScannerOverlay(
-          size: 280,
-          child: MobileScanner(
-            controller: controller,
-            onDetect: (capture) {
-              if (scannedCode != null) return;
-              final barcode = capture.barcodes.firstOrNull;
-              final raw = barcode?.rawValue;
-              if (raw == null || raw.isEmpty) return;
-              scannedCode = raw;
-              Navigator.pop(ctx);
-            },
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(children: [
+            Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+            SizedBox(width: 8),
+            Text('Pindai Barcode'),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(ctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    // Camera permission denied / no camera: show guidance +
+                    // manual input instead of a dead black box.
+                    debugPrint('[POS] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg = 'Kamera tidak tersedia atau izin kamera ditolak. '
+                          'Masukkan kode barcode manual di bawah.';
+                      setSt(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.no_photography_outlined,
+                                size: 36, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 12),
+              TextField(
+                controller: manualCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Masukkan kode barcode manual',
+                  hintText: 'contoh: 8991002101234',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+                onSubmitted: (v) {
+                  final t = v.trim();
+                  if (t.isNotEmpty) {
+                    scannedCode = t;
+                    Navigator.pop(ctx);
+                  }
+                },
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(errorMsg!, style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+              ],
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final t = manualCtrl.text.trim();
+                if (t.isNotEmpty) {
+                  scannedCode = t;
+                  Navigator.pop(ctx);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Gunakan'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal'),
-          ),
-        ],
       ),
     );
     await controller.dispose();
+    manualCtrl.dispose();
     if (scannedCode == null || !context.mounted) return;
 
     final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(scannedCode!);
@@ -240,7 +335,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     if (product.priceType == 'kg') {
       _showWeightDialog(product);
     } else {
-      ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice);
+      ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.effectivePrice,
+          originalPrice: product.hasDiscount ? product.sellPrice : null);
     }
   }
 
@@ -283,7 +379,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             onPressed: () {
               final w = double.tryParse(ctrl.text.trim());
               if (w == null || w <= 0) return;
-              ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.sellPrice, weightKg: w);
+              ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.effectivePrice,
+                  originalPrice: product.hasDiscount ? product.sellPrice : null,
+                  weightKg: w);
               Navigator.pop(ctx);
             },
             child: Text('Tambah ke Keranjang'),
@@ -1084,7 +1182,7 @@ class _ProductCard extends StatelessWidget {
                 aspectRatio: 1,
                 child: Stack(children: [
                   if (hasImage)
-                    Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity)
+                    Image.file(File(product.imagePath!), fit: BoxFit.cover, width: double.infinity, cacheWidth: 400)
                   else
                     Container(
                       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
@@ -1120,8 +1218,29 @@ class _ProductCard extends StatelessWidget {
             Text(product.category, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
             SizedBox(height: 6),
             // ── Price ──
-            Text(formatRupiah(product.sellPrice),
-              style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+            product.hasDiscount
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(formatRupiah(product.effectivePrice),
+                        style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+                      SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 1),
+                        child: Text(formatRupiah(product.sellPrice),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                          )),
+                      ),
+                    ],
+                  )
+                : Text(formatRupiah(product.sellPrice),
+                    style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
             SizedBox(height: 8),
             // ── Action ──
             outOfStock
@@ -1168,10 +1287,34 @@ class _CartItemTile extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(item.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
                 SizedBox(height: 2),
-                Text(
-                  item.isPerKg ? '${formatRupiah(item.price)}/kg' : formatRupiah(item.price),
-                  style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                ),
+                item.hasDiscount
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            item.isPerKg ? '${formatRupiah(item.price)}/kg' : formatRupiah(item.price),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                          ),
+                          SizedBox(width: 4),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 1),
+                            child: Text(
+                              item.isPerKg ? '${formatRupiah(item.originalPrice!)}/kg' : formatRupiah(item.originalPrice!),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                                decoration: TextDecoration.lineThrough,
+                                decorationColor: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        item.isPerKg ? '${formatRupiah(item.price)}/kg' : formatRupiah(item.price),
+                        style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                      ),
               ]),
             ),
             Container(
@@ -1264,7 +1407,7 @@ class _ProductListCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 child: SizedBox(width: 56, height: 56,
                   child: hasImage
-                      ? Image.file(File(product.imagePath!), fit: BoxFit.cover)
+                      ? Image.file(File(product.imagePath!), fit: BoxFit.cover, cacheWidth: 200)
                       : Container(
                           decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
                           alignment: Alignment.center,

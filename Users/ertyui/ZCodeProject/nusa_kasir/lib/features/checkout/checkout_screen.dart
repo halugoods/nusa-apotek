@@ -12,6 +12,7 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
@@ -58,6 +59,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Customer? _selectedCustomer;
   Promo? _appliedPromo;
   int _pointsUsed = 0; // poin yang ditukar (1 poin = Rp 1)
+  bool _promoLoading = false; // untuk tombol pilih diskon
+  bool _hasBebasPromos = false; // ada promo mode 'bebas' yang bisa dipilih di kasir
 
   // Split bill
   bool _splitBill = false;
@@ -147,7 +150,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void initState() {
     super.initState();
     _loadPaymentSettings();
+    _checkBebasPromos();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeAutoApplyPromo();
       final extra = GoRouterState.of(context).uri.queryParameters;
       if (extra['orderType'] != null) {
         _orderType = extra['orderType'];
@@ -233,7 +238,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final repo = PromoRepository(ref.read(databaseProvider));
     final promos = await repo.getPromos();
     final match = promos.cast<Promo?>().firstWhere(
-          (p) => p!.code.toUpperCase() == code.toUpperCase() && p.status == 'Aktif',
+          (p) => p!.code.toUpperCase() == code.toUpperCase() &&
+              p.status == 'Aktif' &&
+              p.mode != 'otomatis', // otomatis tidak pakai kode
           orElse: () => null,
         );
     if (match == null) {
@@ -271,6 +278,149 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _appliedPromo = null;
       _promoCtrl.clear();
     });
+  }
+
+  /// Promo aktif & valid secara umum (status, tanggal, kuota).
+  bool _isPromoUsable(Promo p, {required bool checkMin}) {
+    if (p.status != 'Aktif') return false;
+    final now = DateTime.now();
+    if (p.startDate != null && p.startDate!.isAfter(now)) return false;
+    if (p.endDate != null && p.endDate!.isBefore(now)) return false;
+    if (p.maxUses != null && p.usedCount >= p.maxUses!) return false;
+    if (checkMin && _subtotal < p.minBelanja) return false;
+    return true;
+  }
+
+  /// Promo yang BISA dipilih manual di kasir (mode 'bebas').
+  Future<List<Promo>> _getSelectablePromos() async {
+    final repo = PromoRepository(ref.read(databaseProvider));
+    final promos = await repo.getPromos();
+    return promos.where((p) =>
+        p.mode == 'bebas' && _isPromoUsable(p, checkMin: true)).toList();
+  }
+
+  /// Refresh flag: apakah ada promo mode 'bebas' (tombol "Pilih diskon dari
+  /// daftar" disembunyikan kalau tidak ada — hindari tombol yang selalu kosong).
+  Future<void> _checkBebasPromos() async {
+    try {
+      final repo = PromoRepository(ref.read(databaseProvider));
+      final promos = await repo.getPromos();
+      final has = promos.any((p) =>
+          p.mode == 'bebas' && _isPromoUsable(p, checkMin: false));
+      if (mounted && has != _hasBebasPromos) {
+        setState(() => _hasBebasPromos = has);
+      }
+    } catch (_) {}
+  }
+
+  /// Auto-apply promo mode 'otomatis' (diskon terbesar yang memenuhi syarat).
+  /// Tidak menimpa promo yang sudah dipasang manual (kode/bebas).
+  Future<void> _maybeAutoApplyPromo() async {
+    if (_appliedPromo != null) return;
+    final repo = PromoRepository(ref.read(databaseProvider));
+    final promos = await repo.getPromos();
+    Promo? best;
+    int bestDisc = 0;
+    for (final p in promos) {
+      if (p.mode != 'otomatis') continue;
+      if (!_isPromoUsable(p, checkMin: true)) continue;
+      final d = p.type == 'persen'
+          ? (_subtotal * p.value / 100).round()
+          : p.value;
+      if (d > bestDisc) { best = p; bestDisc = d; }
+    }
+    if (best != null && bestDisc > 0 && mounted) {
+      setState(() => _appliedPromo = best);
+    }
+  }
+
+  /// Bottom sheet daftar diskon yang bisa dipilih (mode 'bebas').
+  Future<void> _showPickDiscountSheet() async {
+    if (_promoLoading) return;
+    setState(() => _promoLoading = true);
+    try {
+      final list = await _getSelectablePromos();
+      if (!mounted) return;
+      final selected = await showModalBottomSheet<Promo>(
+        context: context,
+        useRootNavigator: true,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (ctx) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: NusaConfig.dividerColor, borderRadius: BorderRadius.circular(2))),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                  child: Row(children: [
+                    Icon(Icons.local_offer_outlined, size: 20, color: NusaConfig.activePrimary),
+                    const SizedBox(width: 8),
+                    Text('Pilih Diskon', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
+                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                  ]),
+                ),
+                if (list.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text('Belum ada diskon yang bisa dipilih.\nBuat promo dengan mode "Pilih di Kasir".',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13,
+                            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: list.length,
+                      itemBuilder: (_, i) {
+                        final p = list[i];
+                        return ListTile(
+                          leading: Icon(Icons.discount_outlined, color: NusaConfig.activePrimary),
+                          title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(
+                            '${p.type == 'persen' ? '${p.value}%' : formatRupiah(p.value)}'
+                            '${p.minBelanja > 0 ? ' • Min. ${formatRupiah(p.minBelanja)}' : ''}',
+                            style: TextStyle(fontSize: 12,
+                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                          ),
+                          trailing: _appliedPromo?.id == p.id
+                              ? Icon(Icons.check_circle, color: NusaConfig.accentGreen)
+                              : Icon(Icons.chevron_right, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                          onTap: () => Navigator.of(ctx).pop(p),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+      if (selected != null && mounted) {
+        setState(() {
+          _appliedPromo = selected;
+          _promoCtrl.clear();
+        });
+        final d = selected.type == 'persen'
+            ? (_subtotal * selected.value / 100).round()
+            : selected.value;
+        TopToast.success(context, 'Diskon "${selected.name}" diterapkan! '
+            'Potongan ${formatRupiah(d.clamp(0, _subtotal))}');
+      }
+    } finally {
+      if (mounted) setState(() => _promoLoading = false);
+    }
   }
 
   Future<void> _pickCustomer() async {
@@ -354,6 +504,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         }
 
         // Save transaction
+        // employeeId = logged-in employee; sessionId = active cashier shift
+        // (so each cashier's dashboard shows only their own shift's sales).
+        final activeShift = await CashierSessionRepository(db).getActive();
         await transactionRepo.saveTransaction(
           items: cart,
           total: _total,
@@ -366,6 +519,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           branchId: ref.read(activeBranchProvider)?.id,
           orderType: _orderType,
           tableId: _tableId,
+          employeeId: session?.employeeId,
+          sessionId: activeShift?.id,
         );
 
         // Update customer loyalty
@@ -535,6 +690,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(cartProvider);
+    // Auto-apply promo otomatis saat keranjang berubah (tanpa timpa promo manual).
+    ref.listen(cartProvider, (_, __) => _maybeAutoApplyPromo());
     final subtotal = _subtotal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -916,6 +1073,33 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
         ]),
 
+        // ── Pilih Diskon (mode 'bebas') ──
+        // Sembunyikan tombol kalau tidak ada promo mode 'bebas' yang aktif —
+        // hindari tombol yang selalu muncul tapi daftarnya kosong.
+        if (_hasBebasPromos || _appliedPromo?.mode == 'bebas') ...[
+          SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _promoLoading ? null : _showPickDiscountSheet,
+                icon: _promoLoading
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.discount_outlined, size: 16),
+                label: Text(_appliedPromo != null
+                    ? 'Ganti diskon dari daftar'
+                    : 'Pilih diskon dari daftar'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.5)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ]),
+        ],
+
         // Diskon manual
         SizedBox(height: 10),
         Row(children: [
@@ -1165,6 +1349,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 width: 200,
                 height: 200,
                 fit: BoxFit.contain,
+                cacheWidth: 400,
               ),
             ),
           ),

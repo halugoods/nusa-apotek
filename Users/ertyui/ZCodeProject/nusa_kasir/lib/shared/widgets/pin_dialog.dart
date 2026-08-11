@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 
 /// Result of a PIN dialog authentication attempt.
@@ -26,6 +29,7 @@ class PinDialog extends StatelessWidget {
   final String? employeeRole;
   final String? correctPin;
   final Future<bool> Function(String pin)? onVerify;
+  final bool allowOverride;
   final bool showRemember;
   final int pinLength;
   final bool showFingerprint;
@@ -41,6 +45,7 @@ class PinDialog extends StatelessWidget {
     this.employeeRole,
     this.correctPin,
     this.onVerify,
+    this.allowOverride = true,
     this.showRemember = true,
     this.pinLength = 6,
     this.showFingerprint = false,
@@ -58,6 +63,7 @@ class PinDialog extends StatelessWidget {
     String? employeeRole,
     String? correctPin,
     Future<bool> Function(String pin)? onVerify,
+    bool allowOverride = true,
     bool showRemember = true,
     int pinLength = 6,
     bool showFingerprint = false,
@@ -184,6 +190,24 @@ class PinDialog extends StatelessWidget {
                         // Mode 2: verify callback
                         else if (onVerify != null) {
                           ok = await onVerify(pin);
+                        }
+
+                        // Owner/Manager override — accept an active Owner or
+                        // Manager PIN when the cashier's PIN is unavailable.
+                        // Grants the PIN-gated action WITHOUT switching session.
+                        if (!ok && allowOverride) {
+                          try {
+                            final container = ProviderScope.containerOf(ctx,
+                                listen: false);
+                            final db = container.read(databaseProvider);
+                            final overrideEmp = await AttendanceRepository(db)
+                                .findOverrideEmployee();
+                            if (overrideEmp != null && pin == overrideEmp.pin) {
+                              ok = true;
+                            }
+                          } catch (_) {
+                            // Override lookup failed — keep the result as-is.
+                          }
                         }
 
                         if (ok) {

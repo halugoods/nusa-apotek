@@ -63,6 +63,7 @@ class PinKeypadState extends State<PinKeypad>
   String _digits = '';
   bool _nfcScanning = false;
   bool _biometricAvailable = false;
+  IconData _biometricIcon = Icons.fingerprint;
 
   late final AnimationController _shakeCtrl;
   late final Animation<double> _shakeAnim;
@@ -71,6 +72,7 @@ class PinKeypadState extends State<PinKeypad>
   void initState() {
     super.initState();
     _checkBiometric();
+    _pickBiometricIcon();
     _shakeCtrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 400),
@@ -134,6 +136,13 @@ class PinKeypadState extends State<PinKeypad>
   Future<void> _checkBiometric() async {
     final enabled = await BiometricService.isEnabled();
     if (mounted) setState(() => _biometricAvailable = enabled);
+  }
+
+  /// Face-enabled devices show a face icon; everything else the
+  /// fingerprint symbol. Picked async so it matches the device HW.
+  Future<void> _pickBiometricIcon() async {
+    final icon = await BiometricService.getUnlockIcon();
+    if (mounted) setState(() => _biometricIcon = icon);
   }
 
   void _onDigit(String d) {
@@ -377,7 +386,7 @@ class PinKeypadState extends State<PinKeypad>
     // FP takes priority but only when biometric hardware+enabled confirms it
     if (widget.showFingerprint && _biometricAvailable) {
       return _keyButton(
-        child: Icon(Icons.fingerprint,
+        child: Icon(_biometricIcon,
             color: NusaConfig.activePrimary, size: 28),
         onTap: _onFingerprintTap,
       );

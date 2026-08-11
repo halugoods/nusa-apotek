@@ -1,12 +1,10 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -15,6 +13,7 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
+import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -284,24 +283,17 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
 
   Future<void> _pickLogo() async {
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image, withData: true);
-      if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.single.bytes;
-      if (bytes == null) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final ext = p.extension(result.files.single.name);
-      final destName = 'store_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
-      final destPath = p.join(dir.path, destName);
-      await File(destPath).writeAsBytes(bytes);
-      await ref.read(settingsRepoProvider).setStoreLogoPath(destPath);
-      setState(() => _logoPath = destPath);
+      final path = await pickAndSaveImage(maxSize: 1024, prefix: 'store_logo_');
+      if (path == null) return; // cancelled or failed
+      await ref.read(settingsRepoProvider).setStoreLogoPath(path);
+      setState(() => _logoPath = path);
 
       // Cloud upload
       try {
         final uid = Supabase.instance.client.auth.currentUser?.id;
         if (uid != null) {
           ImageStorageService(Supabase.instance.client, uid)
-              .uploadImage('settings', destPath);
+              .uploadImage('settings', path);
         }
       } catch (_) {}
     } catch (_) {
@@ -693,7 +685,7 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
                     padding: EdgeInsets.only(bottom: 12),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.file(File(_logoPath!), height: 56, fit: BoxFit.contain),
+                      child: Image.file(File(_logoPath!), height: 56, fit: BoxFit.contain, cacheWidth: 200),
                     ),
                   )
                 else
@@ -792,7 +784,7 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
               child: _logoPath != null && _logoPath!.isNotEmpty
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.file(File(_logoPath!), fit: BoxFit.cover),
+                      child: Image.file(File(_logoPath!), fit: BoxFit.cover, cacheWidth: 400),
                     )
                   : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(Icons.add_photo_alternate, size: 24, color: subColor),

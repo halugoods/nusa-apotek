@@ -180,8 +180,9 @@ class _EmployeeFlipCardState extends State<EmployeeFlipCard>
                 border: Border.all(color: roleColor.withValues(alpha: 0.3), width: 2),
                 image: hasPhoto
                     ? DecorationImage(
-                        image: FileImage(File(e.photoPath!)),
+                        image: FileImage(File(e.photoPath!), scale: 1.0),
                         fit: BoxFit.cover,
+                        filterQuality: FilterQuality.low,
                       )
                     : null,
               ),

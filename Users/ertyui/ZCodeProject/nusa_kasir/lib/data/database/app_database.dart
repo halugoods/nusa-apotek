@@ -10,12 +10,12 @@ part 'app_database.g.dart';
   Employees, Attendance, Expenses, ExpenseCategories, RecurringExpenses, Payroll, Waste,
   Liquidity, Suppliers, Branches, Settings, ActivationsLocal, SyncQueue, CashierSessions,
   OnlineOrders, CustomerDebts, DebtPayments, StockCounts, StockCountItems, ChatSessions,
-  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs])
+  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 31;
+  int get schemaVersion => 34;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -161,6 +161,27 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(serviceTickets, serviceTickets.sparepartCost);
         await m.addColumn(serviceTickets, serviceTickets.serviceCost);
         await m.addColumn(serviceTickets, serviceTickets.queueNumber);
+      }
+      if (from < 32) {
+        // Promo mode: 'otomatis' | 'kode' | 'bebas' (hybrid discount 3-arah)
+        await m.addColumn(promos, promos.mode);
+      }
+      if (from < 33) {
+        // Diskon standalone per produk (% potongan dari harga jual)
+        await m.addColumn(products, products.discountPercent);
+      }
+      if (from < 34) {
+        // RBAC: roles pindah ke SQLite (ikut backup/restore cloud antar device)
+        await m.createTable(roles);
+        // Sales per kasir: atribusi transaksi ke karyawan/sesi shift
+        await m.addColumn(transactions, transactions.employeeId);
+        await m.addColumn(transactions, transactions.sessionId);
+        // Backfill employeeId dari cashierName yang tersimpan
+        await customStatement('''
+          UPDATE transactions
+          SET employeeId = (SELECT e.id FROM employees e WHERE e.name = transactions.cashierName LIMIT 1)
+          WHERE employeeId IS NULL AND cashierName IS NOT NULL AND cashierName != ''
+        ''');
       }
     },
   );

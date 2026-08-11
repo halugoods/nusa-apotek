@@ -105,7 +105,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
   }
 
   Future<void> _loadRoles() async {
-    final repo = RoleRepository();
+    final repo = RoleRepository(ref.read(databaseProvider));
     final roles = await repo.getRoles();
     if (mounted) {
       setState(() => _roles = roles.map((r) => r['name'] as String).toList());
@@ -237,8 +237,9 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         color: _avatarColor(nameC.text.isNotEmpty ? nameC.text : '?'),
                         image: photoPath != null && photoPath!.isNotEmpty
                             ? DecorationImage(
-                                image: FileImage(File(photoPath!)),
+                                image: FileImage(File(photoPath!), scale: 1.0),
                                 fit: BoxFit.cover,
+                                filterQuality: FilterQuality.low,
                               )
                             : null,
                       ),
@@ -341,8 +342,13 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                     SizedBox(height: 6),
                     GestureDetector(
                       onTap: () async {
+                        // Use the screen's context (not the sheet's `ctx`)
+                        // with useRootNavigator so the picker renders over
+                        // everything — avoids blank/freeze on slow devices
+                        // when the sheet context is mid-build.
                         final picked = await showDatePicker(
-                          context: ctx,
+                          context: context,
+                          useRootNavigator: true,
                           initialDate: startDate ?? DateTime.now(),
                           firstDate: DateTime(2015),
                           lastDate: DateTime.now(),
@@ -423,7 +429,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         onTap: () async {
                           final parts = workStart.split(':');
                           final now = TimeOfDay(hour: int.tryParse(parts[0]) ?? 8, minute: int.tryParse(parts[1]) ?? 0);
-                          final picked = await showTimePicker(context: ctx, initialTime: now, helpText: 'Jam Masuk', cancelText: 'BATAL', confirmText: 'PILIH');
+                          final picked = await showTimePicker(context: context, useRootNavigator: true, initialTime: now, helpText: 'Jam Masuk', cancelText: 'BATAL', confirmText: 'PILIH');
                           if (picked != null) {
                             setSt(() => workStart = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
                           }
@@ -445,7 +451,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         onTap: () async {
                           final parts = workEnd.split(':');
                           final now = TimeOfDay(hour: int.tryParse(parts[0]) ?? 17, minute: int.tryParse(parts[1]) ?? 0);
-                          final picked = await showTimePicker(context: ctx, initialTime: now, helpText: 'Jam Pulang', cancelText: 'BATAL', confirmText: 'PILIH');
+                          final picked = await showTimePicker(context: context, useRootNavigator: true, initialTime: now, helpText: 'Jam Pulang', cancelText: 'BATAL', confirmText: 'PILIH');
                           if (picked != null) {
                             setSt(() => workEnd = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
                           }
@@ -620,6 +626,17 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         }
                         final salary = int.tryParse(salaryC.text.trim());
                         final repo = AttendanceRepository(ref.read(databaseProvider));
+                        // PIN harus UNIK — dua karyawan/role tidak boleh pakai
+                        // PIN sama (kalau sama, login bakal tabrakan).
+                        final all = await repo.getEmployees();
+                        final clash = all.cast<Employee?>().firstWhere(
+                              (e) => e!.pin == pin && e.id != (employee?.id ?? -1),
+                              orElse: () => null,
+                            );
+                        if (clash != null) {
+                          setSt(() => error = 'PIN sudah dipakai ${clash.name} (${clash.role}). Gunakan PIN lain.');
+                          return;
+                        }
                         if (employee == null) {
                           await repo.addEmployee(
                               name: name, pin: pin, role: role,
@@ -862,7 +879,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
   }
 
   Future<void> _showManageRoles() async {
-    final roleRepo = RoleRepository();
+    final roleRepo = RoleRepository(ref.read(databaseProvider));
     final roles = await roleRepo.getRoles();
     if (!mounted) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -922,13 +939,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                             );
                             if (confirm == true) {
                               await roleRepo.deleteRole(name);
-                              // Refresh RBAC cache after deletion
-                              final roles2 = await roleRepo.getRoles();
-                              final map2 = <String, List<String>>{};
-                              for (final r in roles2) {
-                                map2[r['name'] as String] = (r['access'] as List).cast<String>();
-                              }
-                              setDynamicRoleAccess(map2);
+                              // Refresh RBAC provider after deletion
+                              await loadRoleAccess(ref);
                               if (mounted) { Navigator.of(ctx).pop(); _loadRoles(); }
                             }
                           },
@@ -1026,13 +1038,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 } else {
                   await roleRepo.addRole(name, selectedColor, accessList);
                 }
-                // Refresh RBAC cache so new access lists take effect immediately
-                final roles = await roleRepo.getRoles();
-                final map = <String, List<String>>{};
-                for (final r in roles) {
-                  map[r['name'] as String] = (r['access'] as List).cast<String>();
-                }
-                setDynamicRoleAccess(map);
+                // Refresh RBAC provider so new access lists take effect immediately
+                await loadRoleAccess(ref);
                 if (mounted) { Navigator.of(ctx).pop(); _loadRoles(); }
               },
               style: ElevatedButton.styleFrom(
@@ -1135,8 +1142,9 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                             color: _avatarColor(e.name),
                                             image: hasPhoto
                                                 ? DecorationImage(
-                                                    image: FileImage(File(e.photoPath!)),
+                                                    image: FileImage(File(e.photoPath!), scale: 1.0),
                                                     fit: BoxFit.cover,
+                                                    filterQuality: FilterQuality.low,
                                                   )
                                                 : null,
                                             border: Border.all(

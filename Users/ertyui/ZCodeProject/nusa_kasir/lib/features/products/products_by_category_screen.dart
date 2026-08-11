@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -142,7 +143,7 @@ class _ProductCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
           child: SizedBox(width: 56, height: 56,
             child: hasImage
-                ? Image.file(File(product.imagePath!), fit: BoxFit.cover)
+                ? Image.file(File(product.imagePath!), fit: BoxFit.cover, cacheWidth: 200)
                 : Container(
                     decoration: BoxDecoration(gradient: LinearGradient(
                       begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -158,7 +159,26 @@ class _ProductCard extends StatelessWidget {
             SizedBox(height: 2),
             Text(product.category, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
             SizedBox(height: 3),
-            Text(formatRupiah(product.sellPrice), style:  TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
+            product.hasDiscount
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(formatRupiah(product.effectivePrice), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
+                      SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 1),
+                        child: Text(formatRupiah(product.sellPrice),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                          )),
+                      ),
+                    ],
+                  )
+                : Text(formatRupiah(product.sellPrice), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary)),
           ]),
         ),
         SizedBox(width: NusaConfig.spaceXS),

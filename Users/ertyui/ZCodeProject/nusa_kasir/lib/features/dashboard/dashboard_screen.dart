@@ -18,7 +18,6 @@ import 'package:nusa_kasir/data/repositories/finance_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/data/repositories/service_ticket_repository.dart';
-import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
@@ -51,7 +50,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Current session info
   String _currentName = '';
   String _currentRole = '';
-  int? _currentEmployeeId;
   String? _currentPhotoPath;
 
   // Attendance tracking
@@ -137,7 +135,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ref.read(authProvider.notifier).state = session.role;
       _currentName = session.name;
       _currentRole = session.role;
-      _currentEmployeeId = session.employeeId;
       // Check attendance for today
       await _checkAttendance(session.employeeId);
     }
@@ -162,16 +159,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             .toList();
         ref.read(menuOrderProvider.notifier).state = order;
       }
-      // RBAC dynamic role access — load custom roles so Owner-defined
-      // per-role access lists are applied without needing to open Karyawan.
-      final roleRepo = RoleRepository();
-      final roles = await roleRepo.getRoles();
-      final dynamicAccess = <String, List<String>>{};
-      for (final r in roles) {
-        dynamicAccess[r['name'] as String] =
-            List<String>.from(r['access'] as List? ?? []);
-      }
-      setDynamicRoleAccess(dynamicAccess);
+      // RBAC dynamic role access — load custom roles from SQLite into the
+      // reactive provider so Owner-defined access lists apply immediately
+      // and stay in sync across devices (roles ride the DB backup).
+      await loadRoleAccess(ref);
     } catch (_) {
       // Non-critical — defaults are safe fallbacks
     }
@@ -231,10 +222,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final reportRepo = ReportRepository(ref.read(databaseProvider));
+    // Sales scoping: Owner/Manager see the GLOBAL total (all cashiers);
+    // other roles (Kasir/Gudang/Finance) see only THEIR OWN shift sales,
+    // so switching cashier resets the dashboard to their own revenue.
+    final role = session?.role ?? 'Owner';
+    final isGlobalRole = role == 'Owner' || role == 'Manager';
     final sum = await reportRepo.summary(
       from: today,
       to: now,
       branchId: branchId,
+      employeeId: isGlobalRole ? null : session?.employeeId,
     );
 
     final cashierRepo =
@@ -589,7 +586,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     // 3. RBAC access guard — block navigation for screens not in role's access list
-    if (!hasAccess(currentRole, route)) {
+    if (!hasAccess(ref, currentRole, route)) {
       _showOwnerOnlyDialog(route);
       return;
     }
@@ -601,7 +598,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     // 5. Attendance check: if not checked in, check in now
-    if (!_hasCheckedIn && session != null) {
+    if (!_hasCheckedIn) {
       final attRepo = AttendanceRepository(ref.read(databaseProvider));
       await attRepo.checkIn(session.employeeId);
       if (mounted) setState(() => _hasCheckedIn = true);
@@ -693,78 +690,58 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<bool> _authFingerprint() async {
     return BiometricService.authenticate(
-      reason: 'Verifikasi sidik jari untuk melanjutkan',
+      reason: 'Verifikasi biometrik untuk melanjutkan',
     );
   }
 
-  // ── Employee Picker + Login ────────────────────────────────────────
+  // ── Logout / Ganti Pengguna ─────────────────────────────────────────
 
-  Future<void> _pickAndLogin() async {
-    if (_employees.isEmpty) {
-      TopToast.info(context, 'Belum ada karyawan. Tambah di menu Karyawan.');
+  /// Konfirmasi + logout. Kalau kasir masih BUKA, kasih peringatan dulu
+  /// (tidak menutup paksa — user tutup kasir dulu di POS).
+  Future<void> _confirmLogout() async {
+    if (!mounted) return;
+
+    // Block switch-user while a cashier shift is still OPEN: transactions
+    // must stay attributed to the correct shift/session.
+    final cashierRepo = CashierSessionRepository(ref.read(databaseProvider));
+    final active = await cashierRepo.getActive();
+    if (active != null) {
+      if (mounted) {
+        TopToast.error(context,
+            'Tutup kasir dulu sebelum ganti pengguna. Shift kasir masih berjalan.');
+      }
       return;
     }
 
-    // Show employee picker with attendance badges
-    final emp = await _showEmployeePicker();
-    if (emp == null || !mounted) return;
-
-    // Show PIN dialog
-    final result = await PinDialog.show(
+    final ok = await showDialog<bool>(
       context: context,
-      employeeName: emp.name,
-      employeeRole: emp.role,
-      correctPin: emp.pin,
-      showFingerprint: true,
-      showNfc: true,
-      onFingerprint: () async => await _authFingerprint(),
-      onNfc: () async {
-        final id = await NfcTagService.readEmployeeTag();
-        return id?.toString();
-      },
-      pinLength: 6,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ganti Pengguna?'),
+        content: Text(
+          'Keluar dari ${ref.read(employeeSessionProvider)?.name ?? 'pengguna ini'} '
+          'dan kembali ke layar login untuk memilih pengguna lain.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Keluar',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
+    if (ok != true || !mounted) return;
 
-    if (result == null || !result.success || !mounted) return;
-
-    // Login
-    final session = EmployeeSession(
-      employeeId: emp.id,
-      name: emp.name,
-      role: emp.role,
-      branchId: emp.branchId,
-      remember: result.remember,
-    );
-    ref.read(employeeSessionProvider.notifier).login(session, remember: result.remember);
-    ref.read(authProvider.notifier).state = emp.role;
-
-    // Touch session
-    ref.read(employeeSessionProvider.notifier).touch();
-
-    // Auto-scope to employee's assigned branch
-    if (emp.branchId != null) {
-      final branchRepo = BranchRepository(ref.read(databaseProvider));
-      final branch = await branchRepo.byId(emp.branchId!);
-      if (branch != null && mounted) {
-        setState(() => _activeBranch = branch);
-        ref.read(activeBranchProvider.notifier).state = branch;
-      }
-    }
-
-    // Auto check-in if not yet checked in today
-    try {
-      final attRepo = AttendanceRepository(ref.read(databaseProvider));
-      await attRepo.checkIn(emp.id);
-      await _checkAttendance(emp.id);
-    } catch (_) {}
-
-    if (mounted) {
-      _currentName = emp.name;
-      _currentRole = emp.role;
-      _currentEmployeeId = emp.id;
-      _currentPhotoPath = emp.photoPath;
-      TopToast.success(context, 'Halo, ${emp.name}! 👋');
-    }
+    // Clear session + role, back to login screen
+    ref.read(employeeSessionProvider.notifier).logout();
+    ref.read(authProvider.notifier).state = null;
+    if (mounted) context.go('/login');
   }
 
   // ── Buka Kasir ─────────────────────────────────────────────────────
@@ -904,134 +881,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  // ── Employee Picker with Attendance Badge ─────────────────────────
-
-  Future<Employee?> _showEmployeePicker() async {
-    // Build attendance status map for today
-    final attRepo = AttendanceRepository(ref.read(databaseProvider));
-    final Map<int, bool> checkedInMap = {};
-    for (final e in _employees) {
-      final att = await attRepo.getToday(e.id);
-      checkedInMap[e.id] = att != null && att.checkIn != null;
-    }
-
-    if (!mounted) return null;
-
-    return showDialog<Employee>(
-      context: context,
-      builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Pilih Karyawan',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Siapa yang mau login?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _employees.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 4),
-                    itemBuilder: (_, i) {
-                      final e = _employees[i];
-                      final checkedIn = checkedInMap[e.id] ?? false;
-                      final hasPhoto = e.photoPath != null && e.photoPath!.isNotEmpty && File(e.photoPath!).existsSync();
-                      return ListTile(
-                        leading: Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                            image: hasPhoto
-                                ? DecorationImage(image: FileImage(File(e.photoPath!)), fit: BoxFit.cover)
-                                : null,
-                          ),
-                          alignment: Alignment.center,
-                          child: !hasPhoto
-                              ? Text(e.name[0].toUpperCase(), style: TextStyle(fontWeight: FontWeight.w700, color: NusaConfig.activePrimary))
-                              : Stack(children: [
-                                  // Attendance badge
-                                  if (!checkedIn)
-                                    Positioned(right: 0, bottom: 0,
-                                      child: Container(
-                                        width: 14, height: 14,
-                                        decoration: BoxDecoration(color: NusaConfig.accentGold, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)),
-                                        child: const Icon(Icons.warning_amber_rounded, size: 8, color: Colors.white),
-                                      ),
-                                    ),
-                                ]),
-                        ),
-                        title: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                e.name,
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (!checkedIn) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: NusaConfig.accentGold.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'Belum absen',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: NusaConfig.accentGold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        subtitle: Text(e.role,
-                            style: const TextStyle(fontSize: 12)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        onTap: () => Navigator.of(ctx).pop(e),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   // ── Build ──────────────────────────────────────────────────────────
 
   @override
@@ -1052,7 +901,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           if (NusaConfig.hiddenMenus.contains(id)) return false;
           // Hide menus the employee's role cannot access (no lock gimmick)
           if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager') return false;
-          if (!hasAccess(role, id)) return false;
+          if (!hasAccess(ref, role, id)) return false;
           return true;
         })
         .map((item) {
@@ -1127,6 +976,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               branch: _storeName,
               hasNotification: !_hasCheckedIn && _currentName.isNotEmpty,
               onBellTap: () {},
+              onLogout: _confirmLogout,
             ),
 
             // Branch selector — bottom sheet picker
@@ -1237,6 +1087,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         onKontakWa: () {
                           // Show employee WA list for Owner
                           _showEmployeeWaList();
+                        },
+                        onLogout: () {
+                          _confirmLogout();
                         },
                       ),
 
