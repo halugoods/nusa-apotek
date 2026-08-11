@@ -176,11 +176,13 @@ class AppDatabase extends _$AppDatabase {
         // Sales per kasir: atribusi transaksi ke karyawan/sesi shift
         await m.addColumn(transactions, transactions.employeeId);
         await m.addColumn(transactions, transactions.sessionId);
-        // Backfill employeeId dari cashierName yang tersimpan
+        // Backfill employeeId dari cashier_name yang tersimpan.
+        // NOTE: raw SQL wajib pakai nama kolom SQLite (snake_case) — drift
+        // memetakan cashierName → cashier_name, employeeId → employee_id.
         await customStatement('''
           UPDATE transactions
-          SET employeeId = (SELECT e.id FROM employees e WHERE e.name = transactions.cashierName LIMIT 1)
-          WHERE employeeId IS NULL AND cashierName IS NOT NULL AND cashierName != ''
+          SET employee_id = (SELECT e.id FROM employees e WHERE e.name = transactions.cashier_name LIMIT 1)
+          WHERE employee_id IS NULL AND cashier_name IS NOT NULL AND cashier_name != ''
         ''');
       }
     },
