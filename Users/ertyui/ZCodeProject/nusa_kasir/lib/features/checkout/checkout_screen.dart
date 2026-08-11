@@ -57,7 +57,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   String? _bankHolder;
   Customer? _selectedCustomer;
   Promo? _appliedPromo;
-  int _promoDiscount = 0; // computed from applied promo
   int _pointsUsed = 0; // poin yang ditukar (1 poin = Rp 1)
 
   // Split bill
@@ -123,6 +122,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final pct = CustomerRepository.tierDiscountPercent(_selectedCustomer!.level);
     return (_subtotal * pct / 100).round();
   }
+
+  /// Diskon promo dihitung ULANG dari subtotal saat itu (bukan beku di apply).
+  /// - persen  → proporsional terhadap subtotal (otomatis mengikuti perubahan keranjang)
+  /// - nominal → tetap, tapi tidak boleh melebihi subtotal
+  /// - Jika subtotal turun di bawah min. belanja → 0 (promo tetap terpasang).
+  int get _promoDiscount {
+    final p = _appliedPromo;
+    if (p == null) return 0;
+    if (_subtotal < p.minBelanja) return 0;
+    final d = p.type == 'persen'
+        ? (_subtotal * p.value / 100).round()
+        : p.value;
+    return d.clamp(0, _subtotal);
+  }
+
   int get _totalDiscount =>
       (_manualDiscount + _promoDiscount + _tierDiscount + _pointsUsed).clamp(0, _subtotal);
   int get _total => (_subtotal - _totalDiscount).clamp(0, _subtotal);
@@ -239,26 +253,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
-    // Calculate discount
-    int discount;
-    if (match.type == 'persen') {
-      discount = (_subtotal * match.value / 100).round();
-    } else {
-      discount = match.value;
-    }
-    discount = discount.clamp(0, _subtotal);
+    // Calculate discount (percent promo follows the live subtotal via getter)
+    final discount = (match.type == 'persen'
+            ? (_subtotal * match.value / 100).round()
+            : match.value)
+        .clamp(0, _subtotal);
 
     setState(() {
       _appliedPromo = match;
-      _promoDiscount = discount;
     });
-    TopToast.success(context, 'Promo "${match.name}" diterapkan!');
+    TopToast.success(context, 'Promo "${match.name}" diterapkan! '
+        'Diskon ${formatRupiah(discount)}');
   }
 
   void _clearPromo() {
     setState(() {
       _appliedPromo = null;
-      _promoDiscount = 0;
       _promoCtrl.clear();
     });
   }
@@ -846,6 +856,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           SizedBox(height: 6),
           _summaryRow('Promo ${_appliedPromo!.name}',
               '-${formatRupiah(_promoDiscount)}', isDark, isDiscount: true),
+          if (_promoDiscount == 0 && _appliedPromo!.minBelanja > 0) ...[
+            SizedBox(height: 4),
+            Row(children: [
+              Icon(Icons.info_outline, size: 13, color: Colors.amber.shade700),
+              SizedBox(width: 4),
+              Text('Min. belanja ${formatRupiah(_appliedPromo!.minBelanja)} belum terpenuhi',
+                  style: TextStyle(fontSize: 11, color: Colors.amber.shade700)),
+            ]),
+          ],
         ],
         if (_pointsUsed > 0) ...[
           SizedBox(height: 6),
