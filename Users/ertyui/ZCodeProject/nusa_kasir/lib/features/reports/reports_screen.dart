@@ -1131,7 +1131,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ])),
             SizedBox(height: 16),
             Text(
-              '* Perhitungan berdasarkan data yang tersedia. HPP dihitung dari harga beli produk.',
+              '* Perhitungan berdasarkan data yang tersedia. HPP dari harga beli produk; item manual memakai harga modal yang diisi saat transaksi.',
               style: TextStyle(
                   fontSize: 11,
                   color: textTer,

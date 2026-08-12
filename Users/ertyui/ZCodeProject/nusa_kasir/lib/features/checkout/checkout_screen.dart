@@ -563,6 +563,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           final itemsJson = jsonEncode(cart.map((c) => {
             'name': c.name, 'qty': c.isPerKg ? 1 : c.qty,
             'price': c.price,
+            if (c.costPrice != null) 'costPrice': c.costPrice,
             if (c.isPerKg) 'weightKg': c.weightKg,
           }).toList());
           _laundryOrderId = await laundryRepo.add(

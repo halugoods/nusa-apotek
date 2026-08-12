@@ -103,9 +103,15 @@ class ReportRepository {
       for (final it in items) {
         final pid = it['productId'] as int?;
         final qty = it['qty'] as int? ?? 0;
-        // Item manual (id negatif) tidak punya HPP — dilewati
-        if (pid == null || pid < 0) continue;
-        hpp += (priceMap[pid] ?? 0) * qty;
+        if (pid == null || qty <= 0) continue;
+        if (pid < 0) {
+          // Item manual (id negatif): HPP dari harga modal per item (costPrice),
+          // bukan dari tabel produk. Tanpa costPrice → tidak menambah HPP.
+          final cost = (it['costPrice'] as num?)?.toInt() ?? 0;
+          hpp += cost * qty;
+        } else {
+          hpp += (priceMap[pid] ?? 0) * qty;
+        }
       }
     }
 

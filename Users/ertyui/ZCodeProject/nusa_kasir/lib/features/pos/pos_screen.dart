@@ -562,50 +562,90 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   void _showManualItemSheet() {
     final nameCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
+    final costCtrl = TextEditingController();
     final qtyCtrl = TextEditingController(text: '1');
+    int? previewCost; // untuk preview laba bersih (state sheet lokal)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-          SizedBox(height: 16),
-          Text('Item Manual', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          SizedBox(height: 4),
-          Text('Transaksi di luar menu produk. ${_manualHint}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-          SizedBox(height: 16),
-          NusaFormField(label: 'Nama Item', controller: nameCtrl, hintText: 'contoh: jasa angkut'),
-          SizedBox(height: 12),
-          NusaFormField(label: 'Harga (Rp)', controller: priceCtrl, hintText: 'contoh: 15000', keyboardType: TextInputType.number),
-          SizedBox(height: 12),
-          NusaFormField(label: 'Jumlah', controller: qtyCtrl, hintText: '1', keyboardType: TextInputType.number),
-          SizedBox(height: 16),
-          SizedBox(width: double.infinity, child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: () {
-              final name = nameCtrl.text.trim();
-              final price = int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-              final qty = int.tryParse(qtyCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 1;
-              if (name.isEmpty || price <= 0) {
-                TopToast.error(context, 'Isi nama item & harga');
-                return;
-              }
-              if (qty < 1) {
-                TopToast.error(context, 'Jumlah minimal 1');
-                return;
-              }
-              ref.read(cartProvider.notifier).addManualItem(name, price, qty: qty);
-              Navigator.pop(ctx);
-              TopToast.success(context, '$name ditambahkan');
-            },
-            child: Text('Tambah ke Keranjang'),
-          )),
-          SizedBox(height: 8),
-        ]),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+            SizedBox(height: 16),
+            Text('Item Manual', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            Text('Transaksi di luar menu produk. ${_manualHint}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            SizedBox(height: 16),
+            NusaFormField(label: 'Nama Item', controller: nameCtrl, hintText: 'contoh: jasa angkut'),
+            SizedBox(height: 12),
+            NusaFormField(label: 'Harga (Rp)', controller: priceCtrl, hintText: 'contoh: 15000', keyboardType: TextInputType.number),
+            SizedBox(height: 12),
+            NusaFormField(
+              label: 'Harga Modal (Rp) — opsional',
+              controller: costCtrl,
+              hintText: 'contoh: 10000',
+              keyboardType: TextInputType.number,
+              onChanged: (_) {
+                previewCost = int.tryParse(costCtrl.text.replaceAll(RegExp(r'[^\d]'), ''));
+                setSheet(() {});
+              },
+            ),
+            if (previewCost != null && previewCost! > 0) ...[
+              SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: (int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0) > previewCost!
+                      ? NusaConfig.success.withValues(alpha: 0.12)
+                      : NusaConfig.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Laba bersih per item: ${formatRupiah((int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0) - previewCost!)}',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: (int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0) > previewCost!
+                          ? NusaConfig.success
+                          : NusaConfig.warning),
+                ),
+              ),
+            ],
+            SizedBox(height: 12),
+            NusaFormField(label: 'Jumlah', controller: qtyCtrl, hintText: '1', keyboardType: TextInputType.number),
+            SizedBox(height: 16),
+            SizedBox(width: double.infinity, child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final price = int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+                final cost = int.tryParse(costCtrl.text.replaceAll(RegExp(r'[^\d]'), ''));
+                final qty = int.tryParse(qtyCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 1;
+                if (name.isEmpty || price <= 0) {
+                  TopToast.error(context, 'Isi nama item & harga');
+                  return;
+                }
+                if (qty < 1) {
+                  TopToast.error(context, 'Jumlah minimal 1');
+                  return;
+                }
+                if (cost != null && cost > price) {
+                  TopToast.error(context, 'Harga modal tidak boleh melebihi harga jual');
+                  return;
+                }
+                ref.read(cartProvider.notifier).addManualItem(name, price, qty: qty, costPrice: cost);
+                Navigator.pop(ctx);
+                TopToast.success(context, '$name ditambahkan');
+              },
+              child: Text('Tambah ke Keranjang'),
+            )),
+            SizedBox(height: 8),
+          ]),
+        ),
       ),
     );
   }

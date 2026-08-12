@@ -13,6 +13,7 @@ class NusaFormField extends StatelessWidget {
   final VoidCallback? onTap;
   final String? Function(String?)? validator;
   final int? maxLines;
+  final ValueChanged<String>? onChanged;
 
   NusaFormField({
     super.key,
@@ -25,6 +26,7 @@ class NusaFormField extends StatelessWidget {
     this.onTap,
     this.validator,
     this.maxLines,
+    this.onChanged,
   });
 
   @override
@@ -42,6 +44,7 @@ class NusaFormField extends StatelessWidget {
       onTap: onTap,
       validator: validator,
       maxLines: maxLines,
+      onChanged: onChanged,
       style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,

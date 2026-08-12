@@ -25,9 +25,7 @@ class TransactionRepository {
     int? sessionId,
   }) async {
     final invoice = 'INV-${DateTime.now().millisecondsSinceEpoch}';
-    final itemsJson = jsonEncode(items.map((e) => {
-      'productId': e.productId, 'name': e.name, 'qty': e.qty, 'price': e.price, 'note': e.note,
-    }).toList());
+    final itemsJson = jsonEncode(items.map((e) => e.toJson()).toList());
     return db.into(db.transactions).insert(TransactionsCompanion.insert(
       invoice: invoice,
       items: itemsJson,
