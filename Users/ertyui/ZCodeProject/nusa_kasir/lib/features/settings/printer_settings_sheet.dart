@@ -1,24 +1,20 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
-import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 /// Bottom sheet for managing Bluetooth thermal printer settings:
 /// - Scan & connect to BT printers
-/// - Logo upload (appears at top of receipt)
-/// - Custom footer text
 /// - Cash drawer auto-open toggle
 /// - Test print
 /// - Auto-print toggle (print automatically after transaction)
 /// - Paper size selector (58mm / 80mm)
 /// - Reprint last receipt
+///
+/// Note: receipt logo & footer are managed from Pengaturan Struk (moved
+/// to the on-screen receipt settings), not here.
 class PrinterSettingsSheet extends StatefulWidget {
   final String? currentAddress;
   final void Function(PrinterDevice device) onPrinterSelected;
@@ -65,8 +61,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
 
   // New settings
   bool _cashDrawerEnabled = false;
-  String _footerText = '';
-  String? _logoPath;
   bool _reprinting = false;
 
   // Kitchen printer (FnB)
@@ -76,8 +70,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
   String? _kitchenConnecting;
   String? _kitchenConnectedAddr;
   String? _kitchenStoredAddr;
-
-  final _footerCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -90,18 +82,10 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     _scan();
   }
 
-  @override
-  void dispose() {
-    _footerCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSettings() async {
     final auto = await SecureStore.getAutoPrint();
     final paper = await SecureStore.getPaperSize();
     final drawer = await SecureStore.getCashDrawerEnabled();
-    final footer = await SecureStore.getPrinterFooter();
-    final logo = await SecureStore.getPrinterLogoPath();
     final kitchenEnabled = await SecureStore.getKitchenPrinterEnabled();
     final kitchenAddr = await SecureStore.getKitchenPrinterAddress();
     if (mounted) {
@@ -109,9 +93,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
         _autoPrint = auto;
         _paperSize = paper;
         _cashDrawerEnabled = drawer;
-        _footerText = footer;
-        _footerCtrl.text = footer;
-        _logoPath = logo;
         _kitchenPrinterEnabled = kitchenEnabled;
         if (kitchenAddr != null && kitchenAddr.contains('|')) {
           _kitchenStoredAddr = kitchenAddr;
@@ -119,8 +100,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
         }
       });
       ReceiptPrinter.setCashDrawer(enabled: drawer);
-      ReceiptPrinter.setFooter(footer);
-      if (logo != null) ReceiptPrinter.loadLogo(logo);
     }
   }
 
@@ -138,49 +117,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
     await SecureStore.setCashDrawerEnabled(v);
     ReceiptPrinter.setCashDrawer(enabled: v);
     if (mounted) setState(() => _cashDrawerEnabled = v);
-  }
-
-  Future<void> _saveFooter() async {
-    final text = _footerCtrl.text.trim();
-    await SecureStore.setPrinterFooter(text);
-    ReceiptPrinter.setFooter(text);
-    if (mounted) setState(() => _footerText = text);
-    TopToast.success(context, 'Footer tersimpan');
-  }
-
-  Future<void> _pickLogo() async {
-    try {
-      final path = await pickAndSaveImage(maxSize: 512, prefix: 'printer_logo_');
-      if (path == null) return; // cancelled or failed
-
-      await ReceiptPrinter.loadLogo(path);
-      await SecureStore.setPrinterLogoPath(path);
-      if (mounted) {
-        setState(() => _logoPath = path);
-        TopToast.success(context, 'Logo disimpan');
-      }
-
-      // Upload to cloud
-      try {
-        final uid = Supabase.instance.client.auth.currentUser?.id;
-        if (uid != null) {
-          ImageStorageService(Supabase.instance.client, uid)
-              .uploadImage('settings', path);
-        }
-      } catch (_) {}
-    } catch (_) {
-      if (mounted) TopToast.error(context, 'Gagal menyimpan logo');
-    }
-  }
-
-  Future<void> _removeLogo() async {
-    _logoPath = null;
-    await ReceiptPrinter.loadLogo(null);
-    await SecureStore.setPrinterLogoPath(null);
-    if (mounted) {
-      setState(() {});
-      TopToast.success(context, 'Logo dihapus');
-    }
   }
 
   Future<void> _scan() async {
@@ -597,90 +533,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
                     ),
                   ),
                   SizedBox(height: 8),
-
-                  // ── Logo ──
-                  Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: borderColor),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.image_outlined, size: 20, color: subColor),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Logo Struk',
-                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: textColor)),
-                              Text(_logoPath != null ? 'Logo tersimpan' : 'Opsional — tampil di atas struk',
-                                  style: TextStyle(fontSize: 11, color: subColor)),
-                            ],
-                          ),
-                        ),
-                        if (_logoPath != null)
-                          IconButton(
-                            icon: Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                            onPressed: _removeLogo,
-                            tooltip: 'Hapus logo',
-                          ),
-                        TextButton(
-                          onPressed: _pickLogo,
-                          child: Text(_logoPath != null ? 'Ganti' : 'Pilih',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 8),
-
-                  // ── Footer ──
-                  Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: borderColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Icon(Icons.text_fields, size: 20, color: subColor),
-                          SizedBox(width: 10),
-                          Text('Footer Struk',
-                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: textColor)),
-                        ]),
-                        SizedBox(height: 8),
-                        TextField(
-                          controller: _footerCtrl,
-                          maxLines: 2,
-                          onChanged: (_) => _saveFooter(),
-                          style: TextStyle(fontSize: 13, color: textColor),
-                          decoration: InputDecoration(
-                            hintText: 'Contoh: Jam operasional 08:00–22:00',
-                            hintStyle: TextStyle(fontSize: 12, color: subColor),
-                            isDense: true,
-                            contentPadding: EdgeInsets.all(10),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: borderColor),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: borderColor),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: accentRed),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 12),
 
                   // ── Buttons row ──
                   Row(

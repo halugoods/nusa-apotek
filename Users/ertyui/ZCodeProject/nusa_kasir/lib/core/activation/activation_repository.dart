@@ -29,6 +29,20 @@ class ActivationRepository {
   static Future<String?> _googleUserId() async =>
       SecureStore.read(key: 'nusa_google_user_id');
 
+  /// Ensure an anonymous Supabase session exists so background storage calls
+  /// (auto-sync upload/download) work without forcing interactive auth.
+  /// Non-blocking: failure just leaves the caller to use the existing session.
+  Future<void> _ensureAnonAuth() async {
+    try {
+      final auth = client?.auth;
+      if (auth == null) return;
+      if (auth.currentSession != null) return;
+      await auth.signInAnonymously();
+    } catch (e) {
+      debugPrint('[Auth] signInAnonymously skip: $e');
+    }
+  }
+
   /// Activate with Google ID (new flow).
   /// - Verifies Ed25519 signature locally
   /// - Sends key + googleUserId to register_activation edge function
@@ -128,6 +142,7 @@ class ActivationRepository {
   /// store name, owner name, and backup time without decrypting the archive.
   Future<bool> uploadBackupNow({String? storeName, String? ownerName}) async {
     if (client == null) return false;
+    await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';

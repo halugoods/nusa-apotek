@@ -15,9 +15,11 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
@@ -29,6 +31,7 @@ import java.util.UUID
 class MainActivity : FlutterFragmentActivity() {
     private val CHANNEL = "com.nusa_kasir/contacts"
     private val BT_CHANNEL = "com.nusa_kasir/bluetooth"
+    private val INSTALL_CHANNEL = "com.nusa_kasir/installer"
 
     private var contactResult: MethodChannel.Result? = null
     private var btPendingResult: MethodChannel.Result? = null
@@ -365,6 +368,46 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     } else {
                         launchContactPicker(result)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // ── In-app APK installer ──
+        // Launches the system package installer via ACTION_VIEW + FileProvider.
+        // Authority is "${applicationId}.fileprovider" so it's correct for all
+        // 8 variant apps automatically. Android will ask "install from this
+        // source?" once, then install over the same debug signature.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, INSTALL_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path.isNullOrEmpty()) {
+                        result.error("INVALID_PATH", "APK path empty", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val file = File(path)
+                        if (!file.exists()) {
+                            result.error("FILE_NOT_FOUND", "APK tidak ditemukan: $path", null)
+                            return@setMethodCallHandler
+                        }
+                        val uri = FileProvider.getUriForFile(
+                            this,
+                            "$packageName.fileprovider",
+                            file
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "installApk error", e)
+                        result.error("INSTALL_FAILED", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

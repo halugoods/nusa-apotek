@@ -160,7 +160,6 @@ class SettingsRepository {
       'showCashier': row?.receiptShowCashier ?? true,
       'showInvoice': row?.receiptShowInvoice ?? true,
       'showDate': row?.receiptShowDate ?? true,
-      'showBarcode': row?.receiptShowBarcode ?? false,
     };
   }
 
@@ -172,7 +171,6 @@ class SettingsRepository {
       receiptShowCashier: Value(toggles['showCashier'] ?? true),
       receiptShowInvoice: Value(toggles['showInvoice'] ?? true),
       receiptShowDate: Value(toggles['showDate'] ?? true),
-      receiptShowBarcode: Value(toggles['showBarcode'] ?? false),
     ));
   }
 

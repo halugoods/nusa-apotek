@@ -6,13 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
@@ -25,7 +22,6 @@ import 'package:nusa_kasir/features/settings/printer_settings_sheet.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
-import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
@@ -44,6 +40,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _themeMode = 'system';
   String? _printerName;
   bool _checkingUpdate = false;
+  bool _downloadingUpdate = false;
+  double _updateDownloadProgress = 0;
   UpdateInfo? _updateInfo;
   bool _backingUp = false;
 
@@ -51,9 +49,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _syncing = false;
   String? _cloudTimeStr;
   String? _localTimeStr;
+  int _conflictCount = 0;
 
   // Fingerprint
   bool _fingerprintEnabled = false;
+
+  // PIN pad kasir (opsional — login PIN tetap wajib)
+  bool _pinPadEnabled = true;
 
   // FnB: alur pembayaran
   bool _fnbPayFirst = false;
@@ -202,6 +204,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Load fingerprint state
       _fingerprintEnabled = await BiometricService.isEnabled();
+
+      // Load PIN pad kasir toggle
+      _pinPadEnabled = await SecureStore.getPinPadEnabled();
 
       // Load FnB payment flow
       if (NusaConfig.isFnbVariant) {
@@ -380,6 +385,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  // ── PIN Pad Kasir ────────────────────────────────────────
+
+  Future<void> _togglePinPad() async {
+    final next = !_pinPadEnabled;
+    await SecureStore.setPinPadEnabled(next);
+    if (mounted) setState(() => _pinPadEnabled = next);
+    if (mounted) {
+      TopToast.success(
+        context,
+        next
+            ? 'PIN kasir aktif — fitur & kasir wajib PIN'
+            : 'PIN kasir nonaktif — login tetap butuh PIN',
+      );
+    }
+  }
+
   // ── Backups ───────────────────────────────────────────────
 
   Future<void> _backupNow() async {
@@ -412,9 +433,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final repo = ref.read(activationRepoProvider);
     final cloudTime = await repo.getBackupTimestamp();
     final localTime = await SecureStore.getLastBackupTime();
+    final conflictCount = await SecureStore.getConflictCount();
 
     if (mounted) {
       setState(() {
+        _conflictCount = conflictCount;
         _cloudTimeStr = cloudTime != null
             ? '${cloudTime.day}/${cloudTime.month}/${cloudTime.year} ${cloudTime.hour.toString().padLeft(2, '0')}:${cloudTime.minute.toString().padLeft(2, '0')}'
             : null;
@@ -500,6 +523,70 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            // Auto-sync info
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: NusaConfig.activePrimary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 18, color: NusaConfig.activePrimary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Auto-upload aktif: perubahan disinkronkan ±6 dtk '
+                      '(saat online). Konflik otomatis memilih data terbaru — '
+                      'yang lama disimpan sebagai snapshot, tanpa dialog.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_conflictCount > 0) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: NusaConfig.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: NusaConfig.warning.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 18, color: NusaConfig.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$_conflictCount snapshot konflik tersimpan di perangkat '
+                        '(conflict_*.sqlite). Data tidak ada yang hilang.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             // Upload
             SizedBox(
@@ -1397,6 +1484,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
+      barrierDismissible: !_downloadingUpdate,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
@@ -1423,105 +1511,172 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Versi ${info.latestVersion} (build ${info.latestBuildNumber})',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-            if (info.fileSizeBytes != null && info.fileSizeBytes! > 0) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Ukuran: ${UpdateService.formatSize(info.fileSizeBytes)}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
-              ),
-            ],
-            if (info.changelog != null && info.changelog!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? NusaConfig.darkSurface2
-                      : NusaConfig.backgroundColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  info.changelog!,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
-                    height: 1.5,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _downloadingUpdate
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mengunduh update… ${(_updateDownloadProgress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                      ),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: _updateDownloadProgress > 0 ? _updateDownloadProgress : null,
+                          minHeight: 8,
+                          backgroundColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Jangan tutup aplikasi selama proses berjalan.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                        ),
+                      ),
+                    ],
                   ),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Versi ${info.latestVersion} (build ${info.latestBuildNumber})',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    if (info.fileSizeBytes != null && info.fileSizeBytes! > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Ukuran: ${UpdateService.formatSize(info.fileSizeBytes)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                    ],
+                    if (info.changelog != null && info.changelog!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? NusaConfig.darkSurface2
+                              : NusaConfig.backgroundColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          info.changelog!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Unduh APK langsung di aplikasi, lalu instal otomatis.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-            if (info.downloadUrl != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Klik Download untuk mengunduh APK terbaru dari GitHub.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Nanti'),
-          ),
-          if (info.downloadUrl != null)
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _openDownloadUrl(info.downloadUrl!);
-              },
-              icon: const Icon(Icons.download, size: 18),
-              label: const Text('Download'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.activePrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        actions: _downloadingUpdate
+            ? null
+            : [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Nanti'),
                 ),
-              ),
-            ),
-        ],
+                if (info.downloadUrl != null)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _startUpdateDownload();
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Download & Update'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NusaConfig.activePrimary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+              ],
       ),
     );
   }
 
-  void _openDownloadUrl(String url) {
+  /// Downloads the APK in-app with progress, then hands off to the system
+  /// installer. On failure shows an error toast — the installed version is
+  /// untouched (the partial file is deleted by downloadApk).
+  Future<void> _startUpdateDownload() async {
+    final info = _updateInfo;
+    if (info == null || info.downloadUrl == null) return;
+    if (!mounted) return;
+    setState(() {
+      _downloadingUpdate = true;
+      _updateDownloadProgress = 0;
+    });
     try {
-      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final path = await UpdateService.downloadApk(
+        url: info.downloadUrl!,
+        variantId: NusaConfig.productId,
+        version: info.latestVersion ?? 'latest',
+        onProgress: (p) {
+          if (mounted) setState(() => _updateDownloadProgress = p);
+        },
+      );
+      if (path == null) throw Exception('Gagal membuat file unduhan.');
+      await UpdateService.installApk(path);
+      if (mounted) {
+        setState(() {
+          _downloadingUpdate = false;
+          _updateDownloadProgress = 0;
+        });
+        TopToast.success(context, 'Instalasi dibuka. Selesaikan di layar sistem.');
+      }
     } catch (e) {
-      debugPrint('[Settings] Gagal buka URL: $e');
+      debugPrint('[Settings] update download error: $e');
+      if (mounted) {
+        setState(() {
+          _downloadingUpdate = false;
+          _updateDownloadProgress = 0;
+        });
+        TopToast.error(context, 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
+      }
     }
   }
 
@@ -1553,7 +1708,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final setDark = Theme.of(ctx).brightness == Brightness.dark;
         // State variables declared OUTSIDE StatefulBuilder so they persist across rebuilds
         String? logoPath = currentLogo;
-        String headerText = headerCtrl.text;
         String paper = paperSize;
         Map<String, bool> togs = Map.from(toggles);
         return StatefulBuilder(
@@ -1655,37 +1809,104 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Info: logo diatur di Pengaturan Printer ──
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: NusaConfig.primarySoft.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: NusaConfig.activePrimary.withValues(alpha: 0.2),
-                        ),
+                    // ── Logo Struk ──
+                    Text(
+                      'Logo Struk',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 18,
-                            color: NusaConfig.activePrimary,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Logo struk diatur di menu Pengaturan Printer',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: setDark
-                                    ? NusaConfig.darkTextSecondary
-                                    : NusaConfig.textSecondary,
-                              ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: setDark
+                                ? NusaConfig.darkSurface2
+                                : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: setDark
+                                  ? NusaConfig.darkBorder
+                                  : NusaConfig.dividerColor,
                             ),
                           ),
-                        ],
-                      ),
+                          clipBehavior: Clip.antiAlias,
+                          child: logoPath != null && logoPath!.isNotEmpty
+                              ? Image.file(
+                                  File(logoPath!),
+                                  fit: BoxFit.contain,
+                                  cacheWidth: 200,
+                                )
+                              : Icon(
+                                  Icons.image_outlined,
+                                  color: setDark
+                                      ? NusaConfig.darkTextTertiary
+                                      : NusaConfig.textTertiary,
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (logoPath != null && logoPath!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    'Logo tampil di atas struk',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: setDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final path = await pickAndSaveImage(
+                                        maxSize: 512,
+                                        prefix: 'store_logo_',
+                                      );
+                                      if (path != null) {
+                                        setSt(() => logoPath = path);
+                                      }
+                                    },
+                                    icon: const Icon(Icons.photo_library_outlined, size: 18),
+                                    label: Text(
+                                      logoPath != null && logoPath!.isNotEmpty
+                                          ? 'Ganti'
+                                          : 'Pilih Logo',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: NusaConfig.activePrimary,
+                                      side: BorderSide(color: NusaConfig.activePrimary),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  if (logoPath != null && logoPath!.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    TextButton(
+                                      onPressed: () => setSt(() => logoPath = null),
+                                      child: const Text('Hapus', style: TextStyle(fontSize: 12)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 20),
 
@@ -1808,12 +2029,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       togs['showDate'] ?? true,
                       setDark,
                       (v) => setSt(() => togs['showDate'] = v),
-                    ),
-                    _toggleRow(
-                      'Barcode',
-                      togs['showBarcode'] ?? false,
-                      setDark,
-                      (v) => setSt(() => togs['showBarcode'] = v),
                     ),
                     const SizedBox(height: 20),
 
@@ -2048,36 +2263,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           _dashedLine(false),
                           const SizedBox(height: 4),
 
-                          // ── Barcode ──
-                          if (togs['showBarcode'] == true) ...[
-                            Container(
-                              width: double.infinity,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: List.generate(
-                                    20,
-                                    (i) => i.isEven
-                                        ? const Color(0xFF111827)
-                                        : Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'INV-001',
-                              style: TextStyle(
-                                fontSize: 8,
-                                color: Color(0xFF9CA3AF),
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            _dashedLine(false),
-                            const SizedBox(height: 4),
-                          ],
-
                           // ── Footer ──
                           Text(
                             footerCtrl.text.isNotEmpty
@@ -2118,8 +2303,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         final norm = paper.replaceAll('mm', '');
                         await SecureStore.setPaperSize(norm);
                         await SecureStore.setPrinterFooter(footerCtrl.text.trim());
+                        // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
                         if (logoPath != null && logoPath!.isNotEmpty) {
+                          await repo.setStoreLogoPath(logoPath!);
                           await SecureStore.setPrinterLogoPath(logoPath);
+                        } else {
+                          await SecureStore.setPrinterLogoPath(null);
                         }
                         if (mounted) Navigator.pop(ctx);
                       },
@@ -2861,6 +3050,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 color: isDark
                     ? NusaConfig.darkTextSecondary
                     : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // PIN Pad Kasir (opsional — login PIN tetap wajib)
+            _menuRow(
+              icon: Icons.pin_outlined,
+              iconColor: NusaConfig.accentGold,
+              title: 'PIN Kasir di Kasir',
+              subtitle: _pinPadEnabled
+                  ? 'Kasir wajib PIN saat buka fitur & kasir'
+                  : 'Kasir buka tanpa PIN (login tetap butuh PIN)',
+              isDark: isDark,
+              onTap: null, // toggle handled by trailing switch
+              trailing: Switch(
+                value: _pinPadEnabled,
+                activeTrackColor: NusaConfig.activePrimary,
+                onChanged: (_) => _togglePinPad(),
               ),
             ),
             // Dev: Pilih Varian (only in dev build)

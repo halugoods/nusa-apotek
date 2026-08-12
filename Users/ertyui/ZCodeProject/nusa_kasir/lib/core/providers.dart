@@ -11,6 +11,7 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
+import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
 
@@ -42,6 +43,17 @@ final activationRepoProvider = Provider<ActivationRepository>((ref) {
   } catch (_) {
     return ActivationRepository(null);
   }
+});
+
+/// Auto cloud sync — starts on app init, flushed on app pause.
+/// Kept alive for the whole app lifetime (autoDispose would kill the watcher).
+final autoSyncProvider = Provider<AutoSyncService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final repo = ref.watch(activationRepoProvider);
+  final svc = AutoSyncService(db: db, repo: repo, client: repo.client);
+  ref.onDispose(svc.dispose);
+  svc.start();
+  return svc;
 });
 
 final onlineOrderRepoProvider = Provider(

@@ -246,7 +246,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         BarcodeFormat.qrCode,
       ],
     );
-    final manualCtrl = TextEditingController();
     String? scanned;
     await showDialog(
       context: context,
@@ -288,7 +287,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 size: 36, color: Colors.grey),
                             SizedBox(height: 8),
                             Text(
-                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              'Kamera tidak tersedia.\nBarcode manual diatur via Form Produk.',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                             ),
@@ -299,49 +298,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   },
                 ),
               ),
-              SizedBox(height: 12),
-              TextField(
-                controller: manualCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Masukkan kode barcode manual',
-                  hintText: 'contoh: 8991002101234',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  isDense: true,
-                ),
-                onSubmitted: (v) {
-                  final t = v.trim();
-                  if (t.isNotEmpty) {
-                    scanned = t;
-                    Navigator.pop(ctx);
-                  }
-                },
-              ),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Batal')),
-            ElevatedButton(
-              onPressed: () {
-                final t = manualCtrl.text.trim();
-                if (t.isNotEmpty) {
-                  scanned = t;
-                  Navigator.pop(ctx);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.activePrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: Text('Gunakan'),
-            ),
           ],
         ),
       ),
     );
     await controller.dispose();
-    manualCtrl.dispose();
     if (scanned == null || !mounted) return;
 
     final repo = ref.read(productRepoProvider);

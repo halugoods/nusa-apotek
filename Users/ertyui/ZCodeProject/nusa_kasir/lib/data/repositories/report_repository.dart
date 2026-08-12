@@ -89,7 +89,7 @@ class ReportRepository {
       final items = _parseItems(tx.items);
       for (final it in items) {
         final pid = it['productId'] as int?;
-        if (pid != null) productIds.add(pid);
+        if (pid != null && pid >= 0) productIds.add(pid);
       }
     }
     // Batch lookup
@@ -103,9 +103,9 @@ class ReportRepository {
       for (final it in items) {
         final pid = it['productId'] as int?;
         final qty = it['qty'] as int? ?? 0;
-        if (pid != null) {
-          hpp += (priceMap[pid] ?? 0) * qty;
-        }
+        // Item manual (id negatif) tidak punya HPP — dilewati
+        if (pid == null || pid < 0) continue;
+        hpp += (priceMap[pid] ?? 0) * qty;
       }
     }
 
@@ -331,7 +331,8 @@ class ReportRepository {
         final pid = it['productId'] as int?;
         final qty = (it['qty'] as int?) ?? 0;
         final price = (it['price'] as num?)?.toInt() ?? 0;
-        if (pid == null) continue;
+        // Item manual (id negatif) tidak masuk agregat produk
+        if (pid == null || pid < 0) continue;
         ids.add(pid);
         qtyById[pid] = (qtyById[pid] ?? 0) + qty;
         revById[pid] = (revById[pid] ?? 0) + qty * price;

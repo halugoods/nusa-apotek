@@ -331,8 +331,38 @@ class NusaApp extends ConsumerStatefulWidget {
   ConsumerState<NusaApp> createState() => _NusaAppState();
 }
 
-class _NusaAppState extends ConsumerState<NusaApp> {
+class _NusaAppState extends ConsumerState<NusaApp>
+    with WidgetsBindingObserver {
   late final GoRouter _router = buildRouter(widget.initialLocation, ref);
+
+  @override
+  void initState() {
+    super.initState();
+    // Start auto cloud sync (upload side) for the whole app lifetime.
+    WidgetsBinding.instance.addObserver(this);
+    try {
+      ref.read(autoSyncProvider);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Flush pending upload when the app goes to background — data leaves the
+    // device as soon as possible without waiting for the next debounce tick.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      try {
+        ref.read(autoSyncProvider).flushNow();
+      } catch (_) {}
+    }
+  }
 
   ThemeMode _toThemeMode(String mode) {
     switch (mode) {

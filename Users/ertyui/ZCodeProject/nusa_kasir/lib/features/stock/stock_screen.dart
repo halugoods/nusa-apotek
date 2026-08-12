@@ -1293,11 +1293,9 @@ class _AdjustSheetState extends State<_AdjustSheet> {
         BarcodeFormat.qrCode,
       ],
     );
-    final manualCtrl = TextEditingController();
     String? code;
     if (!mounted) return;
     // Modal popup — consistent UI with products_screen barcode scanner.
-    // Manual input lets stock-in/out continue when the camera is unusable.
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -1338,7 +1336,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                                 size: 36, color: Colors.grey),
                             SizedBox(height: 8),
                             Text(
-                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              'Kamera tidak tersedia.\nBarcode manual diatur via Form Produk.',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                             ),
@@ -1349,24 +1347,6 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                   },
                 ),
               ),
-              SizedBox(height: 12),
-              TextField(
-                controller: manualCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Masukkan kode barcode manual',
-                  hintText: 'contoh: 8991002101234',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  isDense: true,
-                ),
-                onSubmitted: (v) {
-                  final t = v.trim();
-                  if (t.isNotEmpty) {
-                    code = t;
-                    Navigator.pop(ctx);
-                  }
-                },
-              ),
             ],
           ),
           actions: [
@@ -1374,27 +1354,11 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               onPressed: () => Navigator.pop(ctx),
               child: Text('Batal'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                final t = manualCtrl.text.trim();
-                if (t.isNotEmpty) {
-                  code = t;
-                  Navigator.pop(ctx);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.activePrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: Text('Gunakan'),
-            ),
           ],
         ),
       ),
     );
     await controller.dispose();
-    manualCtrl.dispose();
     if (code == null || !mounted) return;
     final product = _byBarcode[code];
     if (product != null) {

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -15,6 +16,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_toggle_card.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -67,6 +69,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   Product? _existing;
   bool _loading = true;
   bool _barcodeOn = false;
+  final _barcodeCtrl = TextEditingController();
   bool _isOnline = false;
   String? _imagePath;
   DateTime? _expiryDate;
@@ -85,6 +88,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   void initState() {
     super.initState();
     _barcode = ActivationKey.generateSerial();
+    _barcodeCtrl.text = _barcode;
     _init();
   }
 
@@ -92,6 +96,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   void dispose() {
     _name.dispose(); _sku.dispose(); _buy.dispose();
     _sell.dispose(); _stock.dispose(); _min.dispose();
+    _barcodeCtrl.dispose();
     super.dispose();
   }
 
@@ -149,6 +154,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       if (p.barcode != null && p.barcode!.isNotEmpty) {
         _barcodeOn = true;
         _barcode = p.barcode!;
+        _barcodeCtrl.text = p.barcode!;
       }
     }
     if (mounted) setState(() => _loading = false);
@@ -164,9 +170,87 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       _barcodeOn = v;
       if (v && _existing?.barcode != null && _existing!.barcode!.isNotEmpty) {
         _barcode = _existing!.barcode!;
-      } else if (v && _barcode.isEmpty) {
+        _barcodeCtrl.text = _barcode;
+      } else if (v && _barcodeCtrl.text.trim().isEmpty) {
         _barcode = ActivationKey.generateSerial();
+        _barcodeCtrl.text = _barcode;
       }
+    });
+  }
+
+  /// Scan barcode from camera (no manual input here — manual lives in the
+  /// barcode TextField in the form itself).
+  Future<void> _scanBarcodeFromCamera() async {
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? scanned;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+          SizedBox(width: 8),
+          Text('Scan Barcode'),
+        ]),
+        content: AnimatedScannerOverlay(
+          size: 280,
+          child: MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              final barcode = capture.barcodes.firstOrNull;
+              if (barcode != null && barcode.rawValue != null) {
+                scanned = barcode.rawValue;
+                Navigator.pop(ctx);
+              }
+            },
+            errorBuilder: (context, error, child) {
+              debugPrint('[ProductForm] scanner error: $error');
+              return Container(
+                height: 280,
+                width: 280,
+                color: Colors.black12,
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.no_photography_outlined,
+                          size: 36, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text(
+                        'Kamera tidak tersedia.\nKetuk Batal lalu ketik kode barcode manual.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Batal')),
+        ],
+      ),
+    );
+    await controller.dispose();
+    if (scanned == null || !mounted) return;
+    setState(() {
+      _barcodeOn = true;
+      _barcode = scanned!;
+      _barcodeCtrl.text = scanned!;
     });
   }
 
@@ -217,7 +301,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           .write(ProductsCompanion(
             name: Value(name), category: Value(_category), buyPrice: Value(buy),
             sellPrice: Value(sell), minStock: Value(min), sku: Value(sku),
-            stock: Value(stock), barcode: Value(_barcodeOn ? _barcode : null),
+            stock: Value(stock), barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
             imagePath: Value(_imagePath), isOnline: Value(_isOnline),
             expiryDate: Value(_expiryDate),
             productType: Value(pType == 'Regular' ? null : pType),
@@ -229,7 +313,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         name: name, sellPrice: sell, category: Value(_category),
         buyPrice: Value(buy), stock: Value(stock), minStock: Value(min),
         sku: Value(sku), imagePath: Value(_imagePath),
-        barcode: Value(_barcodeOn ? _barcode : null),
+        barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
         isOnline: Value(_isOnline), expiryDate: Value(_expiryDate),
         productType: Value(pType == 'Regular' ? null : pType),
         variantsJson: Value(variants), wholesaleJson: Value(wholesale),
@@ -377,9 +461,39 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             borderRadius: BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
                           ),
                           child: Column(children: [
-                            BarcodeWidget(data: _barcode, barcode: Barcode.code128(), width: double.infinity, height: 70),
+                            // Scan kamera + input manual (barcode form pindah ke sini)
+                            Row(children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _barcodeCtrl,
+                                  keyboardType: TextInputType.number,
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 13,
+                                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                                  ),
+                                  decoration: InputDecoration(
+                                    labelText: 'Kode barcode',
+                                    hintText: 'contoh: 8991002101234',
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              IconButton.filledTonal(
+                                tooltip: 'Scan kamera',
+                                onPressed: _scanBarcodeFromCamera,
+                                icon: Icon(Icons.qr_code_scanner, size: 20, color: NusaConfig.activePrimary),
+                              ),
+                            ]),
                             SizedBox(height: 6),
-                            Text(_barcode, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                            if (_barcodeCtrl.text.trim().isNotEmpty) ...[
+                              BarcodeWidget(data: _barcodeCtrl.text.trim(), barcode: Barcode.code128(), width: double.infinity, height: 60),
+                              SizedBox(height: 4),
+                              Text(_barcodeCtrl.text.trim(), style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                            ],
                           ]),
                         )
                       : null,

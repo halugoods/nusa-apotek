@@ -190,13 +190,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         BarcodeFormat.qrCode,
       ],
     );
-    final manualCtrl = TextEditingController();
     String? errorMsg;
     if (!mounted) return;
 
     // Modal popup — consistent UI with products_screen barcode scanner.
-    // Includes a manual barcode input so a broken camera or unreadable label
-    // never blocks checkout: type the code and tap "Gunakan".
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -223,12 +220,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     Navigator.pop(ctx);
                   },
                   errorBuilder: (context, error, child) {
-                    // Camera permission denied / no camera: show guidance +
-                    // manual input instead of a dead black box.
+                    // Camera permission denied / no camera: show guidance
+                    // (barcode manual diatur via Form Produk).
                     debugPrint('[POS] scanner error: $error');
                     if (errorMsg == null) {
-                      errorMsg = 'Kamera tidak tersedia atau izin kamera ditolak. '
-                          'Masukkan kode barcode manual di bawah.';
+                      errorMsg = 'Kamera tidak tersedia atau izin kamera ditolak.';
                       setSt(() {});
                     }
                     return Container(
@@ -245,7 +241,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                                 size: 36, color: Colors.grey),
                             SizedBox(height: 8),
                             Text(
-                              'Kamera tidak tersedia.\nGunakan input manual di bawah.',
+                              'Kamera tidak tersedia.\nBarcode manual diatur via Form Produk.',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                             ),
@@ -255,24 +251,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     );
                   },
                 ),
-              ),
-              SizedBox(height: 12),
-              TextField(
-                controller: manualCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Masukkan kode barcode manual',
-                  hintText: 'contoh: 8991002101234',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  isDense: true,
-                ),
-                onSubmitted: (v) {
-                  final t = v.trim();
-                  if (t.isNotEmpty) {
-                    scannedCode = t;
-                    Navigator.pop(ctx);
-                  }
-                },
               ),
               if (errorMsg != null) ...[
                 SizedBox(height: 8),
@@ -285,27 +263,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               onPressed: () => Navigator.pop(ctx),
               child: Text('Batal'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                final t = manualCtrl.text.trim();
-                if (t.isNotEmpty) {
-                  scannedCode = t;
-                  Navigator.pop(ctx);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.activePrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: Text('Gunakan'),
-            ),
           ],
         ),
       ),
     );
     await controller.dispose();
-    manualCtrl.dispose();
     if (scannedCode == null || !context.mounted) return;
 
     final product = await ProductRepository(ref.read(databaseProvider)).byBarcode(scannedCode!);
@@ -531,34 +493,119 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Widget _buildCategoryChips(bool isDark) {
     return SizedBox(
       height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.fromLTRB(16, 10, 16, 4),
-        itemCount: _chips.length,
-        separatorBuilder: (_, __) => SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final chip = _chips[i];
-          final selected = chip == _category;
-          return GestureDetector(
-            onTap: () => setState(() => _category = chip),
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 200),
-              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(children: [
+        Expanded(
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(16, 10, 8, 4),
+            itemCount: _chips.length,
+            separatorBuilder: (_, __) => SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              final chip = _chips[i];
+              final selected = chip == _category;
+              return GestureDetector(
+                onTap: () => setState(() => _category = chip),
+                child: AnimatedContainer(
+                  duration: Duration(milliseconds: 200),
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: selected ? NusaConfig.activePrimary : (isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor),
+                    borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
+                    boxShadow: selected ? [BoxShadow(color: NusaConfig.activePrimary.withValues(alpha: 0.3), blurRadius: 8, offset:  Offset(0, 2))] : [],
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(NusaConfig.catIcons[chip] ?? Icons.circle, size: 16,
+                      color: selected ? Colors.white : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    SizedBox(width: 6),
+                    Text(chip, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
+        // ── "+" item manual (transaksi di luar menu produk) ──
+        Padding(
+          padding: EdgeInsets.only(right: 12, top: 6, bottom: 0),
+          child: GestureDetector(
+            onTap: () => _showManualItemSheet(),
+            child: Container(
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: selected ? NusaConfig.activePrimary : (isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor),
-                borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
-                boxShadow: selected ? [BoxShadow(color: NusaConfig.activePrimary.withValues(alpha: 0.3), blurRadius: 8, offset:  Offset(0, 2))] : [],
+                color: NusaConfig.activePrimary,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: NusaConfig.activePrimary.withValues(alpha: 0.3), blurRadius: 8, offset: Offset(0, 2))],
               ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(NusaConfig.catIcons[chip] ?? Icons.circle, size: 16,
-                  color: selected ? Colors.white : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                SizedBox(width: 6),
-                Text(chip, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
-              ]),
+              child: Icon(Icons.add, size: 20, color: Colors.white),
             ),
-          );
-        },
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── Manual item: transaksi ad-hoc di luar menu produk ──
+
+  String get _manualHint {
+    if (NusaConfig.isLaundryVariant) return 'Contoh: jasa antar jemput, setrika express';
+    if (NusaConfig.isBengkelVariant) return 'Contoh: turun mesin, cuci motor, service AC';
+    if (NusaConfig.isSalonVariant) return 'Contoh: cukur alis, cat rambut, kreasi';
+    if (NusaConfig.isApotekVariant) return 'Contoh: konsultasi, obat racikan, tes tensi';
+    if (NusaConfig.isFotocopyVariant) return 'Contoh: jilid, laminating, jasa print';
+    if (NusaConfig.isServisVariant) return 'Contoh: service AC, pasang antena, perbaikan';
+    if (NusaConfig.isFnbVariant) return 'Contoh: biaya delivery, parkir, asuransi';
+    return 'Contoh: jasa angkut, ongkir, biaya layanan';
+  }
+
+  void _showManualItemSheet() {
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+          SizedBox(height: 16),
+          Text('Item Manual', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          SizedBox(height: 4),
+          Text('Transaksi di luar menu produk. ${_manualHint}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          SizedBox(height: 16),
+          NusaFormField(label: 'Nama Item', controller: nameCtrl, hintText: 'contoh: jasa angkut'),
+          SizedBox(height: 12),
+          NusaFormField(label: 'Harga (Rp)', controller: priceCtrl, hintText: 'contoh: 15000', keyboardType: TextInputType.number),
+          SizedBox(height: 12),
+          NusaFormField(label: 'Jumlah', controller: qtyCtrl, hintText: '1', keyboardType: TextInputType.number),
+          SizedBox(height: 16),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: NusaConfig.activePrimary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final price = int.tryParse(priceCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+              final qty = int.tryParse(qtyCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 1;
+              if (name.isEmpty || price <= 0) {
+                TopToast.error(context, 'Isi nama item & harga');
+                return;
+              }
+              if (qty < 1) {
+                TopToast.error(context, 'Jumlah minimal 1');
+                return;
+              }
+              ref.read(cartProvider.notifier).addManualItem(name, price, qty: qty);
+              Navigator.pop(ctx);
+              TopToast.success(context, '$name ditambahkan');
+            },
+            child: Text('Tambah ke Keranjang'),
+          )),
+          SizedBox(height: 8),
+        ]),
       ),
     );
   }

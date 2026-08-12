@@ -26,6 +26,7 @@ import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/profile_stats_card.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
+import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -55,6 +56,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Attendance tracking
   bool _hasCheckedIn = false;
   String _checkInTime = '';
+
+  // PIN pad kasir (opsional — dikendalikan dari Pengaturan)
+  bool _pinPadEnabled = true;
+
+  // In-app update: latest GitHub release + whether we're downloading now.
+  UpdateInfo? _updateInfo;
+  bool _downloadingUpdate = false;
+  double _downloadProgress = 0;
 
   // Last cashier session
   String? _lastCashierName;
@@ -169,6 +178,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     await _load();
 
+    // Check for app update silently (10-min cache inside UpdateService) —
+    // if a new release exists, show a badge on the bell.
+    _checkUpdateSilent();
+
     // Fix: reload photoPath from DB (not stale session data)
     if (session != null && mounted) {
       try {
@@ -209,8 +222,247 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     } catch (_) {}
   }
 
+  // ── In-app update (bell badge + download + install) ──────────
+
+  /// Silent update check — caches for 10 min inside UpdateService so this
+  /// never hammers GitHub. Non-critical: failures are ignored silently.
+  Future<void> _checkUpdateSilent() async {
+    if (!mounted) return;
+    final info = await UpdateService.checkForUpdate();
+    if (!mounted) return;
+    setState(() => _updateInfo = info);
+  }
+
+  /// Bell tap: if an update is available show the update dialog,
+  /// otherwise fall back to the attendance reminder.
+  void _onBellTap() {
+    final info = _updateInfo;
+    if (info != null && info.hasUpdate) {
+      _showUpdateDialog();
+      return;
+    }
+    if (!_hasCheckedIn && _currentName.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Jangan lupa absen — buka kasir untuk absen otomatis'),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Tidak ada notifikasi baru'),
+          backgroundColor: Colors.blueGrey.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+  }
+
+  void _showUpdateDialog() {
+    final info = _updateInfo;
+    if (info == null || !info.hasUpdate) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      barrierDismissible: !_downloadingUpdate,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Update Tersedia',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _downloadingUpdate
+              ? _buildDownloadProgress(isDark)
+              : _buildUpdateInfo(info, isDark),
+        ),
+        actions: _downloadingUpdate
+            ? null
+            : [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Nanti'),
+                ),
+                if (info.downloadUrl != null)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _startUpdateDownload();
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Download & Update'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NusaConfig.activePrimary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+              ],
+      ),
+    );
+  }
+
+  Widget _buildUpdateInfo(UpdateInfo info, bool isDark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Versi ${info.latestVersion} (build ${info.latestBuildNumber})',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+          ),
+        ),
+        if (info.fileSizeBytes != null && info.fileSizeBytes! > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Ukuran: ${UpdateService.formatSize(info.fileSizeBytes)}',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+            ),
+          ),
+        ],
+        if (info.changelog != null && info.changelog!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              info.changelog!,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Text(
+          'Unduh APK langsung di aplikasi, lalu instal otomatis.',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDownloadProgress(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Mengunduh update… ${(_downloadProgress * 100).toStringAsFixed(0)}%',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: _downloadProgress > 0 ? _downloadProgress : null,
+              minHeight: 8,
+              backgroundColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Jangan tutup aplikasi selama proses berjalan.',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Download + install the APK with progress, then hand off to the system
+  /// installer. On failure the dialog closes with an error toast; the old
+  /// installed version is untouched.
+  Future<void> _startUpdateDownload() async {
+    final info = _updateInfo;
+    if (info == null || info.downloadUrl == null) return;
+    if (!mounted) return;
+    setState(() {
+      _downloadingUpdate = true;
+      _downloadProgress = 0;
+    });
+
+    try {
+      final path = await UpdateService.downloadApk(
+        url: info.downloadUrl!,
+        variantId: NusaConfig.productId,
+        version: info.latestVersion ?? 'latest',
+        onProgress: (p) {
+          if (mounted) setState(() => _downloadProgress = p);
+        },
+      );
+      if (path == null) throw Exception('Gagal membuat file unduhan.');
+      await UpdateService.installApk(path);
+      if (mounted) {
+        setState(() {
+          _downloadingUpdate = false;
+          _downloadProgress = 0;
+        });
+        // Keep showing "Update" until the next version is installed.
+        TopToast.success(context, 'Instalasi dibuka. Selesaikan di layar sistem.');
+      }
+    } catch (e) {
+      debugPrint('[Dashboard] update download error: $e');
+      if (mounted) {
+        setState(() {
+          _downloadingUpdate = false;
+          _downloadProgress = 0;
+        });
+        TopToast.error(context, 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
+      }
+    }
+  }
+
   Future<void> _load() async {
     final name = await ref.read(settingsRepoProvider).getStoreName();
+    _pinPadEnabled = await SecureStore.getPinPadEnabled();
     final db = ref.read(databaseProvider);
     final attRepo = AttendanceRepository(db);
     final emps = await attRepo.getEmployees();
@@ -591,8 +843,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    // 4. PIN guard for sensitive menus (kasir)
-    if (needsPinGuard(route)) {
+    // 4. PIN guard for sensitive menus (kasir) — bisa dinonaktifkan di Pengaturan
+    if (needsPinGuard(route) && await SecureStore.getPinPadEnabled()) {
       final pinOk = await _requirePinReentry();
       if (!pinOk) return;
     }
@@ -751,10 +1003,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final s = ref.read(employeeSessionProvider);
     if (s == null) return;
 
-    // PIN re-entry for security
-    final pinOk = await _requirePinReentry();
-    if (!pinOk) return;
-    if (!mounted) return;
+    // PIN re-entry for security (bisa dinonaktifkan di Pengaturan)
+    if (await SecureStore.getPinPadEnabled()) {
+      final pinOk = await _requirePinReentry();
+      if (!pinOk) return;
+      if (!mounted) return;
+    }
 
     // Check if there's already an active cashier session
     final cashierRepo = CashierSessionRepository(ref.read(databaseProvider));
@@ -911,7 +1165,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
       // Only PIN-guarded menus need an indicator; everything else is accessible
       String accessType = '';
-      if (needsPinGuard(id)) {
+      if (needsPinGuard(id) && _pinPadEnabled) {
         accessType = '🔐';
       }
 
@@ -974,8 +1228,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               userName: userName,
               role: roleText,
               branch: _storeName,
-              hasNotification: !_hasCheckedIn && _currentName.isNotEmpty,
-              onBellTap: () {},
+              hasNotification: (_updateInfo?.hasUpdate ?? false) ||
+                  (!_hasCheckedIn && _currentName.isNotEmpty),
+              onBellTap: _onBellTap,
               onLogout: _confirmLogout,
             ),
 

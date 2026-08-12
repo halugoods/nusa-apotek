@@ -470,10 +470,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       }
     }
 
-    // Validate stock before deducting
+    // Validate stock before deducting (item manual — productId negatif — dilewati)
     final db = ref.read(databaseProvider);
     final productRepo = ProductRepository(db);
     for (final item in cart) {
+      if (item.isManual) continue;
       final product = await productRepo.byId(item.productId);
       if (product == null || product.stock < item.qty) {
         final name = product?.name ?? item.name;
@@ -498,8 +499,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Wrap all DB writes (stock, transaction, loyalty, promo) in a single transaction.
       // If any step fails, it all rolls back — no partial state.
       await db.transaction(() async {
-        // Deduct stock for each item
+        // Deduct stock for each item (item manual tidak punya stok)
         for (final item in cart) {
+          if (item.isManual) continue;
           await productRepo.adjustStock(item.productId, -item.qty);
         }
 
@@ -595,13 +597,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       }
 
       ref.read(cartProvider.notifier).clear();
-
-      // Auto-upload backup ke cloud setelah transaksi (background)
-      Future.microtask(() async {
-        try {
-          await ref.read(activationRepoProvider).uploadBackupNow();
-        } catch (_) {}
-      });
 
       if (!mounted) return;
 

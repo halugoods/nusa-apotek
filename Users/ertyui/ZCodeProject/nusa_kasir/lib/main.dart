@@ -9,9 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/app.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/dev/variant_provider.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
@@ -127,6 +127,49 @@ Future<void> _applyPendingRestore() async {
   }
 }
 
+/// Auto cloud sync — receive side. Runs at app launch (before the DB opens).
+///
+/// Rule: pull from cloud ONLY if the cloud backup is newer than what we last
+/// saw AND we have no local changes that haven't been uploaded yet. This
+/// never overwrites un-uploaded local work. Timeout 3s — offline starts fast.
+Future<void> _receiveAtLaunch() async {
+  try {
+    if (await SecureStore.getActivation() == null) return;
+    final uid = await SecureStore.read(key: 'nusa_google_user_id');
+    if (uid == null) return;
+
+    final client = Supabase.instance.client;
+    final repo = ActivationRepository(client);
+    final cloudTime = await repo
+        .getBackupTimestamp()
+        .timeout(const Duration(seconds: 3), onTimeout: () => null);
+    if (cloudTime == null) return;
+
+    final lastSeen = await SecureStore.getLastCloudSeen();
+    final lastLocalChange = await SecureStore.getLastLocalChange();
+
+    // Cloud not newer than last seen → nothing to pull.
+    if (lastSeen != null && !cloudTime.isAfter(lastSeen)) return;
+
+    // Local un-uploaded changes → don't overwrite local; leave for upload.
+    if (lastLocalChange != null &&
+        (lastSeen == null || lastLocalChange.isAfter(lastSeen))) {
+      return;
+    }
+
+    // No local pending changes → adopt cloud backup.
+    final ok = await repo
+        .restoreFromCloud()
+        .timeout(const Duration(seconds: 15), onTimeout: () => false);
+    if (ok) {
+      await SecureStore.setLastCloudSeen(cloudTime);
+      debugPrint('[AutoSync] Received cloud backup ($cloudTime)');
+    }
+  } catch (e) {
+    debugPrint('[AutoSync] receive-at-launch skip: $e');
+  }
+}
+
 /// Sync images between local cache and Supabase Storage.
 /// Runs once on startup — first-time migration uploads local images,
 /// then downloads any cloud images missing from local cache.
@@ -197,13 +240,17 @@ void main() async {
       } catch (_) {}
     }
 
+    // Auto cloud sync — receive-at-launch: pull the newest cloud backup
+    // BEFORE the database opens, but only when we have NO un-uploaded local
+    // changes (otherwise the local work would be silently overwritten).
+    try {
+      await _receiveAtLaunch();
+    } catch (_) {}
+
     // Apply pending device-migration backup BEFORE opening the database.
     try {
       await _applyPendingRestore();
     } catch (_) {}
-
-    // Manual sync only — user controls when to upload/download via Settings.
-    // Auto-sync removed to prevent race-condition data loss between devices.
 
     // Register background tasks
     try {

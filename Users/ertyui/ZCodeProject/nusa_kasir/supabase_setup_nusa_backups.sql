@@ -4,8 +4,12 @@
 -- ============================================================
 --
 -- CATATAN KEAMANAN:
--- Backup storage requires Supabase Auth. Paths must be {auth.uid}/...
--- The bucket is private; encrypted payloads provide defense in depth.
+-- Auto cloud sync (v2.2.0+) berjalan di background di setiap perangkat
+-- (upload ±6 dtk, terima saat app dibuka). App sign-in anonim sekali,
+-- sehingga bucket diakses oleh role anon + authenticated.
+-- Path tetap di-namespace {googleUserId}/{productId}/... dan payload
+-- AES-GCM encrypted dengan Google user ID (defense in depth) — membuka
+-- akses anon/authenticated TIDAK mengekspos data.
 --
 -- ============================================================
 
@@ -32,23 +36,24 @@ DROP POLICY IF EXISTS "nusa_backups_select" ON storage.objects;
 DROP POLICY IF EXISTS "nusa_backups_update" ON storage.objects;
 DROP POLICY IF EXISTS "nusa_backups_delete" ON storage.objects;
 
--- 4. All operations require Auth and the first path segment must be auth.uid().
+-- 4. Backup diakses oleh anon + authenticated (auto-sync background).
+--    Path tetap {googleUserId}/{productId}/... dan payload terenkripsi.
 CREATE POLICY "nusa_backups_insert" ON storage.objects
-  FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'nusa-backups' AND (storage.foldername(name))[1] = auth.uid()::text);
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (bucket_id = 'nusa-backups');
 
 CREATE POLICY "nusa_backups_select" ON storage.objects
-  FOR SELECT TO authenticated
-  USING (bucket_id = 'nusa-backups' AND (storage.foldername(name))[1] = auth.uid()::text);
+  FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'nusa-backups');
 
 CREATE POLICY "nusa_backups_update" ON storage.objects
-  FOR UPDATE TO authenticated
-  USING (bucket_id = 'nusa-backups' AND (storage.foldername(name))[1] = auth.uid()::text)
-  WITH CHECK (bucket_id = 'nusa-backups' AND (storage.foldername(name))[1] = auth.uid()::text);
+  FOR UPDATE TO anon, authenticated
+  USING (bucket_id = 'nusa-backups')
+  WITH CHECK (bucket_id = 'nusa-backups');
 
 CREATE POLICY "nusa_backups_delete" ON storage.objects
-  FOR DELETE TO authenticated
-  USING (bucket_id = 'nusa-backups' AND (storage.foldername(name))[1] = auth.uid()::text);
+  FOR DELETE TO anon, authenticated
+  USING (bucket_id = 'nusa-backups');
 
 -- ============================================================
 -- Verify

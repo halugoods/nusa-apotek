@@ -281,4 +281,44 @@ class SecureStore {
       (await SecureStore.read(key: 'nusa_images_migrated')) == 'true';
   static Future<void> setImagesMigrated(bool v) =>
       SecureStore.write(key: 'nusa_images_migrated', value: v.toString());
+
+  // ── PIN pad kasir (default: aktif) ────────────────────────────────
+  static Future<bool> getPinPadEnabled() async {
+    final v = await SecureStore.read(key: 'nusa_pinpad_kasir_enabled');
+    return v == null || v == 'true'; // default aktif
+  }
+  static Future<void> setPinPadEnabled(bool v) =>
+      SecureStore.write(key: 'nusa_pinpad_kasir_enabled', value: v.toString());
+
+  // ── Izin pertama kali (dialog sekali) ─────────────────────────────
+  static Future<bool> getPermissionsAsked() async =>
+      (await SecureStore.read(key: 'nusa_permissions_asked')) == 'true';
+  static Future<void> setPermissionsAsked(bool v) =>
+      SecureStore.write(key: 'nusa_permissions_asked', value: v.toString());
+
+  // ── Auto cloud sync state (per device) ────────────────────────────
+  static Future<DateTime?> getLastCloudSeen() async {
+    final v = await SecureStore.read(key: 'nusa_last_cloud_seen');
+    return v != null ? DateTime.tryParse(v) : null;
+  }
+  static Future<void> setLastCloudSeen(DateTime v) =>
+      SecureStore.write(key: 'nusa_last_cloud_seen', value: v.toUtc().toIso8601String());
+
+  static Future<DateTime?> getLastLocalChange() async {
+    final v = await SecureStore.read(key: 'nusa_last_local_change');
+    return v != null ? DateTime.tryParse(v) : null;
+  }
+  static Future<void> setLastLocalChange(DateTime v) =>
+      SecureStore.write(key: 'nusa_last_local_change', value: v.toUtc().toIso8601String());
+
+  static Future<int> getConflictCount() async {
+    final v = await SecureStore.read(key: 'nusa_conflict_count');
+    return v != null ? int.tryParse(v) ?? 0 : 0;
+  }
+  static Future<void> setConflictCount(int v) =>
+      SecureStore.write(key: 'nusa_conflict_count', value: v.toString());
+  static Future<void> bumpConflictCount() async {
+    final c = await getConflictCount();
+    await setConflictCount(c + 1);
+  }
 }

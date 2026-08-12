@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -403,7 +402,6 @@ class ReceiptSheet extends ConsumerWidget {
       showCashier: toggles['showCashier'] ?? true,
       showInvoice: toggles['showInvoice'] ?? true,
       showDate: toggles['showDate'] ?? true,
-      showBarcode: toggles['showBarcode'] ?? false,
       header: header,
       footer: footer,
       logoPath: logoPath,
@@ -595,24 +593,6 @@ class ReceiptSheet extends ConsumerWidget {
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
         SizedBox(height: 8),
-
-        // ── Barcode (toggle) ──
-        if (s.showBarcode && invoice != null) ...[
-          Center(
-            child: BarcodeWidget(
-              data: invoice!,
-              barcode: Barcode.code128(),
-              width: 200,
-              height: 50,
-              drawText: true,
-              style: TextStyle(
-                fontSize: 10,
-                color: textColor,
-              ),
-            ),
-          ),
-          SizedBox(height: 4),
-        ],
 
         // ── Footer ──
         Center(
@@ -952,7 +932,6 @@ class _ReceiptSettings {
   final bool showCashier;
   final bool showInvoice;
   final bool showDate;
-  final bool showBarcode;
   final String header;
   final String footer;
   final String? logoPath;
@@ -963,7 +942,6 @@ class _ReceiptSettings {
     this.showCashier = true,
     this.showInvoice = true,
     this.showDate = true,
-    this.showBarcode = false,
     this.header = '',
     this.footer = '',
     this.logoPath,

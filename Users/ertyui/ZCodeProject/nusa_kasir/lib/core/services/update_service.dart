@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 
 /// Result of an update check.
@@ -172,5 +175,90 @@ class UpdateService {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  /// Downloads the APK to app-private external storage (visible to
+  /// FileProvider via `external_files`) and returns its absolute path.
+  ///
+  /// Streams to disk with progress reported through [onProgress]
+  /// (0.0 → 1.0). On failure the partial file is deleted so a corrupted
+  /// APK never gets installed. Does NOT touch the UI.
+  static Future<String?> downloadApk({
+    required String url,
+    required String variantId,
+    required String version,
+    void Function(double progress)? onProgress,
+  }) async {
+    final dir = await getExternalStorageDirectory();
+    if (dir == null) return null;
+    final downloads = Directory(p.join(dir.path, 'downloads'));
+    try {
+      if (await downloads.exists()) {
+        // Remove stale APKs for this variant so we never install an old build.
+        await for (final f in downloads.list()) {
+          if (f is File && p.extension(f.path).toLowerCase() == '.apk') {
+            try { await f.delete(); } catch (_) {}
+          }
+        }
+      } else {
+        await downloads.create(recursive: true);
+      }
+    } catch (_) {}
+
+    final filePath = p.join(
+      downloads.path,
+      'nusa-${variantId.replaceFirst('nusa-', '')}-v$version.apk',
+    );
+    final sink = File(filePath).openWrite();
+    HttpClient client = HttpClient();
+    try {
+      final req = await client.getUrl(Uri.parse(url)).timeout(_timeout);
+      req.headers.set(HttpHeaders.userAgentHeader, _userAgent);
+      req.headers.set(HttpHeaders.acceptHeader, '*/*');
+      final res = await req.close().timeout(_timeout);
+      if (res.statusCode != 200) {
+        throw HttpException('Download failed: HTTP ${res.statusCode}');
+      }
+      final total = res.contentLength;
+      var received = 0;
+      await for (final chunk in res) {
+        sink.add(chunk);
+        received += chunk.length;
+        if (total > 0 && onProgress != null) {
+          onProgress(received / total);
+        }
+      }
+      await sink.flush();
+      await sink.close();
+      client.close();
+      return filePath;
+    } catch (e) {
+      try { await sink.close(); } catch (_) {}
+      try { client.close(); } catch (_) {}
+      try {
+        final f = File(filePath);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+      debugPrint('[UpdateService] downloadApk error: $e');
+      rethrow;
+    }
+  }
+
+  /// Installs a downloaded APK via the system package installer.
+  ///
+  /// Bridges to `com.nusa_kasir/installer` in MainActivity.kt which fires
+  /// ACTION_VIEW + FileProvider. Throws on failure.
+  static Future<void> installApk(String filePath) async {
+    const channel = MethodChannel('com.nusa_kasir/installer');
+    try {
+      final ok = await channel.invokeMethod<bool>('installApk', {
+        'path': filePath,
+      });
+      if (ok != true) {
+        throw Exception('Installer tidak membuka (ok=$ok)');
+      }
+    } on PlatformException catch (e) {
+      throw Exception(e.message ?? 'Installer error');
+    }
   }
 }

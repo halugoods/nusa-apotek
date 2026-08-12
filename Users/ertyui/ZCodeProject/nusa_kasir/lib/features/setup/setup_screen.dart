@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -86,6 +87,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         );
       } catch (_) {}
 
+      // First-install: minta izin sekali (kamera, notifikasi, penyimpanan,
+      // bluetooth) — user bisa pilih "Nanti" dan mengaktifkan via Pengaturan.
+      if (mounted) await _askPermissionsOnce();
+
       if (mounted) context.go('/home');
     } catch (e) {
       setState(() {
@@ -93,6 +98,47 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _error = 'Gagal menyimpan: $e';
       });
     }
+  }
+
+  /// Dialog izin pertama kali — hanya muncul sekali seumur hidup app.
+  Future<void> _askPermissionsOnce() async {
+    try {
+      if (await SecureStore.getPermissionsAsked()) return;
+      final granted = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Izinkan akses?'),
+          content: const Text(
+            'NUSA butuh izin berikut agar fitur berjalan maksimal:\n\n'
+            '📷 Kamera — scan barcode produk\n'
+            '🔔 Notifikasi — stok menipis & pesanan\n'
+            '💾 Penyimpanan — simpan & muat data\n'
+            '🔵 Bluetooth — cetak struk ke printer\n\n'
+            'Bisa diatur lagi kapan saja lewat Pengaturan.',
+            style: TextStyle(fontSize: 14, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Nanti'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Izinkan'),
+            ),
+          ],
+        ),
+      );
+      await SecureStore.setPermissionsAsked(true);
+      if (granted != true) return;
+
+      await Permission.camera.request();
+      await Permission.notification.request();
+      await Permission.storage.request();
+      await Permission.bluetoothScan.request();
+      await Permission.bluetoothConnect.request();
+    } catch (_) {}
   }
 
   @override
