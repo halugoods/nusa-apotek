@@ -12,9 +12,7 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
-import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
-import 'package:nusa_kasir/shared/widgets/nusa_status_badge.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -145,12 +143,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Future<void> _exportCSV() async {
     try {
       final rows = <List<String>>[
-        ['Nama', 'SKU', 'Barcode', 'Kategori', 'Harga Beli', 'Harga Jual', 'Diskon %', 'Stok', 'Tipe', 'Kadaluarsa'],
+        ['Nama', 'SKU', 'Barcode', 'Kategori', 'Harga Beli', 'Harga Jual', 'Diskon', 'Tipe Diskon', 'Stok', 'Tipe', 'Kadaluarsa'],
       ];
       for (final p in _products) {
         rows.add([
           p.name, p.sku ?? '', p.barcode ?? '', p.category,
-          p.buyPrice.toString(), p.sellPrice.toString(), p.discountPercent.toString(), p.stock.toString(),
+          p.buyPrice.toString(), p.sellPrice.toString(), p.discountPercent.toString(), p.discountType, p.stock.toString(),
           p.productType ?? 'Regular',
           p.expiryDate != null ? DateFormat('dd/MM/yyyy').format(p.expiryDate!) : '',
         ]);
@@ -200,6 +198,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       // Skip header row
       int imported = 0;
       final repo = ref.read(productRepoProvider);
+      // Header-aware column mapping: format lama (10 kolom) → 'Diskon %' di idx 6,
+      // format baru (11 kolom) → 'Diskon' idx 6 + 'Tipe Diskon' idx 7.
+      final header = rows.first.map((h) => h.toString().trim().toLowerCase()).toList();
+      final hasTypeCol = header.length > 7 && (header[7].contains('tipe') || header[7].contains('jenis'));
       for (int i = 1; i < rows.length; i++) {
         final row = rows[i];
         if (row.isEmpty || (row.length >= 1 && row[0].toString().trim().isEmpty)) continue;
@@ -210,13 +212,24 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           final category = row.length > 3 ? row[3].toString().trim() : 'Lainnya';
           final buyPrice = row.length > 4 ? int.tryParse(row[4].toString().trim()) ?? 0 : 0;
           final sellPrice = row.length > 5 ? int.tryParse(row[5].toString().trim()) ?? 0 : 0;
-          final discountPercent = row.length > 6 ? (int.tryParse(row[6].toString().trim()) ?? 0).clamp(0, 100) : 0;
-          final stock = row.length > 7 ? int.tryParse(row[7].toString().trim()) ?? 0 : 0;
+          final typeIdx = hasTypeCol ? 7 : null;
+          final stockIdx = hasTypeCol ? 8 : 7;
+          final discountTypeRaw = typeIdx != null && row.length > typeIdx
+              ? row[typeIdx].toString().trim().toLowerCase()
+              : '';
+          final isNominal = discountTypeRaw == 'nominal';
+          final rawDiscount = row.length > 6 ? (int.tryParse(row[6].toString().trim()) ?? 0) : 0;
+          // Nominal tidak di-clamp 0–100; persen di-clamp 0–100.
+          final discountPercent = isNominal
+              ? rawDiscount.clamp(0, sellPrice)
+              : rawDiscount.clamp(0, 100);
+          final stock = row.length > stockIdx ? int.tryParse(row[stockIdx].toString().trim()) ?? 0 : 0;
           if (name.isEmpty || sellPrice == 0) continue;
           await repo.addProduct(
             name: name, category: category, buyPrice: buyPrice,
             sellPrice: sellPrice, stock: stock, minStock: 0,
             discountPercent: discountPercent,
+            discountType: isNominal ? 'nominal' : 'persen',
             sku: sku.isEmpty ? null : sku,
             barcode: barcode.isEmpty ? null : barcode,
           );

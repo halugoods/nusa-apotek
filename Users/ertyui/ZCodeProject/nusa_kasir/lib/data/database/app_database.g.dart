@@ -285,6 +285,18 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _discountTypeMeta = const VerificationMeta(
+    'discountType',
+  );
+  @override
+  late final GeneratedColumn<String> discountType = GeneratedColumn<String>(
+    'discount_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('persen'),
+  );
   static const VerificationMeta _stockMeta = const VerificationMeta('stock');
   @override
   late final GeneratedColumn<int> stock = GeneratedColumn<int>(
@@ -411,6 +423,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     buyPrice,
     sellPrice,
     discountPercent,
+    discountType,
     stock,
     minStock,
     imagePath,
@@ -483,6 +496,15 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         discountPercent.isAcceptableOrUnknown(
           data['discount_percent']!,
           _discountPercentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('discount_type')) {
+      context.handle(
+        _discountTypeMeta,
+        discountType.isAcceptableOrUnknown(
+          data['discount_type']!,
+          _discountTypeMeta,
         ),
       );
     }
@@ -596,6 +618,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.int,
         data['${effectivePrefix}discount_percent'],
       )!,
+      discountType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}discount_type'],
+      )!,
       stock: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}stock'],
@@ -654,6 +680,7 @@ class Product extends DataClass implements Insertable<Product> {
   final int buyPrice;
   final int sellPrice;
   final int discountPercent;
+  final String discountType;
   final int stock;
   final int minStock;
   final String? imagePath;
@@ -673,6 +700,7 @@ class Product extends DataClass implements Insertable<Product> {
     required this.buyPrice,
     required this.sellPrice,
     required this.discountPercent,
+    required this.discountType,
     required this.stock,
     required this.minStock,
     this.imagePath,
@@ -699,6 +727,7 @@ class Product extends DataClass implements Insertable<Product> {
     map['buy_price'] = Variable<int>(buyPrice);
     map['sell_price'] = Variable<int>(sellPrice);
     map['discount_percent'] = Variable<int>(discountPercent);
+    map['discount_type'] = Variable<String>(discountType);
     map['stock'] = Variable<int>(stock);
     map['min_stock'] = Variable<int>(minStock);
     if (!nullToAbsent || imagePath != null) {
@@ -734,6 +763,7 @@ class Product extends DataClass implements Insertable<Product> {
       buyPrice: Value(buyPrice),
       sellPrice: Value(sellPrice),
       discountPercent: Value(discountPercent),
+      discountType: Value(discountType),
       stock: Value(stock),
       minStock: Value(minStock),
       imagePath: imagePath == null && nullToAbsent
@@ -771,6 +801,7 @@ class Product extends DataClass implements Insertable<Product> {
       buyPrice: serializer.fromJson<int>(json['buyPrice']),
       sellPrice: serializer.fromJson<int>(json['sellPrice']),
       discountPercent: serializer.fromJson<int>(json['discountPercent']),
+      discountType: serializer.fromJson<String>(json['discountType']),
       stock: serializer.fromJson<int>(json['stock']),
       minStock: serializer.fromJson<int>(json['minStock']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
@@ -795,6 +826,7 @@ class Product extends DataClass implements Insertable<Product> {
       'buyPrice': serializer.toJson<int>(buyPrice),
       'sellPrice': serializer.toJson<int>(sellPrice),
       'discountPercent': serializer.toJson<int>(discountPercent),
+      'discountType': serializer.toJson<String>(discountType),
       'stock': serializer.toJson<int>(stock),
       'minStock': serializer.toJson<int>(minStock),
       'imagePath': serializer.toJson<String?>(imagePath),
@@ -817,6 +849,7 @@ class Product extends DataClass implements Insertable<Product> {
     int? buyPrice,
     int? sellPrice,
     int? discountPercent,
+    String? discountType,
     int? stock,
     int? minStock,
     Value<String?> imagePath = const Value.absent(),
@@ -836,6 +869,7 @@ class Product extends DataClass implements Insertable<Product> {
     buyPrice: buyPrice ?? this.buyPrice,
     sellPrice: sellPrice ?? this.sellPrice,
     discountPercent: discountPercent ?? this.discountPercent,
+    discountType: discountType ?? this.discountType,
     stock: stock ?? this.stock,
     minStock: minStock ?? this.minStock,
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
@@ -861,6 +895,9 @@ class Product extends DataClass implements Insertable<Product> {
       discountPercent: data.discountPercent.present
           ? data.discountPercent.value
           : this.discountPercent,
+      discountType: data.discountType.present
+          ? data.discountType.value
+          : this.discountType,
       stock: data.stock.present ? data.stock.value : this.stock,
       minStock: data.minStock.present ? data.minStock.value : this.minStock,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
@@ -893,6 +930,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('buyPrice: $buyPrice, ')
           ..write('sellPrice: $sellPrice, ')
           ..write('discountPercent: $discountPercent, ')
+          ..write('discountType: $discountType, ')
           ..write('stock: $stock, ')
           ..write('minStock: $minStock, ')
           ..write('imagePath: $imagePath, ')
@@ -917,6 +955,7 @@ class Product extends DataClass implements Insertable<Product> {
     buyPrice,
     sellPrice,
     discountPercent,
+    discountType,
     stock,
     minStock,
     imagePath,
@@ -940,6 +979,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.buyPrice == this.buyPrice &&
           other.sellPrice == this.sellPrice &&
           other.discountPercent == this.discountPercent &&
+          other.discountType == this.discountType &&
           other.stock == this.stock &&
           other.minStock == this.minStock &&
           other.imagePath == this.imagePath &&
@@ -961,6 +1001,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> buyPrice;
   final Value<int> sellPrice;
   final Value<int> discountPercent;
+  final Value<String> discountType;
   final Value<int> stock;
   final Value<int> minStock;
   final Value<String?> imagePath;
@@ -980,6 +1021,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.buyPrice = const Value.absent(),
     this.sellPrice = const Value.absent(),
     this.discountPercent = const Value.absent(),
+    this.discountType = const Value.absent(),
     this.stock = const Value.absent(),
     this.minStock = const Value.absent(),
     this.imagePath = const Value.absent(),
@@ -1000,6 +1042,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.buyPrice = const Value.absent(),
     required int sellPrice,
     this.discountPercent = const Value.absent(),
+    this.discountType = const Value.absent(),
     this.stock = const Value.absent(),
     this.minStock = const Value.absent(),
     this.imagePath = const Value.absent(),
@@ -1021,6 +1064,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? buyPrice,
     Expression<int>? sellPrice,
     Expression<int>? discountPercent,
+    Expression<String>? discountType,
     Expression<int>? stock,
     Expression<int>? minStock,
     Expression<String>? imagePath,
@@ -1041,6 +1085,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (buyPrice != null) 'buy_price': buyPrice,
       if (sellPrice != null) 'sell_price': sellPrice,
       if (discountPercent != null) 'discount_percent': discountPercent,
+      if (discountType != null) 'discount_type': discountType,
       if (stock != null) 'stock': stock,
       if (minStock != null) 'min_stock': minStock,
       if (imagePath != null) 'image_path': imagePath,
@@ -1063,6 +1108,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<int>? buyPrice,
     Value<int>? sellPrice,
     Value<int>? discountPercent,
+    Value<String>? discountType,
     Value<int>? stock,
     Value<int>? minStock,
     Value<String?>? imagePath,
@@ -1083,6 +1129,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       buyPrice: buyPrice ?? this.buyPrice,
       sellPrice: sellPrice ?? this.sellPrice,
       discountPercent: discountPercent ?? this.discountPercent,
+      discountType: discountType ?? this.discountType,
       stock: stock ?? this.stock,
       minStock: minStock ?? this.minStock,
       imagePath: imagePath ?? this.imagePath,
@@ -1122,6 +1169,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     }
     if (discountPercent.present) {
       map['discount_percent'] = Variable<int>(discountPercent.value);
+    }
+    if (discountType.present) {
+      map['discount_type'] = Variable<String>(discountType.value);
     }
     if (stock.present) {
       map['stock'] = Variable<int>(stock.value);
@@ -1167,6 +1217,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('buyPrice: $buyPrice, ')
           ..write('sellPrice: $sellPrice, ')
           ..write('discountPercent: $discountPercent, ')
+          ..write('discountType: $discountType, ')
           ..write('stock: $stock, ')
           ..write('minStock: $minStock, ')
           ..write('imagePath: $imagePath, ')
@@ -19710,6 +19761,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<int> buyPrice,
       required int sellPrice,
       Value<int> discountPercent,
+      Value<String> discountType,
       Value<int> stock,
       Value<int> minStock,
       Value<String?> imagePath,
@@ -19731,6 +19783,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<int> buyPrice,
       Value<int> sellPrice,
       Value<int> discountPercent,
+      Value<String> discountType,
       Value<int> stock,
       Value<int> minStock,
       Value<String?> imagePath,
@@ -19789,6 +19842,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<int> get discountPercent => $composableBuilder(
     column: $table.discountPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get discountType => $composableBuilder(
+    column: $table.discountType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -19892,6 +19950,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get discountType => $composableBuilder(
+    column: $table.discountType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get stock => $composableBuilder(
     column: $table.stock,
     builder: (column) => ColumnOrderings(column),
@@ -19978,6 +20041,11 @@ class $$ProductsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get discountType => $composableBuilder(
+    column: $table.discountType,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get stock =>
       $composableBuilder(column: $table.stock, builder: (column) => column);
 
@@ -20053,6 +20121,7 @@ class $$ProductsTableTableManager
                 Value<int> buyPrice = const Value.absent(),
                 Value<int> sellPrice = const Value.absent(),
                 Value<int> discountPercent = const Value.absent(),
+                Value<String> discountType = const Value.absent(),
                 Value<int> stock = const Value.absent(),
                 Value<int> minStock = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
@@ -20072,6 +20141,7 @@ class $$ProductsTableTableManager
                 buyPrice: buyPrice,
                 sellPrice: sellPrice,
                 discountPercent: discountPercent,
+                discountType: discountType,
                 stock: stock,
                 minStock: minStock,
                 imagePath: imagePath,
@@ -20093,6 +20163,7 @@ class $$ProductsTableTableManager
                 Value<int> buyPrice = const Value.absent(),
                 required int sellPrice,
                 Value<int> discountPercent = const Value.absent(),
+                Value<String> discountType = const Value.absent(),
                 Value<int> stock = const Value.absent(),
                 Value<int> minStock = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
@@ -20112,6 +20183,7 @@ class $$ProductsTableTableManager
                 buyPrice: buyPrice,
                 sellPrice: sellPrice,
                 discountPercent: discountPercent,
+                discountType: discountType,
                 stock: stock,
                 minStock: minStock,
                 imagePath: imagePath,

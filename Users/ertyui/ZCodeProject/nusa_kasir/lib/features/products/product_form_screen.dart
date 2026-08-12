@@ -9,19 +9,16 @@ import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
-import 'package:nusa_kasir/shared/widgets/nusa_toggle_card.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 /// Variant data model (stored as JSON in variantsJson)
 class _ProductVariant {
@@ -68,11 +65,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late String _barcode;
   Product? _existing;
   bool _loading = true;
+  bool _saving = false;
   bool _barcodeOn = false;
   final _barcodeCtrl = TextEditingController();
   bool _isOnline = false;
   String? _imagePath;
   DateTime? _expiryDate;
+  // Diskon: 'persen' | 'nominal' (Rp)
+  String _discountType = ProductDiscountX.typePersen;
 
   // Toggle-based product type
   bool _hasVarian = false;
@@ -127,6 +127,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       _buy.text = p.buyPrice > 0 ? p.buyPrice.toString() : '';
       _sell.text = p.sellPrice.toString();
       _discount.text = p.discountPercent > 0 ? p.discountPercent.toString() : '';
+      _discountType = (p.discountType == ProductDiscountX.typeNominal) ? ProductDiscountX.typeNominal : ProductDiscountX.typePersen;
       _stock.text = p.stock.toString();
       _min.text = p.minStock > 0 ? p.minStock.toString() : '';
       _category = _availableCategories.contains(p.category) ? p.category : (_availableCategories.isNotEmpty ? _availableCategories.first : '');
@@ -281,52 +282,72 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final name = _name.text.trim();
     final sell = _toInt(_sell.text);
     if (name.isEmpty) { TopToast.error(context, 'Nama produk wajib diisi'); return; }
     if (sell == null) { TopToast.error(context, 'Harga jual wajib diisi'); return; }
     if (_category.isEmpty) { TopToast.error(context, 'Pilih atau buat kategori dulu'); return; }
+
     final db = ref.read(databaseProvider);
     final buy = _toInt(_buy.text) ?? 0;
     final stock = _toInt(_stock.text) ?? 0;
     final min = _toInt(_min.text) ?? 0;
-    final discount = (_toInt(_discount.text) ?? 0).clamp(0, 100);
+    final isNominal = _discountType == ProductDiscountX.typeNominal;
+    // Nominal: berapa pun ≤ harga jual; Persen: clamp 0–100.
+    final rawDiscount = _toInt(_discount.text) ?? 0;
+    final discount = isNominal ? rawDiscount.clamp(0, sell) : rawDiscount.clamp(0, 100);
     final sku = _sku.text.trim().isEmpty ? null : _sku.text.trim();
     final variants = _serializeVariants();
     final wholesale = _serializeWholesale();
     final pType = _hasVarian ? 'Varian' : (_hasGrosir ? 'Grosir' : 'Regular');
 
-    if (_isEdit) {
-      await (db.update(db.products)..where((t) => t.id.equals(widget.productId!)))
-          .write(ProductsCompanion(
-            name: Value(name), category: Value(_category), buyPrice: Value(buy),
-            sellPrice: Value(sell), minStock: Value(min), sku: Value(sku),
-            stock: Value(stock), barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
-            imagePath: Value(_imagePath), isOnline: Value(_isOnline),
-            expiryDate: Value(_expiryDate),
-            productType: Value(pType == 'Regular' ? null : pType),
-            variantsJson: Value(variants), wholesaleJson: Value(wholesale),
-            discountPercent: Value(discount),
-          ));
-    } else {
-      await db.into(db.products).insert(ProductsCompanion.insert(
-        name: name, sellPrice: sell, category: Value(_category),
-        buyPrice: Value(buy), stock: Value(stock), minStock: Value(min),
-        sku: Value(sku), imagePath: Value(_imagePath),
-        barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
-        isOnline: Value(_isOnline), expiryDate: Value(_expiryDate),
-        productType: Value(pType == 'Regular' ? null : pType),
-        variantsJson: Value(variants), wholesaleJson: Value(wholesale),
-        discountPercent: Value(discount),
-      ));
+    setState(() => _saving = true);
+    try {
+      if (_isEdit) {
+        await (db.update(db.products)..where((t) => t.id.equals(widget.productId!)))
+            .write(ProductsCompanion(
+              name: Value(name), category: Value(_category), buyPrice: Value(buy),
+              sellPrice: Value(sell), minStock: Value(min), sku: Value(sku),
+              stock: Value(stock), barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
+              imagePath: Value(_imagePath), isOnline: Value(_isOnline),
+              expiryDate: Value(_expiryDate),
+              productType: Value(pType == 'Regular' ? null : pType),
+              variantsJson: Value(variants), wholesaleJson: Value(wholesale),
+              discountPercent: Value(discount),
+              discountType: Value(isNominal ? ProductDiscountX.typeNominal : ProductDiscountX.typePersen),
+            ));
+      } else {
+        await db.into(db.products).insert(ProductsCompanion.insert(
+          name: name, sellPrice: sell, category: Value(_category),
+          buyPrice: Value(buy), stock: Value(stock), minStock: Value(min),
+          sku: Value(sku), imagePath: Value(_imagePath),
+          barcode: Value(_barcodeOn ? _barcodeCtrl.text.trim() : null),
+          isOnline: Value(_isOnline), expiryDate: Value(_expiryDate),
+          productType: Value(pType == 'Regular' ? null : pType),
+          variantsJson: Value(variants), wholesaleJson: Value(wholesale),
+          discountPercent: Value(discount),
+          discountType: Value(isNominal ? ProductDiscountX.typeNominal : ProductDiscountX.typePersen),
+        ));
+      }
+      // Upload image to cloud in background
+      if (_imagePath != null) _uploadToCloud(_imagePath!);
+      if (mounted) {
+        TopToast.success(context, _isEdit ? 'Produk diperbarui' : 'Produk disimpan');
+        context.pop();
+      }
+    } catch (e) {
+      debugPrint('[ProductForm] save error: $e');
+      if (mounted) {
+        setState(() => _saving = false);
+        TopToast.error(context, 'Gagal menyimpan produk. Coba lagi.');
+      }
     }
-    // Upload image to cloud in background
-    if (_imagePath != null) _uploadToCloud(_imagePath!);
-    if (mounted) context.pop();
   }
 
   Future<void> _showAddCategoryDialog() async {
     final ctrl = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -334,8 +355,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         content: TextField(
           controller: ctrl,
           autofocus: true,
+          style: TextStyle(color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
           decoration: InputDecoration(
             hintText: 'Nama kategori',
+            hintStyle: TextStyle(color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
             border: OutlineInputBorder(),
           ),
           textCapitalization: TextCapitalization.words,
@@ -395,13 +418,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 NusaFormField(label: 'Harga Jual', controller: _sell, keyboardType: TextInputType.number),
                 SizedBox(height: NusaConfig.spaceSM),
 
-                // ── 5b. Diskon Standalone (opsional) ──
-                NusaFormField(
-                  label: 'Diskon % (opsional)',
-                  controller: _discount,
-                  keyboardType: TextInputType.number,
-                  hintText: 'Cth: 10 → harga otomatis jadi ${_sell.text.trim().isNotEmpty && _toInt(_sell.text) != null ? formatRupiah((_toInt(_sell.text)! * 9 / 10).round()) : '…'}',
-                ),
+                // ── 5b. Diskon Standalone (opsional) — % atau nominal Rp ──
+                _buildDiscountField(isDark),
                 SizedBox(height: NusaConfig.spaceSM),
 
                 // ── 6. Stok ──
@@ -530,18 +548,113 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 SizedBox(
                   height: 54,
                   child: ElevatedButton(
-                    onPressed: _save,
+                    onPressed: _saving ? null : _save,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: NusaConfig.activePrimary,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: NusaConfig.activePrimary.withValues(alpha: 0.6),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
-                    child: Text('Simpan Produk'),
+                    child: _saving
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20, height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                              ),
+                              SizedBox(width: 10),
+                              Text('Menyimpan…'),
+                            ],
+                          )
+                        : Text('Simpan Produk'),
                   ),
                 ),
               ]),
             ),
+    );
+  }
+
+  // ── Discount field (% atau nominal Rp) ──
+  Widget _buildDiscountField(bool isDark) {
+    final isNominal = _discountType == ProductDiscountX.typeNominal;
+    final sell = _toInt(_sell.text) ?? 0;
+    final d = _toInt(_discount.text) ?? 0;
+    final preview = d > 0 && sell > 0
+        ? formatRupiah(isNominal ? (sell - d).clamp(0, sell) : (sell - (sell * d / 100).round()).clamp(0, sell))
+        : null;
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text('Diskon Produk (opsional)',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, letterSpacing: 0.5)),
+          ),
+          // Toggle % / Rp
+          Container(
+            padding: EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : Colors.black.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _discountSegBtn('Persen (%)', false, isDark),
+              SizedBox(width: 3),
+              _discountSegBtn('Nominal (Rp)', true, isDark),
+            ]),
+          ),
+        ]),
+        SizedBox(height: 10),
+        TextField(
+          controller: _discount,
+          keyboardType: TextInputType.number,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+            color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+          decoration: InputDecoration(
+            hintText: isNominal ? 'Contoh: 10000 → potong Rp 10.000' : 'Contoh: 10 → potong 10%',
+            hintStyle: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+            isDense: true,
+            prefixText: isNominal ? 'Rp ' : '',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            prefixStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        if (preview != null) ...[
+          SizedBox(height: 8),
+          Text('Harga setelah diskon: ${preview}',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _discountSegBtn(String label, bool isNominal, bool isDark) {
+    final selected = _discountType == (isNominal ? ProductDiscountX.typeNominal : ProductDiscountX.typePersen);
+    return GestureDetector(
+      onTap: () => setState(() => _discountType = isNominal ? ProductDiscountX.typeNominal : ProductDiscountX.typePersen),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? NusaConfig.activePrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(label,
+          style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+          )),
+      ),
     );
   }
 
@@ -740,12 +853,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
   Future<void> _renameCategory(BuildContext ctx, StateSetter setSt, List<String> cats, String oldName) async {
     final ctrl = TextEditingController(text: oldName);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final newName = await showDialog<String>(
       context: ctx,
       builder: (d) => AlertDialog(
         title: Text('Ubah Nama Kategori'),
         content: TextField(controller: ctrl, autofocus: true,
-          decoration: InputDecoration(border: OutlineInputBorder()),
+          style: TextStyle(color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+          decoration: InputDecoration(
+            border: OutlineInputBorder(),
+            hintStyle: TextStyle(color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+          ),
           textCapitalization: TextCapitalization.words),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d), child: Text('Batal')),
@@ -925,7 +1043,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         controller: controller,
         onChanged: onChanged,
         keyboardType: keyboardType,
-        style: TextStyle(fontSize: 13),
+        style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),

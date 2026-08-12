@@ -20,6 +20,7 @@ class ProductRepository {
     DateTime? expiryDate,
     String? productType,
     int discountPercent = 0,
+    String discountType = 'persen',
   }) async {
     final code = barcode ?? ActivationKey.generateSerial();
     return db.into(db.products).insert(ProductsCompanion.insert(
@@ -36,6 +37,7 @@ class ProductRepository {
       expiryDate: Value(expiryDate),
       productType: Value(productType),
       discountPercent: Value(discountPercent),
+      discountType: Value(discountType),
     ));
   }
 
@@ -80,7 +82,7 @@ class ProductRepository {
 
   Future<void> updateProduct(int id,
     {String? name, String? category, int? buyPrice, int? sellPrice, int? minStock,
-     int? discountPercent}) async {
+     int? discountPercent, String? discountType}) async {
     var companion = const ProductsCompanion();
     if (name != null) companion = companion.copyWith(name: Value(name));
     if (category != null) companion = companion.copyWith(category: Value(category));
@@ -88,6 +90,7 @@ class ProductRepository {
     if (sellPrice != null) companion = companion.copyWith(sellPrice: Value(sellPrice));
     if (minStock != null) companion = companion.copyWith(minStock: Value(minStock));
     if (discountPercent != null) companion = companion.copyWith(discountPercent: Value(discountPercent));
+    if (discountType != null) companion = companion.copyWith(discountType: Value(discountType));
     await (db.update(db.products)..where((t) => t.id.equals(id))).write(companion);
   }
 

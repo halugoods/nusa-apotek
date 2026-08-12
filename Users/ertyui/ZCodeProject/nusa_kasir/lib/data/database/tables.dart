@@ -14,6 +14,8 @@ class Products extends Table {
   IntColumn get buyPrice => integer().withDefault(const Constant(0))();
   IntColumn get sellPrice => integer()();
   IntColumn get discountPercent => integer().withDefault(const Constant(0))();
+  // 'persen' (default, legacy) | 'nominal' — diskon dalam bentuk uang (Rp) langsung
+  TextColumn get discountType => text().withDefault(const Constant('persen'))();
   IntColumn get stock => integer().withDefault(const Constant(0))();
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   TextColumn get imagePath => text().nullable()();

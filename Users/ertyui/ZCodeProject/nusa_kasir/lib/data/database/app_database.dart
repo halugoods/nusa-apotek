@@ -15,7 +15,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 34;
+  int get schemaVersion => 35;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -184,6 +184,11 @@ class AppDatabase extends _$AppDatabase {
           SET employee_id = (SELECT e.id FROM employees e WHERE e.name = transactions.cashier_name LIMIT 1)
           WHERE employee_id IS NULL AND cashier_name IS NOT NULL AND cashier_name != ''
         ''');
+      }
+      if (from < 35) {
+        // Diskon fleksibel: % (persen) atau nominal uang (Rp) langsung.
+        // Kolom baru discount_type; data lama otomatis 'persen' via default.
+        await m.addColumn(products, products.discountType);
       }
     },
   );

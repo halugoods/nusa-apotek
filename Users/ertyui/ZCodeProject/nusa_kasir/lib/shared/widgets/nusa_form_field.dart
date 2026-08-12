@@ -32,6 +32,8 @@ class NusaFormField extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill;
     final borderClr = isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder;
+    final textClr = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
+    final hintClr = isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
 
     return TextFormField(
       controller: controller,
@@ -40,7 +42,11 @@ class NusaFormField extends StatelessWidget {
       onTap: onTap,
       validator: validator,
       maxLines: maxLines,
-      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: textClr,
+      ),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(
@@ -50,6 +56,7 @@ class NusaFormField extends StatelessWidget {
           letterSpacing: 0.5,
         ),
         hintText: hintText,
+        hintStyle: TextStyle(color: hintClr),
         prefixIcon: prefixIcon,
         filled: true,
         fillColor: fill,
@@ -109,6 +116,7 @@ class NusaDropdownField<T> extends StatelessWidget {
           color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
           letterSpacing: 0.5,
         ),
+        hintStyle: TextStyle(color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
         filled: true,
         fillColor: fill,
         border: OutlineInputBorder(

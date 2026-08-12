@@ -1251,6 +1251,18 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (product.hasDiscount)
+                    Positioned(top: 6, right: 6,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: NusaConfig.errorSoft.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
+                        ),
+                        child: Text(product.discountLabel,
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: NusaConfig.errorText)),
+                      ),
+                    ),
                   if (outOfStock) Container(color: Colors.white.withValues(alpha: 0.4)),
                 ]),
               ),
