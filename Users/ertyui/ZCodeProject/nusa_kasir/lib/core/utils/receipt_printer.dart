@@ -398,20 +398,30 @@ class ReceiptPrinter {
       }
 
       if (itemBig) {
-        // Rincian "Besar": qty x harga DAN subtotal masing-masing baris sendiri.
+        // Rincian "Besar": qty x harga DAN subtotal masing-masing baris
+        // sendiri, keduanya rata kanan (sejajar kolom TOTAL).
         bytes.addAll(generator.text(
           _san(qtyPrice),
-          styles: itemStyles,
+          styles: PosStyles(
+              align: PosAlign.right, fontType: itemFont,
+              height: PosTextSize.size2, width: PosTextSize.size2),
         ));
         bytes.addAll(generator.text(
-          _san(subtotal.padLeft(subWidth)),
-          styles: itemStyles,
+          _san(subtotal),
+          styles: PosStyles(
+              align: PosAlign.right, fontType: itemFont,
+              height: PosTextSize.size2, width: PosTextSize.size2),
         ));
       } else {
-        // Rincian "Kecil" (default): baris 2 = "2xRp10.000      Rp20.000".
+        // Rincian "Kecil" (default): baris 2 = "2xRp10.000  Rp20.000" rata
+        // KANAN — subtotal menempel pada posisi yang sama dengan nominal
+        // TOTAL, qty×harga ikut geser ke kanan (komplain user: subtotal
+        // harus sejajar kolom total, bukan menggantung di tengah).
         bytes.addAll(generator.text(
-          _san(qtyPrice.padRight(qtyPriceWidth) + ' ' + subtotal.padLeft(subWidth)),
-          styles: itemStyles,
+          _san('$qtyPrice  $subtotal'),
+          styles: PosStyles(
+              align: PosAlign.right, fontType: itemFont,
+              height: PosTextSize.size1, width: PosTextSize.size1),
         ));
       }
 
