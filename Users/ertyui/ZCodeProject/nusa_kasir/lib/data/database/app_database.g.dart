@@ -21131,9 +21131,9 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
   late final GeneratedColumn<int> productId = GeneratedColumn<int>(
     'product_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _productNameMeta = const VerificationMeta(
     'productName',
@@ -21175,6 +21175,21 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isMaterialMeta = const VerificationMeta(
+    'isMaterial',
+  );
+  @override
+  late final GeneratedColumn<bool> isMaterial = GeneratedColumn<bool>(
+    'is_material',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_material" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -21184,6 +21199,7 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     qty,
     buyPrice,
     total,
+    isMaterial,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -21216,8 +21232,6 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
         _productIdMeta,
         productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_productIdMeta);
     }
     if (data.containsKey('product_name')) {
       context.handle(
@@ -21254,6 +21268,12 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
     } else if (isInserting) {
       context.missing(_totalMeta);
     }
+    if (data.containsKey('is_material')) {
+      context.handle(
+        _isMaterialMeta,
+        isMaterial.isAcceptableOrUnknown(data['is_material']!, _isMaterialMeta),
+      );
+    }
     return context;
   }
 
@@ -21274,7 +21294,7 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
       productId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}product_id'],
-      )!,
+      ),
       productName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}product_name'],
@@ -21291,6 +21311,10 @@ class $PurchaseOrderItemsTable extends PurchaseOrderItems
         DriftSqlType.int,
         data['${effectivePrefix}total'],
       )!,
+      isMaterial: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_material'],
+      )!,
     );
   }
 
@@ -21304,30 +21328,35 @@ class PurchaseOrderItem extends DataClass
     implements Insertable<PurchaseOrderItem> {
   final int id;
   final int purchaseOrderId;
-  final int productId;
+  final int? productId;
   final String productName;
   final int qty;
   final int buyPrice;
   final int total;
+  final bool isMaterial;
   const PurchaseOrderItem({
     required this.id,
     required this.purchaseOrderId,
-    required this.productId,
+    this.productId,
     required this.productName,
     required this.qty,
     required this.buyPrice,
     required this.total,
+    required this.isMaterial,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['purchase_order_id'] = Variable<int>(purchaseOrderId);
-    map['product_id'] = Variable<int>(productId);
+    if (!nullToAbsent || productId != null) {
+      map['product_id'] = Variable<int>(productId);
+    }
     map['product_name'] = Variable<String>(productName);
     map['qty'] = Variable<int>(qty);
     map['buy_price'] = Variable<int>(buyPrice);
     map['total'] = Variable<int>(total);
+    map['is_material'] = Variable<bool>(isMaterial);
     return map;
   }
 
@@ -21335,11 +21364,14 @@ class PurchaseOrderItem extends DataClass
     return PurchaseOrderItemsCompanion(
       id: Value(id),
       purchaseOrderId: Value(purchaseOrderId),
-      productId: Value(productId),
+      productId: productId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productId),
       productName: Value(productName),
       qty: Value(qty),
       buyPrice: Value(buyPrice),
       total: Value(total),
+      isMaterial: Value(isMaterial),
     );
   }
 
@@ -21351,11 +21383,12 @@ class PurchaseOrderItem extends DataClass
     return PurchaseOrderItem(
       id: serializer.fromJson<int>(json['id']),
       purchaseOrderId: serializer.fromJson<int>(json['purchaseOrderId']),
-      productId: serializer.fromJson<int>(json['productId']),
+      productId: serializer.fromJson<int?>(json['productId']),
       productName: serializer.fromJson<String>(json['productName']),
       qty: serializer.fromJson<int>(json['qty']),
       buyPrice: serializer.fromJson<int>(json['buyPrice']),
       total: serializer.fromJson<int>(json['total']),
+      isMaterial: serializer.fromJson<bool>(json['isMaterial']),
     );
   }
   @override
@@ -21364,30 +21397,33 @@ class PurchaseOrderItem extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'purchaseOrderId': serializer.toJson<int>(purchaseOrderId),
-      'productId': serializer.toJson<int>(productId),
+      'productId': serializer.toJson<int?>(productId),
       'productName': serializer.toJson<String>(productName),
       'qty': serializer.toJson<int>(qty),
       'buyPrice': serializer.toJson<int>(buyPrice),
       'total': serializer.toJson<int>(total),
+      'isMaterial': serializer.toJson<bool>(isMaterial),
     };
   }
 
   PurchaseOrderItem copyWith({
     int? id,
     int? purchaseOrderId,
-    int? productId,
+    Value<int?> productId = const Value.absent(),
     String? productName,
     int? qty,
     int? buyPrice,
     int? total,
+    bool? isMaterial,
   }) => PurchaseOrderItem(
     id: id ?? this.id,
     purchaseOrderId: purchaseOrderId ?? this.purchaseOrderId,
-    productId: productId ?? this.productId,
+    productId: productId.present ? productId.value : this.productId,
     productName: productName ?? this.productName,
     qty: qty ?? this.qty,
     buyPrice: buyPrice ?? this.buyPrice,
     total: total ?? this.total,
+    isMaterial: isMaterial ?? this.isMaterial,
   );
   PurchaseOrderItem copyWithCompanion(PurchaseOrderItemsCompanion data) {
     return PurchaseOrderItem(
@@ -21402,6 +21438,9 @@ class PurchaseOrderItem extends DataClass
       qty: data.qty.present ? data.qty.value : this.qty,
       buyPrice: data.buyPrice.present ? data.buyPrice.value : this.buyPrice,
       total: data.total.present ? data.total.value : this.total,
+      isMaterial: data.isMaterial.present
+          ? data.isMaterial.value
+          : this.isMaterial,
     );
   }
 
@@ -21414,7 +21453,8 @@ class PurchaseOrderItem extends DataClass
           ..write('productName: $productName, ')
           ..write('qty: $qty, ')
           ..write('buyPrice: $buyPrice, ')
-          ..write('total: $total')
+          ..write('total: $total, ')
+          ..write('isMaterial: $isMaterial')
           ..write(')'))
         .toString();
   }
@@ -21428,6 +21468,7 @@ class PurchaseOrderItem extends DataClass
     qty,
     buyPrice,
     total,
+    isMaterial,
   );
   @override
   bool operator ==(Object other) =>
@@ -21439,17 +21480,19 @@ class PurchaseOrderItem extends DataClass
           other.productName == this.productName &&
           other.qty == this.qty &&
           other.buyPrice == this.buyPrice &&
-          other.total == this.total);
+          other.total == this.total &&
+          other.isMaterial == this.isMaterial);
 }
 
 class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
   final Value<int> id;
   final Value<int> purchaseOrderId;
-  final Value<int> productId;
+  final Value<int?> productId;
   final Value<String> productName;
   final Value<int> qty;
   final Value<int> buyPrice;
   final Value<int> total;
+  final Value<bool> isMaterial;
   const PurchaseOrderItemsCompanion({
     this.id = const Value.absent(),
     this.purchaseOrderId = const Value.absent(),
@@ -21458,17 +21501,18 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     this.qty = const Value.absent(),
     this.buyPrice = const Value.absent(),
     this.total = const Value.absent(),
+    this.isMaterial = const Value.absent(),
   });
   PurchaseOrderItemsCompanion.insert({
     this.id = const Value.absent(),
     required int purchaseOrderId,
-    required int productId,
+    this.productId = const Value.absent(),
     required String productName,
     required int qty,
     required int buyPrice,
     required int total,
+    this.isMaterial = const Value.absent(),
   }) : purchaseOrderId = Value(purchaseOrderId),
-       productId = Value(productId),
        productName = Value(productName),
        qty = Value(qty),
        buyPrice = Value(buyPrice),
@@ -21481,6 +21525,7 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     Expression<int>? qty,
     Expression<int>? buyPrice,
     Expression<int>? total,
+    Expression<bool>? isMaterial,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -21490,17 +21535,19 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
       if (qty != null) 'qty': qty,
       if (buyPrice != null) 'buy_price': buyPrice,
       if (total != null) 'total': total,
+      if (isMaterial != null) 'is_material': isMaterial,
     });
   }
 
   PurchaseOrderItemsCompanion copyWith({
     Value<int>? id,
     Value<int>? purchaseOrderId,
-    Value<int>? productId,
+    Value<int?>? productId,
     Value<String>? productName,
     Value<int>? qty,
     Value<int>? buyPrice,
     Value<int>? total,
+    Value<bool>? isMaterial,
   }) {
     return PurchaseOrderItemsCompanion(
       id: id ?? this.id,
@@ -21510,6 +21557,7 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
       qty: qty ?? this.qty,
       buyPrice: buyPrice ?? this.buyPrice,
       total: total ?? this.total,
+      isMaterial: isMaterial ?? this.isMaterial,
     );
   }
 
@@ -21537,6 +21585,9 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
     if (total.present) {
       map['total'] = Variable<int>(total.value);
     }
+    if (isMaterial.present) {
+      map['is_material'] = Variable<bool>(isMaterial.value);
+    }
     return map;
   }
 
@@ -21549,7 +21600,452 @@ class PurchaseOrderItemsCompanion extends UpdateCompanion<PurchaseOrderItem> {
           ..write('productName: $productName, ')
           ..write('qty: $qty, ')
           ..write('buyPrice: $buyPrice, ')
-          ..write('total: $total')
+          ..write('total: $total, ')
+          ..write('isMaterial: $isMaterial')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MaterialPricesTable extends MaterialPrices
+    with TableInfo<$MaterialPricesTable, MaterialPrice> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MaterialPricesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _supplierIdMeta = const VerificationMeta(
+    'supplierId',
+  );
+  @override
+  late final GeneratedColumn<int> supplierId = GeneratedColumn<int>(
+    'supplier_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orderIdMeta = const VerificationMeta(
+    'orderId',
+  );
+  @override
+  late final GeneratedColumn<int> orderId = GeneratedColumn<int>(
+    'order_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _materialNameMeta = const VerificationMeta(
+    'materialName',
+  );
+  @override
+  late final GeneratedColumn<String> materialName = GeneratedColumn<String>(
+    'material_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _priceMeta = const VerificationMeta('price');
+  @override
+  late final GeneratedColumn<int> price = GeneratedColumn<int>(
+    'price',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _qtyMeta = const VerificationMeta('qty');
+  @override
+  late final GeneratedColumn<int> qty = GeneratedColumn<int>(
+    'qty',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    supplierId,
+    orderId,
+    materialName,
+    price,
+    qty,
+    date,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'material_prices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MaterialPrice> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('supplier_id')) {
+      context.handle(
+        _supplierIdMeta,
+        supplierId.isAcceptableOrUnknown(data['supplier_id']!, _supplierIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_supplierIdMeta);
+    }
+    if (data.containsKey('order_id')) {
+      context.handle(
+        _orderIdMeta,
+        orderId.isAcceptableOrUnknown(data['order_id']!, _orderIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orderIdMeta);
+    }
+    if (data.containsKey('material_name')) {
+      context.handle(
+        _materialNameMeta,
+        materialName.isAcceptableOrUnknown(
+          data['material_name']!,
+          _materialNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_materialNameMeta);
+    }
+    if (data.containsKey('price')) {
+      context.handle(
+        _priceMeta,
+        price.isAcceptableOrUnknown(data['price']!, _priceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_priceMeta);
+    }
+    if (data.containsKey('qty')) {
+      context.handle(
+        _qtyMeta,
+        qty.isAcceptableOrUnknown(data['qty']!, _qtyMeta),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MaterialPrice map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MaterialPrice(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      supplierId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}supplier_id'],
+      )!,
+      orderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}order_id'],
+      )!,
+      materialName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}material_name'],
+      )!,
+      price: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}price'],
+      )!,
+      qty: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}qty'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+    );
+  }
+
+  @override
+  $MaterialPricesTable createAlias(String alias) {
+    return $MaterialPricesTable(attachedDatabase, alias);
+  }
+}
+
+class MaterialPrice extends DataClass implements Insertable<MaterialPrice> {
+  final int id;
+  final int supplierId;
+  final int orderId;
+  final String materialName;
+  final int price;
+  final int qty;
+  final DateTime date;
+  const MaterialPrice({
+    required this.id,
+    required this.supplierId,
+    required this.orderId,
+    required this.materialName,
+    required this.price,
+    required this.qty,
+    required this.date,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['supplier_id'] = Variable<int>(supplierId);
+    map['order_id'] = Variable<int>(orderId);
+    map['material_name'] = Variable<String>(materialName);
+    map['price'] = Variable<int>(price);
+    map['qty'] = Variable<int>(qty);
+    map['date'] = Variable<DateTime>(date);
+    return map;
+  }
+
+  MaterialPricesCompanion toCompanion(bool nullToAbsent) {
+    return MaterialPricesCompanion(
+      id: Value(id),
+      supplierId: Value(supplierId),
+      orderId: Value(orderId),
+      materialName: Value(materialName),
+      price: Value(price),
+      qty: Value(qty),
+      date: Value(date),
+    );
+  }
+
+  factory MaterialPrice.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MaterialPrice(
+      id: serializer.fromJson<int>(json['id']),
+      supplierId: serializer.fromJson<int>(json['supplierId']),
+      orderId: serializer.fromJson<int>(json['orderId']),
+      materialName: serializer.fromJson<String>(json['materialName']),
+      price: serializer.fromJson<int>(json['price']),
+      qty: serializer.fromJson<int>(json['qty']),
+      date: serializer.fromJson<DateTime>(json['date']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'supplierId': serializer.toJson<int>(supplierId),
+      'orderId': serializer.toJson<int>(orderId),
+      'materialName': serializer.toJson<String>(materialName),
+      'price': serializer.toJson<int>(price),
+      'qty': serializer.toJson<int>(qty),
+      'date': serializer.toJson<DateTime>(date),
+    };
+  }
+
+  MaterialPrice copyWith({
+    int? id,
+    int? supplierId,
+    int? orderId,
+    String? materialName,
+    int? price,
+    int? qty,
+    DateTime? date,
+  }) => MaterialPrice(
+    id: id ?? this.id,
+    supplierId: supplierId ?? this.supplierId,
+    orderId: orderId ?? this.orderId,
+    materialName: materialName ?? this.materialName,
+    price: price ?? this.price,
+    qty: qty ?? this.qty,
+    date: date ?? this.date,
+  );
+  MaterialPrice copyWithCompanion(MaterialPricesCompanion data) {
+    return MaterialPrice(
+      id: data.id.present ? data.id.value : this.id,
+      supplierId: data.supplierId.present
+          ? data.supplierId.value
+          : this.supplierId,
+      orderId: data.orderId.present ? data.orderId.value : this.orderId,
+      materialName: data.materialName.present
+          ? data.materialName.value
+          : this.materialName,
+      price: data.price.present ? data.price.value : this.price,
+      qty: data.qty.present ? data.qty.value : this.qty,
+      date: data.date.present ? data.date.value : this.date,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MaterialPrice(')
+          ..write('id: $id, ')
+          ..write('supplierId: $supplierId, ')
+          ..write('orderId: $orderId, ')
+          ..write('materialName: $materialName, ')
+          ..write('price: $price, ')
+          ..write('qty: $qty, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, supplierId, orderId, materialName, price, qty, date);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MaterialPrice &&
+          other.id == this.id &&
+          other.supplierId == this.supplierId &&
+          other.orderId == this.orderId &&
+          other.materialName == this.materialName &&
+          other.price == this.price &&
+          other.qty == this.qty &&
+          other.date == this.date);
+}
+
+class MaterialPricesCompanion extends UpdateCompanion<MaterialPrice> {
+  final Value<int> id;
+  final Value<int> supplierId;
+  final Value<int> orderId;
+  final Value<String> materialName;
+  final Value<int> price;
+  final Value<int> qty;
+  final Value<DateTime> date;
+  const MaterialPricesCompanion({
+    this.id = const Value.absent(),
+    this.supplierId = const Value.absent(),
+    this.orderId = const Value.absent(),
+    this.materialName = const Value.absent(),
+    this.price = const Value.absent(),
+    this.qty = const Value.absent(),
+    this.date = const Value.absent(),
+  });
+  MaterialPricesCompanion.insert({
+    this.id = const Value.absent(),
+    required int supplierId,
+    required int orderId,
+    required String materialName,
+    required int price,
+    this.qty = const Value.absent(),
+    this.date = const Value.absent(),
+  }) : supplierId = Value(supplierId),
+       orderId = Value(orderId),
+       materialName = Value(materialName),
+       price = Value(price);
+  static Insertable<MaterialPrice> custom({
+    Expression<int>? id,
+    Expression<int>? supplierId,
+    Expression<int>? orderId,
+    Expression<String>? materialName,
+    Expression<int>? price,
+    Expression<int>? qty,
+    Expression<DateTime>? date,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (supplierId != null) 'supplier_id': supplierId,
+      if (orderId != null) 'order_id': orderId,
+      if (materialName != null) 'material_name': materialName,
+      if (price != null) 'price': price,
+      if (qty != null) 'qty': qty,
+      if (date != null) 'date': date,
+    });
+  }
+
+  MaterialPricesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? supplierId,
+    Value<int>? orderId,
+    Value<String>? materialName,
+    Value<int>? price,
+    Value<int>? qty,
+    Value<DateTime>? date,
+  }) {
+    return MaterialPricesCompanion(
+      id: id ?? this.id,
+      supplierId: supplierId ?? this.supplierId,
+      orderId: orderId ?? this.orderId,
+      materialName: materialName ?? this.materialName,
+      price: price ?? this.price,
+      qty: qty ?? this.qty,
+      date: date ?? this.date,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (supplierId.present) {
+      map['supplier_id'] = Variable<int>(supplierId.value);
+    }
+    if (orderId.present) {
+      map['order_id'] = Variable<int>(orderId.value);
+    }
+    if (materialName.present) {
+      map['material_name'] = Variable<String>(materialName.value);
+    }
+    if (price.present) {
+      map['price'] = Variable<int>(price.value);
+    }
+    if (qty.present) {
+      map['qty'] = Variable<int>(qty.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MaterialPricesCompanion(')
+          ..write('id: $id, ')
+          ..write('supplierId: $supplierId, ')
+          ..write('orderId: $orderId, ')
+          ..write('materialName: $materialName, ')
+          ..write('price: $price, ')
+          ..write('qty: $qty, ')
+          ..write('date: $date')
           ..write(')'))
         .toString();
   }
@@ -21605,6 +22101,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PurchaseOrdersTable purchaseOrders = $PurchaseOrdersTable(this);
   late final $PurchaseOrderItemsTable purchaseOrderItems =
       $PurchaseOrderItemsTable(this);
+  late final $MaterialPricesTable materialPrices = $MaterialPricesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -21648,6 +22145,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     pointHistories,
     purchaseOrders,
     purchaseOrderItems,
+    materialPrices,
   ];
 }
 
@@ -32089,21 +32587,23 @@ typedef $$PurchaseOrderItemsTableCreateCompanionBuilder =
     PurchaseOrderItemsCompanion Function({
       Value<int> id,
       required int purchaseOrderId,
-      required int productId,
+      Value<int?> productId,
       required String productName,
       required int qty,
       required int buyPrice,
       required int total,
+      Value<bool> isMaterial,
     });
 typedef $$PurchaseOrderItemsTableUpdateCompanionBuilder =
     PurchaseOrderItemsCompanion Function({
       Value<int> id,
       Value<int> purchaseOrderId,
-      Value<int> productId,
+      Value<int?> productId,
       Value<String> productName,
       Value<int> qty,
       Value<int> buyPrice,
       Value<int> total,
+      Value<bool> isMaterial,
     });
 
 class $$PurchaseOrderItemsTableFilterComposer
@@ -32147,6 +32647,11 @@ class $$PurchaseOrderItemsTableFilterComposer
 
   ColumnFilters<int> get total => $composableBuilder(
     column: $table.total,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isMaterial => $composableBuilder(
+    column: $table.isMaterial,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -32194,6 +32699,11 @@ class $$PurchaseOrderItemsTableOrderingComposer
     column: $table.total,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isMaterial => $composableBuilder(
+    column: $table.isMaterial,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PurchaseOrderItemsTableAnnotationComposer
@@ -32229,6 +32739,11 @@ class $$PurchaseOrderItemsTableAnnotationComposer
 
   GeneratedColumn<int> get total =>
       $composableBuilder(column: $table.total, builder: (column) => column);
+
+  GeneratedColumn<bool> get isMaterial => $composableBuilder(
+    column: $table.isMaterial,
+    builder: (column) => column,
+  );
 }
 
 class $$PurchaseOrderItemsTableTableManager
@@ -32273,11 +32788,12 @@ class $$PurchaseOrderItemsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> purchaseOrderId = const Value.absent(),
-                Value<int> productId = const Value.absent(),
+                Value<int?> productId = const Value.absent(),
                 Value<String> productName = const Value.absent(),
                 Value<int> qty = const Value.absent(),
                 Value<int> buyPrice = const Value.absent(),
                 Value<int> total = const Value.absent(),
+                Value<bool> isMaterial = const Value.absent(),
               }) => PurchaseOrderItemsCompanion(
                 id: id,
                 purchaseOrderId: purchaseOrderId,
@@ -32286,16 +32802,18 @@ class $$PurchaseOrderItemsTableTableManager
                 qty: qty,
                 buyPrice: buyPrice,
                 total: total,
+                isMaterial: isMaterial,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required int purchaseOrderId,
-                required int productId,
+                Value<int?> productId = const Value.absent(),
                 required String productName,
                 required int qty,
                 required int buyPrice,
                 required int total,
+                Value<bool> isMaterial = const Value.absent(),
               }) => PurchaseOrderItemsCompanion.insert(
                 id: id,
                 purchaseOrderId: purchaseOrderId,
@@ -32304,6 +32822,7 @@ class $$PurchaseOrderItemsTableTableManager
                 qty: qty,
                 buyPrice: buyPrice,
                 total: total,
+                isMaterial: isMaterial,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -32332,6 +32851,244 @@ typedef $$PurchaseOrderItemsTableProcessedTableManager =
         >,
       ),
       PurchaseOrderItem,
+      PrefetchHooks Function()
+    >;
+typedef $$MaterialPricesTableCreateCompanionBuilder =
+    MaterialPricesCompanion Function({
+      Value<int> id,
+      required int supplierId,
+      required int orderId,
+      required String materialName,
+      required int price,
+      Value<int> qty,
+      Value<DateTime> date,
+    });
+typedef $$MaterialPricesTableUpdateCompanionBuilder =
+    MaterialPricesCompanion Function({
+      Value<int> id,
+      Value<int> supplierId,
+      Value<int> orderId,
+      Value<String> materialName,
+      Value<int> price,
+      Value<int> qty,
+      Value<DateTime> date,
+    });
+
+class $$MaterialPricesTableFilterComposer
+    extends Composer<_$AppDatabase, $MaterialPricesTable> {
+  $$MaterialPricesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get orderId => $composableBuilder(
+    column: $table.orderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get materialName => $composableBuilder(
+    column: $table.materialName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get price => $composableBuilder(
+    column: $table.price,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get qty => $composableBuilder(
+    column: $table.qty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MaterialPricesTableOrderingComposer
+    extends Composer<_$AppDatabase, $MaterialPricesTable> {
+  $$MaterialPricesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get orderId => $composableBuilder(
+    column: $table.orderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get materialName => $composableBuilder(
+    column: $table.materialName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get price => $composableBuilder(
+    column: $table.price,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get qty => $composableBuilder(
+    column: $table.qty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MaterialPricesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MaterialPricesTable> {
+  $$MaterialPricesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get orderId =>
+      $composableBuilder(column: $table.orderId, builder: (column) => column);
+
+  GeneratedColumn<String> get materialName => $composableBuilder(
+    column: $table.materialName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get price =>
+      $composableBuilder(column: $table.price, builder: (column) => column);
+
+  GeneratedColumn<int> get qty =>
+      $composableBuilder(column: $table.qty, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+}
+
+class $$MaterialPricesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MaterialPricesTable,
+          MaterialPrice,
+          $$MaterialPricesTableFilterComposer,
+          $$MaterialPricesTableOrderingComposer,
+          $$MaterialPricesTableAnnotationComposer,
+          $$MaterialPricesTableCreateCompanionBuilder,
+          $$MaterialPricesTableUpdateCompanionBuilder,
+          (
+            MaterialPrice,
+            BaseReferences<_$AppDatabase, $MaterialPricesTable, MaterialPrice>,
+          ),
+          MaterialPrice,
+          PrefetchHooks Function()
+        > {
+  $$MaterialPricesTableTableManager(
+    _$AppDatabase db,
+    $MaterialPricesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MaterialPricesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MaterialPricesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MaterialPricesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> supplierId = const Value.absent(),
+                Value<int> orderId = const Value.absent(),
+                Value<String> materialName = const Value.absent(),
+                Value<int> price = const Value.absent(),
+                Value<int> qty = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => MaterialPricesCompanion(
+                id: id,
+                supplierId: supplierId,
+                orderId: orderId,
+                materialName: materialName,
+                price: price,
+                qty: qty,
+                date: date,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int supplierId,
+                required int orderId,
+                required String materialName,
+                required int price,
+                Value<int> qty = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => MaterialPricesCompanion.insert(
+                id: id,
+                supplierId: supplierId,
+                orderId: orderId,
+                materialName: materialName,
+                price: price,
+                qty: qty,
+                date: date,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MaterialPricesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MaterialPricesTable,
+      MaterialPrice,
+      $$MaterialPricesTableFilterComposer,
+      $$MaterialPricesTableOrderingComposer,
+      $$MaterialPricesTableAnnotationComposer,
+      $$MaterialPricesTableCreateCompanionBuilder,
+      $$MaterialPricesTableUpdateCompanionBuilder,
+      (
+        MaterialPrice,
+        BaseReferences<_$AppDatabase, $MaterialPricesTable, MaterialPrice>,
+      ),
+      MaterialPrice,
       PrefetchHooks Function()
     >;
 
@@ -32414,4 +33171,6 @@ class $AppDatabaseManager {
       $$PurchaseOrdersTableTableManager(_db, _db.purchaseOrders);
   $$PurchaseOrderItemsTableTableManager get purchaseOrderItems =>
       $$PurchaseOrderItemsTableTableManager(_db, _db.purchaseOrderItems);
+  $$MaterialPricesTableTableManager get materialPrices =>
+      $$MaterialPricesTableTableManager(_db, _db.materialPrices);
 }

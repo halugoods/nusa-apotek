@@ -379,7 +379,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         if (n.type == 'update') {
           final info = _updateInfo;
           if (info != null && info.hasUpdate) {
-            _showUpdateDialog();
+            // Langsung mulai unduh + popup progres muncul seketika —
+            // tanpa perlu buka-tutup notif berulang.
+            _showUpdateDialog(autoStart: true);
           }
         }
       },
@@ -442,73 +444,77 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return '${t.day}/${t.month}/${t.year}';
   }
 
-  void _showUpdateDialog() {
+  /// Popup update. Bisa ditutup / diminimalkan kapan saja (tap luar, tombol
+  /// back) — proses unduh tetap berjalan di latar belakang; buka lagi kapan
+  /// saja untuk melihat progres.
+  ///
+  /// [autoStart] = langsung mulai unduh, popup langsung tampil progres
+  /// (dipakai saat klik notif update — tanpa perlu klik tombol lagi).
+  void _showUpdateDialog({bool autoStart = false}) {
     final info = _updateInfo;
     if (info == null || !info.hasUpdate) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
-      // Download popup MUST stay visible until the process finishes —
-      // user can't dismiss it mid-download (barrier + back are blocked).
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: !_downloadingUpdate,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Update Tersedia',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
+              child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Update Tersedia',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: _downloadingUpdate
-                ? _buildDownloadProgress(isDark)
-                : _buildUpdateInfo(info, isDark),
-          ),
-          actions: _downloadingUpdate
-              ? null
-              : [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Nanti'),
-                  ),
-                  if (info.downloadUrl != null)
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // Keep the dialog OPEN while downloading — the popup
-                        // transforms into the always-visible progress view.
-                        _startUpdateDownload();
-                      },
-                      icon: const Icon(Icons.download, size: 18),
-                      label: const Text('Download & Update'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: NusaConfig.activePrimary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _downloadingUpdate
+              ? _buildDownloadProgress(isDark)
+              : _buildUpdateInfo(info, isDark),
+        ),
+        actions: _downloadingUpdate
+            ? null
+            : [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Nanti'),
+                ),
+                if (info.downloadUrl != null)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Dialog TETAP terbuka selama unduh — berubah jadi
+                      // tampilan progres langsung (tanpa tutup-buka lagi).
+                      _startUpdateDownload();
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Download & Update'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NusaConfig.activePrimary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                ],
-        ),
+                  ),
+              ],
       ),
     );
+    if (autoStart) {
+      _startUpdateDownload();
+    }
   }
 
   Widget _buildUpdateInfo(UpdateInfo info, bool isDark) {

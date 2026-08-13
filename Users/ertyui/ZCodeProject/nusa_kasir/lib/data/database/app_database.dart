@@ -10,12 +10,12 @@ part 'app_database.g.dart';
   Employees, Attendance, Expenses, ExpenseCategories, RecurringExpenses, Payroll, Waste,
   Liquidity, Suppliers, Branches, Settings, ActivationsLocal, SyncQueue, CashierSessions,
   OnlineOrders, CustomerDebts, DebtPayments, StockCounts, StockCountItems, ChatSessions,
-  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles, Refunds, PointHistories, PurchaseOrders, PurchaseOrderItems])
+  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles, Refunds, PointHistories, PurchaseOrders, PurchaseOrderItems, MaterialPrices])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 38;
+  int get schemaVersion => 39;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -207,6 +207,14 @@ class AppDatabase extends _$AppDatabase {
         // ke harga beli terbaru.
         await m.createTable(purchaseOrders);
         await m.createTable(purchaseOrderItems);
+      }
+      if (from < 39) {
+        // Bahan pembelian (non-produk, mis. plastik): item pembelian kini
+        // bisa berupa bahan (isMaterial=1, productId nullable) yang hanya
+        // dicatat riwayatnya — tanpa menyentuh stok produk. Riwayat harga
+        // beli bahan per supplier disimpan di MaterialPrices.
+        await m.addColumn(purchaseOrderItems, purchaseOrderItems.isMaterial);
+        await m.createTable(materialPrices);
       }
     },
   );

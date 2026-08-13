@@ -2,21 +2,34 @@ import 'package:drift/drift.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 
 /// Item baris pembelian yang belum dicatat (dari form).
+///
+/// [isMaterial] true → bahan non-produk (mis. plastik): hanya dicatat
+/// riwayatnya (item + MaterialPrices), TIDAK menyentuh stok produk.
+/// [isMaterial] false → produk: stok masuk + harga modal (buyPrice) update.
 class PurchaseItemInput {
-  final int productId;
+  final int? productId;
+  final String name; // nama produk atau bahan
   final int qty;
   final int buyPrice;
-  PurchaseItemInput(this.productId, this.qty, this.buyPrice);
+  final bool isMaterial;
+  PurchaseItemInput({
+    this.productId,
+    required this.name,
+    required this.qty,
+    required this.buyPrice,
+    this.isMaterial = false,
+  });
 }
 
 /// Pembelian/restok dari supplier.
 ///
 /// `recordPurchase` mencatat semuanya atomically dalam satu transaksi DB:
 /// 1. header [PurchaseOrders] + item [PurchaseOrderItems]
-/// 2. stok produk masuk (`adjustStock` setara: stock += qty)
-/// 3. harga modal (buyPrice) produk diperbarui ke harga beli terbaru
-///    → HPP / laba rugi jadi presisi
-/// 4. riwayat [StockMovements] type 'in' dengan note pembelian
+/// 2. untuk item PRODUK: stok masuk (`adjustStock` setara: stock += qty)
+///    + harga modal (buyPrice) diperbarui → HPP / laba rugi presisi
+///    + riwayat [StockMovements] type 'in'
+/// 3. untuk item BAHAN: hanya dicatat di item + [MaterialPrices] (riwayat
+///    harga beli bahan per supplier) — tanpa menyentuh stok produk
 class PurchaseRepository {
   final AppDatabase db;
   PurchaseRepository(this.db);
@@ -35,6 +48,22 @@ class PurchaseRepository {
   Future<PurchaseOrder?> orderById(int id) =>
       (db.select(db.purchaseOrders)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
+
+  /// Riwayat harga beli bahan per supplier (untuk melihat kenaikan/penurunan).
+  Future<List<MaterialPrice>> getMaterialPrices(int supplierId) =>
+      (db.select(db.materialPrices)
+            ..where((t) => t.supplierId.equals(supplierId))
+            ..orderBy([
+              (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
+              (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
+            ]))
+          .get();
+
+  /// Daftar nama bahan unik yang pernah dibeli (untuk filter/riwayat).
+  Future<List<String>> getMaterialNames() async {
+    final rows = await (db.select(db.materialPrices)).get();
+    return rows.map((r) => r.materialName).toSet().toList()..sort();
+  }
 
   /// Catat pembelian supplier: stok masuk + harga modal dinamis + riwayat.
   Future<int> recordPurchase({
@@ -58,27 +87,43 @@ class PurchaseRepository {
             ),
           );
 
-      // ── 2. Item + 3. stok masuk + 4. harga modal terbaru ──
+      // ── 2. Item + stok/harga modal (produk) atau riwayat bahan ──
       for (final item in items) {
         if (item.qty <= 0) continue;
-        final name = await _productName(item.productId);
         await db.into(db.purchaseOrderItems).insert(
               PurchaseOrderItemsCompanion.insert(
                 purchaseOrderId: orderId,
-                productId: item.productId,
-                productName: name,
+                productId: Value(item.productId),
+                productName: item.name,
                 qty: item.qty,
                 buyPrice: item.buyPrice,
                 total: item.qty * item.buyPrice,
+                isMaterial: Value(item.isMaterial),
               ),
             );
+
+        if (item.isMaterial) {
+          // Bahan non-produk: simpan riwayat harga beli per supplier.
+          await db.into(db.materialPrices).insert(MaterialPricesCompanion.insert(
+                supplierId: supplierId,
+                orderId: orderId,
+                materialName: item.name,
+                price: item.buyPrice,
+                qty: Value(item.qty),
+                date: Value(DateTime.now()),
+              ));
+          continue;
+        }
+
+        final pid = item.productId;
+        if (pid == null) continue;
         // Stok bertambah (tanpa clamp — restok memang menambah stok).
         final p = await (db.select(db.products)
-              ..where((t) => t.id.equals(item.productId)))
+              ..where((t) => t.id.equals(pid)))
             .getSingleOrNull();
         if (p == null) continue;
         final next = p.stock + item.qty;
-        await (db.update(db.products)..where((t) => t.id.equals(item.productId)))
+        await (db.update(db.products)..where((t) => t.id.equals(pid)))
             .write(ProductsCompanion(
           stock: Value(next),
           // Harga modal mengikuti harga beli terbaru — HPP presisi.
@@ -86,7 +131,7 @@ class PurchaseRepository {
         ));
         // Riwayat stok masuk, biar laporan Stok lengkap.
         await db.into(db.stockMovements).insert(StockMovementsCompanion.insert(
-              productId: item.productId,
+              productId: pid,
               type: 'in',
               qty: item.qty,
               note: Value('Pembelian $supplierName'),
@@ -96,13 +141,6 @@ class PurchaseRepository {
     return orderId;
   }
 
-  Future<String> _productName(int productId) async {
-    final p = await (db.select(db.products)..where((t) => t.id.equals(productId)))
-        .getSingleOrNull();
-    return p?.name ?? 'Produk #$productId';
-  }
-
-  /// Nomor invoice pembelian: PB-YYYYMMDD-<urutan per hari>.
   Future<String> _nextInvoice() async {
     final now = DateTime.now();
     final prefix = 'PB-${now.year}${_2(now.month)}${_2(now.day)}';

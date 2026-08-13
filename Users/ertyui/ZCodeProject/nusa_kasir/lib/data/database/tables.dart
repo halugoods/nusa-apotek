@@ -228,11 +228,26 @@ class PurchaseOrders extends Table {
 class PurchaseOrderItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get purchaseOrderId => integer()();
-  IntColumn get productId => integer()();
-  TextColumn get productName => text()(); // snapshot nama produk
+  // Untuk produk (isMaterial=0): productId = id produk (stok masuk + buyPrice
+  // update). Untuk bahan (isMaterial=1): productId nullable (bahan non-produk,
+  // mis. plastik — cukup dicatat riwayat, tanpa menyentuh stok produk).
+  IntColumn get productId => integer().nullable()();
+  TextColumn get productName => text()(); // snapshot nama produk/bahan
   IntColumn get qty => integer()();
   IntColumn get buyPrice => integer()(); // harga modal saat pembelian
   IntColumn get total => integer()();
+  BoolColumn get isMaterial => boolean().withDefault(const Constant(false))();
+}
+/// Riwayat harga beli bahan per supplier — dipakai untuk melihat kenaikan /
+/// penurunan harga pembelian (mis. plastik yang harganya fluktuatif).
+class MaterialPrices extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get supplierId => integer()();
+  IntColumn get orderId => integer()(); // PurchaseOrders.id (asal catatan)
+  TextColumn get materialName => text()(); // nama bahan (snapshot)
+  IntColumn get price => integer()(); // harga beli saat itu
+  IntColumn get qty => integer().withDefault(const Constant(1))();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
 class Branches extends Table {
   IntColumn get id => integer().autoIncrement()();
