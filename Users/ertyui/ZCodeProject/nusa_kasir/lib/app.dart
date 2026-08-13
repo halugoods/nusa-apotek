@@ -77,7 +77,6 @@ const _protectedRouteKeys = {
   '/keuangan': 'keuangan',
   '/pengaturan': 'pengaturan',
   '/supplier': 'supplier',
-  '/pembelian': 'pembelian',
   '/spreadsheet': 'spreadsheet',
   '/cabang': 'cabang',
   '/pesanan_online': 'pesanan_online',

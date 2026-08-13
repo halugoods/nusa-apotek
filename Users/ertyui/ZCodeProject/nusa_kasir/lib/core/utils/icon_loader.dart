@@ -23,7 +23,6 @@ Map<String, String> _iconNameMap = {
   'finance':       'FINANCE',
   'table':         'TABLE',
   'supplier':      'SUPPLIER',
-  'pembelian':     'PURCHASE',
   'branch':        'BRANCH',
   'ai':            'AI CHAT',
   'ai_chat':       'AI CHAT',

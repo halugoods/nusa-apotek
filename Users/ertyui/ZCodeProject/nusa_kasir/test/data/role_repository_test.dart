@@ -13,23 +13,24 @@ void main() {
     repo = RoleRepository(db);
   });
 
-  test('default roles seeded with pembelian access', () async {
+  test('default roles seeded with expected access', () async {
     final roles = await repo.getRoles();
     final owner = roles.firstWhere((r) => r['name'] == 'Owner');
     final gudang = roles.firstWhere((r) => r['name'] == 'Gudang');
     final finance = roles.firstWhere((r) => r['name'] == 'Finance');
     final kasir = roles.firstWhere((r) => r['name'] == 'Kasir');
-    expect(owner['access'], contains('pembelian'));
-    expect(gudang['access'], contains('pembelian'));
-    expect(finance['access'], contains('pembelian'));
-    // Kasir tidak dapat akses pembelian
-    expect(kasir['access'], isNot(contains('pembelian')));
+
+    // Owner punya supplier; Kasir tidak
+    expect(owner['access'], contains('supplier'));
+    expect(kasir['access'], isNot(contains('supplier')));
+    // Gudang/Finance akses stok & supplier (konteks restok)
+    expect(gudang['access'], contains('stok'));
+    expect(finance['access'], contains('supplier'));
   });
 
-  test('backfill adds pembelian to pre-existing default roles without clobbering', () async {
-    // Simulasi DB lama (device yang sudah terpasang): role Owner/Gudang
-    // tersimpan TANPA 'pembelian', plus kustomisasi admin (Owner kehilangan
-    // 'transaksi' dari default, punya 'pengaturan' tambahan).
+  test('existing roles are preserved verbatim on reload', () async {
+    // Simulasi DB lama: role Owner tersimpan dengan kustomisasi admin
+    // (kehilangan 'transaksi' dari default, punya 'pengaturan' tambahan).
     await db.into(db.roles).insert(RolesCompanion.insert(
       name: 'Owner',
       color: Value('0xFF8B5CF6'),
@@ -48,17 +49,14 @@ void main() {
     final owner = roles.firstWhere((r) => r['name'] == 'Owner');
     final gudang = roles.firstWhere((r) => r['name'] == 'Gudang');
 
-    // pembelian ditambahkan
-    expect(owner['access'], contains('pembelian'));
-    expect(gudang['access'], contains('pembelian'));
-    // kustomisasi tidak ditimpa: 'pengaturan' tetap ada, 'kasir' tetap ada
+    // Kustomisasi admin TIDAK ditimpa
     expect(owner['access'], contains('pengaturan'));
     expect(owner['access'], contains('kasir'));
-    // menu default lain yang hilang TIDAK di-backfill (hanya menu baru)
     expect(owner['access'], isNot(contains('transaksi')));
-    expect(owner['access'], isNot(contains('presensi')));
-    // pembelian TIDAK ditambahkan ke role yang tidak tercantum (mis. Kasir)
+    // Data role lain tidak berubah
+    expect(gudang['access'], contains('supplier'));
+    // Default yang belum ada tetap di-seed
     final kasir = roles.firstWhere((r) => r['name'] == 'Kasir');
-    expect(kasir['access'], isNot(contains('pembelian')));
+    expect(kasir['access'], isNotEmpty);
   });
 }
