@@ -398,30 +398,29 @@ class ReceiptPrinter {
       }
 
       if (itemBig) {
-        // Rincian "Besar": qty x harga DAN subtotal masing-masing baris
-        // sendiri, keduanya rata kanan (sejajar kolom TOTAL).
+        // Rincian "Besar" (2x): qty x harga baris sendiri (KIRI), subtotal
+        // baris sendiri menempel KANAN — sejajar dengan nominal TOTAL.
         bytes.addAll(generator.text(
           _san(qtyPrice),
-          styles: PosStyles(
-              align: PosAlign.right, fontType: itemFont,
-              height: PosTextSize.size2, width: PosTextSize.size2),
+          styles: itemStyles,
         ));
         bytes.addAll(generator.text(
-          _san(subtotal),
-          styles: PosStyles(
-              align: PosAlign.right, fontType: itemFont,
-              height: PosTextSize.size2, width: PosTextSize.size2),
+          _san(subtotal.padLeft(itemLineWidth)),
+          styles: itemStyles,
         ));
       } else {
-        // Rincian "Kecil" (default): baris 2 = "2xRp10.000  Rp20.000" rata
-        // KANAN — subtotal menempel pada posisi yang sama dengan nominal
-        // TOTAL, qty×harga ikut geser ke kanan (komplain user: subtotal
-        // harus sejajar kolom total, bukan menggantung di tengah).
+        // Rincian "Kecil" (default): satu baris = qty x harga di KIRI,
+        // subtotal di KANAN (menempel tepi kanan = sejajar kolom TOTAL).
+        // Padding tengah dihitung manual supaya qty×harga tetap di kiri dan
+        // subtotal presisi menempel kanan — sama seperti preview layar
+        // (Row spaceBetween: qty kiri, subtotal kanan).
+        final gap = itemLineWidth - qtyPrice.length - subtotal.length;
+        final line2 = gap >= 3
+            ? '${qtyPrice}${' ' * (gap - 2)}  $subtotal'
+            : '$qtyPrice  $subtotal';
         bytes.addAll(generator.text(
-          _san('$qtyPrice  $subtotal'),
-          styles: PosStyles(
-              align: PosAlign.right, fontType: itemFont,
-              height: PosTextSize.size1, width: PosTextSize.size1),
+          _san(line2),
+          styles: itemStyles,
         ));
       }
 

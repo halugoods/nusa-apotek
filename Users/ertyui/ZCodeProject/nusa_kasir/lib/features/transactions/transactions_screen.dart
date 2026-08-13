@@ -21,6 +21,8 @@ import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
+import 'package:nusa_kasir/shared/services/biometric_service.dart';
+import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -489,8 +491,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  /// PIN re-entry sebelum void — mencegah void tidak sengaja / oleh yang bukan
-  /// pemilik akun. Memakai PIN karyawan yang sedang login.
+  /// PIN re-entry sebelum void/retur — mencegah void/retur tidak sengaja /
+  /// oleh yang bukan pemilik akun. Memakai PIN karyawan yang sedang login,
+  /// plus opsi biometrik (FP) dan NFC — sama seperti pin pad di Pengaturan.
   Future<bool> _requireVoidPin() async {
     final session = ref.read(employeeSessionProvider);
     if (session == null) return false;
@@ -507,9 +510,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       correctPin: emp.pin,
       showRemember: false,
       showFingerprint: true,
+      showNfc: true,
+      onFingerprint: () async => await _authFingerprint(),
+      onNfc: () async {
+        final id = await NfcTagService.readEmployeeTag();
+        return id?.toString();
+      },
       pinLength: 6,
     );
     return result?.success ?? false;
+  }
+
+  Future<bool> _authFingerprint() async {
+    return BiometricService.authenticate(
+      reason: 'Verifikasi biometrik untuk melanjutkan',
+    );
   }
 
   Future<void> _reprintTransaction(Transaction tx) async {
