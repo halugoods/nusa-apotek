@@ -467,11 +467,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Icon(
-              Icons.cloud_sync,
-              size: 40,
-              color: NusaConfig.activePrimary,
-            ),
+            Icon(Icons.cloud_sync, size: 40, color: NusaConfig.activePrimary),
             const SizedBox(height: 12),
             const Text(
               'Sinkronisasi Cloud',
@@ -530,7 +526,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.auto_awesome, size: 18, color: NusaConfig.activePrimary),
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 18,
+                    color: NusaConfig.activePrimary,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -557,11 +557,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 decoration: BoxDecoration(
                   color: NusaConfig.warning.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: NusaConfig.warning.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: NusaConfig.warning.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, size: 18, color: NusaConfig.warning),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: NusaConfig.warning,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1039,14 +1045,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           color: preset['primary'],
                           border: Border.all(
                             color: selected
-                                ? (isDark ? Colors.white : NusaConfig.textPrimary)
+                                ? (isDark
+                                      ? Colors.white
+                                      : NusaConfig.textPrimary)
                                 : Colors.transparent,
                             width: selected ? 3 : 0,
                           ),
                           boxShadow: selected
                               ? [
                                   BoxShadow(
-                                    color: (preset['primary']!).withValues(alpha: 0.4),
+                                    color: (preset['primary']!).withValues(
+                                      alpha: 0.4,
+                                    ),
                                     blurRadius: 12,
                                     spreadRadius: 2,
                                   ),
@@ -1054,7 +1064,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               : null,
                         ),
                         child: selected
-                            ? const Icon(Icons.check, color: Colors.white, size: 28)
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 28,
+                              )
                             : null,
                       ),
                     );
@@ -1075,8 +1089,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Build ordered list respecting user's drag-reorder preference
     final hidden = NusaConfig.hiddenMenus;
     final ordered = List<String>.from(
-      (_menuOrder.isNotEmpty ? _menuOrder : _allFeatures)
-          .where((id) => !hidden.contains(id)),
+      (_menuOrder.isNotEmpty ? _menuOrder : _allFeatures).where(
+        (id) => !hidden.contains(id),
+      ),
     );
     showModalBottomSheet(
       context: context,
@@ -1520,15 +1535,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       Text(
                         'Mengunduh update… ${(_updateDownloadProgress * 100).toStringAsFixed(0)}%',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: LinearProgressIndicator(
-                          value: _updateDownloadProgress > 0 ? _updateDownloadProgress : null,
+                          value: _updateDownloadProgress > 0
+                              ? _updateDownloadProgress
+                              : null,
                           minHeight: 8,
-                          backgroundColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+                          backgroundColor: isDark
+                              ? NusaConfig.darkSurface2
+                              : NusaConfig.backgroundColor,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -1536,7 +1558,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         'Jangan tutup aplikasi selama proses berjalan.',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
                         ),
                       ),
                     ],
@@ -1548,7 +1572,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   children: [
                     Text(
                       'Versi ${info.latestVersion} (build ${info.latestBuildNumber})',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1560,7 +1587,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : NusaConfig.textSecondary,
                       ),
                     ),
-                    if (info.fileSizeBytes != null && info.fileSizeBytes! > 0) ...[
+                    if (info.fileSizeBytes != null &&
+                        info.fileSizeBytes! > 0) ...[
                       const SizedBox(height: 4),
                       Text(
                         'Ukuran: ${UpdateService.formatSize(info.fileSizeBytes)}',
@@ -1572,7 +1600,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
                     ],
-                    if (info.changelog != null && info.changelog!.isNotEmpty) ...[
+                    if (info.changelog != null &&
+                        info.changelog!.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
@@ -1668,7 +1697,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _downloadingUpdate = false;
           _updateDownloadProgress = 0;
         });
-        TopToast.success(context, 'Instalasi dibuka. Selesaikan di layar sistem.');
+        TopToast.success(
+          context,
+          'Instalasi dibuka. Selesaikan di layar sistem.',
+        );
       }
     } catch (e) {
       debugPrint('[Settings] update download error: $e');
@@ -1677,7 +1709,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _downloadingUpdate = false;
           _updateDownloadProgress = 0;
         });
-        TopToast.error(context, 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
+        TopToast.error(
+          context,
+          'Gagal mengunduh update. Cek koneksi, lalu coba lagi.',
+        );
       }
     }
   }
@@ -1692,8 +1727,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final footerCtrl = TextEditingController(
       text: await repo.getReceiptFooter() ?? '',
     );
-    final currentLogo = await repo.getStoreLogoPath()
-        ?? await SecureStore.getPrinterLogoPath();
+    final currentLogo =
+        await repo.getStoreLogoPath() ?? await SecureStore.getPrinterLogoPath();
     String paperSize = await repo.getReceiptPaperSize();
     // Normalize '58'/'80' (SecureStore) → '58mm'/'80mm' (DB) so the sheet
     // always opens showing the value that printing actually uses.
@@ -1834,7 +1869,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Standar = huruf universal & paling kompatibel semua printer. '
-                      'Kompak = huruf lebih ramping, muat lebih banyak per baris.',
+                      'Ramping = huruf lebih ramping, muat lebih banyak per baris.',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -1855,7 +1890,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         const SizedBox(width: 10),
                         _fontTypeChip(
-                          'Kompak',
+                          'Ramping',
                           Icons.text_snippet_outlined,
                           font,
                           setDark,
@@ -1888,14 +1923,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _fontSizeRow('Header', 3, 'Kecil', 'Besar',
-                        fontH, setDark, (v) => setSt(() => fontH = v)),
+                    _fontSizeRow(
+                      'Header',
+                      3,
+                      'Kecil',
+                      'Besar',
+                      fontH,
+                      setDark,
+                      (v) => setSt(() => fontH = v),
+                    ),
                     const SizedBox(height: 10),
-                    _fontSizeRow('Rincian', 2, 'Kecil', 'Besar',
-                        fontI, setDark, (v) => setSt(() => fontI = v)),
+                    _fontSizeRow(
+                      'Rincian',
+                      2,
+                      'Kecil',
+                      'Besar',
+                      fontI,
+                      setDark,
+                      (v) => setSt(() => fontI = v),
+                    ),
                     const SizedBox(height: 10),
-                    _fontSizeRow('Footer', 2, 'Kecil', 'Besar',
-                        fontF, setDark, (v) => setSt(() => fontF = v)),
+                    _fontSizeRow(
+                      'Footer',
+                      2,
+                      'Kecil',
+                      'Besar',
+                      fontF,
+                      setDark,
+                      (v) => setSt(() => fontF = v),
+                    ),
                     const SizedBox(height: 20),
 
                     // ── Logo Struk ──
@@ -1970,7 +2026,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         setSt(() => logoPath = path);
                                       }
                                     },
-                                    icon: const Icon(Icons.photo_library_outlined, size: 18),
+                                    icon: const Icon(
+                                      Icons.photo_library_outlined,
+                                      size: 18,
+                                    ),
                                     label: Text(
                                       logoPath != null && logoPath!.isNotEmpty
                                           ? 'Ganti'
@@ -1978,16 +2037,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     ),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: NusaConfig.activePrimary,
-                                      side: BorderSide(color: NusaConfig.activePrimary),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                      side: BorderSide(
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                  if (logoPath != null && logoPath!.isNotEmpty) ...[
+                                  if (logoPath != null &&
+                                      logoPath!.isNotEmpty) ...[
                                     const SizedBox(width: 8),
                                     TextButton(
-                                      onPressed: () => setSt(() => logoPath = null),
-                                      child: const Text('Hapus', style: TextStyle(fontSize: 12)),
+                                      onPressed: () =>
+                                          setSt(() => logoPath = null),
+                                      child: const Text(
+                                        'Hapus',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
                                     ),
                                   ],
                                 ],
@@ -2133,246 +2205,291 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    // Preview 2 arah: lebar mengikuti ukuran kertas yang dipilih
+                    // (58mm → ramping, 80mm → lebih lebar) — persis print asli.
                     Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFD1D5DB)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // ── Logo ──
-                          if (togs['showLogo'] == true &&
-                              logoPath != null &&
-                              logoPath!.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Image.file(
-                                File(logoPath!),
-                                height: 44,
-                                fit: BoxFit.contain,
-                                cacheWidth: 200,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: paper.contains('80') ? 330 : 250,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD1D5DB)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // ── Logo ──
+                            if (togs['showLogo'] == true &&
+                                logoPath != null &&
+                                logoPath!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Image.file(
+                                  File(logoPath!),
+                                  height: 44,
+                                  fit: BoxFit.contain,
+                                  cacheWidth: 200,
+                                ),
+                              ),
+
+                            // ── Store header — ukuran ikut fontH (Kecil/
+                            // Normal/Besar) persis print asli ──
+                            Text(
+                              headerCtrl.text.isNotEmpty
+                                  ? headerCtrl.text
+                                  : (storeName.isNotEmpty
+                                        ? storeName
+                                        : 'NUSA MART'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: switch (fontH) {
+                                  3 => 18,
+                                  1 => 12,
+                                  _ => 15,
+                                },
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF111827),
                               ),
                             ),
-
-                          // ── Store header ──
-                          Text(
-                            headerCtrl.text.isNotEmpty
-                                ? headerCtrl.text
-                                : (storeName.isNotEmpty
-                                      ? storeName
-                                      : 'NUSA MART'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF111827),
+                            const SizedBox(height: 1),
+                            const Text(
+                              'Jl. Merdeka No. 123, Jakarta',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFF6B7280),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 1),
-                          const Text(
-                            'Jl. Merdeka No. 123, Jakarta',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Color(0xFF6B7280),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
+                            const SizedBox(height: 6),
 
-                          // ── Dashed line ──
-                          _dashedLine(false),
-                          const SizedBox(height: 4),
+                            // ── Dashed line ──
+                            _dashedLine(false),
+                            const SizedBox(height: 4),
 
-                          // ── Invoice + Kasir ──
-                          if (togs['showInvoice'] == true)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Row(
-                                children: [
-                                  const Text(
-                                    'INV-001',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF374151),
+                            // ── Invoice + Kasir ──
+                            if (togs['showInvoice'] == true)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      'INV-001',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF374151),
+                                      ),
                                     ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    'Kasir: ${togs['showCashier'] == true ? 'Budi' : '—'}',
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      color: Color(0xFF6B7280),
+                                    const Spacer(),
+                                    Text(
+                                      'Kasir: ${togs['showCashier'] == true ? 'Budi' : '—'}',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        color: Color(0xFF6B7280),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          if (togs['showDate'] == true)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Row(
-                                children: [
-                                  const Text(
-                                    '25 Jul 2026  14:30 WIB',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Color(0xFF6B7280),
+                            if (togs['showDate'] == true)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '25 Jul 2026  14:30 WIB',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: Color(0xFF6B7280),
+                                      ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                            _dashedLine(false),
+                            const SizedBox(height: 4),
+
+                            // ── Dummy items ──
+                            _receiptItem(
+                              'Indomie Goreng',
+                              4,
+                              3500,
+                              false,
+                              fontI: fontI,
+                            ),
+                            _receiptItem(
+                              'Beras 5kg',
+                              1,
+                              72000,
+                              false,
+                              fontI: fontI,
+                            ),
+                            // Item dengan diskon → tunjukkan Harga Normal + Diskon
+                            // persis seperti print asli (komplain user).
+                            _receiptItem(
+                              'Minyak Goreng 2L',
+                              2,
+                              34000,
+                              false,
+                              originalPrice: 38000,
+                              fontI: fontI,
+                            ),
+                            _receiptItem(
+                              'Telur Ayam 10 butir',
+                              1,
+                              28000,
+                              false,
+                              fontI: fontI,
+                            ),
+                            _receiptItem(
+                              'Gula Pasir 1kg',
+                              1,
+                              16000,
+                              false,
+                              fontI: fontI,
+                            ),
+                            const SizedBox(height: 2),
+                            _dashedLine(false),
+                            const SizedBox(height: 4),
+
+                            // ── Totals ──
+                            Row(
+                              children: [
+                                const Text(
+                                  'Subtotal',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF6B7280),
                                   ),
-                                ],
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp  168.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF374151),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 1),
+                            Row(
+                              children: [
+                                const Text(
+                                  'TOTAL',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp  168.000',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // Total diskon — tepat DI BAWAH TOTAL (komplain user).
+                            const SizedBox(height: 1),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Diskon',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp   -8.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFFE63946),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            _dashedLine(true),
+                            const SizedBox(height: 4),
+
+                            // ── Payment info ──
+                            Row(
+                              children: [
+                                const Text(
+                                  'Tunai',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF374151),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp  200.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF374151),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 1),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Kembalian',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp   32.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF059669),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            _dashedLine(false),
+                            const SizedBox(height: 4),
+
+                            // ── Footer — ukuran ikut fontF (Kecil/Besar) ──
+                            Text(
+                              footerCtrl.text.isNotEmpty
+                                  ? footerCtrl.text
+                                  : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: fontF > 1 ? 12 : 9,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF6B7280),
                               ),
                             ),
-                          _dashedLine(false),
-                          const SizedBox(height: 4),
-
-                          // ── Dummy items ──
-                          _receiptItem('Indomie Goreng', 4, 3500, false),
-                          _receiptItem('Beras 5kg', 1, 72000, false),
-                          _receiptItem('Minyak Goreng 2L', 2, 38000, false),
-                          _receiptItem('Telur Ayam 10 butir', 1, 28000, false),
-                          _receiptItem('Gula Pasir 1kg', 1, 16000, false),
-                          const SizedBox(height: 2),
-                          _dashedLine(false),
-                          const SizedBox(height: 4),
-
-                          // ── Totals ──
-                          Row(
-                            children: [
-                              const Text(
-                                'Subtotal',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF6B7280),
-                                ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              '•••',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFFD1D5DB),
                               ),
-                              const Spacer(),
-                              const Text(
-                                'Rp  173.000',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF374151),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 1),
-                          Row(
-                            children: [
-                              const Text(
-                                'Diskon',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                              const Spacer(),
-                              const Text(
-                                'Rp   -5.000',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFFE63946),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 1),
-                          Row(
-                            children: [
-                              const Text(
-                                'TOTAL',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                              const Spacer(),
-                              const Text(
-                                'Rp  168.000',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          _dashedLine(true),
-                          const SizedBox(height: 4),
-
-                          // ── Payment info ──
-                          Row(
-                            children: [
-                              const Text(
-                                'Tunai',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF374151),
-                                ),
-                              ),
-                              const Spacer(),
-                              const Text(
-                                'Rp  200.000',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF374151),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 1),
-                          Row(
-                            children: [
-                              const Text(
-                                'Kembalian',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                              const Spacer(),
-                              const Text(
-                                'Rp   32.000',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF059669),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          _dashedLine(false),
-                          const SizedBox(height: 4),
-
-                          // ── Footer ──
-                          Text(
-                            footerCtrl.text.isNotEmpty
-                                ? footerCtrl.text
-                                : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              color: Color(0xFF6B7280),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            '•••',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFFD1D5DB),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -2391,7 +2508,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         // "Pengaturan Struk" and the receipt printer in sync.
                         final norm = paper.replaceAll('mm', '');
                         await SecureStore.setPaperSize(norm);
-                        await SecureStore.setPrinterFooter(footerCtrl.text.trim());
+                        await SecureStore.setPrinterFooter(
+                          footerCtrl.text.trim(),
+                        );
                         // Font struk.
                         await SecureStore.setReceiptFontType(font);
                         await SecureStore.setReceiptFontHeader(fontH);
@@ -2492,7 +2611,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Chip pilihan jenis font struk (Standar / Kompak).
+  /// Chip pilihan jenis font struk (Standar / Ramping).
   Widget _fontTypeChip(
     String label,
     IconData icon,
@@ -2584,7 +2703,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+              color: isDark
+                  ? NusaConfig.darkTextPrimary
+                  : NusaConfig.textPrimary,
             ),
           ),
         ),
@@ -2672,9 +2793,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Single receipt item row for preview — 2 baris persis seperti print:
-  /// baris 1 nama item, baris 2 "qty x Rp harga ... subtotal".
-  Widget _receiptItem(String name, int qty, int price, bool isDark) {
+  /// Single receipt item row for preview — persis seperti print:
+  /// baris 1 nama item, baris 2 "qty x Rp harga ... subtotal", lalu
+  /// (bila ada diskon) "Harga Normal: Rp xxx" + "Diskon: -Rp xxx".
+  /// Ukuran huruf mengikuti fontI (Kecil/Besar) — preview = print.
+  Widget _receiptItem(
+    String name,
+    int qty,
+    int price,
+    bool isDark, {
+    int? originalPrice,
+    int fontI = 1,
+  }) {
+    final hasDiscount = originalPrice != null && originalPrice > price;
+    final itemSize = fontI > 1 ? 11.0 : 9.0;
+    final lineSize = fontI > 1 ? 9.5 : 8.0;
+    final nameColor = const Color(0xFF374151);
+    final subtleColor = const Color(0xFF6B7280);
+    final dimColor = const Color(0xFF9CA3AF);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Column(
@@ -2682,26 +2818,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           Text(
             name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 9, color: Color(0xFF374151)),
+            // Nama pakai lebar penuh (wrap, bukan ellipsis) — persis print.
+            style: TextStyle(fontSize: itemSize, color: nameColor, height: 1.3),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 '$qty x ${formatRupiah(price)}',
-                style: const TextStyle(fontSize: 8, color: Color(0xFF6B7280)),
+                style: TextStyle(fontSize: lineSize, color: subtleColor),
               ),
               Text(
                 formatRupiah(qty * price),
-                style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF374151)),
+                style: TextStyle(
+                  fontSize: itemSize,
+                  fontWeight: FontWeight.w600,
+                  color: nameColor,
+                ),
               ),
             ],
           ),
+          if (hasDiscount) ...[
+            Text(
+              'Harga Normal: ${formatRupiah(originalPrice!)}',
+              style: TextStyle(fontSize: lineSize, color: dimColor),
+            ),
+            Text(
+              'Diskon: -${formatRupiah(originalPrice - price)}',
+              style: TextStyle(fontSize: lineSize, color: Color(0xFFE63946)),
+            ),
+          ],
         ],
       ),
     );
@@ -2731,11 +2877,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   void _showFeedbackSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final repo = NusaConfig.githubRepo;
-    final appLabel = '${NusaConfig.appName} Kasir v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}';
+    final appLabel =
+        '${NusaConfig.appName} Kasir v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}';
+    // Feedback dikirim ke WhatsApp (bukan GitHub) — pengguna NUSA kebanyakan
+    // awam; generate link WA langsung ke 08976280303 sesuai teks yang diketik.
+    final feedbackCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -2744,7 +2894,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          10,
+          20,
+          MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2754,63 +2909,111 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            Row(children: [
-              Icon(Icons.feedback_outlined, color: NusaConfig.activePrimary),
-              const SizedBox(width: 10),
-              Text('Bantuan & Masukan',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            ]),
+            Row(
+              children: [
+                Icon(Icons.feedback_outlined, color: NusaConfig.activePrimary),
+                const SizedBox(width: 10),
+                Text(
+                  'Bantuan & Masukan',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Text(
-              'Ada masalah atau ide fitur? Kirim lewat salah satu saluran di bawah — '
-              'sertakan versi app ($appLabel) agar kami bisa bantu lebih cepat.',
+              'Laporkan masalah atau usulkan fitur. Ketik di bawah, lalu kirim — '
+              'langsung masuk ke WhatsApp kami ($appLabel).',
               style: TextStyle(
                 fontSize: 13,
                 height: 1.5,
-                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
               ),
             ),
             const SizedBox(height: 16),
-            _feedbackTile(
-              ctx,
-              icon: Icons.bug_report_outlined,
-              color: NusaConfig.activePrimary,
-              title: 'Laporkan Masalah (Bug)',
-              subtitle: 'Buka halaman issue di GitHub',
-              onTap: () {
-                Navigator.pop(ctx);
-                _launch(
-                  'https://github.com/$repo/issues/new?title=${Uri.encodeComponent('[Bug] $appLabel: ')}',
-                );
-              },
+            // ── Text input — isi otomatis teks WA sesuai yang diketik ──
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkInputBorder
+                      : NusaConfig.inputBorder,
+                ),
+              ),
+              child: TextField(
+                controller: feedbackCtrl,
+                maxLines: 4,
+                minLines: 3,
+                style: TextStyle(
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  hintText:
+                      'Contoh: Tombol kasir tidak merespons… / Ide: tambah mode malam…',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(14),
+                ),
+              ),
             ),
-            const SizedBox(height: 10),
-            _feedbackTile(
-              ctx,
-              icon: Icons.lightbulb_outline,
-              color: const Color(0xFFF59E0B),
-              title: 'Usulkan Fitur',
-              subtitle: 'Ide fitur baru untuk aplikasi',
-              onTap: () {
-                Navigator.pop(ctx);
-                _launch(
-                  'https://github.com/$repo/issues/new?title=${Uri.encodeComponent('[Saran] $appLabel: ')}',
-                );
-              },
+            const SizedBox(height: 16),
+            // ── Tombol kirim — WA (bug/saran) + chat langsung ──
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final text = feedbackCtrl.text.trim();
+                  if (text.isEmpty) {
+                    TopToast.error(context, 'Tulis pesan dulu ya');
+                    return;
+                  }
+                  final msg = '$text\n\n— $appLabel';
+                  Navigator.pop(ctx);
+                  _launch(
+                    'https://wa.me/628976280303?text=${Uri.encodeComponent(msg)}',
+                  );
+                },
+                icon: const Icon(Icons.send, size: 18),
+                label: const Text(
+                  'Kirim via WhatsApp',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             _feedbackTile(
               ctx,
               icon: Icons.chat_outlined,
               color: const Color(0xFF25D366),
-              title: 'Chat WhatsApp',
-              subtitle: 'Tanya langsung ke tim NUSA',
+              title: 'Chat WhatsApp langsung',
+              subtitle: 'Tanya apa saja ke tim NUSA',
               onTap: () {
                 Navigator.pop(ctx);
                 _launch(
@@ -2844,31 +3047,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
-          child: Row(children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
+          child: Row(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
                       style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
                       style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(ctx).brightness == Brightness.dark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary)),
-                ],
+                        fontSize: 12,
+                        color: Theme.of(ctx).brightness == Brightness.dark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right,
+              Icon(
+                Icons.chevron_right,
                 color: Theme.of(ctx).brightness == Brightness.dark
                     ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary),
-          ]),
+                    : NusaConfig.textTertiary,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2971,25 +3185,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: Icons.timer_outlined,
                 iconColor: const Color(0xFF8B5CF6),
                 title: 'Estimasi Default',
-                subtitle: '$_salonDefaultDuration menit — durasi estimasi standar per booking',
+                subtitle:
+                    '$_salonDefaultDuration menit — durasi estimasi standar per booking',
                 isDark: isDark,
                 onTap: () async {
                   final opts = [30, 45, 60, 90, 120];
                   final current = _salonDefaultDuration;
                   final sel = await showModalBottomSheet<String>(
                     context: context,
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
                     builder: (ctx) => Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const Text('Estimasi Default', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 12),
-                        ...opts.map((o) => ListTile(
-                          title: Text('$o menit'),
-                          trailing: o == current ? Icon(Icons.check, color: NusaConfig.activePrimary) : null,
-                          onTap: () => Navigator.pop(ctx, '$o'),
-                        )),
-                      ]),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Estimasi Default',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ...opts.map(
+                            (o) => ListTile(
+                              title: Text('$o menit'),
+                              trailing: o == current
+                                  ? Icon(
+                                      Icons.check,
+                                      color: NusaConfig.activePrimary,
+                                    )
+                                  : null,
+                              onTap: () => Navigator.pop(ctx, '$o'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                   if (sel != null && mounted) {
@@ -3004,7 +3239,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: Icons.notifications_outlined,
                 iconColor: const Color(0xFF3B82F6),
                 title: 'Notifikasi Booking',
-                subtitle: _salonNotifyBooking ? 'Notif H-30 menit sebelum booking' : 'Notifikasi dimatikan',
+                subtitle: _salonNotifyBooking
+                    ? 'Notif H-30 menit sebelum booking'
+                    : 'Notifikasi dimatikan',
                 isDark: isDark,
                 onTap: null,
                 trailing: Switch(
@@ -3150,7 +3387,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: Icons.apps_rounded,
                 iconColor: NusaConfig.accentGold,
                 title: 'Pilih Varian',
-                subtitle: 'Switch ke variant lain (${NusaConfig.productId.replaceFirst('nusa-', '')})',
+                subtitle:
+                    'Switch ke variant lain (${NusaConfig.productId.replaceFirst('nusa-', '')})',
                 isDark: isDark,
                 onTap: () => _pinGate(() => context.go('/variant-picker')),
                 trailing: Icon(

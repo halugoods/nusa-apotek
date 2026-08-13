@@ -379,7 +379,12 @@ class ReceiptPrinter {
     final itemLineWidth = itemBig ? (baseLineWidth ~/ 2) : baseLineWidth;
     final qtyPriceWidth = useFontB ? 14 : 12;    // "2xRp10.000" max
     final subWidth = useFontB ? 11 : 10;         // "Rp20.000" max
-    final nameWidth = baseLineWidth - qtyPriceWidth - subWidth - 2;
+    // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──
+    // Sebelumnya nama di-squeeze ke sisa setelah qty×harga + subtotal
+    // (58mm Font A → hanya 8 karakter → "enter2 kebawah" dengan ~15 char).
+    // Komplain user: "menu item harus hbisin margin kertas dulu baru enter
+    // kebawah". Baris nama full width; qty×harga + subtotal baris sendiri.
+    final nameWidth = itemLineWidth;
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -446,19 +451,6 @@ class ReceiptPrinter {
     }
     bytes.addAll(generator.hr());
 
-    // Discount.
-    if (discount > 0) {
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Diskon', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
-    }
-
     // Total.
     bytes.addAll(generator.row([
       PosColumn(
@@ -475,6 +467,21 @@ class ReceiptPrinter {
             fontType: itemFont),
       ),
     ]));
+
+    // Total diskon — baris sendiri TEPAT DI BAWAH TOTAL (komplain user:
+    // "total diskon di total bawah"). TOTAL sudah setelah diskon; baris ini
+    // menegaskan nominal potongan transaksi (promo/manual/tier/poin).
+    if (discount > 0) {
+      bytes.addAll(generator.row([
+        PosColumn(text: 'Diskon', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
+        PosColumn(
+          text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+        ),
+      ]));
+    }
 
     // Payment details. When DP is active, show uang muka + sisa piutang
     // instead of the generic Bayar line (cashGiven holds the DP amount).

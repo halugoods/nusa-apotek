@@ -277,6 +277,24 @@ class ActivationRepository {
             'Restore path escapes application directory: ${entry.key}',
           );
         }
+
+        // ── CRITICAL: never overwrite the LIVE sqlite file in place ──
+        // The app keeps a drift connection open for its whole lifetime. Writing
+        // the cloud backup over nusa_kasir.sqlite while that connection is
+        // active leaves the handle reading a half-replaced file (stale inode +
+        // WAL/journal mismatch) → queries return empty or SQLITE_NOTADB → menu
+        // buttons stop working and every PIN fails ("PIN salah"). This is
+        // device/network dependent (auto-sync restore only triggers when the
+        // cloud is newer), which is why it reproduced on some devices and not
+        // others. Stage the DB to a .pending file instead — main.dart's
+        // _applyPendingRestore() swaps it BEFORE the next DB open, where a
+        // swap is atomic and safe.
+        if (entry.key == 'nusa_kasir.sqlite') {
+          final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
+          await pending.writeAsBytes(entry.value, flush: true);
+          await SecureStore.savePendingRestore();
+          continue;
+        }
         await File(destinationCanonical).writeAsBytes(entry.value, flush: true);
         if (entry.key != 'nusa_kasir.sqlite') imageCount++;
       }
@@ -288,7 +306,7 @@ class ActivationRepository {
         await SecureStore.saveLastBackupTime(DateTime.parse(ts));
       }
 
-      debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""}');
+      debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""} (DB staged for next launch)');
       return true;
     } catch (e) {
       debugPrint('[RestoreDirect] error: $e');
@@ -320,6 +338,12 @@ class ActivationRepository {
   /// Auto-sync: check if cloud backup is newer than local state.
   /// If so, download and replace the local database directly (no restart needed).
   /// Returns true if sync was performed.
+  ///
+  /// NOTE: no longer a direct overwrite — the DB is staged to a .pending file
+  /// that main.dart applies BEFORE the next database open. Overwriting the
+  /// live sqlite file while drift has it open corrupts the session (empty
+  /// reads → login fails, menu buttons dead). Sync here = stage for next
+  /// launch; the pending swap is atomic.
   Future<bool> syncIfNewer() async {
     if (client == null) return false;
     try {
@@ -353,13 +377,21 @@ class ActivationRepository {
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
       final dir = await getApplicationDocumentsDirectory();
 
-      // Unpack archive (DB + images) directly — no restart needed
+      // Unpack archive (DB + images). The DB goes to .pending (applied at
+      // next launch); images are written directly — safe, they're not open
+      // by any connection.
       final packedFiles = BackupCrypto.unpackFiles(
         Uint8List.fromList(decrypted),
       );
       var imageCount = 0;
       final rootCanonical = p.normalize(Directory(dir.path).absolute.path);
       for (final entry in packedFiles.entries) {
+        if (entry.key == 'nusa_kasir.sqlite') {
+          final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
+          await pending.writeAsBytes(entry.value, flush: true);
+          await SecureStore.savePendingRestore();
+          continue;
+        }
         final destination = File(p.join(dir.path, entry.key));
         final destinationCanonical = p.normalize(destination.absolute.path);
         if (destinationCanonical != rootCanonical &&
@@ -369,12 +401,12 @@ class ActivationRepository {
           );
         }
         await File(destinationCanonical).writeAsBytes(entry.value, flush: true);
-        if (entry.key != 'nusa_kasir.sqlite') imageCount++;
+        imageCount++;
       }
 
       await SecureStore.saveLastBackupTime(cloudTime);
       debugPrint(
-        '[Sync] Restored DB${imageCount > 0 ? " + $imageCount images" : ""} from cloud',
+        '[Sync] Staged DB${imageCount > 0 ? " + $imageCount images" : ""} from cloud (applied next launch)',
       );
       return true;
     } catch (e) {

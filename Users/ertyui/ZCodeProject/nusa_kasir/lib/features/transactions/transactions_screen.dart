@@ -769,6 +769,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final qty = (it['qty'] as num).toInt();
           final price = (it['price'] as num).toInt();
           final subtotal = qty * price;
+          final orig = (it['originalPrice'] as num?)?.toInt();
+          final hasDisc = orig != null && orig > price;
           return Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Column(
@@ -779,20 +781,28 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     Text('$qty x ${formatRupiah(price)}', style: monoGrey),
                     Text(formatRupiah(subtotal), style: mono),
                   ]),
+                  if (hasDisc) ...[
+                    Padding(
+                      padding: EdgeInsets.only(top: 1),
+                      child: Text('Harga Normal: ${formatRupiah(orig!)}',
+                          style: TextStyle(
+                              fontFamily: 'monospace', fontSize: 9,
+                              color: subtleColor)),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.only(top: 1),
+                      child: Text('Diskon: -${formatRupiah(orig - price)}',
+                          style: TextStyle(
+                              fontFamily: 'monospace', fontSize: 9,
+                              color: subtleColor)),
+                    ),
+                  ],
                 ]),
           );
         }),
         SizedBox(height: 6),
         _buildRDash(isDark: isDark),
         SizedBox(height: 6),
-        if (tx.discount > 0)
-          Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Diskon/Potongan', style: monoGrey),
-              Text('-${formatRupiah(tx.discount)}', style: monoGrey),
-            ]),
-          ),
         Padding(
           padding: EdgeInsets.symmetric(vertical: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -800,6 +810,15 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             Text(formatRupiah(tx.total), style: monoBig),
           ]),
         ),
+        // Total diskon — tepat DI BAWAH TOTAL (komplain user).
+        if (tx.discount > 0)
+          Padding(
+            padding: EdgeInsets.only(bottom: 3),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('Diskon', style: monoGrey),
+              Text('-${formatRupiah(tx.discount)}', style: monoGrey),
+            ]),
+          ),
         Padding(
           padding: EdgeInsets.only(bottom: 2),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -853,6 +872,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final fontHeader = await SecureStore.getReceiptFontHeader();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
+    // Ukuran kertas — preview mengikuti 58/80mm (komplain user).
+    final paperWidth = await SecureStore.getPaperSize();
 
     final receiptKey = GlobalKey();
     bool capturing = false;
@@ -895,6 +916,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 RepaintBoundary(
                   key: receiptKey,
                   child: Container(
+                    // Preview 2 arah: lebar ikut ukuran kertas (58/80mm).
+                    width: paperWidth == '80' ? 330 : 250,
                     padding: EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: shareDark ? NusaConfig.darkSurface2 : Colors.white,

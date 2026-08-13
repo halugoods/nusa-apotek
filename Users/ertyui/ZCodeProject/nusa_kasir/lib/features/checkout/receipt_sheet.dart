@@ -273,8 +273,10 @@ class ReceiptSheet extends ConsumerWidget {
                     padding: const EdgeInsets.all(16),
                     child: Center(
                       child: Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxWidth: 260),
+                        // Preview 2 arah: lebar ikut ukuran kertas setting
+                        // (58mm → 250, 80mm → 330) — persis print asli.
+                        width: settings.paperWidth == '80' ? 330 : 250,
+                        constraints: const BoxConstraints(maxWidth: 330),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: isDark ? NusaConfig.darkSurface2 : Colors.white,
@@ -425,6 +427,8 @@ class ReceiptSheet extends ConsumerWidget {
     final fontHeader = await SecureStore.getReceiptFontHeader();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
+    // Ukuran kertas — preview mengikuti (58/80mm, komplain user).
+    final paperWidth = await SecureStore.getPaperSize();
     return _ReceiptSettings(
       storeName: storeName,
       showLogo: toggles['showLogo'] ?? true,
@@ -438,6 +442,7 @@ class ReceiptSheet extends ConsumerWidget {
       fontHeader: fontHeader,
       fontItems: fontItems,
       fontFooter: fontFooter,
+      paperWidth: paperWidth,
     );
   }
 
@@ -577,41 +582,6 @@ class ReceiptSheet extends ConsumerWidget {
         _dashedLine(isDark: isDark),
         SizedBox(height: 6),
 
-        // ── Discount & Points ──
-        if (discount > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Diskon/Potongan', style: monoGrey),
-                Text('-${formatRupiah(discount)}', style: monoGrey),
-              ],
-            ),
-          ),
-        if (pointsUsed > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Tukar Poin', style: monoGrey),
-                Text('-${formatRupiah(pointsUsed)}', style: monoGrey),
-              ],
-            ),
-          ),
-        if (pointsEarned > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Poin Didapat', style: monoGrey),
-                Text('+$pointsEarned poin', style: monoGrey),
-              ],
-            ),
-          ),
-
         // ── TOTAL ──
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -623,6 +593,19 @@ class ReceiptSheet extends ConsumerWidget {
             ],
           ),
         ),
+
+        // ── Total diskon — tepat DI BAWAH TOTAL (komplain user) ──
+        if (discount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Diskon', style: monoGrey),
+                Text('-${formatRupiah(discount)}', style: monoGrey),
+              ],
+            ),
+          ),
 
         // ── Payment ──
         if (downPayment > 0) ...[
@@ -710,7 +693,19 @@ class ReceiptSheet extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(top: 1),
               child: Text(
-                'Diskon ${item.qty}x: -${formatRupiah(item.discountNominal)}',
+                'Harga Normal: ${formatRupiah(item.originalPrice!)}',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  color: subtleColor,
+                ),
+              ),
+            ),
+          if (item.hasDiscount)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                'Diskon: -${formatRupiah(item.discountNominal)}',
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 10,
@@ -1066,6 +1061,8 @@ class _ReceiptSettings {
   final int fontHeader;
   final int fontItems;
   final int fontFooter;
+  // Ukuran kertas '58'/'80' — preview ikut (komplain user: preview 2 arah).
+  final String paperWidth;
 
   _ReceiptSettings({
     this.storeName = '',
@@ -1080,6 +1077,7 @@ class _ReceiptSettings {
     this.fontHeader = 2,
     this.fontItems = 1,
     this.fontFooter = 1,
+    this.paperWidth = '58',
   });
 }
 
