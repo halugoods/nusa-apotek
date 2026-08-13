@@ -987,7 +987,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     const allScreens = [
       'home', 'kasir', 'produk', 'stok', 'transaksi', 'pelanggan',
       'promo', 'laporan', 'presensi', 'karyawan', 'keuangan',
-      'pengaturan', 'supplier', 'spreadsheet', 'pesanan_online', 'ai_chat',
+      'pengaturan', 'supplier', 'pembelian', 'spreadsheet', 'pesanan_online', 'ai_chat',
       'piutang', 'cabang',
       'meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order',
     ];

@@ -28,13 +28,20 @@ class RoleRepository {
   };
 
   static const _defaultRoleAccess = {
-    'Owner': ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","ai_chat","piutang","cabang",
+    'Owner': ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","pembelian","spreadsheet","pesanan_online","ai_chat","piutang","cabang",
                "meja","laundry_status","servis","booking","resep","print_order"],
-    'Manager': ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","ai_chat","piutang","cabang",
+    'Manager': ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","pembelian","spreadsheet","pesanan_online","ai_chat","piutang","cabang",
                 "meja","laundry_status","servis","booking","resep","print_order"],
     'Kasir': ["home","kasir","produk","stok","transaksi","pelanggan","ai_chat"],
-    'Gudang': ["home","produk","stok","laporan","supplier"],
-    'Finance': ["home","transaksi","keuangan","laporan","presensi","karyawan","supplier"],
+    'Gudang': ["home","produk","stok","laporan","supplier","pembelian"],
+    'Finance': ["home","transaksi","keuangan","laporan","presensi","karyawan","supplier","pembelian"],
+  };
+
+  /// Menu baru yang ditambahkan ke akses role default pada rilis ini.
+  /// Dipakai untuk backfill role yang sudah tersimpan di DB (tanpa menimpa
+  /// kustomisasi admin) — lihat [_backfillNewDefaultMenus].
+  static const Map<String, List<String>> _newDefaultMenus = {
+    'pembelian': ['Owner', 'Manager', 'Gudang', 'Finance'],
   };
 
   Map<String, dynamic> _defaultEntry(String name) => {
@@ -47,6 +54,7 @@ class RoleRepository {
   /// migration of the legacy `nusa_roles.json` file into the DB.
   Future<List<Map<String, dynamic>>> getRoles() async {
     await _migrateLegacyFile();
+    await _backfillNewDefaultMenus();
     final rows = await (db.select(db.roles)..orderBy([(t) => OrderingTerm(expression: t.name, mode: OrderingMode.asc)])).get();
     final list = rows.map((r) => <String, dynamic>{
       'name': r.name,
@@ -75,6 +83,32 @@ class RoleRepository {
       if (decoded is List) return decoded.cast<String>();
     } catch (_) {}
     return ['home'];
+  }
+
+  /// Backfill menu baru (mis. `pembelian`) ke role default yang SUDAH tersimpan
+  /// di DB, tanpa menimpa kustomisasi admin (menu yang ada tidak disentuh).
+  /// Hanya menambah menu yang hilang pada role yang termasuk [_newDefaultMenus].
+  Future<void> _backfillNewDefaultMenus() async {
+    final rows = await (db.select(db.roles)).get();
+    for (final row in rows) {
+      final newMenus = _newDefaultMenus.entries
+          .where((e) => e.value.contains(row.name))
+          .map((e) => e.key)
+          .toList();
+      if (newMenus.isEmpty) continue;
+      final access = _parseAccess(row.accessJson);
+      var changed = false;
+      for (final m in newMenus) {
+        if (!access.contains(m)) {
+          access.add(m);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await (db.update(db.roles)..where((t) => t.name.equals(row.name)))
+            .write(RolesCompanion(accessJson: Value(jsonEncode(access))));
+      }
+    }
   }
 
   /// One-time migration: read legacy JSON file (if present) into the DB,
