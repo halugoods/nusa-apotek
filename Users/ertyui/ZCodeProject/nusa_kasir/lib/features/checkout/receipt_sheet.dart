@@ -20,10 +20,15 @@ class _ReceiptItem {
   final String name;
   final int qty;
   final int price;
+  /// Harga jual sebelum diskon (null = tanpa diskon). Dipakai struk untuk
+  /// menampilkan potongan NOMINAL per item, mis. "-Rp 5.000" di bawah item.
+  final int? originalPrice;
   final String? note;
   final double? weightKg;
-  const _ReceiptItem({required this.name, required this.qty, required this.price, this.note, this.weightKg});
+  const _ReceiptItem({required this.name, required this.qty, required this.price, this.originalPrice, this.note, this.weightKg});
   bool get isPerKg => weightKg != null;
+  bool get hasDiscount => originalPrice != null && originalPrice! > price;
+  int get discountNominal => hasDiscount ? originalPrice! - price : 0;
   int get subtotal => isPerKg ? (price * weightKg!).ceil() : qty * price;
 }
 
@@ -46,6 +51,7 @@ class ReceiptSheet extends ConsumerWidget {
   final String? invoice;
   final String? dateStr;
   final int pointsUsed;
+  final int pointsEarned;
   final bool autoPrint;
 
   final String? orderType;
@@ -53,6 +59,8 @@ class ReceiptSheet extends ConsumerWidget {
   final List<String?>? itemNotes;
   final int? laundryOrderId;
   final int? salonBookingId;
+  final int downPayment; // DP (uang muka) — 0 jika tidak pakai DP
+  final int remainingDue; // sisa piutang setelah DP — 0 jika lunas
 
   const ReceiptSheet({
     required this.items,
@@ -67,12 +75,15 @@ class ReceiptSheet extends ConsumerWidget {
     this.invoice,
     this.dateStr,
     this.pointsUsed = 0,
+    this.pointsEarned = 0,
     this.autoPrint = false,
     this.orderType,
     this.tableName,
     this.itemNotes,
     this.laundryOrderId,
     this.salonBookingId,
+    this.downPayment = 0,
+    this.remainingDue = 0,
     super.key,
   });
 
@@ -90,14 +101,17 @@ class ReceiptSheet extends ConsumerWidget {
     String? invoice,
     String? dateStr,
     int pointsUsed = 0,
+    int pointsEarned = 0,
     bool autoPrint = false,
     String? orderType,
     String? tableName,
     int? laundryOrderId,
     int? salonBookingId,
+    int downPayment = 0,
+    int remainingDue = 0,
   }) {
     final items = cartItems
-        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, note: c.note, weightKg: c.weightKg))
+        .map((c) => _ReceiptItem(name: c.name, qty: c.qty, price: c.price, originalPrice: c.originalPrice, note: c.note, weightKg: c.weightKg))
         .toList();
     return ReceiptSheet(
       items: items,
@@ -112,11 +126,14 @@ class ReceiptSheet extends ConsumerWidget {
       invoice: invoice,
       dateStr: dateStr,
       pointsUsed: pointsUsed,
+      pointsEarned: pointsEarned,
       autoPrint: autoPrint,
       orderType: orderType,
       tableName: tableName,
       laundryOrderId: laundryOrderId,
       salonBookingId: salonBookingId,
+      downPayment: downPayment,
+      remainingDue: remainingDue,
     );
   }
 
@@ -134,13 +151,17 @@ class ReceiptSheet extends ConsumerWidget {
     String? invoice,
     String? dateStr,
     int pointsUsed = 0,
+    int pointsEarned = 0,
     String? orderType,
     String? tableName,
+    int downPayment = 0,
+    int remainingDue = 0,
   }) {
     final items = rawItems.map((m) => _ReceiptItem(
       name: '${m['name'] ?? ''}',
       qty: (m['qty'] as num?)?.toInt() ?? 0,
       price: (m['price'] as num?)?.toInt() ?? 0,
+      originalPrice: (m['originalPrice'] as num?)?.toInt(),
       note: m['note'] as String?,
       weightKg: (m['weightKg'] as num?)?.toDouble(),
     )).toList();
@@ -157,8 +178,11 @@ class ReceiptSheet extends ConsumerWidget {
       invoice: invoice,
       dateStr: dateStr,
       pointsUsed: pointsUsed,
+      pointsEarned: pointsEarned,
       orderType: orderType,
       tableName: tableName,
+      downPayment: downPayment,
+      remainingDue: remainingDue,
     );
   }
 
@@ -554,6 +578,17 @@ class ReceiptSheet extends ConsumerWidget {
               ],
             ),
           ),
+        if (pointsEarned > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Poin Didapat', style: monoGrey),
+                Text('+$pointsEarned poin', style: monoGrey),
+              ],
+            ),
+          ),
 
         // ── TOTAL ──
         Padding(
@@ -568,27 +603,51 @@ class ReceiptSheet extends ConsumerWidget {
         ),
 
         // ── Payment ──
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Bayar ($paymentMethod)', style: monoGrey),
-              Text(formatRupiah(cashGiven ?? total), style: monoGrey),
-            ],
-          ),
-        ),
-        if (cashReturn != null && cashReturn! > 0)
+        if (downPayment > 0) ...[
+          // DP: tunjukkan uang muka + sisa piutang (bukan baris Bayar biasa)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Kembali', style: monoGrey),
-                Text(formatRupiah(cashReturn!), style: monoGrey),
+                Text('Bayar ($paymentMethod)', style: monoGrey),
+                Text(formatRupiah(downPayment), style: monoGrey),
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Sisa Piutang', style: monoGrey),
+                Text(formatRupiah(remainingDue), style: monoGrey),
+              ],
+            ),
+          ),
+        ] else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Bayar ($paymentMethod)', style: monoGrey),
+                Text(formatRupiah(cashGiven ?? total), style: monoGrey),
+              ],
+            ),
+          ),
+          if (cashReturn != null && cashReturn! > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Kembali', style: monoGrey),
+                  Text(formatRupiah(cashReturn!), style: monoGrey),
+                ],
+              ),
+            ),
+        ],
 
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
@@ -625,6 +684,18 @@ class ReceiptSheet extends ConsumerWidget {
               Text(formatRupiah(item.subtotal), style: mono),
             ],
           ),
+          if (item.hasDiscount)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                'Diskon ${item.qty}x: -${formatRupiah(item.discountNominal)}',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  color: subtleColor,
+                ),
+              ),
+            ),
           if (item.note != null && item.note!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
@@ -723,7 +794,7 @@ class ReceiptSheet extends ConsumerWidget {
       final ok = await printer.printReceipt(
         storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
         lines: items
-            .map((i) => ReceiptLine(name: i.name, qty: i.qty, price: i.price))
+            .map((i) => ReceiptLine(name: i.name, qty: i.qty, price: i.price, originalPrice: i.originalPrice))
             .toList(),
         total: total,
         paymentMethod: paymentMethod,
@@ -733,6 +804,8 @@ class ReceiptSheet extends ConsumerWidget {
         discount: discount,
         cashGiven: cashGiven,
         cashReturn: cashReturn,
+        downPayment: downPayment,
+        remainingDue: remainingDue,
         customerName: customerName,
         paperWidth: paperSize,
         showLogo: showLogo,
@@ -800,7 +873,7 @@ class ReceiptSheet extends ConsumerWidget {
       final ok = await printer.printReceipt(
         storeName: storeName,
         lines: items
-            .map((i) => ReceiptLine(name: i.name, qty: i.qty, price: i.price))
+            .map((i) => ReceiptLine(name: i.name, qty: i.qty, price: i.price, originalPrice: i.originalPrice))
             .toList(),
         total: total,
         paymentMethod: paymentMethod,
@@ -810,6 +883,8 @@ class ReceiptSheet extends ConsumerWidget {
         discount: discount,
         cashGiven: cashGiven,
         cashReturn: cashReturn,
+        downPayment: downPayment,
+        remainingDue: remainingDue,
         customerName: customerName,
         paperWidth: paperSize,
         showLogo: showLogo2,
@@ -857,6 +932,9 @@ class ReceiptSheet extends ConsumerWidget {
     for (final item in items) {
       sb.writeln(item.name);
       sb.writeln('  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}');
+      if (item.hasDiscount) {
+        sb.writeln('  Diskon: -${formatRupiah(item.discountNominal)}');
+      }
       if (item.note != null && item.note!.isNotEmpty) {
         sb.writeln('  ↳ ${item.note}');
       }
@@ -864,8 +942,14 @@ class ReceiptSheet extends ConsumerWidget {
     sb.writeln('━━━━━━━━━━━━━━━━━');
     if (discount > 0) sb.writeln('Diskon      : -${formatRupiah(discount)}');
     if (pointsUsed > 0) sb.writeln('Tukar Poin  : -${formatRupiah(pointsUsed)}');
+    if (pointsEarned > 0) sb.writeln('Poin Didapat: +$pointsEarned poin');
     sb.writeln('*TOTAL       : ${formatRupiah(total)}*');
-    sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(cashGiven ?? total)}');
+    if (downPayment > 0) {
+      sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(downPayment)}');
+      sb.writeln('Sisa Piutang: ${formatRupiah(remainingDue)}');
+    } else {
+      sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(cashGiven ?? total)}');
+    }
     if (cashReturn != null && cashReturn! > 0) {
       sb.writeln('Kembali     : ${formatRupiah(cashReturn!)}');
     }
@@ -899,6 +983,9 @@ class ReceiptSheet extends ConsumerWidget {
       for (final item in items) {
         sb.writeln(item.name);
         sb.writeln('  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}');
+        if (item.hasDiscount) {
+          sb.writeln('  Diskon: -${formatRupiah(item.discountNominal)}');
+        }
         if (item.note != null && item.note!.isNotEmpty) {
           sb.writeln('  \u21B3 ${item.note}');
         }
@@ -906,8 +993,14 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('─' * 32);
       if (discount > 0) sb.writeln('Diskon      : -${formatRupiah(discount)}');
       if (pointsUsed > 0) sb.writeln('Tukar Poin  : -${formatRupiah(pointsUsed)}');
+      if (pointsEarned > 0) sb.writeln('Poin Didapat: +$pointsEarned poin');
       sb.writeln('TOTAL       : ${formatRupiah(total)}');
-      sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(cashGiven ?? total)}');
+      if (downPayment > 0) {
+        sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(downPayment)}');
+        sb.writeln('Sisa Piutang: ${formatRupiah(remainingDue)}');
+      } else {
+        sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(cashGiven ?? total)}');
+      }
       if (cashReturn != null && cashReturn! > 0) sb.writeln('Kembali     : ${formatRupiah(cashReturn!)}');
       sb.writeln('─' * 32);
       sb.writeln(s.footer.isNotEmpty ? s.footer : 'Terima Kasih!');

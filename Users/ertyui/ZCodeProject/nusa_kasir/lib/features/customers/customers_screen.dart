@@ -742,6 +742,91 @@ class _CustomerDetailSheet extends StatelessWidget {
               formatRupiah(c.totalSpent), isDark),
           SizedBox(height: 8),
           _detailRow(Icons.star_rounded, 'Poin', '${c.points}', isDark),
+          SizedBox(height: 8),
+          // ── Riwayat Poin ──
+          FutureBuilder<List<PointHistory>>(
+            future: CustomerRepository(db).pointHistory(c.id),
+            builder: (context, snap) {
+              final hist = snap.data ?? const [];
+              if (hist.isEmpty) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                padding:
+                    EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkSurface2
+                      : NusaConfig.inputFill,
+                  borderRadius: BorderRadius.circular(NusaConfig.radiusSM),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.history_rounded,
+                          size: 16,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary),
+                      SizedBox(width: 8),
+                      Text('Riwayat Poin',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          )),
+                    ]),
+                    SizedBox(height: 8),
+                    ...hist.take(6).map((h) {
+                      final earn = h.points >= 0;
+                      final dateStr =
+                          '${h.date.day}/${h.date.month}/${h.date.year}';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            Icon(
+                              earn
+                                  ? Icons.add_circle_outline_rounded
+                                  : Icons.remove_circle_outline_rounded,
+                              size: 14,
+                              color: earn
+                                  ? NusaConfig.accentGreen
+                                  : NusaConfig.activePrimary,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                h.note?.isNotEmpty == true
+                                    ? h.note!
+                                    : (earn ? 'Dapat poin' : 'Pakai poin'),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary,
+                                ),
+                              ),
+                            ),
+                            Text('$dateStr • ${h.points >= 0 ? '+' : ''}${h.points}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: earn
+                                      ? NusaConfig.accentGreen
+                                      : NusaConfig.activePrimary,
+                                )),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
           SizedBox(height: 24),
           if (phone.isNotEmpty)
             SizedBox(

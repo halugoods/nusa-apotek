@@ -425,8 +425,8 @@ def update_config(variant: dict):
     with open(GRADLE_FILE, "r", encoding="utf-8") as f:
         gradle = f.read()
 
-    gradle = re.sub(r'(namespace\s*=\s*")[^"]+', rf'\g<1>{v["pkg"]}', gradle)
-    gradle = re.sub(r'(applicationId\s*=\s*")[^"]+', rf'\g<1>{v["pkg"]}', gradle)
+    gradle = re.sub(r'(namespace\s*=\s*if \(isDevBuild\) "com\.nusa\.dev" else ")[^"]+', rf'\g<1>{v["pkg"]}', gradle)
+    gradle = re.sub(r'(applicationId\s*=\s*if \(isDevBuild\) "com\.nusa\.dev" else ")[^"]+', rf'\g<1>{v["pkg"]}', gradle)
 
     with open(GRADLE_FILE, "w", encoding="utf-8") as f:
         f.write(gradle)

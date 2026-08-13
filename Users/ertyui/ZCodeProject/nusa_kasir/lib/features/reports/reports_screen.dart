@@ -1000,6 +1000,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         final d = snap.data ?? {};
         final pendapatan = d['pendapatan'] as int? ?? 0;
         final hpp = d['hpp'] as int? ?? 0;
+        final retur = d['retur'] as int? ?? 0;
+        final hppRetur = d['hppRetur'] as int? ?? 0;
         final labaKotor = d['labaKotor'] as int? ?? 0;
         final expenses = d['expenses'] as int? ?? 0;
         final payroll = d['payroll'] as int? ?? 0;
@@ -1078,10 +1080,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             _plSection('Pendapatan', [
               _plRow('Pendapatan Penjualan', formatRupiah(pendapatan),
                   isHighlight: true, isDark: isDark),
+              if (retur > 0)
+                _plRow('Retur / Refund', formatRupiah(retur),
+                    isDeduct: true, isDark: isDark),
               _plRow('HPP (Harga Pokok Penjualan)',
                   '${formatRupiah(hpp)}',
                   isDeduct: true,
                   isDark: isDark),
+              if (hppRetur > 0)
+                _plRow('HPP Barang Retur', formatRupiah(hppRetur),
+                    isAdd: true, isDark: isDark),
               _plDivider(isDark: isDark),
               _plRow('Laba Kotor', formatRupiah(labaKotor),
                   isBold: true,

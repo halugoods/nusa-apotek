@@ -57,6 +57,9 @@ class UpdateService {
   ///
   /// Results are cached for 30 minutes to avoid hitting GitHub rate limits.
   static Future<UpdateInfo> checkForUpdate({bool force = false}) async {
+    // Dev builds always stay on the installed build — updates are pushed to
+    // the per-variant production repos, never to the dev app.
+    if (NusaConfig.isDevBuild) return UpdateInfo.noUpdate();
     // If we recently hit GitHub's rate limit, don't hammer it again
     // immediately — return the cached (error) result instead.
     if (_rateLimitedUntil != null && DateTime.now().isBefore(_rateLimitedUntil!)) {

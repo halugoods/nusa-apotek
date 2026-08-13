@@ -395,7 +395,12 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
         final name = '${item['name'] ?? ''}';
         final qty = (item['qty'] as num?)?.toInt() ?? 1;
         final price = (item['price'] as num?)?.toInt() ?? 0;
-        lines.add(ReceiptLine(name: name, qty: qty, price: price));
+        lines.add(ReceiptLine(
+          name: name,
+          qty: qty,
+          price: price,
+          originalPrice: (item['originalPrice'] as num?)?.toInt(),
+        ));
       }
       await printer.printReceipt(
         storeName: o.customerName,

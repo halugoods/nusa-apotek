@@ -2806,6 +2806,159 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  // ── Feedback in-app (Laporkan / Saran) ──────────────────────
+
+  void _showFeedbackSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final repo = NusaConfig.githubRepo;
+    final appLabel = '${NusaConfig.appName} Kasir v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              Icon(Icons.feedback_outlined, color: NusaConfig.activePrimary),
+              const SizedBox(width: 10),
+              Text('Bantuan & Masukan',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 8),
+            Text(
+              'Ada masalah atau ide fitur? Kirim lewat salah satu saluran di bawah — '
+              'sertakan versi app ($appLabel) agar kami bisa bantu lebih cepat.',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _feedbackTile(
+              ctx,
+              icon: Icons.bug_report_outlined,
+              color: NusaConfig.activePrimary,
+              title: 'Laporkan Masalah (Bug)',
+              subtitle: 'Buka halaman issue di GitHub',
+              onTap: () {
+                Navigator.pop(ctx);
+                _launch(
+                  'https://github.com/$repo/issues/new?title=${Uri.encodeComponent('[Bug] $appLabel: ')}',
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _feedbackTile(
+              ctx,
+              icon: Icons.lightbulb_outline,
+              color: const Color(0xFFF59E0B),
+              title: 'Usulkan Fitur',
+              subtitle: 'Ide fitur baru untuk aplikasi',
+              onTap: () {
+                Navigator.pop(ctx);
+                _launch(
+                  'https://github.com/$repo/issues/new?title=${Uri.encodeComponent('[Saran] $appLabel: ')}',
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _feedbackTile(
+              ctx,
+              icon: Icons.chat_outlined,
+              color: const Color(0xFF25D366),
+              title: 'Chat WhatsApp',
+              subtitle: 'Tanya langsung ke tim NUSA',
+              onTap: () {
+                Navigator.pop(ctx);
+                _launch(
+                  'https://wa.me/628976280303?text=${Uri.encodeComponent('Halo, saya pengguna $appLabel. ')}',
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _feedbackTile(
+    BuildContext ctx, {
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Row(children: [
+            Icon(icon, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(ctx).brightness == Brightness.dark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                color: Theme.of(ctx).brightness == Brightness.dark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _launch(String url) {
+    try {
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   // ═══════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════
@@ -3213,6 +3366,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
 
             const SizedBox(height: 32),
+
+            // ════════════════════════════════════════
+            //  BANTUAN
+            // ════════════════════════════════════════
+            _sectionHeader('BANTUAN', isDark),
+            _menuRow(
+              icon: Icons.feedback_outlined,
+              iconColor: NusaConfig.info,
+              title: 'Bantuan & Masukan',
+              subtitle: 'Laporkan bug, usulkan fitur, atau chat tim',
+              isDark: isDark,
+              onTap: _showFeedbackSheet,
+            ),
+            const SizedBox(height: 24),
 
             // ════════════════════════════════════════
             //  TENTANG APLIKASI

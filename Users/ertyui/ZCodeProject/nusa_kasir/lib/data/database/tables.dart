@@ -60,6 +60,23 @@ class Transactions extends Table {
   IntColumn get tableId => integer().nullable()();
   TextColumn get notes => text().nullable()();
 }
+
+/// Retur/refund parsial per transaksi (barang dikembalikan pelanggan).
+/// Stok item dikembalikan + uang dikembalikan dicatat agar laporan omzet,
+/// HPP, top produk, dan kas shift selalu akurat.
+class Refunds extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get transactionId => integer()();
+  IntColumn get productId => integer().nullable()();
+  TextColumn get productName => text()();
+  IntColumn get qty => integer()();
+  IntColumn get unitPrice => integer()();
+  IntColumn get refundAmount => integer()();
+  TextColumn get reason => text().nullable()();
+  IntColumn get branchId => integer().nullable()();
+  IntColumn get employeeId => integer().nullable()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+}
 /// Role permissions — per-role menu access, stored in SQLite so role
 /// permissions ride along with the cloud DB backup/restore (phone ↔ tablet).
 class Roles extends Table {
@@ -79,6 +96,17 @@ class Customers extends Table {
   IntColumn get totalSpent => integer().withDefault(const Constant(0))();
   TextColumn get level => text().withDefault(const Constant('Silver'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+/// Riwayat poin per pelanggan (dapat / pakai poin) untuk tampilan
+/// "Poin History" di detail pelanggan & info poin di struk.
+class PointHistories extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get customerId => integer()();
+  TextColumn get type => text()(); // 'earn' | 'redeem' | 'adjust'
+  IntColumn get points => integer()(); // + dapat, - pakai
+  IntColumn get transactionId => integer().nullable()();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
 class Promos extends Table {
   IntColumn get id => integer().autoIncrement()();

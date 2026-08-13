@@ -19547,6 +19547,1110 @@ class RolesCompanion extends UpdateCompanion<Role> {
   }
 }
 
+class $RefundsTable extends Refunds with TableInfo<$RefundsTable, Refund> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RefundsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<int> productId = GeneratedColumn<int>(
+    'product_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _productNameMeta = const VerificationMeta(
+    'productName',
+  );
+  @override
+  late final GeneratedColumn<String> productName = GeneratedColumn<String>(
+    'product_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _qtyMeta = const VerificationMeta('qty');
+  @override
+  late final GeneratedColumn<int> qty = GeneratedColumn<int>(
+    'qty',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _unitPriceMeta = const VerificationMeta(
+    'unitPrice',
+  );
+  @override
+  late final GeneratedColumn<int> unitPrice = GeneratedColumn<int>(
+    'unit_price',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _refundAmountMeta = const VerificationMeta(
+    'refundAmount',
+  );
+  @override
+  late final GeneratedColumn<int> refundAmount = GeneratedColumn<int>(
+    'refund_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<int> branchId = GeneratedColumn<int>(
+    'branch_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _employeeIdMeta = const VerificationMeta(
+    'employeeId',
+  );
+  @override
+  late final GeneratedColumn<int> employeeId = GeneratedColumn<int>(
+    'employee_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    transactionId,
+    productId,
+    productName,
+    qty,
+    unitPrice,
+    refundAmount,
+    reason,
+    branchId,
+    employeeId,
+    date,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'refunds';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Refund> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_transactionIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    }
+    if (data.containsKey('product_name')) {
+      context.handle(
+        _productNameMeta,
+        productName.isAcceptableOrUnknown(
+          data['product_name']!,
+          _productNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_productNameMeta);
+    }
+    if (data.containsKey('qty')) {
+      context.handle(
+        _qtyMeta,
+        qty.isAcceptableOrUnknown(data['qty']!, _qtyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_qtyMeta);
+    }
+    if (data.containsKey('unit_price')) {
+      context.handle(
+        _unitPriceMeta,
+        unitPrice.isAcceptableOrUnknown(data['unit_price']!, _unitPriceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_unitPriceMeta);
+    }
+    if (data.containsKey('refund_amount')) {
+      context.handle(
+        _refundAmountMeta,
+        refundAmount.isAcceptableOrUnknown(
+          data['refund_amount']!,
+          _refundAmountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_refundAmountMeta);
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    }
+    if (data.containsKey('employee_id')) {
+      context.handle(
+        _employeeIdMeta,
+        employeeId.isAcceptableOrUnknown(data['employee_id']!, _employeeIdMeta),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Refund map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Refund(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}product_id'],
+      ),
+      productName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_name'],
+      )!,
+      qty: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}qty'],
+      )!,
+      unitPrice: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}unit_price'],
+      )!,
+      refundAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}refund_amount'],
+      )!,
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}branch_id'],
+      ),
+      employeeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}employee_id'],
+      ),
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+    );
+  }
+
+  @override
+  $RefundsTable createAlias(String alias) {
+    return $RefundsTable(attachedDatabase, alias);
+  }
+}
+
+class Refund extends DataClass implements Insertable<Refund> {
+  final int id;
+  final int transactionId;
+  final int? productId;
+  final String productName;
+  final int qty;
+  final int unitPrice;
+  final int refundAmount;
+  final String? reason;
+  final int? branchId;
+  final int? employeeId;
+  final DateTime date;
+  const Refund({
+    required this.id,
+    required this.transactionId,
+    this.productId,
+    required this.productName,
+    required this.qty,
+    required this.unitPrice,
+    required this.refundAmount,
+    this.reason,
+    this.branchId,
+    this.employeeId,
+    required this.date,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['transaction_id'] = Variable<int>(transactionId);
+    if (!nullToAbsent || productId != null) {
+      map['product_id'] = Variable<int>(productId);
+    }
+    map['product_name'] = Variable<String>(productName);
+    map['qty'] = Variable<int>(qty);
+    map['unit_price'] = Variable<int>(unitPrice);
+    map['refund_amount'] = Variable<int>(refundAmount);
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || branchId != null) {
+      map['branch_id'] = Variable<int>(branchId);
+    }
+    if (!nullToAbsent || employeeId != null) {
+      map['employee_id'] = Variable<int>(employeeId);
+    }
+    map['date'] = Variable<DateTime>(date);
+    return map;
+  }
+
+  RefundsCompanion toCompanion(bool nullToAbsent) {
+    return RefundsCompanion(
+      id: Value(id),
+      transactionId: Value(transactionId),
+      productId: productId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productId),
+      productName: Value(productName),
+      qty: Value(qty),
+      unitPrice: Value(unitPrice),
+      refundAmount: Value(refundAmount),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      branchId: branchId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(branchId),
+      employeeId: employeeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(employeeId),
+      date: Value(date),
+    );
+  }
+
+  factory Refund.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Refund(
+      id: serializer.fromJson<int>(json['id']),
+      transactionId: serializer.fromJson<int>(json['transactionId']),
+      productId: serializer.fromJson<int?>(json['productId']),
+      productName: serializer.fromJson<String>(json['productName']),
+      qty: serializer.fromJson<int>(json['qty']),
+      unitPrice: serializer.fromJson<int>(json['unitPrice']),
+      refundAmount: serializer.fromJson<int>(json['refundAmount']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      branchId: serializer.fromJson<int?>(json['branchId']),
+      employeeId: serializer.fromJson<int?>(json['employeeId']),
+      date: serializer.fromJson<DateTime>(json['date']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'transactionId': serializer.toJson<int>(transactionId),
+      'productId': serializer.toJson<int?>(productId),
+      'productName': serializer.toJson<String>(productName),
+      'qty': serializer.toJson<int>(qty),
+      'unitPrice': serializer.toJson<int>(unitPrice),
+      'refundAmount': serializer.toJson<int>(refundAmount),
+      'reason': serializer.toJson<String?>(reason),
+      'branchId': serializer.toJson<int?>(branchId),
+      'employeeId': serializer.toJson<int?>(employeeId),
+      'date': serializer.toJson<DateTime>(date),
+    };
+  }
+
+  Refund copyWith({
+    int? id,
+    int? transactionId,
+    Value<int?> productId = const Value.absent(),
+    String? productName,
+    int? qty,
+    int? unitPrice,
+    int? refundAmount,
+    Value<String?> reason = const Value.absent(),
+    Value<int?> branchId = const Value.absent(),
+    Value<int?> employeeId = const Value.absent(),
+    DateTime? date,
+  }) => Refund(
+    id: id ?? this.id,
+    transactionId: transactionId ?? this.transactionId,
+    productId: productId.present ? productId.value : this.productId,
+    productName: productName ?? this.productName,
+    qty: qty ?? this.qty,
+    unitPrice: unitPrice ?? this.unitPrice,
+    refundAmount: refundAmount ?? this.refundAmount,
+    reason: reason.present ? reason.value : this.reason,
+    branchId: branchId.present ? branchId.value : this.branchId,
+    employeeId: employeeId.present ? employeeId.value : this.employeeId,
+    date: date ?? this.date,
+  );
+  Refund copyWithCompanion(RefundsCompanion data) {
+    return Refund(
+      id: data.id.present ? data.id.value : this.id,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      productName: data.productName.present
+          ? data.productName.value
+          : this.productName,
+      qty: data.qty.present ? data.qty.value : this.qty,
+      unitPrice: data.unitPrice.present ? data.unitPrice.value : this.unitPrice,
+      refundAmount: data.refundAmount.present
+          ? data.refundAmount.value
+          : this.refundAmount,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      employeeId: data.employeeId.present
+          ? data.employeeId.value
+          : this.employeeId,
+      date: data.date.present ? data.date.value : this.date,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Refund(')
+          ..write('id: $id, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('productId: $productId, ')
+          ..write('productName: $productName, ')
+          ..write('qty: $qty, ')
+          ..write('unitPrice: $unitPrice, ')
+          ..write('refundAmount: $refundAmount, ')
+          ..write('reason: $reason, ')
+          ..write('branchId: $branchId, ')
+          ..write('employeeId: $employeeId, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    transactionId,
+    productId,
+    productName,
+    qty,
+    unitPrice,
+    refundAmount,
+    reason,
+    branchId,
+    employeeId,
+    date,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Refund &&
+          other.id == this.id &&
+          other.transactionId == this.transactionId &&
+          other.productId == this.productId &&
+          other.productName == this.productName &&
+          other.qty == this.qty &&
+          other.unitPrice == this.unitPrice &&
+          other.refundAmount == this.refundAmount &&
+          other.reason == this.reason &&
+          other.branchId == this.branchId &&
+          other.employeeId == this.employeeId &&
+          other.date == this.date);
+}
+
+class RefundsCompanion extends UpdateCompanion<Refund> {
+  final Value<int> id;
+  final Value<int> transactionId;
+  final Value<int?> productId;
+  final Value<String> productName;
+  final Value<int> qty;
+  final Value<int> unitPrice;
+  final Value<int> refundAmount;
+  final Value<String?> reason;
+  final Value<int?> branchId;
+  final Value<int?> employeeId;
+  final Value<DateTime> date;
+  const RefundsCompanion({
+    this.id = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.productName = const Value.absent(),
+    this.qty = const Value.absent(),
+    this.unitPrice = const Value.absent(),
+    this.refundAmount = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.employeeId = const Value.absent(),
+    this.date = const Value.absent(),
+  });
+  RefundsCompanion.insert({
+    this.id = const Value.absent(),
+    required int transactionId,
+    this.productId = const Value.absent(),
+    required String productName,
+    required int qty,
+    required int unitPrice,
+    required int refundAmount,
+    this.reason = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.employeeId = const Value.absent(),
+    this.date = const Value.absent(),
+  }) : transactionId = Value(transactionId),
+       productName = Value(productName),
+       qty = Value(qty),
+       unitPrice = Value(unitPrice),
+       refundAmount = Value(refundAmount);
+  static Insertable<Refund> custom({
+    Expression<int>? id,
+    Expression<int>? transactionId,
+    Expression<int>? productId,
+    Expression<String>? productName,
+    Expression<int>? qty,
+    Expression<int>? unitPrice,
+    Expression<int>? refundAmount,
+    Expression<String>? reason,
+    Expression<int>? branchId,
+    Expression<int>? employeeId,
+    Expression<DateTime>? date,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (productId != null) 'product_id': productId,
+      if (productName != null) 'product_name': productName,
+      if (qty != null) 'qty': qty,
+      if (unitPrice != null) 'unit_price': unitPrice,
+      if (refundAmount != null) 'refund_amount': refundAmount,
+      if (reason != null) 'reason': reason,
+      if (branchId != null) 'branch_id': branchId,
+      if (employeeId != null) 'employee_id': employeeId,
+      if (date != null) 'date': date,
+    });
+  }
+
+  RefundsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? transactionId,
+    Value<int?>? productId,
+    Value<String>? productName,
+    Value<int>? qty,
+    Value<int>? unitPrice,
+    Value<int>? refundAmount,
+    Value<String?>? reason,
+    Value<int?>? branchId,
+    Value<int?>? employeeId,
+    Value<DateTime>? date,
+  }) {
+    return RefundsCompanion(
+      id: id ?? this.id,
+      transactionId: transactionId ?? this.transactionId,
+      productId: productId ?? this.productId,
+      productName: productName ?? this.productName,
+      qty: qty ?? this.qty,
+      unitPrice: unitPrice ?? this.unitPrice,
+      refundAmount: refundAmount ?? this.refundAmount,
+      reason: reason ?? this.reason,
+      branchId: branchId ?? this.branchId,
+      employeeId: employeeId ?? this.employeeId,
+      date: date ?? this.date,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<int>(productId.value);
+    }
+    if (productName.present) {
+      map['product_name'] = Variable<String>(productName.value);
+    }
+    if (qty.present) {
+      map['qty'] = Variable<int>(qty.value);
+    }
+    if (unitPrice.present) {
+      map['unit_price'] = Variable<int>(unitPrice.value);
+    }
+    if (refundAmount.present) {
+      map['refund_amount'] = Variable<int>(refundAmount.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<int>(branchId.value);
+    }
+    if (employeeId.present) {
+      map['employee_id'] = Variable<int>(employeeId.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefundsCompanion(')
+          ..write('id: $id, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('productId: $productId, ')
+          ..write('productName: $productName, ')
+          ..write('qty: $qty, ')
+          ..write('unitPrice: $unitPrice, ')
+          ..write('refundAmount: $refundAmount, ')
+          ..write('reason: $reason, ')
+          ..write('branchId: $branchId, ')
+          ..write('employeeId: $employeeId, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PointHistoriesTable extends PointHistories
+    with TableInfo<$PointHistoriesTable, PointHistory> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PointHistoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _customerIdMeta = const VerificationMeta(
+    'customerId',
+  );
+  @override
+  late final GeneratedColumn<int> customerId = GeneratedColumn<int>(
+    'customer_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pointsMeta = const VerificationMeta('points');
+  @override
+  late final GeneratedColumn<int> points = GeneratedColumn<int>(
+    'points',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    customerId,
+    type,
+    points,
+    transactionId,
+    note,
+    date,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'point_histories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PointHistory> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('customer_id')) {
+      context.handle(
+        _customerIdMeta,
+        customerId.isAcceptableOrUnknown(data['customer_id']!, _customerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_customerIdMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('points')) {
+      context.handle(
+        _pointsMeta,
+        points.isAcceptableOrUnknown(data['points']!, _pointsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pointsMeta);
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PointHistory map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PointHistory(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      customerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}customer_id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      points: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}points'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+    );
+  }
+
+  @override
+  $PointHistoriesTable createAlias(String alias) {
+    return $PointHistoriesTable(attachedDatabase, alias);
+  }
+}
+
+class PointHistory extends DataClass implements Insertable<PointHistory> {
+  final int id;
+  final int customerId;
+  final String type;
+  final int points;
+  final int? transactionId;
+  final String? note;
+  final DateTime date;
+  const PointHistory({
+    required this.id,
+    required this.customerId,
+    required this.type,
+    required this.points,
+    this.transactionId,
+    this.note,
+    required this.date,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['customer_id'] = Variable<int>(customerId);
+    map['type'] = Variable<String>(type);
+    map['points'] = Variable<int>(points);
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['date'] = Variable<DateTime>(date);
+    return map;
+  }
+
+  PointHistoriesCompanion toCompanion(bool nullToAbsent) {
+    return PointHistoriesCompanion(
+      id: Value(id),
+      customerId: Value(customerId),
+      type: Value(type),
+      points: Value(points),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      date: Value(date),
+    );
+  }
+
+  factory PointHistory.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PointHistory(
+      id: serializer.fromJson<int>(json['id']),
+      customerId: serializer.fromJson<int>(json['customerId']),
+      type: serializer.fromJson<String>(json['type']),
+      points: serializer.fromJson<int>(json['points']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
+      note: serializer.fromJson<String?>(json['note']),
+      date: serializer.fromJson<DateTime>(json['date']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'customerId': serializer.toJson<int>(customerId),
+      'type': serializer.toJson<String>(type),
+      'points': serializer.toJson<int>(points),
+      'transactionId': serializer.toJson<int?>(transactionId),
+      'note': serializer.toJson<String?>(note),
+      'date': serializer.toJson<DateTime>(date),
+    };
+  }
+
+  PointHistory copyWith({
+    int? id,
+    int? customerId,
+    String? type,
+    int? points,
+    Value<int?> transactionId = const Value.absent(),
+    Value<String?> note = const Value.absent(),
+    DateTime? date,
+  }) => PointHistory(
+    id: id ?? this.id,
+    customerId: customerId ?? this.customerId,
+    type: type ?? this.type,
+    points: points ?? this.points,
+    transactionId: transactionId.present
+        ? transactionId.value
+        : this.transactionId,
+    note: note.present ? note.value : this.note,
+    date: date ?? this.date,
+  );
+  PointHistory copyWithCompanion(PointHistoriesCompanion data) {
+    return PointHistory(
+      id: data.id.present ? data.id.value : this.id,
+      customerId: data.customerId.present
+          ? data.customerId.value
+          : this.customerId,
+      type: data.type.present ? data.type.value : this.type,
+      points: data.points.present ? data.points.value : this.points,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      note: data.note.present ? data.note.value : this.note,
+      date: data.date.present ? data.date.value : this.date,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PointHistory(')
+          ..write('id: $id, ')
+          ..write('customerId: $customerId, ')
+          ..write('type: $type, ')
+          ..write('points: $points, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('note: $note, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, customerId, type, points, transactionId, note, date);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PointHistory &&
+          other.id == this.id &&
+          other.customerId == this.customerId &&
+          other.type == this.type &&
+          other.points == this.points &&
+          other.transactionId == this.transactionId &&
+          other.note == this.note &&
+          other.date == this.date);
+}
+
+class PointHistoriesCompanion extends UpdateCompanion<PointHistory> {
+  final Value<int> id;
+  final Value<int> customerId;
+  final Value<String> type;
+  final Value<int> points;
+  final Value<int?> transactionId;
+  final Value<String?> note;
+  final Value<DateTime> date;
+  const PointHistoriesCompanion({
+    this.id = const Value.absent(),
+    this.customerId = const Value.absent(),
+    this.type = const Value.absent(),
+    this.points = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.note = const Value.absent(),
+    this.date = const Value.absent(),
+  });
+  PointHistoriesCompanion.insert({
+    this.id = const Value.absent(),
+    required int customerId,
+    required String type,
+    required int points,
+    this.transactionId = const Value.absent(),
+    this.note = const Value.absent(),
+    this.date = const Value.absent(),
+  }) : customerId = Value(customerId),
+       type = Value(type),
+       points = Value(points);
+  static Insertable<PointHistory> custom({
+    Expression<int>? id,
+    Expression<int>? customerId,
+    Expression<String>? type,
+    Expression<int>? points,
+    Expression<int>? transactionId,
+    Expression<String>? note,
+    Expression<DateTime>? date,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (customerId != null) 'customer_id': customerId,
+      if (type != null) 'type': type,
+      if (points != null) 'points': points,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (note != null) 'note': note,
+      if (date != null) 'date': date,
+    });
+  }
+
+  PointHistoriesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? customerId,
+    Value<String>? type,
+    Value<int>? points,
+    Value<int?>? transactionId,
+    Value<String?>? note,
+    Value<DateTime>? date,
+  }) {
+    return PointHistoriesCompanion(
+      id: id ?? this.id,
+      customerId: customerId ?? this.customerId,
+      type: type ?? this.type,
+      points: points ?? this.points,
+      transactionId: transactionId ?? this.transactionId,
+      note: note ?? this.note,
+      date: date ?? this.date,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (customerId.present) {
+      map['customer_id'] = Variable<int>(customerId.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (points.present) {
+      map['points'] = Variable<int>(points.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PointHistoriesCompanion(')
+          ..write('id: $id, ')
+          ..write('customerId: $customerId, ')
+          ..write('type: $type, ')
+          ..write('points: $points, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('note: $note, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -19592,6 +20696,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PrintOrdersTable printOrders = $PrintOrdersTable(this);
   late final $OpenTabsTable openTabs = $OpenTabsTable(this);
   late final $RolesTable roles = $RolesTable(this);
+  late final $RefundsTable refunds = $RefundsTable(this);
+  late final $PointHistoriesTable pointHistories = $PointHistoriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -19631,6 +20737,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     printOrders,
     openTabs,
     roles,
+    refunds,
+    pointHistories,
   ];
 }
 
@@ -29282,6 +30390,554 @@ typedef $$RolesTableProcessedTableManager =
       Role,
       PrefetchHooks Function()
     >;
+typedef $$RefundsTableCreateCompanionBuilder =
+    RefundsCompanion Function({
+      Value<int> id,
+      required int transactionId,
+      Value<int?> productId,
+      required String productName,
+      required int qty,
+      required int unitPrice,
+      required int refundAmount,
+      Value<String?> reason,
+      Value<int?> branchId,
+      Value<int?> employeeId,
+      Value<DateTime> date,
+    });
+typedef $$RefundsTableUpdateCompanionBuilder =
+    RefundsCompanion Function({
+      Value<int> id,
+      Value<int> transactionId,
+      Value<int?> productId,
+      Value<String> productName,
+      Value<int> qty,
+      Value<int> unitPrice,
+      Value<int> refundAmount,
+      Value<String?> reason,
+      Value<int?> branchId,
+      Value<int?> employeeId,
+      Value<DateTime> date,
+    });
+
+class $$RefundsTableFilterComposer
+    extends Composer<_$AppDatabase, $RefundsTable> {
+  $$RefundsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get qty => $composableBuilder(
+    column: $table.qty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get unitPrice => $composableBuilder(
+    column: $table.unitPrice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get refundAmount => $composableBuilder(
+    column: $table.refundAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get employeeId => $composableBuilder(
+    column: $table.employeeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RefundsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RefundsTable> {
+  $$RefundsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get qty => $composableBuilder(
+    column: $table.qty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get unitPrice => $composableBuilder(
+    column: $table.unitPrice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get refundAmount => $composableBuilder(
+    column: $table.refundAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get employeeId => $composableBuilder(
+    column: $table.employeeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RefundsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RefundsTable> {
+  $$RefundsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumn<String> get productName => $composableBuilder(
+    column: $table.productName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get qty =>
+      $composableBuilder(column: $table.qty, builder: (column) => column);
+
+  GeneratedColumn<int> get unitPrice =>
+      $composableBuilder(column: $table.unitPrice, builder: (column) => column);
+
+  GeneratedColumn<int> get refundAmount => $composableBuilder(
+    column: $table.refundAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<int> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<int> get employeeId => $composableBuilder(
+    column: $table.employeeId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+}
+
+class $$RefundsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RefundsTable,
+          Refund,
+          $$RefundsTableFilterComposer,
+          $$RefundsTableOrderingComposer,
+          $$RefundsTableAnnotationComposer,
+          $$RefundsTableCreateCompanionBuilder,
+          $$RefundsTableUpdateCompanionBuilder,
+          (Refund, BaseReferences<_$AppDatabase, $RefundsTable, Refund>),
+          Refund,
+          PrefetchHooks Function()
+        > {
+  $$RefundsTableTableManager(_$AppDatabase db, $RefundsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RefundsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RefundsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RefundsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> transactionId = const Value.absent(),
+                Value<int?> productId = const Value.absent(),
+                Value<String> productName = const Value.absent(),
+                Value<int> qty = const Value.absent(),
+                Value<int> unitPrice = const Value.absent(),
+                Value<int> refundAmount = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<int?> branchId = const Value.absent(),
+                Value<int?> employeeId = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => RefundsCompanion(
+                id: id,
+                transactionId: transactionId,
+                productId: productId,
+                productName: productName,
+                qty: qty,
+                unitPrice: unitPrice,
+                refundAmount: refundAmount,
+                reason: reason,
+                branchId: branchId,
+                employeeId: employeeId,
+                date: date,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int transactionId,
+                Value<int?> productId = const Value.absent(),
+                required String productName,
+                required int qty,
+                required int unitPrice,
+                required int refundAmount,
+                Value<String?> reason = const Value.absent(),
+                Value<int?> branchId = const Value.absent(),
+                Value<int?> employeeId = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => RefundsCompanion.insert(
+                id: id,
+                transactionId: transactionId,
+                productId: productId,
+                productName: productName,
+                qty: qty,
+                unitPrice: unitPrice,
+                refundAmount: refundAmount,
+                reason: reason,
+                branchId: branchId,
+                employeeId: employeeId,
+                date: date,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RefundsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RefundsTable,
+      Refund,
+      $$RefundsTableFilterComposer,
+      $$RefundsTableOrderingComposer,
+      $$RefundsTableAnnotationComposer,
+      $$RefundsTableCreateCompanionBuilder,
+      $$RefundsTableUpdateCompanionBuilder,
+      (Refund, BaseReferences<_$AppDatabase, $RefundsTable, Refund>),
+      Refund,
+      PrefetchHooks Function()
+    >;
+typedef $$PointHistoriesTableCreateCompanionBuilder =
+    PointHistoriesCompanion Function({
+      Value<int> id,
+      required int customerId,
+      required String type,
+      required int points,
+      Value<int?> transactionId,
+      Value<String?> note,
+      Value<DateTime> date,
+    });
+typedef $$PointHistoriesTableUpdateCompanionBuilder =
+    PointHistoriesCompanion Function({
+      Value<int> id,
+      Value<int> customerId,
+      Value<String> type,
+      Value<int> points,
+      Value<int?> transactionId,
+      Value<String?> note,
+      Value<DateTime> date,
+    });
+
+class $$PointHistoriesTableFilterComposer
+    extends Composer<_$AppDatabase, $PointHistoriesTable> {
+  $$PointHistoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get customerId => $composableBuilder(
+    column: $table.customerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get points => $composableBuilder(
+    column: $table.points,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PointHistoriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PointHistoriesTable> {
+  $$PointHistoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get customerId => $composableBuilder(
+    column: $table.customerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get points => $composableBuilder(
+    column: $table.points,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PointHistoriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PointHistoriesTable> {
+  $$PointHistoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get customerId => $composableBuilder(
+    column: $table.customerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<int> get points =>
+      $composableBuilder(column: $table.points, builder: (column) => column);
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+}
+
+class $$PointHistoriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PointHistoriesTable,
+          PointHistory,
+          $$PointHistoriesTableFilterComposer,
+          $$PointHistoriesTableOrderingComposer,
+          $$PointHistoriesTableAnnotationComposer,
+          $$PointHistoriesTableCreateCompanionBuilder,
+          $$PointHistoriesTableUpdateCompanionBuilder,
+          (
+            PointHistory,
+            BaseReferences<_$AppDatabase, $PointHistoriesTable, PointHistory>,
+          ),
+          PointHistory,
+          PrefetchHooks Function()
+        > {
+  $$PointHistoriesTableTableManager(
+    _$AppDatabase db,
+    $PointHistoriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PointHistoriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PointHistoriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PointHistoriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> customerId = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<int> points = const Value.absent(),
+                Value<int?> transactionId = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => PointHistoriesCompanion(
+                id: id,
+                customerId: customerId,
+                type: type,
+                points: points,
+                transactionId: transactionId,
+                note: note,
+                date: date,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int customerId,
+                required String type,
+                required int points,
+                Value<int?> transactionId = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => PointHistoriesCompanion.insert(
+                id: id,
+                customerId: customerId,
+                type: type,
+                points: points,
+                transactionId: transactionId,
+                note: note,
+                date: date,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PointHistoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PointHistoriesTable,
+      PointHistory,
+      $$PointHistoriesTableFilterComposer,
+      $$PointHistoriesTableOrderingComposer,
+      $$PointHistoriesTableAnnotationComposer,
+      $$PointHistoriesTableCreateCompanionBuilder,
+      $$PointHistoriesTableUpdateCompanionBuilder,
+      (
+        PointHistory,
+        BaseReferences<_$AppDatabase, $PointHistoriesTable, PointHistory>,
+      ),
+      PointHistory,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -29354,4 +31010,8 @@ class $AppDatabaseManager {
       $$OpenTabsTableTableManager(_db, _db.openTabs);
   $$RolesTableTableManager get roles =>
       $$RolesTableTableManager(_db, _db.roles);
+  $$RefundsTableTableManager get refunds =>
+      $$RefundsTableTableManager(_db, _db.refunds);
+  $$PointHistoriesTableTableManager get pointHistories =>
+      $$PointHistoriesTableTableManager(_db, _db.pointHistories);
 }

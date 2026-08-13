@@ -10,6 +10,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/utils/wholesale_price.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
@@ -292,13 +293,24 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     if (mounted) { context.go('/home'); TopToast.success(context, 'Kasir ditutup. Sampai jumpa!'); }
   }
 
-  /// Add product to cart — shows weight dialog for per-kg products.
+  /// Add product to cart — applies live wholesale pricing (qty ≥ minQty →
+  /// harga tier grosir) and shows weight dialog for per-kg products.
   void _addToCart(Product product) {
     if (product.priceType == 'kg') {
       _showWeightDialog(product);
     } else {
-      ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.effectivePrice,
-          originalPrice: product.hasDiscount ? product.sellPrice : null);
+      final inCart = ref.read(cartProvider).cast<CartItem?>().firstWhere(
+            (c) => c?.productId == product.id,
+            orElse: () => null,
+          );
+      final nextQty = (inCart?.qty ?? 0) + 1;
+      final wPrice = product.wholesalePriceFor(nextQty);
+      ref.read(cartProvider.notifier).addProduct(product.id, product.name,
+          wPrice ?? product.effectivePrice,
+          originalPrice: (product.hasDiscount || wPrice != null)
+              ? product.sellPrice
+              : null,
+          qty: 1);
     }
   }
 
@@ -341,8 +353,17 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             onPressed: () {
               final w = double.tryParse(ctrl.text.trim());
               if (w == null || w <= 0) return;
-              ref.read(cartProvider.notifier).addProduct(product.id, product.name, product.effectivePrice,
-                  originalPrice: product.hasDiscount ? product.sellPrice : null,
+              final inCart = ref.read(cartProvider).cast<CartItem?>().firstWhere(
+                    (c) => c?.productId == product.id,
+                    orElse: () => null,
+                  );
+              final nextQty = (inCart?.qty ?? 0) + 1;
+              final wPrice = product.wholesalePriceFor(nextQty);
+              ref.read(cartProvider.notifier).addProduct(product.id, product.name,
+                  wPrice ?? product.effectivePrice,
+                  originalPrice: (product.hasDiscount || wPrice != null)
+                      ? product.sellPrice
+                      : null,
                   weightKg: w);
               Navigator.pop(ctx);
             },
@@ -796,7 +817,35 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   itemBuilder: (_, i) => _CartItemTile(
                     item: cart[i], isDark: isDark,
                     onDecrement: () => ref.read(cartProvider.notifier).changeQty(cart[i].productId, -1),
-                    onIncrement: () => ref.read(cartProvider.notifier).addProduct(cart[i].productId, cart[i].name, cart[i].price),
+                    onIncrement: () {
+                      final notifier = ref.read(cartProvider.notifier);
+                      final item = cart[i];
+                      final nextQty = item.qty + 1;
+                      // Re-apply wholesale tier when qty crosses a threshold.
+                      Product? prod;
+                      final all = _allProducts ?? const <Product>[];
+                      for (final p in all) {
+                        if (p.id == item.productId) {
+                          prod = p;
+                          break;
+                        }
+                      }
+                      if (prod != null) {
+                        final wPrice = prod.wholesalePriceFor(nextQty);
+                        notifier.addProduct(item.productId, item.name,
+                            wPrice ?? item.price,
+                            originalPrice:
+                                (prod.hasDiscount || wPrice != null)
+                                    ? prod.sellPrice
+                                    : item.originalPrice,
+                            note: item.note,
+                            weightKg: item.weightKg);
+                        return;
+                      }
+                      notifier.addProduct(item.productId, item.name, item.price,
+                          originalPrice: item.originalPrice,
+                          note: item.note, weightKg: item.weightKg);
+                    },
                     onTap: (NusaConfig.isFnbVariant || NusaConfig.isLaundryVariant || NusaConfig.isSalonVariant) ? () => _showNoteDialog(cart[i]) : null,
                   ),
                 ),
@@ -1340,6 +1389,20 @@ class _ProductCard extends StatelessWidget {
                   )
                 : Text(formatRupiah(product.sellPrice),
                     style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+            if (product.hasWholesale) ...[
+              SizedBox(height: 3),
+              Text(
+                'Grosir ${formatRupiah(product.wholesaleTiers.first.price)}'
+                ' / ≥${product.wholesaleTiers.first.minQty}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.accentPurple,
+                ),
+              ),
+            ],
             SizedBox(height: 8),
             // ── Action ──
             outOfStock

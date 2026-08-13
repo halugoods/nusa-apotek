@@ -13,9 +13,12 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
+import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -87,6 +90,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   String get _selectedTimeLabel => _timeFilter; 
 
   Future<void> _voidTransaction(Transaction tx) async {
+    // ── Access control (keputusan user 2026-08-12): void hanya Owner/Manager ──
+    // Kasir/Finance/custom role TIDAK boleh membatalkan transaksi siapa pun.
+    final session = ref.read(employeeSessionProvider);
+    final role = session?.role ?? 'Kasir';
+    if (role != 'Owner' && role != 'Manager') {
+      _showVoidRestrictedDialog();
+      return;
+    }
+
+    // PIN re-entry — bukti fisik bahwa Owner/Manager yang mengeksekusi void.
+    final pinOk = await _requireVoidPin();
+    if (!pinOk) return;
+
     final reasonCtrl = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
@@ -152,6 +168,350 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
+  /// Retur / refund parsial untuk transaksi ini.
+  ///
+  /// Access control sama dengan void: hanya Owner/Manager + PIN re-entry.
+  /// User memilih item & qty yang dikembalikan → stok balik + uang balik
+  /// dicatat di tabel refunds (laporan omzet/HPP/kas otomatis berkurang).
+  Future<void> _showReturSheet(Transaction tx) async {
+    final session = ref.read(employeeSessionProvider);
+    final role = session?.role ?? 'Kasir';
+    if (role != 'Owner' && role != 'Manager') {
+      _showVoidRestrictedDialog();
+      return;
+    }
+    final pinOk = await _requireVoidPin();
+    if (!pinOk) return;
+
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final items = _parseItems(tx.items)
+        .where((it) => ((it['qty'] as num?) ?? 0) > 0)
+        .toList();
+    if (items.isEmpty) {
+      TopToast.error(context, 'Tidak ada item untuk di-retur');
+      return;
+    }
+    final selected = <int, int>{}; // index → qty retur
+    for (var i = 0; i < items.length; i++) {
+      selected[i] = 0;
+    }
+    final reasonCtrl = TextEditingController();
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          int totalRetur() {
+            var s = 0;
+            items.asMap().forEach((i, it) {
+              s += (selected[i] ?? 0) *
+                  ((it['price'] as num?)?.toInt() ?? 0);
+            });
+            return s;
+          }
+
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 12,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? NusaConfig.darkBorder
+                          : NusaConfig.dividerColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(Icons.assignment_return_rounded,
+                        color: NusaConfig.activePrimary),
+                    const SizedBox(width: 8),
+                    Text('Retur / Refund',
+                        style: TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('Invoice: ${tx.invoice}',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary)),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      ...items.asMap().entries.map((e) {
+                        final i = e.key;
+                        final it = e.value;
+                        final name = (it['name'] as String?) ?? 'Item';
+                        final qty = (it['qty'] as num?)?.toInt() ?? 0;
+                        final price = (it['price'] as num?)?.toInt() ?? 0;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name,
+                                        style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600)),
+                                    Text(
+                                        '$qty x ${formatRupiah(price)}',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? NusaConfig
+                                                    .darkTextTertiary
+                                                : NusaConfig
+                                                    .textTertiary)),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                  'Retur: ${selected[i] ?? 0}',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: NusaConfig.activePrimary)),
+                              _qtyStepper(
+                                ctx,
+                                setSheet,
+                                selected,
+                                isDark,
+                                i,
+                                selected[i] ?? 0,
+                                qty,
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Alasan retur (mis. barang expired)',
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text('Total Refund',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text(formatRupiah(totalRetur()),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: NusaConfig.activePrimary)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: NusaButton(
+                    totalRetur() <= 0
+                        ? 'Pilih item terlebih dahulu'
+                        : 'Proses Retur ${formatRupiah(totalRetur())}',
+                    onPressed: totalRetur() <= 0
+                        ? null
+                        : () => Navigator.pop(ctx, {
+                              'selected': Map<int, int>.from(selected),
+                              'reason': reasonCtrl.text.trim(),
+                            }),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    reasonCtrl.dispose();
+    if (!mounted || result == null) return;
+    final sel = result['selected'] as Map<int, int>;
+    final reason = result['reason'] as String? ?? '';
+    final returns = <Map<String, dynamic>>[];
+    sel.forEach((i, q) {
+      if (q <= 0) return;
+      final it = items[i];
+      returns.add({
+        'productId': it['productId'] as int?,
+        'name': it['name'] as String? ?? 'Item',
+        'qty': q,
+        'unitPrice': (it['price'] as num?)?.toInt() ?? 0,
+      });
+    });
+    if (returns.isEmpty) return;
+
+    final refundRepo = ref.read(refundRepoProvider);
+    final branchId = session?.branchId;
+    final employeeId = session?.employeeId;
+    final res = await refundRepo.refund(
+      transactionId: tx.id,
+      returns: returns,
+      reason: reason,
+      branchId: branchId,
+      employeeId: employeeId,
+    );
+    if (!mounted) return;
+    if (res.refundAmount <= 0) {
+      TopToast.error(context, 'Retur gagal: tidak ada jumlah yang valid');
+      return;
+    }
+    TopToast.success(
+        context,
+        'Retur ${formatRupiah(res.refundAmount)} berhasil — stok & uang '
+        'sudah dikembalikan');
+    setState(() => _refreshKey++);
+  }
+
+  Widget _qtyStepper(
+    BuildContext ctx,
+    StateSetter setSheet,
+    Map<int, int> selected,
+    bool isDark,
+    int index,
+    int current,
+    int maxQty,
+  ) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      InkWell(
+        onTap: current > 0
+            ? () => setSheet(() => selected[index] = current - 1)
+            : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: (isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor)
+                .withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(Icons.remove_rounded,
+              size: 18,
+              color: current > 0
+                  ? NusaConfig.activePrimary
+                  : (isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary)),
+        ),
+      ),
+      const SizedBox(width: 8),
+      InkWell(
+        onTap: current < maxQty
+            ? () => setSheet(() => selected[index] = current + 1)
+            : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(Icons.add_rounded,
+              size: 18,
+              color: current < maxQty
+                  ? NusaConfig.activePrimary
+                  : (isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary)),
+        ),
+      ),
+    ]);
+  }
+
+  /// Void hanya untuk Owner/Manager — dialog peringatan untuk role lain.
+  void _showVoidRestrictedDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.lock_rounded, color: NusaConfig.activePrimary, size: 28),
+            const SizedBox(width: 10),
+            const Text('Akses Terbatas', style: TextStyle(fontSize: 17)),
+          ],
+        ),
+        content: const Text(
+          'Void transaksi hanya bisa dilakukan oleh Owner/Manager. '
+          'Silakan minta Owner/Manager yang login untuk membatalkan transaksi ini.',
+          style: TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Mengerti'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// PIN re-entry sebelum void — mencegah void tidak sengaja / oleh yang bukan
+  /// pemilik akun. Memakai PIN karyawan yang sedang login.
+  Future<bool> _requireVoidPin() async {
+    final session = ref.read(employeeSessionProvider);
+    if (session == null) return false;
+    final db = ref.read(databaseProvider);
+    final emp = await AttendanceRepository(db).getEmployee(session.employeeId);
+    if (emp == null || emp.pin.isEmpty) return false;
+
+    final result = await PinDialog.show(
+      context: context,
+      title: 'Konfirmasi Void',
+      subtitle: 'Masukkan PIN untuk membatalkan transaksi',
+      employeeName: emp.name,
+      employeeRole: emp.role,
+      correctPin: emp.pin,
+      showRemember: false,
+      showFingerprint: true,
+      pinLength: 6,
+    );
+    return result?.success ?? false;
+  }
+
   Future<void> _reprintTransaction(Transaction tx) async {
     String? custName;
     String? custPhone;
@@ -170,6 +530,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         '${tx.date.hour.toString().padLeft(2, '0')}:${tx.date.minute.toString().padLeft(2, '0')}';
 
     if (mounted) {
+      // Deteksi DP (uang muka) saat reprint: Tunai dengan cashGiven < total
+      // berarti transaksi DP — uang muka = cashGiven, sisanya piutang.
+      final isDpReprint = tx.paymentMethod.toLowerCase().contains('tunai') &&
+          tx.cashGiven != null && tx.cashGiven! > 0 && tx.cashGiven! < tx.total;
       await ReceiptSheet.show(
         context,
         sheet: ReceiptSheet.fromMaps(
@@ -179,6 +543,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           paymentMethod: tx.paymentMethod,
           cashGiven: tx.cashGiven,
           cashReturn: tx.cashReturn,
+          downPayment: isDpReprint ? (tx.cashGiven ?? 0) : 0,
+          remainingDue: isDpReprint ? tx.total - (tx.cashGiven ?? 0) : 0,
           cashierName: tx.cashierName,
           customerName: custName,
           customerPhone: custPhone,
@@ -829,6 +1195,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           itemBuilder: (_, i) => _TransactionCard(
                             tx: list[i],
                             onVoid: () => _voidTransaction(list[i]),
+                            onRetur: () => _showReturSheet(list[i]),
                             onReprint: () => _reprintTransaction(list[i]),
                             onShare: () async {
                               String? custName;
@@ -858,24 +1225,27 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 }
 
-class _TransactionCard extends StatefulWidget {
+class _TransactionCard extends ConsumerStatefulWidget {
   final Transaction tx;
   final VoidCallback onVoid;
+  final VoidCallback onRetur;
   final VoidCallback onReprint;
   final VoidCallback onShare;
   _TransactionCard({
     required this.tx,
     required this.onVoid,
+    required this.onRetur,
     required this.onReprint,
     required this.onShare,
   });
 
   @override
-  State<_TransactionCard> createState() => _TransactionCardState();
+  ConsumerState<_TransactionCard> createState() => _TransactionCardState();
 }
 
-class _TransactionCardState extends State<_TransactionCard> {
+class _TransactionCardState extends ConsumerState<_TransactionCard> {
   bool _expanded = false;
+  Future<List<Refund>>? _refundFuture;
 
   static const _payColors = {
     'Tunai': NusaConfig.payCash,
@@ -940,7 +1310,13 @@ class _TransactionCardState extends State<_TransactionCard> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
         child: InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () => setState(() {
+            _expanded = !_expanded;
+            if (_expanded && _refundFuture == null) {
+              _refundFuture =
+                  ref.read(refundRepoProvider).getByTransaction(widget.tx.id);
+            }
+          }),
           borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
           child: Container(
             decoration: BoxDecoration(
@@ -1045,6 +1421,9 @@ class _TransactionCardState extends State<_TransactionCard> {
                                         NusaConfig.accentGreen, widget.onShare),
                                     if (!isVoided) ...[
                                       SizedBox(width: 6),
+                                      _actionIcon(Icons.assignment_return_rounded,
+                                          NusaConfig.info, widget.onRetur),
+                                      SizedBox(width: 6),
                                       _actionIcon(Icons.undo_rounded,
                                           NusaConfig.activePrimary, widget.onVoid),
                                     ],
@@ -1054,8 +1433,16 @@ class _TransactionCardState extends State<_TransactionCard> {
                                             ? Icons.expand_less_rounded
                                             : Icons.expand_more_rounded,
                                         isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                                        () => setState(
-                                            () => _expanded = !_expanded)),
+                                        () => setState(() {
+                                          _expanded = !_expanded;
+                                          if (_expanded &&
+                                              _refundFuture == null) {
+                                            _refundFuture = ref
+                                                .read(refundRepoProvider)
+                                                .getByTransaction(
+                                                    widget.tx.id);
+                                          }
+                                        })),
                                   ]),
                                 ],
                               ),
@@ -1106,6 +1493,63 @@ class _TransactionCardState extends State<_TransactionCard> {
                                     ? NusaConfig.darkDivider
                                     : NusaConfig.dividerColor),
                             SizedBox(height: 8),
+                            FutureBuilder<List<Refund>>(
+                              future: _refundFuture,
+                              builder: (context, snap) {
+                                final refunds = snap.data ?? const [];
+                                if (refunds.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                final total = refunds.fold(
+                                    0, (int s, r) => s + r.refundAmount);
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    ...refunds.map((r) => Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 3),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment
+                                                    .spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                  child: Text(
+                                                      '↩ ${r.productName} x ${r.qty}',
+                                                      style: GoogleFonts
+                                                          .plusJakartaSans(
+                                                        fontSize: 13,
+                                                        color: NusaConfig
+                                                            .info,
+                                                      ))),
+                                              Text(
+                                                  formatRupiah(
+                                                      r.refundAmount),
+                                                  style: GoogleFonts
+                                                      .plusJakartaSans(
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                    color: NusaConfig.info,
+                                                  )),
+                                            ],
+                                          ),
+                                        )),
+                                    Divider(
+                                        height: 1,
+                                        color: isDark
+                                            ? NusaConfig.darkDivider
+                                            : NusaConfig.dividerColor),
+                                    _row(
+                                      'Sudah di-retur',
+                                      formatRupiah(total),
+                                      isDark: isDark,
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
                             _row('Subtotal', formatRupiah(tx.total + tx.discount), isDark: isDark),
                             _row('Diskon', formatRupiah(tx.discount), isDark: isDark),
                             _row('Total', formatRupiah(tx.total), isDark: isDark),
@@ -1139,6 +1583,29 @@ class _TransactionCardState extends State<_TransactionCard> {
                                     foregroundColor: NusaConfig.activePrimary,
                                     side: BorderSide(
                                         color: NusaConfig.activePrimary),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                    padding: EdgeInsets.symmetric(
+                                        vertical: 12),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: widget.onRetur,
+                                  icon: Icon(Icons.assignment_return_rounded,
+                                      size: 18),
+                                  label: Text('Retur / Refund Parsial',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600)),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: NusaConfig.info,
+                                    side: BorderSide(
+                                        color: NusaConfig.info),
                                     shape: RoundedRectangleBorder(
                                         borderRadius:
                                             BorderRadius.circular(10)),

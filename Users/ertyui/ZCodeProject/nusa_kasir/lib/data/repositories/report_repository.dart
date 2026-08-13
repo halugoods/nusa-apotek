@@ -48,7 +48,8 @@ class ReportRepository {
   }
 
   /// Returns summary stats for a period.
-  /// Keys: omzet (int), count (int), avg (int), items (List<Transaction>).
+  /// Keys: omzet (int, sudah dikurangi retur), count (int), avg (int),
+  ///       items (List<Transaction>).
   /// When [employeeId] is set, only transactions attributed to that employee
   /// (plus shared online orders with null employeeId) are counted.
   Future<Map<String, dynamic>> summary({
@@ -59,7 +60,14 @@ class ReportRepository {
   }) async {
     final list = await getTransactions(
         from: from, to: to, branchId: branchId, employeeId: employeeId);
-    final omzet = list.fold(0, (int sum, t) => sum + t.total);
+    // Retur parsial mengurangi omzet: uang yang sudah dikembalikan ke
+    // pelanggan bukan lagi pendapatan. Refund dicatat per employee yang
+    // memproses — jadi untuk scoping kasir dipakai employeeId refund-nya.
+    final refunds = await _refundsFor(
+        from: from, to: to, branchId: branchId, employeeId: employeeId);
+    final refundTotal = refunds.fold(0, (int s, r) => s + r.refundAmount);
+    final omzet =
+        list.fold(0, (int sum, t) => sum + t.total) - refundTotal;
     final count = list.length;
     final avg = count == 0 ? 0 : (omzet / count).round();
     return {'omzet': omzet, 'count': count, 'avg': avg, 'items': list};
@@ -115,7 +123,22 @@ class ReportRepository {
       }
     }
 
-    final labaKotor = pendapatan - hpp;
+    // ── Retur / Refund ─────────────────────────────────────────────
+    // Uang yang dikembalikan ke pelanggan keluar dari pendapatan; barang
+    // yang kembali ke toko juga keluar dari HPP (sudah tidak terjual).
+    final refunds = await _refundsFor(from: from, to: to, branchId: branchId);
+    final totalRetur = refunds.fold(0, (int s, r) => s + r.refundAmount);
+    // HPP barang yang di-retur: pakai buyPrice produk saat ini — barang
+    // kembali ke stok, jadi cost-nya kembali ke persediaan.
+    int hppRetur = 0;
+    for (final r in refunds) {
+      if (r.productId == null) continue; // item manual: tidak ada HPP
+      hppRetur += (priceMap[r.productId] ?? 0) * r.qty;
+    }
+
+    final pendapatanSetelahRetur = pendapatan - totalRetur;
+    final hppSetelahRetur = hpp - hppRetur;
+    final labaKotor = pendapatanSetelahRetur - hppSetelahRetur;
 
     // ── Expenses (pengeluaran) ────────────────────────────────────
     final expenses = await _filtered(
@@ -170,6 +193,8 @@ class ReportRepository {
     return {
       'pendapatan': pendapatan,
       'hpp': hpp,
+      'retur': totalRetur,
+      'hppRetur': hppRetur,
       'labaKotor': labaKotor,
       'expenses': totalExpenses,
       'payroll': totalPayroll,
@@ -344,6 +369,15 @@ class ReportRepository {
         revById[pid] = (revById[pid] ?? 0) + qty * price;
       }
     }
+    // Retur parsial mengurangi qty & revenue produk yang di-retur.
+    final refunds = await _refundsFor(from: from, to: to, branchId: branchId);
+    for (final r in refunds) {
+      final pid = r.productId;
+      if (pid == null || pid < 0) continue;
+      ids.add(pid);
+      qtyById[pid] = (qtyById[pid] ?? 0) - r.qty;
+      revById[pid] = (revById[pid] ?? 0) - r.refundAmount;
+    }
     final products = ids.isEmpty
         ? <Product>[]
         : await (db.select(db.products)..where((p) => p.id.isIn(ids))).get();
@@ -361,10 +395,48 @@ class ReportRepository {
     return out;
   }
 
+  /// Refunds scoped by period / branch / employee, for report subtraction.
+  /// Mirrors `getTransactions` scoping: employeeId null = all, non-null =
+  /// refunds processed by that employee + shared (branch-wide, null employee)
+  /// refunds.
+  Future<List<Refund>> _refundsFor({
+    DateTime? from,
+    DateTime? to,
+    int? branchId,
+    int? employeeId,
+  }) async {
+    var q = db.select(db.refunds);
+    if (from != null || to != null) {
+      q.where((r) {
+        final conds = <Expression<bool>>[];
+        if (from != null) {
+          conds.add(r.date.isBiggerThan(
+              Constant(from.subtract(const Duration(days: 1)))));
+        }
+        if (to != null) {
+          conds.add(r.date.isSmallerThan(
+              Constant(to.add(const Duration(days: 1)))));
+        }
+        return conds.reduce((a, b) => a & b);
+      });
+    }
+    if (branchId != null) {
+      q.where((r) => r.branchId.equals(branchId));
+    }
+    if (employeeId != null) {
+      // Refund diproses employee ini, plus retur bersama (employeeId null).
+      q.where((r) => r.employeeId.equals(employeeId) | r.employeeId.isNull());
+    }
+    return q.get();
+  }
+
   String _normalizeMethod(String? m) {
     final s = (m ?? '').toLowerCase();
     if (s.contains('qris')) return 'QRIS';
     if (s.contains('transfer')) return 'Transfer';
+    if (s.contains('edc') || s.contains('kartu') || s.contains('debit') || s.contains('kredit')) {
+      return 'Kartu';
+    }
     if (s.contains('cash') || s.contains('tunai')) return 'Tunai';
     return m?.isNotEmpty == true ? m! : 'Lainnya';
   }

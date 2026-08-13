@@ -16,13 +16,19 @@ class ReceiptLine {
     required this.name,
     required this.qty,
     required this.price,
+    this.originalPrice,
   });
 
   final String name;
   final int qty;
   final int price;
+  /// Harga jual sebelum diskon (null = tanpa diskon). Saat diisi, struk
+  /// mencetak baris potongan NOMINAL per item ("Diskon: -Rp 5.000").
+  final int? originalPrice;
 
   int get subtotal => qty * price;
+  bool get hasDiscount => originalPrice != null && originalPrice! > price;
+  int get discountNominal => hasDiscount ? originalPrice! - price : 0;
 }
 
 /// Sanitize text for thermal printer (strip non-ASCII characters).
@@ -86,6 +92,8 @@ class LastPrintParams {
   final int discount;
   final int? cashGiven;
   final int? cashReturn;
+  final int downPayment;
+  final int remainingDue;
   final String? customerName;
   final String paperWidth;
   final String? orderType;
@@ -103,6 +111,8 @@ class LastPrintParams {
     this.discount = 0,
     this.cashGiven,
     this.cashReturn,
+    this.downPayment = 0,
+    this.remainingDue = 0,
     this.customerName,
     this.paperWidth = '58',
     this.orderType,
@@ -212,6 +222,8 @@ class ReceiptPrinter {
     int discount = 0,
     int? cashGiven,
     int? cashReturn,
+    int downPayment = 0,
+    int remainingDue = 0,
     String? customerName,
     String paperWidth = '58',
     Uint8List? logo,
@@ -373,6 +385,19 @@ class ReceiptPrinter {
           ));
         }
       }
+
+      // Per-item discount (NOMINAL, not percent) — the discount the customer
+      // actually saved on this line, e.g. "Diskon: -Rp 5.000".
+      if (line.hasDiscount) {
+        final potongan = _fit('Diskon: -${formatRupiah(line.discountNominal)}',
+            lineWidth - 2);
+        bytes.addAll(generator.text(
+          _san(potongan),
+          styles: useFontB
+              ? const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB)
+              : const PosStyles(align: PosAlign.left),
+        ));
+      }
     }
     bytes.addAll(generator.hr());
 
@@ -403,8 +428,26 @@ class ReceiptPrinter {
       ),
     ]));
 
-    // Payment details.
-    if (paymentMethod != null && paymentMethod.isNotEmpty) {
+    // Payment details. When DP is active, show uang muka + sisa piutang
+    // instead of the generic Bayar line (cashGiven holds the DP amount).
+    if (downPayment > 0) {
+      bytes.addAll(generator.row([
+        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6),
+        PosColumn(
+          text: _fit(formatRupiah(downPayment), isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]));
+      bytes.addAll(generator.row([
+        PosColumn(text: 'Sisa Piutang', width: isWide ? 8 : 6),
+        PosColumn(
+          text: _fit(formatRupiah(remainingDue), isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]));
+    } else if (paymentMethod != null && paymentMethod.isNotEmpty) {
       bytes.addAll(generator.row([
         PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6),
         PosColumn(
@@ -414,7 +457,7 @@ class ReceiptPrinter {
         ),
       ]));
     }
-    if (cashReturn != null && cashReturn > 0) {
+    if (cashReturn != null && cashReturn > 0 && downPayment <= 0) {
       bytes.addAll(generator.row([
         PosColumn(text: 'Kembali', width: isWide ? 8 : 6),
         PosColumn(
@@ -475,6 +518,8 @@ class ReceiptPrinter {
         discount: discount,
         cashGiven: cashGiven,
         cashReturn: cashReturn,
+        downPayment: downPayment,
+        remainingDue: remainingDue,
         customerName: customerName,
         paperWidth: paperWidth,
         orderType: orderType,
@@ -501,6 +546,8 @@ class ReceiptPrinter {
       discount: p.discount,
       cashGiven: p.cashGiven,
       cashReturn: p.cashReturn,
+      downPayment: p.downPayment,
+      remainingDue: p.remainingDue,
       customerName: p.customerName,
       paperWidth: p.paperWidth,
       openDrawer: openDrawer,

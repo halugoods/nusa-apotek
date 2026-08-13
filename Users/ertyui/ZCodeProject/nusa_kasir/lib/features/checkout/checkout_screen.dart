@@ -14,6 +14,7 @@ import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
@@ -21,7 +22,6 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/tab_repository.dart';
-import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -65,6 +65,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   // Split bill
   bool _splitBill = false;
   int _splitCount = 2;
+
+  // DP (uang muka): bayar sebagian sekarang, sisanya dicatat sebagai piutang.
+  // Lazim di servis/bengkel/salon (biasanya 50%), tapi bisa untuk semua varian.
+  bool _dpEnabled = false;
+  final _dpCtrl = TextEditingController();
 
   // FnB params
   String? _orderType;
@@ -146,6 +151,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   int? get _kembalian =>
       _cashGiven != null && _cashGiven! >= _total ? _cashGiven! - _total : null;
 
+  /// Nominal DP yang dipakai transaksi ini (0 jika DP mati).
+  /// Saat DP aktif, uang muka = jumlah dibayar sekarang; sisa jadi piutang.
+  int get _downPayment => _dpEnabled ? (int.tryParse(_dpCtrl.text) ?? 0) : 0;
+
+  /// Sisa yang belum dibayar (piutang) — hanya saat DP aktif.
+  int get _remainingDue => _downPayment > 0 ? (_total - _downPayment).clamp(0, _total) : 0;
+
   @override
   void initState() {
     super.initState();
@@ -224,6 +236,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _discountCtrl.dispose();
     _cashCtrl.dispose();
     _promoCtrl.dispose();
+    _dpCtrl.dispose();
     _salonTimeCtrl.dispose();
     _salonStylistCtrl.dispose();
     super.dispose();
@@ -439,6 +452,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             setState(() {
               _selectedCustomer = created;
               _pointsUsed = 0;
+              _dpEnabled = false;
+              _dpCtrl.clear();
             });
             if (mounted) TopToast.success(context, 'Pelanggan: ${created.name}');
           }
@@ -450,6 +465,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       setState(() {
         _selectedCustomer = result;
         _pointsUsed = 0;
+        _dpEnabled = false;
+        _dpCtrl.clear();
       });
       TopToast.success(context, 'Pelanggan: ${result.name}');
     }
@@ -462,7 +479,25 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
-    if (_paymentMethod == 'Tunai') {
+    // Validasi jumlah bayar sebelum proses.
+    //  - Tunai tanpa DP: jumlah dibayar (cashGiven) harus ≥ total.
+    //  - Tunai dengan DP: DP harus > 0 dan < total (sisa dicatat piutang).
+    //  - EDC / QRIS / Transfer: lunas dianggap dibayar penuh.
+    if (_paymentMethod == 'Tunai' && _dpEnabled) {
+      final dp = _downPayment;
+      if (dp <= 0) {
+        TopToast.error(context, 'Isi nominal uang muka (DP)');
+        return;
+      }
+      if (dp >= _total) {
+        TopToast.error(context, 'DP harus kurang dari total (sisanya piutang)');
+        return;
+      }
+      if (_selectedCustomer == null) {
+        TopToast.error(context, 'Pilih pelanggan dulu untuk mencatat sisa piutang');
+        return;
+      }
+    } else if (_paymentMethod == 'Tunai') {
       final given = int.tryParse(_cashCtrl.text) ?? 0;
       if (given < _total) {
         TopToast.error(context, 'Jumlah dibayarkan kurang');
@@ -495,9 +530,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final cashReturn = cashGiven != null && cashGiven >= _total
           ? cashGiven - _total
           : null;
+      // Saat DP aktif, total = harga penuh; yang dibayar di kasir hanya DP.
+      // Sisa otomatis dicatat sebagai piutang pelanggan (lihat di bawah).
+      final dp = _paymentMethod == 'Tunai' && _dpEnabled ? _downPayment : 0;
+      final isDownPayment = dp > 0;
 
       // Wrap all DB writes (stock, transaction, loyalty, promo) in a single transaction.
       // If any step fails, it all rolls back — no partial state.
+      int pointsEarned = 0;
       await db.transaction(() async {
         // Deduct stock for each item (item manual tidak punya stok)
         for (final item in cart) {
@@ -509,13 +549,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // employeeId = logged-in employee; sessionId = active cashier shift
         // (so each cashier's dashboard shows only their own shift's sales).
         final activeShift = await CashierSessionRepository(db).getActive();
-        await transactionRepo.saveTransaction(
+        final savedTxId = await transactionRepo.saveTransaction(
           items: cart,
           total: _total,
           discount: _totalDiscount,
           paymentMethod: _paymentMethod,
-          cashGiven: cashGiven,
-          cashReturn: cashReturn,
+          cashGiven: isDownPayment ? dp : cashGiven,
+          cashReturn: isDownPayment ? null : cashReturn,
           cashierName: cashierName,
           customerId: _selectedCustomer?.id,
           branchId: ref.read(activeBranchProvider)?.id,
@@ -525,15 +565,36 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           sessionId: activeShift?.id,
         );
 
+        // ── DP: catat sisa sebagai piutang pelanggan ──
+        // Total transaksi tetap utuh (laporan omzet benar); uang muka tercatat
+        // di transaksi (cashGiven = dp), sisa tercatat di Piutang (menu Utang)
+        // sampai pelanggan melunasi lewat menu tersebut.
+        if (isDownPayment && _selectedCustomer != null) {
+          final debtRepo = DebtRepository(db);
+          await debtRepo.addDebt(
+            customerId: _selectedCustomer!.id,
+            customerName: _selectedCustomer!.name,
+            amount: _total - dp,
+            description: 'Sisa bayar transaksi INV $savedTxId (DP ${formatRupiah(dp)})',
+          );
+        }
+
         // Update customer loyalty
         if (_selectedCustomer != null) {
           final pointConfig = await SettingsRepository(db).getPointConfig();
+          final cust = await CustomerRepository(db).byId(_selectedCustomer!.id);
+          final beforePoints = cust?.points ?? 0;
           await CustomerRepository(db).addSpent(
             _selectedCustomer!.id, _total,
             pointsPerRupiah: pointConfig['pointsPerRupiah']!,
             goldThreshold: pointConfig['goldThreshold']!,
             platinumThreshold: pointConfig['platinumThreshold']!,
+            transactionId: savedTxId,
           );
+          // Poin yang didapat transaksi ini: (total belanja / poin per rupiah).
+          // Saldo poin dihitung kumulatif dari totalSpent, jadi hitung delta.
+          final after = await CustomerRepository(db).byId(_selectedCustomer!.id);
+          pointsEarned = ((after?.points ?? 0) - beforePoints).clamp(0, 1 << 30);
         }
 
         // Increment promo usage
@@ -544,7 +605,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // Redeem loyalty points
         if (_selectedCustomer != null && _pointsUsed > 0) {
           await CustomerRepository(db).redeemPoints(
-              _selectedCustomer!.id, _pointsUsed);
+              _selectedCustomer!.id, _pointsUsed,
+              transactionId: savedTxId);
         }
       });
 
@@ -563,6 +625,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           final itemsJson = jsonEncode(cart.map((c) => {
             'name': c.name, 'qty': c.isPerKg ? 1 : c.qty,
             'price': c.price,
+            if (c.originalPrice != null) 'originalPrice': c.originalPrice,
             if (c.costPrice != null) 'costPrice': c.costPrice,
             if (c.isPerKg) 'weightKg': c.weightKg,
           }).toList());
@@ -621,12 +684,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           paymentMethod: _paymentMethod,
           cashGiven: cashGiven,
           cashReturn: cashReturn,
+          downPayment: isDownPayment ? dp : 0,
+          remainingDue: isDownPayment ? _total - dp : 0,
           cashierName: cashierName,
           customerName: _selectedCustomer?.name,
           customerPhone: _selectedCustomer?.phone,
           invoice: invoice,
           dateStr: dateStr,
           pointsUsed: _pointsUsed,
+          pointsEarned: pointsEarned,
           autoPrint: autoPrint && !_splitBill, // split bill prints separately
           orderType: savedOrderType,
           tableName: savedTableName,
@@ -722,6 +788,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           if (_paymentMethod == 'Tunai') _buildTunaiCard(isDark),
           if (_paymentMethod == 'QRIS') _buildQrisCard(isDark),
           if (_paymentMethod == 'Transfer') _buildTransferCard(isDark),
+          if (_paymentMethod == 'EDC / Kartu') _buildEdcCard(isDark),
 
           SizedBox(height: 24),
 
@@ -1183,6 +1250,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _payCard('QRIS', Icons.qr_code_2, isDark),
           SizedBox(width: 10),
           _payCard('Transfer', Icons.account_balance, isDark),
+          SizedBox(width: 10),
+          _payCard('EDC / Kartu', Icons.credit_card, isDark),
         ]),
       ]),
     );
@@ -1307,6 +1376,136 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ]),
           ),
         ],
+        SizedBox(height: 14),
+        Divider(color: Colors.grey.withValues(alpha: 0.15)),
+        SizedBox(height: 4),
+        _buildDpSection(isDark),
+      ]),
+    );
+  }
+
+  /// Bagian DP (uang muka) — bayar sebagian sekarang, sisanya piutang.
+  /// Tersedia untuk semua varian (lazim di servis/bengkel/salon).
+  Widget _buildDpSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Uang Muka (DP)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+              SizedBox(height: 2),
+              Text('Bayar sebagian sekarang, sisa dicatat piutang',
+                  style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+            ]),
+          ),
+          Switch(
+            value: _dpEnabled,
+            activeThumbColor: NusaConfig.activePrimary,
+            onChanged: (v) => setState(() {
+              _dpEnabled = v;
+              if (!v) _dpCtrl.clear();
+            }),
+          ),
+        ]),
+        if (_dpEnabled) ...[
+          SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _dpCtrl,
+                keyboardType: TextInputType.number,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Rp 0',
+                  hintStyle: TextStyle(fontSize: 18, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  filled: true,
+                  fillColor: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF9FAFB),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: NusaConfig.activePrimary, width: 2)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Quick chip: 50% total (lazim untuk servis/bengkel/salon)
+            GestureDetector(
+              onTap: () {
+                final half = (_total / 2).ceil();
+                _dpCtrl.text = half.toString();
+                setState(() {});
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(
+                  color: NusaConfig.activeSoft,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+                ),
+                child: Text('50%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
+              ),
+            ),
+          ]),
+          SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _dpRow('Uang muka (dibayar)', formatRupiah(_downPayment), isDark),
+              SizedBox(height: 4),
+              _dpRow('Sisa piutang', formatRupiah(_remainingDue), isDark),
+              SizedBox(height: 6),
+              Text('Pelanggan wajib dipilih — sisa otomatis dicatat di menu Utang.',
+                  style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : const Color(0xFF854D0E))),
+            ]),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _dpRow(String label, String value, bool isDark) {
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : const Color(0xFF854D0E))),
+      Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+          color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF854D0E))),
+    ]);
+  }
+
+  /// EDC / Kartu debit-kredit: pembayaran lewat mesin EDC.
+  /// Dianggap lunas (total) — tidak ada input nominal, hanya info.
+  Widget _buildEdcCard(bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isDark ? NusaConfig.darkBorder : Color(0xFFF1F5F9)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: Offset(0, 2))],
+      ),
+      child: Column(children: [
+        Container(
+          width: 48, height: 48,
+          decoration: BoxDecoration(color: Color(0xFF0D9488).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+          child: Icon(Icons.credit_card, size: 26, color: Color(0xFF0D9488)),
+        ),
+        SizedBox(height: 12),
+        Text('Bayar dengan mesin EDC',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+        SizedBox(height: 4),
+        Text('Total ${formatRupiah(_total)}',
+            style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+        SizedBox(height: 4),
+        Text('Swipe / tap kartu di mesin, lalu konfirmasi.',
+            style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
       ]),
     );
   }
@@ -1317,7 +1516,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         _qrisImagePath!.isNotEmpty &&
         File(_qrisImagePath!).existsSync();
     final hasQrisString = _qrisString != null && _qrisString!.isNotEmpty;
-
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(24),
@@ -1471,7 +1669,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       await printer.connect(target);
 
       for (int i = 1; i <= numPeople; i++) {
-        final lines = cart.map((c) => ReceiptLine(name: c.name, qty: c.qty, price: c.price)).toList();
+        final lines = cart.map((c) => ReceiptLine(name: c.name, qty: c.qty, price: c.price, originalPrice: c.originalPrice)).toList();
         final notes = cart.map((c) => c.note).toList();
         await printer.printReceipt(
           storeName: 'Split ${i}/$numPeople',

@@ -29,6 +29,7 @@ class CartItem {
   Map<String, dynamic> toJson() => {
     'productId': productId, 'name': name, 'price': price,
     'qty': qty, 'note': note,
+    if (originalPrice != null) 'originalPrice': originalPrice,
     if (costPrice != null) 'costPrice': costPrice,
     if (weightKg != null) 'weightKg': weightKg,
   };

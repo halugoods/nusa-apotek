@@ -8,6 +8,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/refund_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
@@ -27,6 +28,10 @@ final settingsRepoProvider = Provider(
 
 final transactionRepoProvider = Provider(
   (ref) => TransactionRepository(ref.watch(databaseProvider)),
+);
+
+final refundRepoProvider = Provider(
+  (ref) => RefundRepository(ref.watch(databaseProvider)),
 );
 
 final customerRepoProvider = Provider(

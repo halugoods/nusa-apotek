@@ -1,9 +1,7 @@
-﻿import 'dart:io';
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
@@ -27,6 +25,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/profile_stats_card.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
+import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -64,6 +63,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   UpdateInfo? _updateInfo;
   bool _downloadingUpdate = false;
   double _downloadProgress = 0;
+  String? _downloadError;
+
+  // Notification Center: unread badge count.
+  int _notifUnread = 0;
 
   // Last cashier session
   String? _lastCashierName;
@@ -146,6 +149,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _currentRole = session.role;
       // Check attendance for today
       await _checkAttendance(session.employeeId);
+      if (!_hasCheckedIn) {
+        // Attendance reminder in the Notification Center (deduped per day).
+        await NotificationService.add(
+          id: 'attendance-${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}',
+          type: 'attendance',
+          title: '⏰ Jangan lupa absen',
+          body: 'Buka menu Kasir untuk absen otomatis hari ini.',
+        );
+      }
     }
 
     // ═══ Init providers from persisted storage (fixes BUG #5 + #11) ═══
@@ -181,6 +193,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Check for app update silently (10-min cache inside UpdateService) —
     // if a new release exists, show a badge on the bell.
     _checkUpdateSilent();
+
+    // Refresh the bell badge with persisted unread count.
+    _notifUnread = await NotificationService.unreadCount();
+    if (mounted) setState(() {});
 
     // Fix: reload photoPath from DB (not stale session data)
     if (session != null && mounted) {
@@ -231,35 +247,199 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final info = await UpdateService.checkForUpdate();
     if (!mounted) return;
     setState(() => _updateInfo = info);
+    if (info.hasUpdate) {
+      // Record in Notification Center (deduped by id → single card).
+      final sizeTxt =
+          info.fileSizeBytes != null && info.fileSizeBytes! > 0
+              ? ' • ${UpdateService.formatSize(info.fileSizeBytes)}'
+              : '';
+      await NotificationService.add(
+        id: 'update',
+        type: 'update',
+        title: '🔄 Update Tersedia v${info.latestVersion}',
+        body: 'Versi baru NUSA tersedia$sizeTxt. Klik untuk mengunduh & menginstal.',
+      );
+    }
   }
 
-  /// Bell tap: if an update is available show the update dialog,
-  /// otherwise fall back to the attendance reminder.
+  /// Bell tap: open the Notification Center modal (scrollable list of
+  /// notifications). Tapping the update card closes the modal and starts the
+  /// always-visible download popup.
   void _onBellTap() {
-    final info = _updateInfo;
-    if (info != null && info.hasUpdate) {
-      _showUpdateDialog();
-      return;
+    _showNotificationCenter();
+  }
+
+  // ── Notification Center modal ────────────────────────────────────
+
+  Future<void> _showNotificationCenter() async {
+    final notifs = await NotificationService.getCenter();
+    await NotificationService.markRead();
+    if (!mounted) return;
+    if (_updateInfo?.hasUpdate ?? false) {
+      await NotificationService.markRead(id: 'update');
     }
-    if (!_hasCheckedIn && _currentName.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Jangan lupa absen — buka kasir untuk absen otomatis'),
-          backgroundColor: Colors.orange.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    setState(() => _notifUnread = 0);
+
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? NusaConfig.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            children: [
+              // Drag handle
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Notifikasi',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: Icon(Icons.close,
+                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: notifs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.notifications_off_outlined,
+                                size: 40,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Tidak ada notifikasi',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: notifs.length,
+                        itemBuilder: (_, i) =>
+                            _buildNotifCard(ctx, notifs[i], isDark),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNotifCard(BuildContext ctx, AppNotification n, bool isDark) {
+    final IconData icon = switch (n.type) {
+      'update' => Icons.system_update_alt,
+      'stock' => Icons.inventory_2_outlined,
+      'online' => Icons.shopping_bag_outlined,
+      'attendance' => Icons.access_time,
+      _ => Icons.info_outline,
+    };
+    final Color color = switch (n.type) {
+      'update' => Colors.orange,
+      'stock' => Colors.redAccent,
+      'online' => NusaConfig.accentPurple,
+      'attendance' => Colors.teal,
+      _ => NusaConfig.activePrimary,
+    };
+    return InkWell(
+      onTap: () {
+        Navigator.of(ctx).pop();
+        if (n.type == 'update') {
+          final info = _updateInfo;
+          if (info != null && info.hasUpdate) {
+            _showUpdateDialog();
+          }
+        }
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    n.title,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    n.body,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _notifTime(n.createdAt),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Tidak ada notifikasi baru'),
-          backgroundColor: Colors.blueGrey.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-    }
+      ),
+    );
+  }
+
+  String _notifTime(DateTime t) {
+    final now = DateTime.now();
+    final diff = now.difference(t);
+    if (diff.inMinutes < 1) return 'Baru saja';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mnt lalu';
+    if (diff.inHours < 24) return '${diff.inHours} jam lalu';
+    return '${t.day}/${t.month}/${t.year}';
   }
 
   void _showUpdateDialog() {
@@ -268,59 +448,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
-      barrierDismissible: !_downloadingUpdate,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Update Tersedia',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: _downloadingUpdate
-              ? _buildDownloadProgress(isDark)
-              : _buildUpdateInfo(info, isDark),
-        ),
-        actions: _downloadingUpdate
-            ? null
-            : [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Nanti'),
+      // Download popup MUST stay visible until the process finishes —
+      // user can't dismiss it mid-download (barrier + back are blocked).
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: !_downloadingUpdate,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                if (info.downloadUrl != null)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _startUpdateDownload();
-                    },
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Download & Update'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: NusaConfig.activePrimary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Update Tersedia',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: _downloadingUpdate
+                ? _buildDownloadProgress(isDark)
+                : _buildUpdateInfo(info, isDark),
+          ),
+          actions: _downloadingUpdate
+              ? null
+              : [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Nanti'),
+                  ),
+                  if (info.downloadUrl != null)
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // Keep the dialog OPEN while downloading — the popup
+                        // transforms into the always-visible progress view.
+                        _startUpdateDownload();
+                      },
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Download & Update'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+        ),
       ),
     );
   }
@@ -392,34 +578,69 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Mengunduh update… ${(_downloadProgress * 100).toStringAsFixed(0)}%',
+            _downloadError != null
+                ? 'Gagal mengunduh update'
+                : 'Mengunduh update… ${(_downloadProgress * 100).toStringAsFixed(0)}%',
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
           ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: _downloadProgress > 0 ? _downloadProgress : null,
+              value: _downloadError != null
+                  ? null
+                  : (_downloadProgress > 0 ? _downloadProgress : null),
               minHeight: 8,
               backgroundColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
             ),
           ),
+          if (_downloadError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _downloadError!,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.redAccent,
+                height: 1.4,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
-            'Jangan tutup aplikasi selama proses berjalan.',
+            _downloadError != null
+                ? 'Versi lama kamu tetap aman terpasang.'
+                : 'Jangan tutup aplikasi selama proses berjalan.',
             style: TextStyle(
               fontSize: 12,
               color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
             ),
           ),
+          if (_downloadError != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _startUpdateDownload,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Coba Lagi'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   /// Download + install the APK with progress, then hand off to the system
-  /// installer. On failure the dialog closes with an error toast; the old
-  /// installed version is untouched.
+  /// installer. The dialog stays OPEN until the whole flow finishes — on
+  /// failure it shows "Coba Lagi" instead of closing.
   Future<void> _startUpdateDownload() async {
     final info = _updateInfo;
     if (info == null || info.downloadUrl == null) return;
@@ -427,6 +648,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     setState(() {
       _downloadingUpdate = true;
       _downloadProgress = 0;
+      _downloadError = null;
     });
 
     try {
@@ -454,6 +676,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         setState(() {
           _downloadingUpdate = false;
           _downloadProgress = 0;
+          _downloadError = 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.';
         });
         TopToast.error(context, 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
       }
@@ -517,12 +740,38 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Load online pending count
     final onlineRepo = OnlineOrderRepository(ref.read(databaseProvider));
     final onlinePending = await onlineRepo.countPending();
+    if (onlinePending > 0) {
+      await NotificationService.add(
+        id: 'online-pending',
+        type: 'online',
+        title: '🛒 Pesanan Online Menunggu',
+        body: onlinePending == 1
+            ? 'Ada 1 pesanan online baru yang belum diproses.'
+            : 'Ada $onlinePending pesanan online baru yang belum diproses.',
+      );
+    }
 
     // Load low stock count (stok menipis: stock < minStock && minStock > 0)
     int lowStockCount = 0;
     try {
       final allProducts = await ProductRepository(ref.read(databaseProvider)).getProducts();
       lowStockCount = allProducts.where((p) => p.stock < p.minStock && p.minStock > 0).length;
+      // Record low-stock notification in the in-app center (deduped by count).
+      if (lowStockCount > 0) {
+        final lowNames = allProducts
+            .where((p) => p.stock < p.minStock && p.minStock > 0)
+            .take(3)
+            .map((p) => p.name)
+            .join(', ');
+        await NotificationService.add(
+          id: 'stock-low',
+          type: 'stock',
+          title: '⚠️ Stok Menipis',
+          body: lowStockCount == 1
+              ? 'Stok "$lowNames" menipis. Segera restock.'
+              : '$lowStockCount produk stoknya menipis: $lowNames',
+        );
+      }
     } catch (_) {}
 
     // Load keuangan summary
@@ -1229,6 +1478,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               role: roleText,
               branch: _storeName,
               hasNotification: (_updateInfo?.hasUpdate ?? false) ||
+                  _notifUnread > 0 ||
                   (!_hasCheckedIn && _currentName.isNotEmpty),
               onBellTap: _onBellTap,
               onLogout: _confirmLogout,
