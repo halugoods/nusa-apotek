@@ -10,12 +10,12 @@ part 'app_database.g.dart';
   Employees, Attendance, Expenses, ExpenseCategories, RecurringExpenses, Payroll, Waste,
   Liquidity, Suppliers, Branches, Settings, ActivationsLocal, SyncQueue, CashierSessions,
   OnlineOrders, CustomerDebts, DebtPayments, StockCounts, StockCountItems, ChatSessions,
-  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles, Refunds, PointHistories])
+  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles, Refunds, PointHistories, PurchaseOrders, PurchaseOrderItems])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 37;
+  int get schemaVersion => 38;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -200,6 +200,13 @@ class AppDatabase extends _$AppDatabase {
         // Riwayat poin per pelanggan (dapat / pakai) — untuk tampilan
         // "Poin History" di detail pelanggan & info poin di struk.
         await m.createTable(pointHistories);
+      }
+      if (from < 38) {
+        // Pembelian supplier (restok): header + item. Saat pembelian
+        // dicatat, stok produk masuk & harga modal (buyPrice) diperbarui
+        // ke harga beli terbaru.
+        await m.createTable(purchaseOrders);
+        await m.createTable(purchaseOrderItems);
       }
     },
   );

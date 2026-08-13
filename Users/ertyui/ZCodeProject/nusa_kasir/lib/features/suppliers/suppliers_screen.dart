@@ -3,6 +3,7 @@ import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/contact_picker.dart';
@@ -455,12 +456,28 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: NusaConfig.activePrimary,
-        foregroundColor: Colors.white,
-        icon: Icon(Icons.add),
-        label: Text('Tambah Supplier'),
-        onPressed: () => _showForm(),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Shortcut ke Pembelian (restok) — arahkan ke halaman Pembelian
+          FloatingActionButton.extended(
+            backgroundColor: isDark ? NusaConfig.darkSurface : Colors.white,
+            foregroundColor: NusaConfig.activePrimary,
+            heroTag: 'supplier_beli',
+            icon: Icon(Icons.shopping_cart_checkout_outlined),
+            label: Text('Beli', style: TextStyle(fontWeight: FontWeight.w700)),
+            onPressed: () => context.push('/pembelian'),
+          ),
+          SizedBox(width: 12),
+          FloatingActionButton.extended(
+            backgroundColor: NusaConfig.activePrimary,
+            foregroundColor: Colors.white,
+            heroTag: 'supplier_tambah',
+            icon: Icon(Icons.add),
+            label: Text('Tambah Supplier'),
+            onPressed: () => _showForm(),
+          ),
+        ],
       ),
     );
   }

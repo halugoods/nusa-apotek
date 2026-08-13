@@ -387,15 +387,22 @@ class ReceiptPrinter {
       }
 
       // Per-item discount (NOMINAL, not percent) — the discount the customer
-      // actually saved on this line, e.g. "Diskon: -Rp 5.000".
+      // actually saved on this line. Show the original (pre-discount) price
+      // AND the saved amount so the receipt is transparent for promos, e.g.
+      //   Harga Normal: Rp 87.500
+      //   Diskon: -Rp 37.500
       if (line.hasDiscount) {
+        final normal = _fit('Harga Normal: ${formatRupiah(line.originalPrice!)}',
+            lineWidth - 2);
+        bytes.addAll(generator.text(
+          _san(normal),
+          styles: itemStyles,
+        ));
         final potongan = _fit('Diskon: -${formatRupiah(line.discountNominal)}',
             lineWidth - 2);
         bytes.addAll(generator.text(
           _san(potongan),
-          styles: useFontB
-              ? const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB)
-              : const PosStyles(align: PosAlign.left),
+          styles: itemStyles,
         ));
       }
     }

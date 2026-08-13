@@ -321,11 +321,11 @@ abstract class NusaConfig {
   static const List<String> roles = ["Owner", "Manager", "Kasir", "Gudang", "Finance"];
   static const List<String> productTypes = ["Regular", "Varian", "Grosir"];
 		  static const Map<String, List<String>> roleAccess = {
-			    "Owner": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
-			    "Manager": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
+			    "Owner": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","pembelian","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
+			    "Manager": ["home","kasir","produk","stok","transaksi","pelanggan","promo","laporan","presensi","karyawan","keuangan","pengaturan","supplier","pembelian","spreadsheet","pesanan_online","cabang","ai_chat","piutang","meja","laundry_status","servis","booking","resep","print_order"],
 	    "Kasir": ["home","kasir","produk","stok","transaksi","pelanggan","ai_chat"],
-	    "Gudang": ["home","produk","stok","laporan","supplier"],
-	    "Finance": ["home","transaksi","keuangan","laporan","presensi","karyawan","supplier"],
+	    "Gudang": ["home","produk","stok","laporan","supplier","pembelian"],
+	    "Finance": ["home","transaksi","keuangan","laporan","presensi","karyawan","supplier","pembelian"],
 	  };
 
   /// Menu yang perlu PIN re-entry untuk keamanan (POS/Kasir).
@@ -334,17 +334,17 @@ abstract class NusaConfig {
   /// Menu yang HANYA bisa dibuka Owner (block dengan dialog).
   static const List<String> ownerOnlyScreens = [
     'laporan', 'promo', 'pesanan_online', 'karyawan',
-    'keuangan', 'spreadsheet', 'supplier', 'pengaturan', 'cabang', 'piutang',
+    'keuangan', 'spreadsheet', 'supplier', 'pembelian', 'pengaturan', 'cabang', 'piutang',
   ];
 
   /// Menu yang disembunyikan secara default per dominio.
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
   static const Map<String, List<String>> variantHiddenMenus = {
     'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'fnb': ['supplier', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'laundry': ['supplier', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+    'fnb': ['supplier', 'pembelian', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'laundry': ['supplier', 'pembelian', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     'bengkel': ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
-    'salon': ['supplier', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'salon': ['supplier', 'pembelian', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     'apotek': ['promo', 'piutang', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
     'fotocopy': ['cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     'servis': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],

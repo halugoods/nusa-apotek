@@ -624,13 +624,16 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
         if (mounted) TopToast.error(context, 'Tidak ada printer ditemukan. Pasangkan printer di Pengaturan.');
         return;
       }
-      final repo = SettingsRepository(ref.read(databaseProvider));
-      final saved = await repo.getPrinterAddress();
-      PrinterDevice target = devices.first;
+      final saved = await SecureStore.getPrinterAddress();
+      PrinterDevice? target;
       if (saved != null && saved.contains('|')) {
         final savedAddr = saved.split('|').last;
         final found = devices.where((d) => d.address == savedAddr);
         if (found.isNotEmpty) target = found.first;
+      }
+      if (target == null) {
+        if (mounted) TopToast.error(context, 'Printer belum diatur. Pilih printer di Pengaturan.');
+        return;
       }
       await printer.connect(target);
       await _printTicket(t);

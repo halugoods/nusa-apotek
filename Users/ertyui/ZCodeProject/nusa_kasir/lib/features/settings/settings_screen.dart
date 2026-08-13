@@ -75,7 +75,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _allFeatures = [
     'produk', 'stok', 'transaksi', 'pelanggan', 'piutang', 'promo',
     'pesanan_online', 'laporan', 'presensi', 'karyawan',
-    'keuangan', 'spreadsheet', 'supplier', 'cabang', 'ai_chat', 'pengaturan',
+    'keuangan', 'spreadsheet', 'supplier', 'pembelian', 'cabang', 'ai_chat', 'pengaturan',
     // Domain features — hidden by default per variant via NusaConfig.hiddenMenus
     'meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order',
   ];
@@ -94,6 +94,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'keuangan': 'Keuangan',
     'spreadsheet': 'Spreadsheet',
     'supplier': 'Supplier',
+    'pembelian': 'Pembelian',
     'cabang': 'Cabang',
     'ai_chat': 'AI Chat',
     'pengaturan': 'Pengaturan',
@@ -119,6 +120,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'keuangan': Icons.account_balance_wallet_outlined,
     'spreadsheet': Icons.table_chart_outlined,
     'supplier': Icons.local_shipping_outlined,
+    'pembelian': Icons.shopping_cart_checkout_outlined,
     'cabang': Icons.storefront_outlined,
     'ai_chat': Icons.smart_toy_outlined,
     'pengaturan': Icons.settings_outlined,

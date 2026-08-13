@@ -28,6 +28,7 @@ import 'package:nusa_kasir/features/attendance/attendance_screen.dart';
 import 'package:nusa_kasir/features/employees/employees_screen.dart';
 import 'package:nusa_kasir/features/finance/finance_screen.dart';
 import 'package:nusa_kasir/features/suppliers/suppliers_screen.dart';
+import 'package:nusa_kasir/features/purchase/purchase_screen.dart';
 import 'package:nusa_kasir/features/spreadsheet/spreadsheet_screen.dart';
 import 'package:nusa_kasir/features/branches/branch_screen.dart';
 import 'package:nusa_kasir/features/setup/setup_screen.dart';
@@ -76,6 +77,7 @@ const _protectedRouteKeys = {
   '/keuangan': 'keuangan',
   '/pengaturan': 'pengaturan',
   '/supplier': 'supplier',
+  '/pembelian': 'pembelian',
   '/spreadsheet': 'spreadsheet',
   '/cabang': 'cabang',
   '/pesanan_online': 'pesanan_online',
@@ -254,6 +256,10 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     GoRoute(
       path: '/supplier',
       pageBuilder: (_, __) => _slidePage(SuppliersScreen()),
+    ),
+    GoRoute(
+      path: '/pembelian',
+      pageBuilder: (_, __) => _slidePage(PurchaseScreen()),
     ),
     GoRoute(
       path: '/spreadsheet',

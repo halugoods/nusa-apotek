@@ -7,6 +7,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
@@ -383,11 +384,18 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
       }
       final printer = ReceiptPrinter();
       final devices = await printer.discover();
-      if (devices.isEmpty) {
-        if (mounted) TopToast.error(context, 'Tidak ada printer terhubung');
+      final saved = await SecureStore.getPrinterAddress();
+      PrinterDevice? target;
+      if (saved != null && saved.contains('|')) {
+        final savedAddr = saved.split('|').last;
+        final found = devices.where((d) => d.address == savedAddr);
+        if (found.isNotEmpty) target = found.first;
+      }
+      if (target == null) {
+        if (mounted) TopToast.error(context, 'Printer belum diatur. Pilih printer di Pengaturan.');
         return;
       }
-      await printer.connect(devices.first);
+      await printer.connect(target);
       List<Map<String, dynamic>> items = [];
       try { items = List<Map<String, dynamic>>.from(jsonDecode(o.itemsJson)); } catch (_) {}
       final lines = <ReceiptLine>[];

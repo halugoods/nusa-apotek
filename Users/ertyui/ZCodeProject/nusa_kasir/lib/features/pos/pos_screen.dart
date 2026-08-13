@@ -173,6 +173,38 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }).toList();
   }
 
+  /// Enter / scanner submission: exact barcode first, then name match on the
+  /// loaded list. On hit → add to cart (respecting kg weight dialog) + clear
+  /// the search box so the next scan starts fresh.
+  Future<void> _handleSearchSubmit() async {
+    final raw = _search.text.trim();
+    if (raw.isEmpty) return;
+    Product? product;
+
+    // 1) Exact barcode lookup (HID scanner input)
+    product = await ProductRepository(ref.read(databaseProvider)).byBarcode(raw);
+    if (product == null) {
+      // 2) Exact name match, then unique substring match on loaded products
+      final all = _allProducts ?? [];
+      final lower = raw.toLowerCase();
+      final byName = all.where((p) => p.name.toLowerCase() == lower).toList();
+      if (byName.isNotEmpty) {
+        product = byName.first;
+      } else {
+        final partial = all.where((p) => p.name.toLowerCase().contains(lower)).toList();
+        if (partial.length == 1) product = partial.first;
+      }
+    }
+
+    if (product == null) {
+      if (mounted) TopToast.error(context, 'Produk tidak ditemukan');
+      return;
+    }
+    _addToCart(product);
+    _search.clear();
+    if (mounted) setState(() {});
+  }
+
   // ── Barcode scanner ──
 
   Future<void> _scanBarcode(BuildContext context) async {
@@ -507,6 +539,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
         onChanged: (_) => setState(() {}),
+        // Physical barcode scanners act as HID keyboards: they type the
+        // barcode digits instantly then send Enter (\n). Without onSubmitted
+        // the Enter is a no-op and the scanned code never reaches the cart.
+        // Here we resolve the scanned code → exact barcode match → product,
+        // falling back to a name match on the already-loaded product list.
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _handleSearchSubmit(),
       ),
     );
   }

@@ -759,7 +759,11 @@ class ReceiptSheet extends ConsumerWidget {
         final found = devices.where((d) => d.address == addr);
         if (found.isNotEmpty) target = found.first;
       }
-      target ??= devices.isNotEmpty ? devices.first : null;
+
+      // NEVER fall back to devices.first — an unconfigured printer would
+      // target a random bonded device (e.g. TWS earbuds) instead of a real
+      // thermal printer. If no saved printer matches, only a direct connect
+      // to the saved address is attempted.
 
       // If discovery came back empty but a printer address was previously
       // saved, try connecting straight to that address — some Android
@@ -842,14 +846,21 @@ class ReceiptSheet extends ConsumerWidget {
         return;
       }
 
-      // Step 3: Pick target — prefer the SAVED printer (single source of
-      // truth, kept in sync by printer settings sheet + auto-print).
+      // Step 3: Pick target — the SAVED printer ONLY (single source of
+      // truth, kept in sync by printer settings sheet). No fallback to
+      // devices.first: that can route print jobs to a random bonded device
+      // (e.g. TWS earbuds) when no printer is configured.
       final savedAddr = await SecureStore.getPrinterAddress();
-      PrinterDevice target = devices.first;
+      PrinterDevice? target;
       if (savedAddr != null && savedAddr.contains('|')) {
         final addr = savedAddr.split('|').last;
         final found = devices.where((d) => d.address == addr);
         if (found.isNotEmpty) target = found.first;
+      }
+      if (target == null) {
+        TopToast.error(context, 'Printer belum diatur. Pilih printer di Pengaturan.');
+        printer.dispose();
+        return;
       }
 
       // Step 4: Connect

@@ -213,6 +213,27 @@ class Suppliers extends Table {
   TextColumn get note => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+// Pembelian/restok dari supplier: header per transaksi pembelian.
+// Saat dicatat (receive), stok produk masuk + harga modal (buyPrice) ikut
+// diperbarui ke harga beli terbaru — HPP/laba rugi jadi presisi.
+class PurchaseOrders extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get invoice => text()();
+  IntColumn get supplierId => integer()();
+  TextColumn get supplierName => text()(); // snapshot nama supplier (aman walau supplier dihapus)
+  IntColumn get total => integer().withDefault(const Constant(0))();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+}
+class PurchaseOrderItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get purchaseOrderId => integer()();
+  IntColumn get productId => integer()();
+  TextColumn get productName => text()(); // snapshot nama produk
+  IntColumn get qty => integer()();
+  IntColumn get buyPrice => integer()(); // harga modal saat pembelian
+  IntColumn get total => integer()();
+}
 class Branches extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();

@@ -26,16 +26,17 @@ class ReportRepository {
     if (from != null || to != null) {
       q.where((t) {
         final conds = <Expression<bool>>[];
+        // Inclusive day-boundary filter: `from` (00:00:00) .. `to` end-of-day
+        // (23:59:59.999). Previously the bounds were widened by ±1 day, which
+        // made "Hari ini" bleed into yesterday's transactions.
         if (from != null) {
           conds.add(
-            t.date.isBiggerThan(
-              Constant(from.subtract(const Duration(days: 1))),
-            ),
+            t.date.isBiggerOrEqual(Constant(DateTime(from.year, from.month, from.day))),
           );
         }
         if (to != null) {
           conds.add(
-            t.date.isSmallerThan(Constant(to.add(const Duration(days: 1)))),
+            t.date.isSmallerOrEqual(Constant(DateTime(to.year, to.month, to.day, 23, 59, 59))),
           );
         }
         return conds.reduce((a, b) => a & b);
@@ -410,12 +411,12 @@ class ReportRepository {
       q.where((r) {
         final conds = <Expression<bool>>[];
         if (from != null) {
-          conds.add(r.date.isBiggerThan(
-              Constant(from.subtract(const Duration(days: 1)))));
+          conds.add(r.date.isBiggerOrEqual(
+              Constant(DateTime(from.year, from.month, from.day))));
         }
         if (to != null) {
-          conds.add(r.date.isSmallerThan(
-              Constant(to.add(const Duration(days: 1)))));
+          conds.add(r.date.isSmallerOrEqual(
+              Constant(DateTime(to.year, to.month, to.day, 23, 59, 59))));
         }
         return conds.reduce((a, b) => a & b);
       });
@@ -472,8 +473,10 @@ class ReportRepository {
           // Drift data classes have a `date` field convention — use dynamic
           final d = (item as dynamic).date as DateTime?;
           if (d == null) return true;
-          if (from != null && d.isBefore(from)) return false;
-          if (to != null && d.isAfter(to.add(const Duration(days: 1))))
+          if (from != null && d.isBefore(DateTime(from.year, from.month, from.day)))
+            return false;
+          if (to != null &&
+              d.isAfter(DateTime(to.year, to.month, to.day, 23, 59, 59)))
             return false;
           return true;
         })

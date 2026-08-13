@@ -1655,12 +1655,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         return;
       }
 
-      final saved = await SettingsRepository(ref.read(databaseProvider)).getPrinterAddress();
-      PrinterDevice target = devices.first;
+      final saved = await SecureStore.getPrinterAddress();
+      PrinterDevice? target;
       if (saved != null && saved.contains('|')) {
         final savedAddr = saved.split('|').last;
         final found = devices.where((d) => d.address == savedAddr);
         if (found.isNotEmpty) target = found.first;
+      }
+      if (target == null) {
+        if (mounted) TopToast.error(context, 'Printer belum diatur. Pilih printer di Pengaturan.');
+        printer.dispose();
+        return;
       }
 
       final paperSize = await SecureStore.getPaperSize();

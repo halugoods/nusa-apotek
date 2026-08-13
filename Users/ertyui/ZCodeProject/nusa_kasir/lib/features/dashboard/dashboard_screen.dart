@@ -121,6 +121,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     {'id': 'keuangan', 'label': 'Keuangan', 'icon': 'finance'},
     {'id': 'spreadsheet', 'label': 'Spreadsheet', 'icon': 'table'},
     {'id': 'supplier', 'label': 'Supplier', 'icon': 'supplier'},
+    {'id': 'pembelian', 'label': 'Pembelian', 'icon': 'pembelian'},
     {'id': 'cabang', 'label': 'Cabang', 'icon': 'branch'},
     {'id': 'ai_chat', 'label': 'AI Chat', 'icon': 'ai'},
     {'id': 'pengaturan', 'label': 'Pengaturan', 'icon': 'settings'},
