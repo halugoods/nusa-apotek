@@ -110,6 +110,30 @@ Future<void> _applyPendingRestore() async {
     // Try NUS1 archive format first (new — includes images)
     final files = BackupCrypto.unpackFiles(bytes);
 
+    // ── CRITICAL: clear stale SQLite sidecar files (-wal/-shm) first ──
+    // If a previous session left a WAL/journal behind, SQLite would replay
+    // it on top of the swapped-in database → mixed/empty tables → menu dead
+    // + every PIN fails again. This is the same class of corruption as the
+    // original restore bug, so clean all sidecars of the target file BEFORE
+    // the swap. The database has NOT been opened yet at this point (we run
+    // before AppDatabase() is constructed in main), so it's safe.
+    final dbPath = p.join(dir.path, 'nusa_kasir.sqlite');
+    for (final sidecar in [
+      '$dbPath-wal',
+      '$dbPath-shm',
+      '$dbPath-journal',
+    ]) {
+      final f = File(sidecar);
+      if (await f.exists()) {
+        try {
+          await f.delete();
+          debugPrint('[Restore] Cleaned stale sidecar: ${p.basename(sidecar)}');
+        } catch (_) {
+          // Non-fatal: a locked sidecar just stays; SQLite handles it.
+        }
+      }
+    }
+
     var imageCount = 0;
     for (final entry in files.entries) {
       await _writeRestoreFile(dir.path, entry.key, entry.value);
