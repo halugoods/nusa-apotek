@@ -200,6 +200,28 @@ class SecureStore {
   static Future<String> getPrinterFooter() async =>
       (await SecureStore.read(key: 'nusa_printer_footer')) ?? '';
 
+  // -- Receipt font settings (universal ESC/POS: Standar=Font A, Kompak=Font B) --
+  // Jenis font: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
+  static Future<void> setReceiptFontType(String v) =>
+      SecureStore.write(key: 'nusa_receipt_font_type', value: v);
+  static Future<String> getReceiptFontType() async =>
+      (await SecureStore.read(key: 'nusa_receipt_font_type')) ?? 'standar';
+
+  // Ukuran per section (ESC/POS perbesaran 1x-8x):
+  // header: 1/2/3 → Kecil/Normal/Besar. items: 1/2 → Kecil/Besar. footer: 1/2.
+  static Future<void> setReceiptFontHeader(int v) =>
+      SecureStore.write(key: 'nusa_receipt_font_header', value: v.toString());
+  static Future<int> getReceiptFontHeader() async =>
+      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_header') ?? '') ?? 2;
+  static Future<void> setReceiptFontItems(int v) =>
+      SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
+  static Future<int> getReceiptFontItems() async =>
+      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_items') ?? '') ?? 1;
+  static Future<void> setReceiptFontFooter(int v) =>
+      SecureStore.write(key: 'nusa_receipt_font_footer', value: v.toString());
+  static Future<int> getReceiptFontFooter() async =>
+      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '') ?? 1;
+
   // -- Printer logo path --
   static Future<void> setPrinterLogoPath(String? v) async {
     if (v == null) {

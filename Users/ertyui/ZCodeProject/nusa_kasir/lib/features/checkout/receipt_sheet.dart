@@ -420,6 +420,11 @@ class ReceiptSheet extends ConsumerWidget {
     final footer = await settingsRepo.getReceiptFooter() ?? '';
     final logoPath = await settingsRepo.getStoreLogoPath()
         ?? await SecureStore.getPrinterLogoPath();
+    // Font struk (SecureStore — single source untuk printing).
+    final fontType = await SecureStore.getReceiptFontType();
+    final fontHeader = await SecureStore.getReceiptFontHeader();
+    final fontItems = await SecureStore.getReceiptFontItems();
+    final fontFooter = await SecureStore.getReceiptFontFooter();
     return _ReceiptSettings(
       storeName: storeName,
       showLogo: toggles['showLogo'] ?? true,
@@ -429,6 +434,10 @@ class ReceiptSheet extends ConsumerWidget {
       header: header,
       footer: footer,
       logoPath: logoPath,
+      fontType: fontType,
+      fontHeader: fontHeader,
+      fontItems: fontItems,
+      fontFooter: fontFooter,
     );
   }
 
@@ -436,15 +445,17 @@ class ReceiptSheet extends ConsumerWidget {
   Widget _buildReceipt(BuildContext context, String storeName, bool isDark, _ReceiptSettings s) {
     final textColor = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
     final subtleColor = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+    // Ukuran font per section mengikuti pengaturan struk (sama dengan print).
+    final itemFontSize = s.fontItems > 1 ? 13.0 : 11.0;
     final mono = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 11,
+      fontSize: itemFontSize,
       height: 1.5,
       color: textColor,
     );
     final monoBold = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 11,
+      fontSize: itemFontSize,
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -458,16 +469,27 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 15,
+      fontSize: switch (s.fontHeader) {
+        3 => 18.0,
+        1 => 12.0,
+        _ => 15.0,
+      },
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
     final monoGrey = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 11,
+      fontSize: itemFontSize,
       height: 1.5,
       color: subtleColor,
+    );
+    final monoFooter = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: s.fontFooter > 1 ? 14.0 : 11.0,
+      height: 1.5,
+      fontWeight: FontWeight.bold,
+      color: textColor,
     );
 
     return Column(
@@ -656,7 +678,7 @@ class ReceiptSheet extends ConsumerWidget {
         // ── Footer ──
         Center(
           child: Text(s.footer.isNotEmpty ? s.footer : 'Terima Kasih!',
-              style: monoBold, textAlign: TextAlign.center),
+              style: monoFooter, textAlign: TextAlign.center),
         ),
       ],
     );
@@ -1039,6 +1061,11 @@ class _ReceiptSettings {
   final String header;
   final String footer;
   final String? logoPath;
+  // Font struk (mirror SecureStore): jenis 'standar'/'kompak' + ukuran per section.
+  final String fontType;
+  final int fontHeader;
+  final int fontItems;
+  final int fontFooter;
 
   _ReceiptSettings({
     this.storeName = '',
@@ -1049,6 +1076,10 @@ class _ReceiptSettings {
     this.header = '',
     this.footer = '',
     this.logoPath,
+    this.fontType = 'standar',
+    this.fontHeader = 2,
+    this.fontItems = 1,
+    this.fontFooter = 1,
   });
 }
 

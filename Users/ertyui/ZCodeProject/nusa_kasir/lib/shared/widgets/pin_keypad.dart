@@ -148,7 +148,13 @@ class PinKeypadState extends State<PinKeypad>
   void _onDigit(String d) {
     if (_digits.length >= widget.length) return;
     setState(() => _digits += d);
-    widget.onChanged?.call(_digits);
+    // Defer parent notification to AFTER the tap gesture completes.
+    // Calling the parent's setState (e.g. login error clear) synchronously
+    // here rebuilds the whole screen mid-tap, which can swallow the InkWell
+    // tap on slow devices — the reported "kadang ketekan kadang engga".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onChanged?.call(_digits);
+    });
     if (_digits.length == widget.length) {
       widget.onComplete?.call(_digits);
     }
@@ -157,7 +163,9 @@ class PinKeypadState extends State<PinKeypad>
   void _onDelete() {
     if (_digits.isEmpty) return;
     setState(() => _digits = _digits.substring(0, _digits.length - 1));
-    widget.onChanged?.call(_digits);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onChanged?.call(_digits);
+    });
   }
 
   void _triggerShake() {
@@ -203,182 +211,192 @@ class PinKeypadState extends State<PinKeypad>
       WidgetsBinding.instance.addPostFrameCallback((_) => _triggerShake());
     }
 
-    return NusaAnimatedBuilder(
-      animation: _shakeAnim,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(_shakeAnim.value, 0),
-          child: child,
-        );
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Dot indicators ──────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(count, (i) {
-              final filled = i < len;
-              return Container(
-                width: 18,
-                height: 18,
-                margin: EdgeInsets.symmetric(horizontal: count == 6 ? 10 : 14),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: hasError
-                        ? NusaConfig.activePrimary
-                        : filled
-                            ? NusaConfig.activePrimary
-                            : isDark
-                                ? NusaConfig.darkBorder
-                                : NusaConfig.dividerColor,
-                    width: 2,
-                  ),
-                  color: filled ? NusaConfig.activePrimary : Colors.transparent,
-                ),
-              );
-            }),
-          ),
-
-          // ── Error text ──────────────────────────────
-          if (hasError) ...[
-            SizedBox(height: 10),
-            Text(
-              widget.error!,
-              style: TextStyle(
-                color: NusaConfig.activePrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-
-          SizedBox(height: 24),
-          
-          // ── NFC scanning indicator ─────────────────
-          if (widget.showNfc && _nfcScanning) ...[
-            Container(
-              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              margin: EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: NusaConfig.accentPurple.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: NusaConfig.accentPurple.withValues(alpha: 0.3)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: NusaConfig.accentPurple),
-                ),
-                SizedBox(width: 12),
-                Text('Dekatkan kartu NFC...',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: NusaConfig.accentPurple)),
-              ]),
-            ),
-          ],
-
-          // ── Keypad grid ─────────────────────────────
-          _buildKeypadRow(['1', '2', '3'], isDark),
-          _buildKeypadRow(['4', '5', '6'], isDark),
-          _buildKeypadRow(['7', '8', '9'], isDark),
-          Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Dot indicators + error (shake only this block) ──
+        // The keypad grid stays OUTSIDE the animation: on slow devices the
+        // rebuild-per-frame of an animated parent made the buttons swallow
+        // taps ("kadang ketekan kadang engga"). Only the dots + error text
+        // shake now, so buttons are never rebuilt mid-animation.
+        NusaAnimatedBuilder(
+          animation: _shakeAnim,
+          builder: (context, child) {
+            return Transform.translate(
+              offset: Offset(_shakeAnim.value, 0),
+              child: child,
+            );
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: _bottomLeftCell(),
+              // ── Dot indicators ──────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(count, (i) {
+                  final filled = i < len;
+                  return Container(
+                    width: 18,
+                    height: 18,
+                    margin: EdgeInsets.symmetric(horizontal: count == 6 ? 10 : 14),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: hasError
+                            ? NusaConfig.activePrimary
+                            : filled
+                                ? NusaConfig.activePrimary
+                                : isDark
+                                    ? NusaConfig.darkBorder
+                                    : NusaConfig.dividerColor,
+                        width: 2,
+                      ),
+                      color: filled ? NusaConfig.activePrimary : Colors.transparent,
+                    ),
+                  );
+                }),
               ),
-              Expanded(
-                child: _keyButton(
-                  text: '0',
-                  onTap: () => _onDigit('0'),
-                  isDark: isDark,
+
+              // ── Error text ──────────────────────────────
+              if (hasError) ...[
+                SizedBox(height: 10),
+                Text(
+                  widget.error!,
+                  style: TextStyle(
+                    color: NusaConfig.activePrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: _keyButton(
-                  child: Icon(Icons.backspace_outlined,
-                      color: NusaConfig.activePrimary, size: 24),
-                  onTap: _onDelete,
-                ),
-              ),
+              ],
             ],
           ),
+        ),
 
-          // ── NFC: static hint card (below keypad) ───
-          // Always visible when NFC is enabled — serves as a persistent
-          // reminder. Tappable only when NOT scanning (retry after timeout).
-          // The scanning indicator is above the keypad (spinner + "Dekatkan...").
-          if (widget.showNfc) ...[
-            SizedBox(height: 10),
-            AbsorbPointer(
-              absorbing: _nfcScanning,
-              child: GestureDetector(
-                onTap: _nfcScanning ? null : _onNfcTap,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
-                    ),
-                    color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 28, height: 28,
-                        decoration: BoxDecoration(
-                          color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(Icons.nfc, size: 18, color: NusaConfig.accentPurple),
-                      ),
-                      SizedBox(width: 10),
-                      Text('Tap Kartu NFC',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+        SizedBox(height: 24),
 
-          // ── Cancel (card style) ──────────────────────
-          if (widget.showCancel) ...[
-            SizedBox(height: 8),
-            Card(
-              elevation: 1,
-              shadowColor: Colors.black12,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              color: isDark ? NusaConfig.darkSurface : Colors.white,
-              child: InkWell(
-                onTap: widget.onCancel,
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Batal',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
+        // ── NFC scanning indicator ─────────────────
+        if (widget.showNfc && _nfcScanning) ...[
+          Container(
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            margin: EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: NusaConfig.accentPurple.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: NusaConfig.accentPurple.withValues(alpha: 0.3)),
             ),
-          ],
-          // Bottom padding so NFC / cancel card doesn't stick to edge
-          SizedBox(height: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: NusaConfig.accentPurple),
+              ),
+              SizedBox(width: 12),
+              Text('Dekatkan kartu NFC...',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: NusaConfig.accentPurple)),
+            ]),
+          ),
         ],
-      ),
+
+        // ── Keypad grid ─────────────────────────────
+        _buildKeypadRow(['1', '2', '3'], isDark),
+        _buildKeypadRow(['4', '5', '6'], isDark),
+        _buildKeypadRow(['7', '8', '9'], isDark),
+        Row(
+          children: [
+            Expanded(
+              child: _bottomLeftCell(),
+            ),
+            Expanded(
+              child: _keyButton(
+                text: '0',
+                onTap: () => _onDigit('0'),
+                isDark: isDark,
+              ),
+            ),
+            Expanded(
+              child: _keyButton(
+                child: Icon(Icons.backspace_outlined,
+                    color: NusaConfig.activePrimary, size: 24),
+                onTap: _onDelete,
+              ),
+            ),
+          ],
+        ),
+
+        // ── NFC: static hint card (below keypad) ───
+        // Always visible when NFC is enabled — serves as a persistent
+        // reminder. Tappable only when NOT scanning (retry after timeout).
+        // The scanning indicator is above the keypad (spinner + "Dekatkan...").
+        if (widget.showNfc) ...[
+          SizedBox(height: 10),
+          AbsorbPointer(
+            absorbing: _nfcScanning,
+            child: GestureDetector(
+              onTap: _nfcScanning ? null : _onNfcTap,
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+                  ),
+                  color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.nfc, size: 18, color: NusaConfig.accentPurple),
+                    ),
+                    SizedBox(width: 10),
+                    Text('Tap Kartu NFC',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+
+        // ── Cancel (card style) ──────────────────────
+        if (widget.showCancel) ...[
+          SizedBox(height: 8),
+          Card(
+            elevation: 1,
+            shadowColor: Colors.black12,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            color: isDark ? NusaConfig.darkSurface : Colors.white,
+            child: InkWell(
+              onTap: widget.onCancel,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                alignment: Alignment.center,
+                child: Text(
+                  'Batal',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        // Bottom padding so NFC / cancel card doesn't stick to edge
+        SizedBox(height: 8),
+      ],
     );
   }
 
@@ -419,25 +437,34 @@ class PinKeypadState extends State<PinKeypad>
     bool isDark = false,
   }) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 6),
+      padding: EdgeInsets.symmetric(horizontal: 5),
       child: Material(
         color: text != null
-            ? (isDark ? NusaConfig.darkSurface : Colors.white)
+            ? (isDark ? NusaConfig.darkSurface2 : Colors.white)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        elevation: text != null ? 1 : 0,
+        borderRadius: BorderRadius.circular(16),
+        elevation: text != null ? 2 : 0,
         shadowColor: Colors.black12,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           child: Container(
-            height: 52,
+            // 60px — larger tap target than before (52px); keypad taps
+            // were being missed on low-end devices.
+            height: 60,
             alignment: Alignment.center,
+            decoration: isDark && text != null
+                ? BoxDecoration(
+                    border: Border.all(
+                        color: NusaConfig.darkBorder, width: 1),
+                    borderRadius: BorderRadius.circular(16),
+                  )
+                : null,
             child: child ??
                 Text(
                   text!,
                   style: TextStyle(
-                    fontSize: 22,
+                    fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: isDark
                         ? NusaConfig.darkTextPrimary

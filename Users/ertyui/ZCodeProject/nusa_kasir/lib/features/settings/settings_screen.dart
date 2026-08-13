@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
+import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
@@ -1699,6 +1700,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (paperSize == '58' || paperSize == '80') paperSize = '${paperSize}mm';
     final toggles = await repo.getReceiptToggles();
     final storeName = await repo.getStoreName();
+    // Font struk (SecureStore — single source untuk printing).
+    final fontType = await SecureStore.getReceiptFontType();
+    final fontHeader = await SecureStore.getReceiptFontHeader();
+    final fontItems = await SecureStore.getReceiptFontItems();
+    final fontFooter = await SecureStore.getReceiptFontFooter();
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -1711,6 +1717,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         String? logoPath = currentLogo;
         String paper = paperSize;
         Map<String, bool> togs = Map.from(toggles);
+        String font = fontType;
+        int fontH = fontHeader;
+        int fontI = fontItems;
+        int fontF = fontFooter;
         return StatefulBuilder(
           builder: (ctx, setSt) {
             return Container(
@@ -1808,6 +1818,84 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 20),
+
+                    // ── Jenis Font ──
+                    Text(
+                      'Jenis Font',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Standar = huruf universal & paling kompatibel semua printer. '
+                      'Kompak = huruf lebih ramping, muat lebih banyak per baris.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: setDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _fontTypeChip(
+                          'Standar',
+                          Icons.text_fields,
+                          font,
+                          setDark,
+                          subtitle: 'Paling kompatibel',
+                          onTap: () => setSt(() => font = 'standar'),
+                        ),
+                        const SizedBox(width: 10),
+                        _fontTypeChip(
+                          'Kompak',
+                          Icons.text_snippet_outlined,
+                          font,
+                          setDark,
+                          subtitle: 'Huruf ramping',
+                          onTap: () => setSt(() => font = 'kompak'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Ukuran Font per Bagian ──
+                    Text(
+                      'Ukuran Font',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Atur ukuran huruf tiap bagian struk secara terpisah.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: setDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _fontSizeRow('Header', 3, 'Kecil', 'Besar',
+                        fontH, setDark, (v) => setSt(() => fontH = v)),
+                    const SizedBox(height: 10),
+                    _fontSizeRow('Rincian', 2, 'Kecil', 'Besar',
+                        fontI, setDark, (v) => setSt(() => fontI = v)),
+                    const SizedBox(height: 10),
+                    _fontSizeRow('Footer', 2, 'Kecil', 'Besar',
+                        fontF, setDark, (v) => setSt(() => fontF = v)),
                     const SizedBox(height: 20),
 
                     // ── Logo Struk ──
@@ -2085,10 +2173,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                           ),
                           const SizedBox(height: 1),
-                          Text(
+                          const Text(
                             'Jl. Merdeka No. 123, Jakarta',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 9,
                               color: Color(0xFF6B7280),
                             ),
@@ -2304,6 +2392,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         final norm = paper.replaceAll('mm', '');
                         await SecureStore.setPaperSize(norm);
                         await SecureStore.setPrinterFooter(footerCtrl.text.trim());
+                        // Font struk.
+                        await SecureStore.setReceiptFontType(font);
+                        await SecureStore.setReceiptFontHeader(fontH);
+                        await SecureStore.setReceiptFontItems(fontI);
+                        await SecureStore.setReceiptFontFooter(fontF);
                         // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
                         if (logoPath != null && logoPath!.isNotEmpty) {
                           await repo.setStoreLogoPath(logoPath!);
@@ -2399,6 +2492,154 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// Chip pilihan jenis font struk (Standar / Kompak).
+  Widget _fontTypeChip(
+    String label,
+    IconData icon,
+    String current,
+    bool isDark, {
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    final selected = current == (label == 'Standar' ? 'standar' : 'kompak');
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? NusaConfig.primarySoft
+                : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? NusaConfig.activePrimary
+                  : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                selected ? Icons.check_circle : icon,
+                size: 20,
+                color: selected
+                    ? NusaConfig.activePrimary
+                    : (isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: selected
+                      ? NusaConfig.activePrimary
+                      : (isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary),
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Baris ukuran font per section struk (Kecil/Besar; header juga Normal).
+  Widget _fontSizeRow(
+    String label,
+    int levels,
+    String smallLabel,
+    String bigLabel,
+    int current,
+    bool isDark,
+    ValueChanged<int> onChanged,
+  ) {
+    final options = levels == 3
+        ? [(1, 'Kecil'), (2, 'Normal'), (3, 'Besar')]
+        : [(1, smallLabel), (2, bigLabel)];
+    return Row(
+      children: [
+        SizedBox(
+          width: 88,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Row(
+            children: options.map((o) {
+              final (val, name) = o;
+              final sel = current == val;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => onChanged(val),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? NusaConfig.primarySoft
+                            : (isDark
+                                  ? NusaConfig.darkSurface2
+                                  : const Color(0xFFF3F4F6)),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: sel
+                              ? NusaConfig.activePrimary
+                              : (isDark
+                                    ? NusaConfig.darkBorder
+                                    : NusaConfig.dividerColor),
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: sel
+                                ? NusaConfig.activePrimary
+                                : (isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _footerChip(
     String text,
     TextEditingController ctrl,
@@ -2431,32 +2672,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Single receipt item row for preview.
+  /// Single receipt item row for preview — 2 baris persis seperti print:
+  /// baris 1 nama item, baris 2 "qty x Rp harga ... subtotal".
   Widget _receiptItem(String name, int qty, int price, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${qty}x',
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF374151),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              name,
-              style: const TextStyle(fontSize: 9, color: Color(0xFF374151)),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Rp  ${(qty * price).toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}.')}',
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 9, color: Color(0xFF374151)),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$qty x ${formatRupiah(price)}',
+                style: const TextStyle(fontSize: 8, color: Color(0xFF6B7280)),
+              ),
+              Text(
+                formatRupiah(qty * price),
+                style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151)),
+              ),
+            ],
           ),
         ],
       ),

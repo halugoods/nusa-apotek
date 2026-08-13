@@ -12,9 +12,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -86,8 +88,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
     return filtered;
   }
-
-  String get _selectedTimeLabel => _timeFilter; 
 
   Future<void> _voidTransaction(Transaction tx) async {
     // ── Access control (keputusan user 2026-08-12): void hanya Owner/Manager ──
@@ -716,29 +716,39 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   Widget _buildReceiptPreview(Transaction tx,
       List<Map<String, dynamic>> rawItems, String dateStr, String? custName,
-      {bool isDark = false}) {
+      {bool isDark = false, String storeName = 'NUSA Kasir',
+      int fontHeader = 2, int fontItems = 1, int fontFooter = 1}) {
     final textColor = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
     final subtleColor = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+    final itemFontSize = fontItems > 1 ? 12.0 : 10.0;
     final mono = TextStyle(
-        fontFamily: 'monospace', fontSize: 10, height: 1.4, color: textColor);
-    final monoBold = TextStyle(
-        fontFamily: 'monospace', fontSize: 10, height: 1.4,
-        fontWeight: FontWeight.bold, color: textColor);
+        fontFamily: 'monospace', fontSize: itemFontSize, height: 1.4, color: textColor);
     final monoBig = TextStyle(
         fontFamily: 'monospace', fontSize: 13, height: 1.4,
         fontWeight: FontWeight.bold, color: textColor);
     final monoHeader = TextStyle(
-        fontFamily: 'monospace', fontSize: 14, height: 1.3,
+        fontFamily: 'monospace',
+        fontSize: switch (fontHeader) {
+          3 => 17.0,
+          1 => 12.0,
+          _ => 14.0,
+        },
+        height: 1.3,
         fontWeight: FontWeight.bold, color: textColor);
     final monoGrey = TextStyle(
-        fontFamily: 'monospace', fontSize: 10, height: 1.4,
+        fontFamily: 'monospace', fontSize: itemFontSize, height: 1.4,
         color: subtleColor);
+    final monoFooter = TextStyle(
+        fontFamily: 'monospace',
+        fontSize: fontFooter > 1 ? 13.0 : 10.0,
+        height: 1.4,
+        fontWeight: FontWeight.bold, color: textColor);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Center(child: Text('NUSA', style: monoHeader)),
+        Center(child: Text(storeName, style: monoHeader, textAlign: TextAlign.center)),
         if (tx.invoice.isNotEmpty) ...[
           SizedBox(height: 2),
           Center(child: Text(tx.invoice, style: mono)),
@@ -808,7 +818,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         SizedBox(height: 6),
         _buildRDash(),
         SizedBox(height: 8),
-        Center(child: Text('Terima Kasih!', style: monoBold)),
+        Center(child: Text('Terima Kasih!', style: monoFooter)),
       ],
     );
   }
@@ -836,6 +846,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final dateStr =
         '${tx.date.day.toString().padLeft(2, '0')}/${tx.date.month.toString().padLeft(2, '0')}/${tx.date.year} '
         '${tx.date.hour.toString().padLeft(2, '0')}:${tx.date.minute.toString().padLeft(2, '0')}';
+
+    // Same font settings as printing — preview must match the physical receipt.
+    final db = ref.read(databaseProvider);
+    final storeName = (await SettingsRepository(db).getStoreName()).trim();
+    final fontHeader = await SecureStore.getReceiptFontHeader();
+    final fontItems = await SecureStore.getReceiptFontItems();
+    final fontFooter = await SecureStore.getReceiptFontFooter();
 
     final receiptKey = GlobalKey();
     bool capturing = false;
@@ -886,7 +903,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           color: shareDark ? NusaConfig.darkBorder : Colors.grey.shade200),
                     ),
                     child: _buildReceiptPreview(
-                        tx, rawItems, dateStr, custName, isDark: shareDark),
+                        tx, rawItems, dateStr, custName,
+                        isDark: shareDark,
+                        storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
+                        fontHeader: fontHeader,
+                        fontItems: fontItems,
+                        fontFooter: fontFooter),
                 ),
               ),
               SizedBox(height: 20),

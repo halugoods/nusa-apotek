@@ -562,10 +562,11 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   Supplier? _supplier;
   List<Supplier> _suppliers = [];
   List<Product> _products = [];
+  List<String> _materialNames = [];
   bool _materialMode = false;
 
-  // item draft (produk): (product, qtyText)
-  final List<(Product, TextEditingController)> _productItems = [];
+  // item draft (produk): (product, qtyCtrl, priceCtrl — harga beli opsional)
+  final List<(Product, TextEditingController, TextEditingController)> _productItems = [];
   // item draft (bahan): (nameCtrl, priceCtrl, qtyCtrl)
   final List<(TextEditingController, TextEditingController, TextEditingController)> _materialItems = [];
   final _noteC = TextEditingController();
@@ -580,13 +581,18 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
     widget.productsFuture.then((list) {
       if (mounted) setState(() => _products = list);
     });
+    // Daftar nama bahan untuk autocomplete.
+    PurchaseRepository(widget.db).getMaterialNames().then((names) {
+      if (mounted) setState(() => _materialNames = names);
+    });
   }
 
   @override
   void dispose() {
     _noteC.dispose();
-    for (final (_, c) in _productItems) {
-      c.dispose();
+    for (final (_, qtyC, priceC) in _productItems) {
+      qtyC.dispose();
+      priceC.dispose();
     }
     for (final (n, p, q) in _materialItems) {
       n.dispose();
@@ -607,8 +613,13 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
               sum +
               (int.tryParse(e.$2.text) ?? 0) * (int.tryParse(e.$3.text) ?? 0));
     }
-    return _productItems.fold<int>(
-        0, (sum, e) => sum + (int.tryParse(e.$2.text) ?? 0) * e.$1.buyPrice);
+    return _productItems.fold<int>(0, (sum, e) {
+      final qty = int.tryParse(e.$2.text) ?? 0;
+      // Harga beli opsional: diisi = pakai harga baru, kosong = harga produk.
+      final newPrice = int.tryParse(e.$3.text) ?? 0;
+      final price = newPrice > 0 ? newPrice : e.$1.buyPrice;
+      return sum + qty * price;
+    });
   }
 
   // ── supplier dropdown ──
@@ -725,7 +736,11 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
           products: _products,
           onPick: (p) {
             Navigator.of(ctx).pop();
-            setState(() => _productItems.add((p, TextEditingController())));
+            setState(() => _productItems.add((
+              p,
+              TextEditingController(text: '1'),
+              TextEditingController(),
+            )));
           },
         ),
       ),
@@ -736,7 +751,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   void _addMaterial() {
     setState(() => _materialItems.add((
       TextEditingController(),
-      TextEditingController(text: '0'),
+      TextEditingController(),
       TextEditingController(text: '1'),
     )));
   }
@@ -856,58 +871,119 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
     }
     return ListView.separated(
       itemCount: _productItems.length,
-      separatorBuilder: (_, __) => SizedBox(height: 8),
+      separatorBuilder: (_, __) => SizedBox(height: 10),
       itemBuilder: (_, i) {
-        final (p, qtyC) = _productItems[i];
+        final (p, qtyC, priceC) = _productItems[i];
         final qty = int.tryParse(qtyC.text) ?? 0;
+        final newPrice = int.tryParse(priceC.text) ?? 0;
+        // Harga beli yang dipakai: diisi = harga baru, kosong = harga produk.
+        final effPrice = newPrice > 0 ? newPrice : p.buyPrice;
         return Container(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
-            color: (isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor)
-                .withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
+            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPri)),
-                SizedBox(height: 2),
-                Text('Harga beli: ${formatRupiah(p.buyPrice)} · stok ${p.stock}',
-                    style: TextStyle(fontSize: 12, color: textSec)),
-              ]),
-            ),
-            SizedBox(
-              width: 64,
-              child: TextField(
-                controller: qtyC,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  hintText: '0',
-                  hintStyle: TextStyle(fontSize: 13, color: textTer),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: NusaConfig.activePrimary),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPri)),
+                    SizedBox(height: 2),
+                    Text('Harga beli sekarang: ${formatRupiah(p.buyPrice)} · stok ${p.stock}',
+                        style: TextStyle(fontSize: 12, color: textSec)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, size: 18, color: textTer),
+                onPressed: () {
+                  qtyC.dispose();
+                  priceC.dispose();
+                  setState(() => _productItems.removeAt(i));
+                },
+              ),
+            ]),
+            SizedBox(height: 6),
+            // Qty — di bawah nama item (bukan kanan)
+            Text('Jumlah', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textTer)),
+            SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: qtyC,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPri),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    hintStyle: TextStyle(fontSize: 13, color: textTer),
+                    prefixText: 'Qty ',
+                    prefixStyle: TextStyle(fontSize: 12, color: textTer),
+                    isDense: true,
+                    filled: true,
+                    fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: NusaConfig.activePrimary, width: 1.4),
+                    ),
                   ),
                 ),
-                onChanged: (_) => setState(() {}),
               ),
-            ),
-            SizedBox(width: 8),
-            Text(formatRupiah(qty * p.buyPrice),
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPri)),
-            IconButton(
-              icon: Icon(Icons.close, size: 18, color: textTer),
-              onPressed: () {
-                qtyC.dispose();
-                setState(() => _productItems.removeAt(i));
-              },
+              SizedBox(width: 10),
+              // Harga beli opsional — kosong = pakai harga produk
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: priceC,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPri),
+                  decoration: InputDecoration(
+                    hintText: 'Harga beli (opsional)',
+                    hintStyle: TextStyle(fontSize: 12, color: textTer),
+                    prefixText: 'Rp ',
+                    prefixStyle: TextStyle(fontSize: 12, color: textTer),
+                    isDense: true,
+                    filled: true,
+                    fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: NusaConfig.activePrimary, width: 1.4),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+            SizedBox(height: 4),
+            Text(
+              'Subtotal: ${formatRupiah(qty * effPrice)}'
+              '${newPrice > 0 ? ' · harga beli baru' : ''}',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textPri),
             ),
           ]),
         );
@@ -927,17 +1003,25 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
     }
     return ListView.separated(
       itemCount: _materialItems.length,
-      separatorBuilder: (_, __) => SizedBox(height: 8),
+      separatorBuilder: (_, __) => SizedBox(height: 10),
       itemBuilder: (_, i) {
         final (nameC, priceC, qtyC) = _materialItems[i];
         final price = int.tryParse(priceC.text) ?? 0;
         final qty = int.tryParse(qtyC.text) ?? 0;
         return Container(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
-            color: (isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor)
-                .withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
+            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -962,6 +1046,36 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                 },
               ),
             ]),
+            // Autocomplete nama bahan dari riwayat pembelian
+            if (_materialNames.isNotEmpty)
+              SizedBox(
+                height: 30,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final name in _materialNames)
+                      GestureDetector(
+                        onTap: () {
+                          nameC.text = name;
+                          setState(() {});
+                        },
+                        child: Container(
+                          margin: EdgeInsets.only(right: 6),
+                          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.activePrimary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11, color: NusaConfig.activePrimary)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             Row(children: [
               Expanded(
                 flex: 3,
@@ -1033,7 +1147,9 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
         items: items,
       );
     } else {
-      final valid = _productItems.where((e) => (int.tryParse(e.$2.text) ?? 0) > 0).toList();
+      final valid = _productItems
+          .where((e) => (int.tryParse(e.$2.text) ?? 0) > 0)
+          .toList();
       if (valid.isEmpty) {
         setState(() => _error = 'Minimal 1 item dengan qty > 0');
         return;
@@ -1042,12 +1158,17 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
         supplierId: _supplier!.id,
         supplierName: _supplier!.name,
         note: _noteC.text.trim().isEmpty ? null : _noteC.text.trim(),
-        items: valid.map((e) => PurchaseItemInput(
-          productId: e.$1.id,
-          name: e.$1.name,
-          qty: int.parse(e.$2.text.trim()),
-          buyPrice: e.$1.buyPrice,
-        )).toList(),
+        items: valid.map((e) {
+          // Harga beli opsional: diisi = harga baru (stok & HPP ikut ter-update),
+          // kosong = pakai harga beli produk yang ada.
+          final newPrice = int.tryParse(e.$3.text) ?? 0;
+          return PurchaseItemInput(
+            productId: e.$1.id,
+            name: e.$1.name,
+            qty: int.parse(e.$2.text.trim()),
+            buyPrice: newPrice > 0 ? newPrice : e.$1.buyPrice,
+          );
+        }).toList(),
       );
     }
     if (mounted) Navigator.of(context).pop();

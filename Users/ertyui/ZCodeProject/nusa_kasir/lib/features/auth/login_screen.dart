@@ -20,7 +20,6 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  bool _loading = false;
   bool _nfcAvailable = false;
   bool _remember = false;
   String? _error;
@@ -180,9 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           return null;
                         },
                         onComplete: (pin) async {
-                          setState(() => _loading = true);
                           await _verifyPin(pin);
-                          if (mounted) setState(() => _loading = false);
                         },
                         onChanged: (_) {
                           if (_error != null) _clearError();

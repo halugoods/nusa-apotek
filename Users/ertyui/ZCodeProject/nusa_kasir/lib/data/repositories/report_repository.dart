@@ -299,6 +299,31 @@ class ReportRepository {
     return totals;
   }
 
+  /// Pengeluaran per kategori untuk periode tertentu (tab Laporan Pengeluaran).
+  /// Returns list of {category, amount} sorted by amount desc.
+  Future<List<Map<String, dynamic>>> expensesByCategory({
+    DateTime? from,
+    DateTime? to,
+    int? branchId,
+  }) async {
+    final list = await _filtered(
+      db.select(db.expenses),
+      from: from,
+      to: to,
+      branchId: branchId,
+      branchIdOf: (e) => e.branchId,
+    );
+    final byCat = <String, int>{};
+    for (final e in list) {
+      byCat[e.category] = (byCat[e.category] ?? 0) + e.amount;
+    }
+    final cats = byCat.keys.toList()
+      ..sort((a, b) => (byCat[b] ?? 0).compareTo(byCat[a] ?? 0));
+    return cats
+        .map((c) => {'category': c, 'amount': byCat[c] ?? 0})
+        .toList();
+  }
+
   /// Current summary vs the immediately-preceding equal-length period.
   /// Keys: omzet, count, avg, hasPrevious, prevOmzet, prevCount,
   ///       omzetGrowth (%), countGrowth (%).

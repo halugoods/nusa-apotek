@@ -242,6 +242,19 @@ class ReceiptPrinter {
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paperSize, profile);
 
+    // ── Font settings (per section, dari Pengaturan Struk) ──
+    // Jenis font: 'standar' = Font A (universal — DEFAULT; printer clone
+    // murah seperti VSC merender Font B kosong/garbled, jadi Standar dipakai
+    // supaya rincian selalu muncul), 'kompak' = Font B (huruf ramping).
+    // Ukuran per section adalah perbesaran ESC/POS: header 1/2/3 (Kecil/
+    // Normal/Besar), rincian 1/2, footer 1/2.
+    final fontType = await SecureStore.getReceiptFontType();
+    final headerSize = await SecureStore.getReceiptFontHeader();
+    final itemsSize = await SecureStore.getReceiptFontItems();
+    final footerSize = await SecureStore.getReceiptFontFooter();
+    final useFontB = fontType == 'kompak';
+    final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
+
     final List<int> bytes = [];
 
     // ── ESC @ Reset: ensure printer is in a clean state ──
@@ -293,63 +306,80 @@ class ReceiptPrinter {
       } catch (_) {}
     }
 
-    // Header — wrap long store names.
+    // Header — wrap long store names. Ukuran mengikuti setting (default 2x),
+    // jenis font mengikuti pilihan Standar/Kompak.
+    final headerHeight = switch (headerSize) {
+      3 => PosTextSize.size3,
+      1 => PosTextSize.size1,
+      _ => PosTextSize.size2,
+    };
     bytes.addAll(generator.text(
       _san(storeName),
-      styles: const PosStyles(
+      styles: PosStyles(
         align: PosAlign.center,
         bold: true,
-        height: PosTextSize.size2,
-        width: PosTextSize.size2,
+        height: headerHeight,
+        width: headerHeight,
+        fontType: itemFont,
       ),
       linesAfter: 1,
     ));
     if (invoice.isNotEmpty) {
       bytes.addAll(generator.text(_san(invoice),
-          styles: const PosStyles(align: PosAlign.center)));
+          styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
     }
     if (dateStr.isNotEmpty) {
       bytes.addAll(generator.text(_san(dateStr),
-          styles: const PosStyles(align: PosAlign.center)));
+          styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
     }
     final isWide = paperWidth == '80';
     if (cashierName != null && cashierName.isNotEmpty) {
       final csrParts = _wrap('Kasir: $cashierName', isWide ? 30 : 24);
       for (final part in csrParts) {
         bytes.addAll(generator.text(_san(part),
-            styles: const PosStyles(align: PosAlign.left)));
+            styles: PosStyles(align: PosAlign.left, fontType: itemFont)));
       }
     }
     if (customerName != null && customerName.isNotEmpty) {
       final custParts = _wrap('Pelanggan: $customerName', isWide ? 30 : 24);
       for (final part in custParts) {
         bytes.addAll(generator.text(_san(part),
-            styles: const PosStyles(align: PosAlign.left)));
+            styles: PosStyles(align: PosAlign.left, fontType: itemFont)));
       }
     }
     if (orderType != null && orderType.isNotEmpty) {
       String line = orderType;
       if (tableName != null && tableName.isNotEmpty) line += ' - $tableName';
       bytes.addAll(generator.text(_san(line),
-          styles: const PosStyles(align: PosAlign.center, bold: true)));
+          styles: PosStyles(
+              align: PosAlign.center, bold: true, fontType: itemFont)));
     }
     bytes.addAll(generator.hr());
 
     // Line items — manual text formatting for precise wrapping.
     // generator.row()+PosColumn internally clips text; generator.text() doesn't.
     //
-    // 58mm uses Font B (compressed/small) like Alfamart/Indomaret receipts —
-    // 42 chars/line vs 32 for Font A, so product names get ~2× the space
-    // without wrapping. Prices stay in full Rupiah format.
-    // 80mm stays on Font A (48 chars/line) — already spacious enough.
-    final useFontB = !isWide;
-    final itemStyles = useFontB
-        ? const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB)
-        : const PosStyles(align: PosAlign.left);
-    final lineWidth = useFontB ? 42 : 48;         // usable chars per line
-    final qtyPriceWidth = useFontB ? 12 : 15;     // "2 x Rp10.000" max
-    final subWidth = useFontB ? 10 : 10;          // "Rp20.000" max
-    final nameWidth = lineWidth - qtyPriceWidth - subWidth - 4; // 4 = 2 spaces
+    // Jenis font menentukan lebar baris:
+    //   Standar (Font A): 58mm → 32 char, 80mm → 48 char  (universal)
+    //   Kompak  (Font B): 58mm → 42 char, 80mm → 64 char  (ramping)
+    // Default = Standar: printer clone murah (VSC dkk) merender Font B
+    // kosong/garbled, sehingga rincian hilang. Standar selalu muncul.
+    final baseLineWidth = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
+    // Ukuran rincian: 1x = Kecil (2 baris: nama, lalu qty x harga + subtotal),
+    // 2x = Besar (3 baris: nama, qty x harga, subtotal) karena 2x memotong
+    // lebar baris jadi ~16 char di 58mm.
+    final itemBig = itemsSize > 1;
+    final itemStyles = PosStyles(
+      align: PosAlign.left,
+      fontType: itemFont,
+      height: itemsSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
+      width: itemsSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
+    );
+    // Lebar teks rincian saat 2x: setengah dari lebar baris normal.
+    final itemLineWidth = itemBig ? (baseLineWidth ~/ 2) : baseLineWidth;
+    final qtyPriceWidth = useFontB ? 14 : 12;    // "2xRp10.000" max
+    final subWidth = useFontB ? 11 : 10;         // "Rp20.000" max
+    final nameWidth = baseLineWidth - qtyPriceWidth - subWidth - 2;
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -357,17 +387,25 @@ class ReceiptPrinter {
       final qtyPrice = _fit('${line.qty}x${formatRupiah(line.price)}', qtyPriceWidth);
       final subtotal = _fit(formatRupiah(line.subtotal), subWidth);
 
-      // First line: name | qty x price | subtotal
-      // Pad each column to fixed width for alignment.
-      bytes.addAll(generator.text(
-        _san(nameParts.first.padRight(nameWidth) + '  ' + qtyPrice.padRight(qtyPriceWidth) + '  ' + subtotal.padLeft(subWidth)),
-        styles: itemStyles,
-      ));
+      // Baris 1: nama item (wrap). Nama sendiri — tidak digabung dengan qty.
+      for (final part in nameParts) {
+        bytes.addAll(generator.text(_san(part), styles: itemStyles));
+      }
 
-      // Continuation lines for wrapped name
-      for (var j = 1; j < nameParts.length; j++) {
+      if (itemBig) {
+        // Rincian "Besar": qty x harga DAN subtotal masing-masing baris sendiri.
         bytes.addAll(generator.text(
-          _san(nameParts[j]),
+          _san(qtyPrice),
+          styles: itemStyles,
+        ));
+        bytes.addAll(generator.text(
+          _san(subtotal.padLeft(subWidth)),
+          styles: itemStyles,
+        ));
+      } else {
+        // Rincian "Kecil" (default): baris 2 = "2xRp10.000      Rp20.000".
+        bytes.addAll(generator.text(
+          _san(qtyPrice.padRight(qtyPriceWidth) + ' ' + subtotal.padLeft(subWidth)),
           styles: itemStyles,
         ));
       }
@@ -377,7 +415,7 @@ class ReceiptPrinter {
           i < itemNotes.length &&
           itemNotes[i] != null &&
           itemNotes[i]!.isNotEmpty) {
-        final noteParts = _wrap('  > ${itemNotes[i]!}', lineWidth - 2);
+        final noteParts = _wrap('  > ${itemNotes[i]!}', itemLineWidth - 2);
         for (final part in noteParts) {
           bytes.addAll(generator.text(
             _san(part),
@@ -393,13 +431,13 @@ class ReceiptPrinter {
       //   Diskon: -Rp 37.500
       if (line.hasDiscount) {
         final normal = _fit('Harga Normal: ${formatRupiah(line.originalPrice!)}',
-            lineWidth - 2);
+            itemLineWidth - 2);
         bytes.addAll(generator.text(
           _san(normal),
           styles: itemStyles,
         ));
         final potongan = _fit('Diskon: -${formatRupiah(line.discountNominal)}',
-            lineWidth - 2);
+            itemLineWidth - 2);
         bytes.addAll(generator.text(
           _san(potongan),
           styles: itemStyles,
@@ -411,11 +449,12 @@ class ReceiptPrinter {
     // Discount.
     if (discount > 0) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Diskon', width: isWide ? 8 : 6),
+        PosColumn(text: 'Diskon', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
         PosColumn(
           text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
           width: isWide ? 8 : 6,
-          styles: const PosStyles(align: PosAlign.right),
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
         ),
       ]));
     }
@@ -425,13 +464,15 @@ class ReceiptPrinter {
       PosColumn(
         text: 'TOTAL',
         width: isWide ? 8 : 6,
-        styles: const PosStyles(bold: true, height: PosTextSize.size2),
+        styles: PosStyles(
+            bold: true, height: PosTextSize.size2, fontType: itemFont),
       ),
       PosColumn(
         text: _fit(formatRupiah(total), isWide ? 16 : 11),
         width: isWide ? 8 : 6,
-        styles: const PosStyles(
-            bold: true, align: PosAlign.right, height: PosTextSize.size2),
+        styles: PosStyles(
+            bold: true, align: PosAlign.right, height: PosTextSize.size2,
+            fontType: itemFont),
       ),
     ]));
 
@@ -439,61 +480,69 @@ class ReceiptPrinter {
     // instead of the generic Bayar line (cashGiven holds the DP amount).
     if (downPayment > 0) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6),
+        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
         PosColumn(
           text: _fit(formatRupiah(downPayment), isWide ? 16 : 11),
           width: isWide ? 8 : 6,
-          styles: const PosStyles(align: PosAlign.right),
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
         ),
       ]));
       bytes.addAll(generator.row([
-        PosColumn(text: 'Sisa Piutang', width: isWide ? 8 : 6),
+        PosColumn(text: 'Sisa Piutang', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
         PosColumn(
           text: _fit(formatRupiah(remainingDue), isWide ? 16 : 11),
           width: isWide ? 8 : 6,
-          styles: const PosStyles(align: PosAlign.right),
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
         ),
       ]));
     } else if (paymentMethod != null && paymentMethod.isNotEmpty) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6),
+        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
         PosColumn(
           text: _fit(formatRupiah(cashGiven ?? total), isWide ? 16 : 11),
           width: isWide ? 8 : 6,
-          styles: const PosStyles(align: PosAlign.right),
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
         ),
       ]));
     }
     if (cashReturn != null && cashReturn > 0 && downPayment <= 0) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'Kembali', width: isWide ? 8 : 6),
+        PosColumn(text: 'Kembali', width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont)),
         PosColumn(
           text: _fit(formatRupiah(cashReturn), isWide ? 16 : 11),
           width: isWide ? 8 : 6,
-          styles: const PosStyles(align: PosAlign.right),
+          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
         ),
       ]));
     }
 
     bytes.addAll(generator.hr());
 
-    // Footer — wrap long text.
+    // Footer — wrap long text. Ukuran footer mengikuti setting (default 1x).
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
       final footerParts = _wrap(footerText, isWide ? 40 : 32);
       for (final part in footerParts) {
         bytes.addAll(generator.text(
           _san(part),
-          styles: const PosStyles(align: PosAlign.center),
+          styles: PosStyles(
+              align: PosAlign.center, fontType: itemFont,
+              height: footerSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
+              width: footerSize > 1 ? PosTextSize.size2 : PosTextSize.size1),
         ));
       }
     }
     bytes.addAll(generator.text(
       _san('Terima Kasih!'),
-      styles: const PosStyles(align: PosAlign.center, bold: true),
+      styles: PosStyles(
+          align: PosAlign.center, bold: true, fontType: itemFont),
     ));
     bytes.addAll(generator.text(_san(storeName),
-        styles: const PosStyles(align: PosAlign.center)));
+        styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
