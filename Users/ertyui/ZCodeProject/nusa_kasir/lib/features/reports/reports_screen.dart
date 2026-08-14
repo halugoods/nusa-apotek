@@ -28,9 +28,30 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   int _refreshKey = 0;
   bool _exporting = false;
 
+  /// F: "Ringkas dulu, detail on-demand" — grafik & detail di balik tombol
+  /// "Lihat Detail" supaya layar pertama selalu ringkas & cepat.
+  bool _detailOpen = false;
+
   // Period state
   String _period = 'Hari ini';
   DateTimeRange? _dateRange;
+
+  /// Label ringkas rupiah ("Rp 12,3 jt") untuk kartu ringkasan.
+  String _formatJt(int value) {
+    if (value >= 1000000000) {
+      final v = value / 1000000000;
+      return 'Rp ${v.toStringAsFixed(v >= 10 ? 0 : 1)} M';
+    }
+    if (value >= 1000000) {
+      final v = value / 1000000;
+      return 'Rp ${v.toStringAsFixed(v >= 10 ? 0 : 1)} jt';
+    }
+    if (value >= 1000) {
+      final v = value / 1000;
+      return 'Rp ${v.toStringAsFixed(v >= 10 ? 0 : 1)} rb';
+    }
+    return formatRupiah(value);
+  }
 
   (DateTime?, DateTime?) _range() {
     if (_period == 'custom' && _dateRange != null) {
@@ -91,8 +112,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: EdgeInsets.fromLTRB(20, 12, 20, 20),
         child: Column(
@@ -115,13 +135,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             // Title
             Padding(
               padding: EdgeInsets.only(bottom: 12),
-              child: Text('Export Laporan',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? NusaConfig.darkTextPrimary
-                          : NusaConfig.textPrimary)),
+              child: Text(
+                'Export Laporan',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+              ),
             ),
             _exportOption(
               icon: Icons.table_chart,
@@ -175,50 +198,64 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
           ),
         ),
-        child: Row(children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
             ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
                     style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary)),
-                SizedBox(height: 2),
-                Text(desc,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    desc,
                     style: TextStyle(
-                        fontSize: 12,
-                        color: isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary)),
-              ],
+                      fontSize: 12,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Icon(Icons.chevron_right_rounded,
+            Icon(
+              Icons.chevron_right_rounded,
               color: isDark
                   ? NusaConfig.darkTextTertiary
-                  : NusaConfig.textTertiary),
-        ]),
+                  : NusaConfig.textTertiary,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _doExport(List<Transaction> items, Map<String, dynamic> sum,
-      List<Map<String, dynamic>> top, List<Map<String, dynamic>> cats,
-      Map<String, int> pays) async {
+  Future<void> _doExport(
+    List<Transaction> items,
+    Map<String, dynamic> sum,
+    List<Map<String, dynamic>> top,
+    List<Map<String, dynamic>> cats,
+    Map<String, int> pays,
+  ) async {
     final format = await _pickFormat();
     if (format == null) return;
     setState(() => _exporting = true);
@@ -257,7 +294,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: Text('Laporan Siap'),
-            content: Text('Laporan PDF lengkap telah dibuat. Bagikan sekarang?'),
+            content: Text(
+              'Laporan PDF lengkap telah dibuat. Bagikan sekarang?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
@@ -272,10 +311,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         );
 
         if (share == true) {
-          await SharePlus.instance.share(ShareParams(
+          await SharePlus.instance.share(
+            ShareParams(
               files: [XFile(file.path)],
               subject: 'Laporan NUSA Kasir',
-              text: 'Laporan lengkap NUSA Kasir (${_periodLabel()})'));
+              text: 'Laporan lengkap NUSA Kasir (${_periodLabel()})',
+            ),
+          );
         }
       } else {
         final file = format == 'excel'
@@ -283,10 +325,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             : await exportCsv(items, name);
         if (!mounted) return;
         TopToast.success(context, 'Laporan berhasil diexport');
-        await SharePlus.instance.share(ShareParams(
+        await SharePlus.instance.share(
+          ShareParams(
             files: [XFile(file.path)],
             subject: 'Laporan NUSA Kasir',
-            text: 'Laporan penjualan NUSA Kasir (${_periodLabel()})'));
+            text: 'Laporan penjualan NUSA Kasir (${_periodLabel()})',
+          ),
+        );
       }
     } catch (e) {
       if (mounted) TopToast.error(context, 'Gagal ekspor: $e');
@@ -322,10 +367,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       );
 
       if (!mounted) return;
-      await SharePlus.instance.share(ShareParams(
+      await SharePlus.instance.share(
+        ShareParams(
           files: [XFile(file.path)],
           subject: 'Laporan NUSA Kasir',
-          text: 'Laporan lengkap NUSA Kasir (${_periodLabel()})'));
+          text: 'Laporan lengkap NUSA Kasir (${_periodLabel()})',
+        ),
+      );
     } catch (e) {
       if (mounted) TopToast.error(context, 'Gagal membagikan: $e');
     } finally {
@@ -339,12 +387,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final (from, to) = _range();
     final repo = ReportRepository(ref.read(databaseProvider));
-    final labelClr =
-        isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
-    final textSec =
-        isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
-    final textTer =
-        isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+    final labelClr = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    final textTer = isDark
+        ? NusaConfig.darkTextTertiary
+        : NusaConfig.textTertiary;
     final surf = isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor;
     final border = isDark ? NusaConfig.darkBorder : NusaConfig.borderColor;
 
@@ -352,502 +403,703 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       onRefresh: () async => setState(() => _refreshKey++),
       child: SingleChildScrollView(
         physics: AlwaysScrollableScrollPhysics(),
-        child: Column(children: [
-          SizedBox(height: 8),
-          // ── Comparison cards ──
-          FutureBuilder<Map<String, dynamic>>(
-            key: ValueKey('comp_$_refreshKey'),
-            future: repo.summaryWithPrevious(from, to),
-            builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
+        child: Column(
+          children: [
+            SizedBox(height: 8),
+            // ── Comparison cards ──
+            FutureBuilder<Map<String, dynamic>>(
+              key: ValueKey('comp_$_refreshKey'),
+              future: repo.summaryWithPrevious(from, to),
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return Padding(
+                    padding: EdgeInsets.all(20),
+                    child: SkeletonList(),
+                  );
+                }
+                final d = snap.data ?? {};
+                final omzet = d['omzet'] as int? ?? 0;
+                final count = d['count'] as int? ?? 0;
+                final avg = d['avg'] as int? ?? 0;
+                final hasPrev = d['hasPrevious'] as bool? ?? false;
+                final omzetG = d['omzetGrowth'] as double? ?? 0;
+                final countG = d['countGrowth'] as double? ?? 0;
                 return Padding(
-                    padding: EdgeInsets.all(20), child: SkeletonList());
-              }
-              final d = snap.data ?? {};
-              final omzet = d['omzet'] as int? ?? 0;
-              final count = d['count'] as int? ?? 0;
-              final avg = d['avg'] as int? ?? 0;
-              final hasPrev = d['hasPrevious'] as bool? ?? false;
-              final omzetG = d['omzetGrowth'] as double? ?? 0;
-              final countG = d['countGrowth'] as double? ?? 0;
-              return Padding(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: Column(children: [
-                  Row(children: [
-                    Expanded(
-                        child: _StatCard('Omzet', formatRupiah(omzet),
-                            isDark: isDark)),
-                    SizedBox(width: 10),
-                    Expanded(
-                        child: _StatCard('Transaksi', count.toString(),
-                            isDark: isDark)),
-                    SizedBox(width: 10),
-                    Expanded(
-                        child: _StatCard('Rata-rata', formatRupiah(avg),
-                            isDark: isDark)),
-                  ]),
-                  if (hasPrev) ...[
-                    SizedBox(height: 10),
-                    Row(children: [
-                      _GrowthBadge('Omzet', omzetG, isDark: isDark),
-                      SizedBox(width: 10),
-                      _GrowthBadge('Transaksi', countG, isDark: isDark),
-                    ]),
-                  ],
-                ]),
-              );
-            },
-          ),
-          SizedBox(height: 12),
-          // ── Bar Chart ──
-          FutureBuilder<Map<String, int>>(
-            key: ValueKey('chart_$_refreshKey'),
-            future: repo.dailyRevenue(from: from, to: to),
-            builder: (ctx, snap) {
-              final daily = snap.data ?? {};
-              if (daily.isEmpty) return SizedBox.shrink();
-              final entries = daily.entries.toList()
-                ..sort((a, b) => a.key.compareTo(b.key));
-              final maxVal =
-                  entries.fold<int>(0, (m, e) => e.value > m ? e.value : m);
-              final show7 = entries.length > 7;
-              final bars = show7
-                  ? _buildDailyBars(entries, maxVal)
-                  : _buildDayBars(entries, maxVal);
-              return Container(
-                height: 220,
-                margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _StatCard(
+                              'Omzet',
+                              _formatJt(omzet),
+                              isDark: isDark,
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: _StatCard(
+                              'Transaksi',
+                              count.toString(),
+                              isDark: isDark,
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: _StatCard(
+                              'Rata-rata',
+                              _formatJt(avg),
+                              isDark: isDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (hasPrev) ...[
+                        SizedBox(height: 10),
+                        Row(
+                          children: [
+                            _GrowthBadge('Omzet', omzetG, isDark: isDark),
+                            SizedBox(width: 10),
+                            _GrowthBadge('Transaksi', countG, isDark: isDark),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+            SizedBox(height: 12),
+            // ── Bar Chart ──
+            FutureBuilder<Map<String, int>>(
+              key: ValueKey('chart_$_refreshKey'),
+              future: repo.dailyRevenue(from: from, to: to),
+              builder: (ctx, snap) {
+                final daily = snap.data ?? {};
+                if (daily.isEmpty) return SizedBox.shrink();
+                final entries = daily.entries.toList()
+                  ..sort((a, b) => a.key.compareTo(b.key));
+                final maxVal = entries.fold<int>(
+                  0,
+                  (m, e) => e.value > m ? e.value : m,
+                );
+                final show7 = entries.length > 7;
+                final bars = show7
+                    ? _buildDailyBars(entries, maxVal)
+                    : _buildDayBars(entries, maxVal);
+                return Container(
+                  height: 220,
+                  margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
                     color: surf,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border)),
-                child: Column(
+                    border: Border.all(color: border),
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Pendapatan Harian',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelClr)),
+                      Text(
+                        'Pendapatan Harian',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: labelClr,
+                        ),
+                      ),
                       SizedBox(height: 16),
                       Expanded(
-                        child: BarChart(BarChartData(
-                          barGroups: bars,
-                          gridData: FlGridData(
+                        child: BarChart(
+                          BarChartData(
+                            barGroups: bars,
+                            gridData: FlGridData(
                               show: true,
                               drawVerticalLine: false,
                               horizontalInterval: maxVal > 0
                                   ? (maxVal / 4).ceilToDouble()
-                                  : 50000),
-                          titlesData: FlTitlesData(
+                                  : 50000,
+                            ),
+                            titlesData: FlTitlesData(
                               show: true,
                               bottomTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (v, meta) {
-                                        final idx = v.toInt();
-                                        if (idx < 0 ||
-                                            idx >= entries.length) {
-                                          return SizedBox.shrink();
-                                        }
-                                        return _barLabel(idx, entries,
-                                            isDark: isDark);
-                                      },
-                                      reservedSize: 28)),
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  getTitlesWidget: (v, meta) {
+                                    final idx = v.toInt();
+                                    if (idx < 0 || idx >= entries.length) {
+                                      return SizedBox.shrink();
+                                    }
+                                    return _barLabel(
+                                      idx,
+                                      entries,
+                                      isDark: isDark,
+                                    );
+                                  },
+                                  reservedSize: 28,
+                                ),
+                              ),
                               leftTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 52,
-                                      getTitlesWidget: (v, meta) => Text(
-                                          formatRupiah(v.toInt()),
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: textTer)))),
-                              topTitles: AxisTitles(
-                                  sideTitles:
-                                      SideTitles(showTitles: false)),
-                              rightTitles: AxisTitles(
-                                  sideTitles:
-                                      SideTitles(showTitles: false))),
-                          borderData: FlBorderData(show: false),
-                        )),
-                      ),
-                    ]),
-              );
-            },
-          ),
-          // ── Best-Seller ──
-          FutureBuilder<List<Map<String, dynamic>>>(
-            key: ValueKey('top_$_refreshKey'),
-            future: repo.topProducts(from: from, to: to, limit: 5),
-            builder: (ctx, snap) {
-              final list = snap.data ?? [];
-              if (list.isEmpty) return SizedBox.shrink();
-              return Container(
-                margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: surf,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border)),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Produk Terlaris',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelClr)),
-                      SizedBox(height: 12),
-                      ...list.asMap().entries.map((e) {
-                        final p = e.value;
-                        final qty = (p['qty'] as int?) ?? 0;
-                        final rev = (p['revenue'] as int?) ?? 0;
-                        final maxQty = list.isNotEmpty
-                            ? (list.first['qty'] as int?) ?? 1
-                            : 1;
-                        final ratio = maxQty > 0 ? qty / maxQty : 0.0;
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 10),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [
-                                      Expanded(
-                                        child: Text('${p['name']}',
-                                            style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: labelClr)),
-                                      ),
-                                      Text(formatRupiah(rev),
-                                          style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w700,
-                                              color: NusaConfig
-                                                  .primaryColor)),
-                                    ]),
-                                    SizedBox(height: 4),
-                                    ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(3),
-                                      child: LinearProgressIndicator(
-                                        value: ratio.clamp(0.0, 1.0),
-                                        backgroundColor: NusaConfig
-                                            .primaryColor
-                                            .withValues(alpha: 0.12),
-                                        valueColor:
-                                            AlwaysStoppedAnimation(
-                                                NusaConfig.activePrimary),
-                                        minHeight: 4,
-                                      ),
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 52,
+                                  getTitlesWidget: (v, meta) => Text(
+                                    formatRupiah(v.toInt()),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: textTer,
                                     ),
-                                    SizedBox(height: 2),
-                                    Text('${qty}x terjual',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: textTer)),
-                                  ]),
+                                  ),
+                                ),
+                              ),
+                              topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
                             ),
-                          ]),
-                        );
-                      }),
-                    ]),
-              );
-            },
-          ),
-          // ── Pie: Kategori ──
-          FutureBuilder<List<Map<String, dynamic>>>(
-            key: ValueKey('cat_$_refreshKey'),
-            future: repo.salesByCategory(from: from, to: to),
-            builder: (ctx, snap) {
-              final list = snap.data ?? [];
-              if (list.isEmpty) return SizedBox.shrink();
-              final totalRev = list.fold<int>(
-                  0, (s, c) => s + ((c['revenue'] as int?) ?? 0));
-              return Container(
-                margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: surf,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border)),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Penjualan per Kategori',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelClr)),
-                      SizedBox(height: 12),
-                      Row(children: [
-                        SizedBox(
-                          width: 130,
-                          height: 130,
-                          child: PieChart(PieChartData(
-                            sections: list.asMap().entries.map((e) {
-                              final cat = e.value;
-                              final pct = totalRev > 0
-                                  ? ((cat['revenue'] as int) /
-                                          totalRev) *
-                                      100
-                                  : 0.0;
-                              return PieChartSectionData(
-                                  value:
-                                      (cat['revenue'] as int).toDouble(),
-                                  title:
-                                      '${pct.toStringAsFixed(0)}%',
-                                  titleStyle: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white),
-                                  color: _catColors[e.key %
-                                      _catColors.length],
-                                  radius: 55);
-                            }).toList(),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 0,
-                          )),
+                            borderData: FlBorderData(show: false),
+                          ),
                         ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                              children: list.take(6).map((c) {
-                            final pct = totalRev > 0
-                                ? ((c['revenue'] as int) / totalRev) *
-                                    100
-                                : 0.0;
-                            return Padding(
-                              padding:
-                                  EdgeInsets.only(bottom: 6),
-                              child: Row(children: [
-                                Container(
-                                    width: 10,
-                                    height: 10,
-                                    margin: EdgeInsets.only(
-                                        right: 8),
-                                    decoration: BoxDecoration(
-                                        color: _catColors[list.indexOf(
-                                                c) %
-                                            _catColors.length],
-                                        borderRadius:
-                                            BorderRadius.circular(2))),
-                                Expanded(
-                                    child: Text('${c['category']}',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: textSec))),
-                                Text('${pct.toStringAsFixed(0)}%',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: labelClr)),
-                              ]),
-                            );
-                          }).toList()),
-                        ),
-                      ]),
-                    ]),
-              );
-            },
-          ),
-          // ── Pie: Metode Pembayaran ──
-          FutureBuilder<Map<String, int>>(
-            key: ValueKey('pay_$_refreshKey'),
-            future: repo.salesByPaymentMethod(from: from, to: to),
-            builder: (ctx, snap) {
-              final pays = snap.data ?? {};
-              if (pays.isEmpty || pays.values.every((v) => v == 0)) {
-                return SizedBox.shrink();
-              }
-              final totalPay = pays.values.fold(0, (s, v) => s + v);
-              final sorted = pays.entries.toList()
-                ..sort((a, b) => b.value.compareTo(a.value));
-              return Container(
-                margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: surf,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border)),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Metode Pembayaran',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: labelClr)),
-                      SizedBox(height: 12),
-                      Row(children: [
-                        SizedBox(
-                          width: 130,
-                          height: 130,
-                          child: PieChart(PieChartData(
-                            sections: sorted.asMap().entries.map((e) {
-                              final method = e.value.key;
-                              final amt = e.value.value;
-                              final pct = totalPay > 0
-                                  ? (amt / totalPay) * 100
-                                  : 0.0;
-                              return PieChartSectionData(
-                                  value: amt.toDouble(),
-                                  title:
-                                      '${pct.toStringAsFixed(0)}%',
-                                  titleStyle: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white),
-                                  color: _payColor(method),
-                                  radius: 55);
-                            }).toList(),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 0,
-                          )),
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                              children: sorted.map((e) {
-                            final pct = totalPay > 0
-                                ? (e.value / totalPay) * 100
-                                : 0.0;
-                            return Padding(
-                              padding:
-                                  EdgeInsets.only(bottom: 6),
-                              child: Row(children: [
-                                Container(
-                                    width: 10,
-                                    height: 10,
-                                    margin: EdgeInsets.only(
-                                        right: 8),
-                                    decoration: BoxDecoration(
-                                        color: _payColor(e.key),
-                                        borderRadius:
-                                            BorderRadius.circular(2))),
-                                Expanded(
-                                    child: Text(e.key,
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: textSec))),
-                                Text('${pct.toStringAsFixed(0)}%',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: labelClr)),
-                              ]),
-                            );
-                          }).toList()),
-                        ),
-                      ]),
-                      SizedBox(height: 6),
-                      Text('${formatRupiah(totalPay)} total',
-                          style:
-                              TextStyle(fontSize: 11, color: textTer)),
-                    ]),
-              );
-            },
-          ),
-          // ── Export + Share buttons ──
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Row(children: [
-              Expanded(
-                child: NusaButton(
-                  _exporting ? 'Memproses...' : 'Export Laporan',
-                  fullWidth: true,
-                  onPressed: _exporting
-                      ? null
-                      : () async {
-                          final data =
-                              await repo.summary(from: from, to: to);
-                          final items =
-                              (data['items'] as List<Transaction>?) ?? [];
-                          final top = await repo.topProducts(
-                              from: from, to: to);
-                          final cats = await repo.salesByCategory(
-                              from: from, to: to);
-                          final pays = await repo.salesByPaymentMethod(
-                              from: from, to: to);
-                          await _doExport(
-                              items, data, top, cats, pays);
-                        },
-                ),
-              ),
-              SizedBox(width: 10),
-              _shareButton(isDark, loading: _exporting, onPressed: _exporting ? null : _quickSharePdf),
-            ]),
-          ),
-          SizedBox(height: 12),
-          // ── Transaction list ──
-          FutureBuilder<List<Transaction>>(
-            key: ValueKey('list_$_refreshKey'),
-            future: repo.getTransactions(from: from, to: to),
-            builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return Padding(
-                    padding: EdgeInsets.all(16), child: SkeletonList());
-              }
-              if (snap.hasError) {
-                return Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                      child: Text('Gagal memuat: ${snap.error}',
-                          style: TextStyle(color: textSec))),
-                );
-              }
-              final list = snap.data ?? [];
-              if (list.isEmpty) {
-                return Padding(
-                  padding: EdgeInsets.all(16),
-                  child: EmptyState(
-                    icon: Icons.bar_chart_outlined,
-                    message: 'Belum ada transaksi',
+                      ),
+                    ],
                   ),
                 );
-              }
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                itemCount: list.length,
-                separatorBuilder: (_, __) => SizedBox(height: 10),
-                itemBuilder: (_, i) =>
-                    _TxCard(tx: list[i], isDark: isDark),
-              );
-            },
-          ),
-        ]),
+              },
+            ),
+            // ── "Lihat Detail" toggle: grafik & detail on-demand (F) ──
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _detailToggle(isDark),
+            ),
+            if (_detailOpen) ...[
+              // ── Best-Seller ──
+              FutureBuilder<List<Map<String, dynamic>>>(
+                key: ValueKey('top_$_refreshKey'),
+                future: repo.topProducts(from: from, to: to, limit: 5),
+                builder: (ctx, snap) {
+                  final list = snap.data ?? [];
+                  if (list.isEmpty) return SizedBox.shrink();
+                  return Container(
+                    margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: surf,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Produk Terlaris',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: labelClr,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        ...list.asMap().entries.map((e) {
+                          final p = e.value;
+                          final qty = (p['qty'] as int?) ?? 0;
+                          final rev = (p['revenue'] as int?) ?? 0;
+                          final maxQty = list.isNotEmpty
+                              ? (list.first['qty'] as int?) ?? 1
+                              : 1;
+                          final ratio = maxQty > 0 ? qty / maxQty : 0.0;
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${p['name']}',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: labelClr,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            formatRupiah(rev),
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: NusaConfig.primaryColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      SizedBox(height: 4),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(3),
+                                        child: LinearProgressIndicator(
+                                          value: ratio.clamp(0.0, 1.0),
+                                          backgroundColor: NusaConfig
+                                              .primaryColor
+                                              .withValues(alpha: 0.12),
+                                          valueColor: AlwaysStoppedAnimation(
+                                            NusaConfig.activePrimary,
+                                          ),
+                                          minHeight: 4,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        '${qty}x terjual',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: textTer,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              // ── Pie: Kategori ──
+              FutureBuilder<List<Map<String, dynamic>>>(
+                key: ValueKey('cat_$_refreshKey'),
+                future: repo.salesByCategory(from: from, to: to),
+                builder: (ctx, snap) {
+                  final list = snap.data ?? [];
+                  if (list.isEmpty) return SizedBox.shrink();
+                  final totalRev = list.fold<int>(
+                    0,
+                    (s, c) => s + ((c['revenue'] as int?) ?? 0),
+                  );
+                  return Container(
+                    margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: surf,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Penjualan per Kategori',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: labelClr,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 130,
+                              height: 130,
+                              child: PieChart(
+                                PieChartData(
+                                  sections: list.asMap().entries.map((e) {
+                                    final cat = e.value;
+                                    final pct = totalRev > 0
+                                        ? ((cat['revenue'] as int) / totalRev) *
+                                              100
+                                        : 0.0;
+                                    return PieChartSectionData(
+                                      value: (cat['revenue'] as int).toDouble(),
+                                      title: '${pct.toStringAsFixed(0)}%',
+                                      titleStyle: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                      color:
+                                          _catColors[e.key % _catColors.length],
+                                      radius: 55,
+                                    );
+                                  }).toList(),
+                                  sectionsSpace: 2,
+                                  centerSpaceRadius: 0,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                children: list.take(6).map((c) {
+                                  final pct = totalRev > 0
+                                      ? ((c['revenue'] as int) / totalRev) * 100
+                                      : 0.0;
+                                  return Padding(
+                                    padding: EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          margin: EdgeInsets.only(right: 8),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                _catColors[list.indexOf(c) %
+                                                    _catColors.length],
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Text(
+                                            '${c['category']}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: textSec,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${pct.toStringAsFixed(0)}%',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: labelClr,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              // ── Pie: Metode Pembayaran ──
+              FutureBuilder<Map<String, int>>(
+                key: ValueKey('pay_$_refreshKey'),
+                future: repo.salesByPaymentMethod(from: from, to: to),
+                builder: (ctx, snap) {
+                  final pays = snap.data ?? {};
+                  if (pays.isEmpty || pays.values.every((v) => v == 0)) {
+                    return SizedBox.shrink();
+                  }
+                  final totalPay = pays.values.fold(0, (s, v) => s + v);
+                  final sorted = pays.entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value));
+                  return Container(
+                    margin: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: surf,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Metode Pembayaran',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: labelClr,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 130,
+                              height: 130,
+                              child: PieChart(
+                                PieChartData(
+                                  sections: sorted.asMap().entries.map((e) {
+                                    final method = e.value.key;
+                                    final amt = e.value.value;
+                                    final pct = totalPay > 0
+                                        ? (amt / totalPay) * 100
+                                        : 0.0;
+                                    return PieChartSectionData(
+                                      value: amt.toDouble(),
+                                      title: '${pct.toStringAsFixed(0)}%',
+                                      titleStyle: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                      color: _payColor(method),
+                                      radius: 55,
+                                    );
+                                  }).toList(),
+                                  sectionsSpace: 2,
+                                  centerSpaceRadius: 0,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                children: sorted.map((e) {
+                                  final pct = totalPay > 0
+                                      ? (e.value / totalPay) * 100
+                                      : 0.0;
+                                  return Padding(
+                                    padding: EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          margin: EdgeInsets.only(right: 8),
+                                          decoration: BoxDecoration(
+                                            color: _payColor(e.key),
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Text(
+                                            e.key,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: textSec,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${pct.toStringAsFixed(0)}%',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: labelClr,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          '${formatRupiah(totalPay)} total',
+                          style: TextStyle(fontSize: 11, color: textTer),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ], // end _detailOpen (Penjualan)
+            // ── Export + Share buttons ──
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: NusaButton(
+                      _exporting ? 'Memproses...' : 'Export Laporan',
+                      fullWidth: true,
+                      onPressed: _exporting
+                          ? null
+                          : () async {
+                              final data = await repo.summary(
+                                from: from,
+                                to: to,
+                              );
+                              final items =
+                                  (data['items'] as List<Transaction>?) ?? [];
+                              final top = await repo.topProducts(
+                                from: from,
+                                to: to,
+                              );
+                              final cats = await repo.salesByCategory(
+                                from: from,
+                                to: to,
+                              );
+                              final pays = await repo.salesByPaymentMethod(
+                                from: from,
+                                to: to,
+                              );
+                              await _doExport(items, data, top, cats, pays);
+                            },
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  _shareButton(
+                    isDark,
+                    loading: _exporting,
+                    onPressed: _exporting ? null : _quickSharePdf,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12),
+            // ── Transaction list ──
+            FutureBuilder<List<Transaction>>(
+              key: ValueKey('list_$_refreshKey'),
+              future: repo.getTransactions(from: from, to: to),
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return Padding(
+                    padding: EdgeInsets.all(16),
+                    child: SkeletonList(),
+                  );
+                }
+                if (snap.hasError) {
+                  return Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: Text(
+                        'Gagal memuat: ${snap.error}',
+                        style: TextStyle(color: textSec),
+                      ),
+                    ),
+                  );
+                }
+                final list = snap.data ?? [];
+                if (list.isEmpty) {
+                  return Padding(
+                    padding: EdgeInsets.all(16),
+                    child: EmptyState(
+                      icon: Icons.bar_chart_outlined,
+                      message: 'Belum ada transaksi',
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => SizedBox(height: 10),
+                  itemBuilder: (_, i) => _TxCard(tx: list[i], isDark: isDark),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _shareButton(bool isDark, {VoidCallback? onPressed, bool loading = false}) {
+  /// F: tombol "Lihat Detail" — buka/tutup grafik tambahan (best-seller,
+  /// pie kategori, metode bayar, daftar transaksi). Ringkas dulu.
+  Widget _detailToggle(bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => setState(() => _detailOpen = !_detailOpen),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: _detailOpen
+                ? NusaConfig.activePrimary.withValues(alpha: 0.12)
+                : (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _detailOpen
+                  ? NusaConfig.activePrimary.withValues(alpha: 0.5)
+                  : (isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _detailOpen
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                size: 20,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _detailOpen ? 'Sembunyikan Detail' : 'Lihat Detail',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: NusaConfig.activePrimary,
+                  ),
+                ),
+              ),
+              if (!_detailOpen)
+                Text(
+                  'Best seller · kategori · metode bayar',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _shareButton(
+    bool isDark, {
+    VoidCallback? onPressed,
+    bool loading = false,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          width: 48, height: 48,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
             color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+            border: Border.all(
+              color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+            ),
           ),
           alignment: Alignment.center,
           child: loading
               ? SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))
-              : Icon(Icons.share_rounded, size: 20,
-                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                )
+              : Icon(
+                  Icons.share_rounded,
+                  size: 20,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
         ),
       ),
     );
@@ -871,25 +1123,32 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           decoration: BoxDecoration(
             color: color.withValues(alpha: isDark ? 0.15 : 0.1),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: color.withValues(alpha: 0.25)),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            loading
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              loading
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: color))
-                : Icon(icon, size: 18, color: color),
-            SizedBox(width: 6),
-            Text(label,
+                        color: color,
+                      ),
+                    )
+                  : Icon(icon, size: 18, color: color),
+              SizedBox(width: 6),
+              Text(
+                label,
                 style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: color)),
-          ]),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -918,35 +1177,48 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   List<BarChartGroupData> _buildDailyBars(
-      List<MapEntry<String, int>> entries, int maxVal) {
+    List<MapEntry<String, int>> entries,
+    int maxVal,
+  ) {
     return List.generate(entries.length, (i) {
-      return BarChartGroupData(x: i, barRods: [
-        BarChartRodData(
+      return BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
             toY: entries[i].value.toDouble(),
             color: NusaConfig.activePrimary.withValues(alpha: 0.85),
             width: entries.length > 15 ? 8 : 14,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(5))),
-      ]);
+            borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+          ),
+        ],
+      );
     });
   }
 
   List<BarChartGroupData> _buildDayBars(
-      List<MapEntry<String, int>> entries, int maxVal) {
+    List<MapEntry<String, int>> entries,
+    int maxVal,
+  ) {
     return List.generate(entries.length, (i) {
-      return BarChartGroupData(x: i, barRods: [
-        BarChartRodData(
+      return BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
             toY: entries[i].value.toDouble(),
             color: NusaConfig.activePrimary.withValues(alpha: 0.85),
             width: 22,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(6))),
-      ]);
+            borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
+          ),
+        ],
+      );
     });
   }
 
-  Widget _barLabel(int idx, List<MapEntry<String, int>> entries,
-      {bool isDark = false}) {
+  Widget _barLabel(
+    int idx,
+    List<MapEntry<String, int>> entries, {
+    bool isDark = false,
+  }) {
     final key = entries[idx].key;
     final parts = key.split('-');
     if (parts.length == 3) {
@@ -956,21 +1228,25 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           final names = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
           final wd = dt.weekday - 1;
           if (wd >= 0 && wd < 7) {
-            return Text(names[wd],
-                style: TextStyle(
-                    fontSize: 11,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary));
+            return Text(
+              names[wd],
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            );
           }
         }
       }
-      return Text('${parts[2]}/${parts[1]}',
-          style: TextStyle(
-              fontSize: 11,
-              color: isDark
-                  ? NusaConfig.darkTextTertiary
-                  : NusaConfig.textTertiary));
+      return Text(
+        '${parts[2]}/${parts[1]}',
+        style: TextStyle(
+          fontSize: 11,
+          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+        ),
+      );
     }
     return SizedBox.shrink();
   }
@@ -981,10 +1257,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final (from, to) = _range();
     final repo = ReportRepository(ref.read(databaseProvider));
-    final textSec =
-        isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
-    final textTer =
-        isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    final textTer = isDark
+        ? NusaConfig.darkTextTertiary
+        : NusaConfig.textTertiary;
 
     return FutureBuilder<Map<String, dynamic>>(
       key: ValueKey('pl_$_refreshKey'),
@@ -995,8 +1273,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         }
         if (snap.hasError) {
           return Center(
-              child: Text('Gagal memuat: ${snap.error}',
-                  style: TextStyle(color: textSec)));
+            child: Text(
+              'Gagal memuat: ${snap.error}',
+              style: TextStyle(color: textSec),
+            ),
+          );
         }
         final d = snap.data ?? {};
         final pendapatan = d['pendapatan'] as int? ?? 0;
@@ -1015,139 +1296,206 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
         return RefreshIndicator(
           onRefresh: () async => setState(() => _refreshKey++),
-          child: ListView(padding: EdgeInsets.all(16), children: [
-            // Header card
-            NusaCard(Column(children: [
-              Text(
-                labaBersih >= 0 ? 'Laba Bersih' : 'Rugi Bersih',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: textSec),
+          child: ListView(
+            padding: EdgeInsets.all(16),
+            children: [
+              // Header card
+              NusaCard(
+                Column(
+                  children: [
+                    Text(
+                      labaBersih >= 0 ? 'Laba Bersih' : 'Rugi Bersih',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: textSec,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      formatRupiah(labaBersih.abs()),
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: labaBersih >= 0
+                            ? NusaConfig.accentGreenDark
+                            : NusaConfig.activePrimary,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '$txCount transaksi',
+                      style: TextStyle(fontSize: 12, color: textTer),
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(height: 6),
-              Text(formatRupiah(labaBersih.abs()),
-                  style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: labaBersih >= 0
-                          ? NusaConfig.accentGreenDark
-                          : NusaConfig.activePrimary)),
-              SizedBox(height: 4),
-              Text('$txCount transaksi',
-                  style: TextStyle(fontSize: 12, color: textTer)),
-            ])),
-            SizedBox(height: 16),
-            // ── Export + Share buttons in Laba Rugi tab too ──
-            Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Row(children: [
-                Expanded(
-                  child: NusaButton(
-                    _exporting ? 'Memproses...' : 'Export Laporan',
-                    fullWidth: true,
-                    onPressed: _exporting
-                        ? null
-                        : () async {
-                            final data =
-                                await repo.summary(from: from, to: to);
-                            final items =
-                                (data['items'] as List<Transaction>?) ??
-                                    [];
-                            final top = await repo.topProducts(
-                                from: from, to: to);
-                            final cats =
-                                await repo.salesByCategory(
-                                    from: from, to: to);
-                            final pays =
-                                await repo.salesByPaymentMethod(
-                                    from: from, to: to);
-                            await _doExport(
-                                items, data, top, cats, pays);
-                          },
-                  ),
+              SizedBox(height: 16),
+              // ── Export + Share buttons in Laba Rugi tab too ──
+              Padding(
+                padding: EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: NusaButton(
+                        _exporting ? 'Memproses...' : 'Export Laporan',
+                        fullWidth: true,
+                        onPressed: _exporting
+                            ? null
+                            : () async {
+                                final data = await repo.summary(
+                                  from: from,
+                                  to: to,
+                                );
+                                final items =
+                                    (data['items'] as List<Transaction>?) ?? [];
+                                final top = await repo.topProducts(
+                                  from: from,
+                                  to: to,
+                                );
+                                final cats = await repo.salesByCategory(
+                                  from: from,
+                                  to: to,
+                                );
+                                final pays = await repo.salesByPaymentMethod(
+                                  from: from,
+                                  to: to,
+                                );
+                                await _doExport(items, data, top, cats, pays);
+                              },
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    _iconButton(
+                      icon: Icons.share_rounded,
+                      label: 'Bagikan',
+                      color: NusaConfig.info,
+                      isDark: isDark,
+                      onPressed: _exporting ? null : _quickSharePdf,
+                      loading: _exporting,
+                    ),
+                  ],
                 ),
-                SizedBox(width: 10),
-                _iconButton(
-                  icon: Icons.share_rounded,
-                  label: 'Bagikan',
-                  color: NusaConfig.info,
+              ),
+              _plSection('Pendapatan', [
+                _plRow(
+                  'Pendapatan Penjualan',
+                  formatRupiah(pendapatan),
+                  isHighlight: true,
                   isDark: isDark,
-                  onPressed: _exporting ? null : _quickSharePdf,
-                  loading: _exporting,
                 ),
-              ]),
-            ),
-            _plSection('Pendapatan', [
-              _plRow('Pendapatan Penjualan', formatRupiah(pendapatan),
-                  isHighlight: true, isDark: isDark),
-              if (retur > 0)
-                _plRow('Retur / Refund', formatRupiah(retur),
-                    isDeduct: true, isDark: isDark),
-              _plRow('HPP (Harga Pokok Penjualan)',
+                if (retur > 0)
+                  _plRow(
+                    'Retur / Refund',
+                    formatRupiah(retur),
+                    isDeduct: true,
+                    isDark: isDark,
+                  ),
+                _plRow(
+                  'HPP (Harga Pokok Penjualan)',
                   '${formatRupiah(hpp)}',
                   isDeduct: true,
-                  isDark: isDark),
-              if (hppRetur > 0)
-                _plRow('HPP Barang Retur', formatRupiah(hppRetur),
-                    isAdd: true, isDark: isDark),
-              _plDivider(isDark: isDark),
-              _plRow('Laba Kotor', formatRupiah(labaKotor),
+                  isDark: isDark,
+                ),
+                if (hppRetur > 0)
+                  _plRow(
+                    'HPP Barang Retur',
+                    formatRupiah(hppRetur),
+                    isAdd: true,
+                    isDark: isDark,
+                  ),
+                _plDivider(isDark: isDark),
+                _plRow(
+                  'Laba Kotor',
+                  formatRupiah(labaKotor),
                   isBold: true,
                   color: labaKotor >= 0
                       ? NusaConfig.accentGreenDark
                       : NusaConfig.activePrimary,
-                  isDark: isDark),
-            ], isDark: isDark),
-            SizedBox(height: 12),
-            _plSection('Beban', [
-              _plRow('Pengeluaran Operasional',
+                  isDark: isDark,
+                ),
+              ], isDark: isDark),
+              SizedBox(height: 12),
+              _plSection('Beban', [
+                _plRow(
+                  'Pengeluaran Operasional',
                   formatRupiah(expenses),
                   isDeduct: true,
-                  isDark: isDark),
-              _plRow('Payroll / Gaji', formatRupiah(payroll),
-                  isDeduct: true, isDark: isDark),
-              _plRow('Waste / Barang Rusak', formatRupiah(waste),
-                  isDeduct: true, isDark: isDark),
-              _plRow('Likuiditas Keluar', formatRupiah(liqOut),
-                  isDeduct: true, isDark: isDark),
-              _plRow('Likuiditas Masuk', formatRupiah(liqIn),
-                  isAdd: true, isDark: isDark),
-              _plDivider(isDark: isDark),
-              _plRow('Total Beban', formatRupiah(totalBeban),
-                  isBold: true, isDeduct: true, isDark: isDark),
-            ], isDark: isDark),
-            SizedBox(height: 12),
-            NusaCard(Column(children: [
-              _plRow('Laba / Rugi Bersih',
-                  formatRupiah(labaBersih.abs()),
+                  isDark: isDark,
+                ),
+                _plRow(
+                  'Payroll / Gaji',
+                  formatRupiah(payroll),
+                  isDeduct: true,
+                  isDark: isDark,
+                ),
+                _plRow(
+                  'Waste / Barang Rusak',
+                  formatRupiah(waste),
+                  isDeduct: true,
+                  isDark: isDark,
+                ),
+                _plRow(
+                  'Likuiditas Keluar',
+                  formatRupiah(liqOut),
+                  isDeduct: true,
+                  isDark: isDark,
+                ),
+                _plRow(
+                  'Likuiditas Masuk',
+                  formatRupiah(liqIn),
+                  isAdd: true,
+                  isDark: isDark,
+                ),
+                _plDivider(isDark: isDark),
+                _plRow(
+                  'Total Beban',
+                  formatRupiah(totalBeban),
                   isBold: true,
-                  isHighlight: true,
-                  color: labaBersih >= 0
-                      ? NusaConfig.accentGreenDark
-                      : NusaConfig.activePrimary,
-                  isDark: isDark),
-              SizedBox(height: 4),
-              Text(
-                labaBersih >= 0 ? 'Untung' : 'Rugi',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: labaBersih >= 0
-                        ? NusaConfig.accentGreenDark
-                        : NusaConfig.activePrimary),
+                  isDeduct: true,
+                  isDark: isDark,
+                ),
+              ], isDark: isDark),
+              SizedBox(height: 12),
+              NusaCard(
+                Column(
+                  children: [
+                    _plRow(
+                      'Laba / Rugi Bersih',
+                      formatRupiah(labaBersih.abs()),
+                      isBold: true,
+                      isHighlight: true,
+                      color: labaBersih >= 0
+                          ? NusaConfig.accentGreenDark
+                          : NusaConfig.activePrimary,
+                      isDark: isDark,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      labaBersih >= 0 ? 'Untung' : 'Rugi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: labaBersih >= 0
+                            ? NusaConfig.accentGreenDark
+                            : NusaConfig.activePrimary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ])),
-            SizedBox(height: 16),
-            Text(
-              '* Perhitungan berdasarkan data yang tersedia. HPP dari harga beli produk; item manual memakai harga modal yang diisi saat transaksi.',
-              style: TextStyle(
+              SizedBox(height: 16),
+              Text(
+                '* Perhitungan berdasarkan data yang tersedia. HPP dari harga beli produk; item manual memakai harga modal yang diisi saat transaksi.',
+                style: TextStyle(
                   fontSize: 11,
                   color: textTer,
-                  fontStyle: FontStyle.italic),
-              textAlign: TextAlign.center,
-            ),
-          ]),
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1159,10 +1507,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final (from, to) = _range();
     final repo = ReportRepository(ref.read(databaseProvider));
     final financeRepo = FinanceRepository(ref.read(databaseProvider));
-    final textSec =
-        isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
-    final textTer =
-        isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    final textTer = isDark
+        ? NusaConfig.darkTextTertiary
+        : NusaConfig.textTertiary;
     final surf = isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor;
     final border = isDark ? NusaConfig.darkBorder : NusaConfig.borderColor;
 
@@ -1173,8 +1523,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         future: repo.expensesByCategory(from: from, to: to),
         builder: (ctx, snapCat) {
           final cats = snapCat.data ?? <Map<String, dynamic>>[];
-          final totalCat =
-              cats.fold<int>(0, (s, c) => s + (c['amount'] as int? ?? 0));
+          final totalCat = cats.fold<int>(
+            0,
+            (s, c) => s + (c['amount'] as int? ?? 0),
+          );
           return FutureBuilder<List<Expense>>(
             key: ValueKey('exp_$_refreshKey'),
             future: financeRepo.getExpenses(),
@@ -1183,17 +1535,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               final (fltFrom, fltTo) = (from, to);
               final list = all.where((e) {
                 if (fltFrom != null &&
-                    e.date.isBefore(DateTime(fltFrom.year, fltFrom.month, fltFrom.day))) {
+                    e.date.isBefore(
+                      DateTime(fltFrom.year, fltFrom.month, fltFrom.day),
+                    )) {
                   return false;
                 }
                 if (fltTo != null &&
-                    e.date.isAfter(DateTime(fltTo.year, fltTo.month, fltTo.day, 23, 59, 59))) {
+                    e.date.isAfter(
+                      DateTime(fltTo.year, fltTo.month, fltTo.day, 23, 59, 59),
+                    )) {
                   return false;
                 }
                 return true;
               }).toList();
-              final totalList =
-                  list.fold<int>(0, (s, e) => s + e.amount);
+              final totalList = list.fold<int>(0, (s, e) => s + e.amount);
 
               if (snapList.connectionState != ConnectionState.done &&
                   snapCat.connectionState != ConnectionState.done) {
@@ -1208,110 +1563,151 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: [
-                          Icon(Icons.money_off_csred_outlined,
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.money_off_csred_outlined,
                               size: 18,
-                              color: Colors.red.shade400),
-                          SizedBox(width: 6),
-                          Text('Total Pengeluaran',
+                              color: Colors.red.shade400,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Total Pengeluaran',
                               style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: textSec)),
-                        ]),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textSec,
+                              ),
+                            ),
+                          ],
+                        ),
                         SizedBox(height: 8),
-                        Text(formatRupiah(totalCat),
-                            style: TextStyle(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.red.shade400)),
+                        Text(
+                          _formatJt(totalCat),
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.red.shade400,
+                          ),
+                        ),
                         SizedBox(height: 4),
-                        Text('$list.length pengeluaran',
-                            style: TextStyle(fontSize: 12, color: textTer)),
+                        Text(
+                          '$list.length pengeluaran',
+                          style: TextStyle(fontSize: 12, color: textTer),
+                        ),
                       ],
                     ),
                   ),
                   SizedBox(height: 16),
-                  if (cats.isNotEmpty) ...[
+                  // F: ringkas dulu — detail grafik di balik toggle
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: _detailToggle(isDark),
+                  ),
+                  if (_detailOpen && cats.isNotEmpty) ...[
                     // ── Pie chart per kategori ──
                     Container(
                       padding: EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                          color: surf,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: border)),
+                        color: surf,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: border),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Pengeluaran per Kategori',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? NusaConfig.darkTextPrimary
-                                      : NusaConfig.textPrimary)),
+                          Text(
+                            'Pengeluaran per Kategori',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary,
+                            ),
+                          ),
                           SizedBox(height: 12),
-                          Row(children: [
-                            SizedBox(
-                              width: 130,
-                              height: 130,
-                              child: PieChart(PieChartData(
-                                sections: cats.asMap().entries.map((e) {
-                                  final cat = e.value;
-                                  final pct = totalCat > 0
-                                      ? ((cat['amount'] as int) / totalCat) *
-                                          100
-                                      : 0.0;
-                                  return PieChartSectionData(
-                                      value:
-                                          (cat['amount'] as int).toDouble(),
-                                      title: '${pct.toStringAsFixed(0)}%',
-                                      titleStyle: TextStyle(
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 130,
+                                height: 130,
+                                child: PieChart(
+                                  PieChartData(
+                                    sections: cats.asMap().entries.map((e) {
+                                      final cat = e.value;
+                                      final pct = totalCat > 0
+                                          ? ((cat['amount'] as int) /
+                                                    totalCat) *
+                                                100
+                                          : 0.0;
+                                      return PieChartSectionData(
+                                        value: (cat['amount'] as int)
+                                            .toDouble(),
+                                        title: '${pct.toStringAsFixed(0)}%',
+                                        titleStyle: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
-                                          color: Colors.white),
-                                      color: _catColors[
-                                          e.key % _catColors.length],
-                                      radius: 55);
-                                }).toList(),
-                                sectionsSpace: 2,
-                                centerSpaceRadius: 0,
-                              )),
-                            ),
-                            SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
+                                          color: Colors.white,
+                                        ),
+                                        color:
+                                            _catColors[e.key %
+                                                _catColors.length],
+                                        radius: 55,
+                                      );
+                                    }).toList(),
+                                    sectionsSpace: 2,
+                                    centerSpaceRadius: 0,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
                                   children: cats.take(6).map((c) {
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: 6),
-                                  child: Row(children: [
-                                    Container(
-                                        width: 10,
-                                        height: 10,
-                                        margin: EdgeInsets.only(right: 8),
-                                        decoration: BoxDecoration(
-                                            color: _catColors[
-                                                cats.indexOf(c) %
-                                                    _catColors.length],
-                                            borderRadius:
-                                                BorderRadius.circular(2))),
-                                    Expanded(
-                                        child: Text('${c['category']}',
-                                            style: TextStyle(
+                                    return Padding(
+                                      padding: EdgeInsets.only(bottom: 6),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            margin: EdgeInsets.only(right: 8),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  _catColors[cats.indexOf(c) %
+                                                      _catColors.length],
+                                              borderRadius:
+                                                  BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Text(
+                                              '${c['category']}',
+                                              style: TextStyle(
                                                 fontSize: 12,
-                                                color: textSec))),
-                                    Text(formatRupiah(c['amount'] as int),
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: isDark
-                                                ? NusaConfig.darkTextPrimary
-                                                : NusaConfig.textPrimary)),
-                                  ]),
-                                );
-                              }).toList()),
-                            ),
-                          ]),
+                                                color: textSec,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            formatRupiah(c['amount'] as int),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? NusaConfig.darkTextPrimary
+                                                  : NusaConfig.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -1320,19 +1716,23 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     Container(
                       padding: EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                          color: surf,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: border)),
+                        color: surf,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: border),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Perbandingan Kategori',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? NusaConfig.darkTextPrimary
-                                      : NusaConfig.textPrimary)),
+                          Text(
+                            'Perbandingan Kategori',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary,
+                            ),
+                          ),
                           SizedBox(height: 14),
                           ...cats.take(6).map((c) {
                             final amount = c['amount'] as int;
@@ -1342,23 +1742,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             return Padding(
                               padding: EdgeInsets.only(bottom: 10),
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text('${c['category']}',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: textSec)),
-                                        Text(
-                                            '${pct.toStringAsFixed(0)}% · ${formatRupiah(amount)}',
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: textTer)),
-                                      ]),
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '${c['category']}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: textSec,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${pct.toStringAsFixed(0)}% · ${formatRupiah(amount)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: textTer,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                   SizedBox(height: 4),
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
@@ -1368,10 +1773,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                       backgroundColor: isDark
                                           ? NusaConfig.darkSurface2
                                           : NusaConfig.backgroundColor,
-                                      valueColor:
-                                          AlwaysStoppedAnimation(
-                                              _catColors[cats.indexOf(c) %
-                                                  _catColors.length]),
+                                      valueColor: AlwaysStoppedAnimation(
+                                        _catColors[cats.indexOf(c) %
+                                            _catColors.length],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1382,7 +1787,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       ),
                     ),
                     SizedBox(height: 16),
-                  ] else
+                  ] else if (!_detailOpen && cats.isNotEmpty)
+                    // Detail tersembunyi — toggle di atas menunjukkan ringkas.
+                    SizedBox.shrink()
+                  else
                     // Empty state when no expenses in period
                     EmptyState(
                       icon: Icons.receipt_long_outlined,
@@ -1391,24 +1799,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                   // ── Daftar pengeluaran ──
                   if (list.isNotEmpty) ...[
-                    Text('Daftar Pengeluaran',
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary)),
+                    Text(
+                      'Daftar Pengeluaran',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
                     SizedBox(height: 10),
-                    ...list.map((e) => Container(
-                          margin: EdgeInsets.only(bottom: 8),
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: surf,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: border),
-                          ),
-                          child: Row(children: [
+                    ...list.map(
+                      (e) => Container(
+                        margin: EdgeInsets.only(bottom: 8),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: surf,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: border),
+                        ),
+                        child: Row(
+                          children: [
                             Container(
                               width: 36,
                               height: 36,
@@ -1416,52 +1831,64 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 color: Colors.red.shade50,
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Icon(Icons.shopping_cart_outlined,
-                                  size: 18,
-                                  color: Colors.red.shade400),
+                              child: Icon(
+                                Icons.shopping_cart_outlined,
+                                size: 18,
+                                color: Colors.red.shade400,
+                              ),
                             ),
                             SizedBox(width: 12),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                      '${e.category}'
-                                      '${e.description.isNotEmpty ? ' — ${e.description}' : ''}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDark
-                                              ? NusaConfig.darkTextPrimary
-                                              : NusaConfig.textPrimary)),
+                                    '${e.category}'
+                                    '${e.description.isNotEmpty ? ' — ${e.description}' : ''}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? NusaConfig.darkTextPrimary
+                                          : NusaConfig.textPrimary,
+                                    ),
+                                  ),
                                   SizedBox(height: 2),
                                   Text(
-                                      '${e.date.day.toString().padLeft(2, '0')}/${e.date.month.toString().padLeft(2, '0')}/${e.date.year}',
-                                      style: TextStyle(
-                                          fontSize: 11, color: textTer)),
+                                    '${e.date.day.toString().padLeft(2, '0')}/${e.date.month.toString().padLeft(2, '0')}/${e.date.year}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: textTer,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            Text(formatRupiah(e.amount),
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.red.shade400)),
-                          ]),
-                        )),
+                            Text(
+                              formatRupiah(e.amount),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.red.shade400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     SizedBox(height: 8),
                     Center(
                       child: Text(
                         'Total: ${formatRupiah(totalList)}',
                         style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -1475,70 +1902,85 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Widget _plSection(String title, List<Widget> rows,
-          {bool isDark = false}) =>
-      NusaCard(Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
+  Widget _plSection(String title, List<Widget> rows, {bool isDark = false}) =>
+      NusaCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
               style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary)),
-          SizedBox(height: 12),
-          ...rows,
-        ],
-      ));
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
+              ),
+            ),
+            SizedBox(height: 12),
+            ...rows,
+          ],
+        ),
+      );
 
-  Widget _plRow(String label, String value,
-      {bool isBold = false,
-      bool isDeduct = false,
-      bool isAdd = false,
-      bool isHighlight = false,
-      Color? color,
-      bool isDark = false}) {
+  Widget _plRow(
+    String label,
+    String value, {
+    bool isBold = false,
+    bool isDeduct = false,
+    bool isAdd = false,
+    bool isHighlight = false,
+    Color? color,
+    bool isDark = false,
+  }) {
     final prefix = isDeduct ? '\u2212 ' : (isAdd ? '+ ' : '');
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
-      child:
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: isHighlight
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                color: isHighlight
-                    ? (isDark
+              fontSize: 14,
+              fontWeight: isHighlight ? FontWeight.w700 : FontWeight.w500,
+              color: isHighlight
+                  ? (isDark
                         ? NusaConfig.darkTextPrimary
                         : NusaConfig.textPrimary)
-                    : (isDark
+                  : (isDark
                         ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary))),
-        Text('$prefix$value',
+                        : NusaConfig.textSecondary),
+            ),
+          ),
+          Text(
+            '$prefix$value',
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: isBold || isHighlight
-                    ? FontWeight.w700
-                    : FontWeight.w600,
-                color: color ??
-                    (isDeduct
-                        ? Colors.red.shade400
-                        : isAdd
-                            ? Colors.green
-                            : (isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary)))),
-      ]),
+              fontSize: 14,
+              fontWeight: isBold || isHighlight
+                  ? FontWeight.w700
+                  : FontWeight.w600,
+              color:
+                  color ??
+                  (isDeduct
+                      ? Colors.red.shade400
+                      : isAdd
+                      ? Colors.green
+                      : (isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _plDivider({bool isDark = false}) => Divider(
-      height: 16,
-      thickness: 1,
-      color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor);
+    height: 16,
+    thickness: 1,
+    color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+  );
 
   // ── Ringkasan Harian ───────────────────────────────────────────────
 
@@ -1552,8 +1994,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       builder: (ctx, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: SkeletonList());
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SkeletonList(),
+          );
         }
         final d = snap.data ?? {};
         final omzet = d['omzet'] as int? ?? 0;
@@ -1563,42 +2006,46 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         final omzetG = d['omzetGrowth'] as double? ?? 0;
 
         return Padding(
-          padding:
-              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: NusaCard(
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Icon(Icons.today_rounded,
+                Row(
+                  children: [
+                    Icon(
+                      Icons.today_rounded,
                       size: 18,
                       color: isDark
                           ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary),
-                  SizedBox(width: 6),
-                  Text('Ringkasan Hari Ini',
+                          : NusaConfig.textSecondary,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Ringkasan Hari Ini',
                       style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary)),
-                  Spacer(),
-                  if (hasPrev)
-                    _miniGrowth(omzetG,
-                        label: 'vs kemarin', isDark: isDark),
-                ]),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    Spacer(),
+                    if (hasPrev)
+                      _miniGrowth(omzetG, label: 'vs kemarin', isDark: isDark),
+                  ],
+                ),
                 SizedBox(height: 12),
-                Row(children: [
-                  _dailyStat('Omzet', formatRupiah(omzet),
-                      isDark: isDark),
-                  _dailyDivider(),
-                  _dailyStat('Transaksi', count.toString(),
-                      isDark: isDark),
-                  _dailyDivider(),
-                  _dailyStat('Rata-rata', formatRupiah(avg),
-                      isDark: isDark),
-                ]),
+                Row(
+                  children: [
+                    _dailyStat('Omzet', formatRupiah(omzet), isDark: isDark),
+                    _dailyDivider(),
+                    _dailyStat('Transaksi', count.toString(), isDark: isDark),
+                    _dailyDivider(),
+                    _dailyStat('Rata-rata', formatRupiah(avg), isDark: isDark),
+                  ],
+                ),
               ],
             ),
           ),
@@ -1607,8 +2054,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Future<Map<String, dynamic>> _fetchDailySummary(
-      ReportRepository repo) async {
+  Future<Map<String, dynamic>> _fetchDailySummary(ReportRepository repo) async {
     final now = DateTime.now();
     final todayFrom = DateTime(now.year, now.month, now.day);
     return repo.summaryWithPrevious(todayFrom, now);
@@ -1616,20 +2062,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Widget _dailyStat(String label, String value, {bool isDark = false}) {
     return Expanded(
-      child: Column(children: [
-        Text(value,
+      child: Column(
+        children: [
+          Text(
+            value,
             style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: NusaConfig.activePrimary)),
-        SizedBox(height: 2),
-        Text(label,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: NusaConfig.activePrimary,
+            ),
+          ),
+          SizedBox(height: 2),
+          Text(
+            label,
             style: TextStyle(
-                fontSize: 11,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary)),
-      ]),
+              fontSize: 11,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1642,21 +2096,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Widget _miniGrowth(double pct,
-      {String label = '', bool isDark = false}) {
+  Widget _miniGrowth(double pct, {String label = '', bool isDark = false}) {
     final up = pct >= 0;
-    final color =
-        up ? NusaConfig.accentGreenDark : NusaConfig.activePrimary;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(up ? Icons.trending_up : Icons.trending_down,
-          size: 14, color: color),
-      SizedBox(width: 3),
-      Text('${up ? "+" : ""}${pct.toStringAsFixed(1)}% $label',
+    final color = up ? NusaConfig.accentGreenDark : NusaConfig.activePrimary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          up ? Icons.trending_up : Icons.trending_down,
+          size: 14,
+          color: color,
+        ),
+        SizedBox(width: 3),
+        Text(
+          '${up ? "+" : ""}${pct.toStringAsFixed(1)}% $label',
           style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color)),
-    ]);
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
   }
 
   // ── MAIN BUILD ─────────────────────────────────────────────────────
@@ -1666,49 +2127,56 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
       'Laporan',
-      Column(children: [
-        SizedBox(height: 6),
-        // Row: Tabs (left, in 1 card) + period dropdown (right, card style)
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Row(children: [
-            // Segmented toggle in 1 card
-            Expanded(
-              child: Container(
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? NusaConfig.darkSurface
-                      : NusaConfig.backgroundColor,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
+      Column(
+        children: [
+          SizedBox(height: 6),
+          // Row: Tabs (left, in 1 card) + period dropdown (right, card style)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                // Segmented toggle in 1 card
+                Expanded(
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
                       color: isDark
-                          ? NusaConfig.darkBorder
-                          : NusaConfig.dividerColor),
+                          ? NusaConfig.darkSurface
+                          : NusaConfig.backgroundColor,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? NusaConfig.darkBorder
+                            : NusaConfig.dividerColor,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        _segBtn('Penjualan', 0, isDark: isDark),
+                        _segBtn('Laba Rugi', 1, isDark: isDark),
+                        _segBtn('Pengeluaran', 2, isDark: isDark),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Row(children: [
-                  _segBtn('Penjualan', 0, isDark: isDark),
-                  _segBtn('Laba Rugi', 1, isDark: isDark),
-                  _segBtn('Pengeluaran', 2, isDark: isDark),
-                ]),
-              ),
+                SizedBox(width: 8),
+                // Period dropdown card-style
+                _periodDropdown(isDark),
+              ],
             ),
-            SizedBox(width: 8),
-            // Period dropdown card-style
-            _periodDropdown(isDark),
-          ]),
-        ),
-        SizedBox(height: 2),
-        // Ringkasan Harian card (only for Penjualan tab)
-        if (_tab == 0) _ringkasanHarianCard(),
-        Expanded(
-          child: _tab == 0
-              ? _penjualanTab()
-              : _tab == 1
-                  ? _labaRugiTab()
-                  : _pengeluaranTab(),
-        ),
-      ]),
+          ),
+          SizedBox(height: 2),
+          // Ringkasan Harian card (only for Penjualan tab)
+          if (_tab == 0) _ringkasanHarianCard(),
+          Expanded(
+            child: _tab == 0
+                ? _penjualanTab()
+                : _tab == 1
+                ? _labaRugiTab()
+                : _pengeluaranTab(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1720,21 +2188,29 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         color: isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _period == 'custom' ? 'custom' : _period,
           isDense: true,
           style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
           borderRadius: BorderRadius.circular(12),
           underline: SizedBox.shrink(),
-          icon: Icon(Icons.expand_more_rounded,
-              size: 18,
-              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+          icon: Icon(
+            Icons.expand_more_rounded,
+            size: 18,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
           items: [
             _ddItem('Hari ini'),
             _ddItem('Kemarin'),
@@ -1749,9 +2225,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 child: Text(
                   _periodLabel(),
                   style: TextStyle(
-                      fontSize: 11,
-                      color: NusaConfig.activePrimary,
-                      fontWeight: FontWeight.w700),
+                    fontSize: 11,
+                    color: NusaConfig.activePrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             _ddItem('Pilih Periode'),
@@ -1772,10 +2249,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  DropdownMenuItem<String> _ddItem(String label) => DropdownMenuItem(
-        value: label,
-        child: Text(label),
-      );
+  DropdownMenuItem<String> _ddItem(String label) =>
+      DropdownMenuItem(value: label, child: Text(label));
 
   Widget _segBtn(String label, int idx, {bool isDark = false}) {
     final sel = idx == _tab;
@@ -1789,16 +2264,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             color: sel ? NusaConfig.activePrimary : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: sel
-                    ? Colors.white
-                    : (isDark
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: sel
+                  ? Colors.white
+                  : (isDark
                         ? NusaConfig.darkTextSecondary
                         : NusaConfig.textSecondary),
-              )),
+            ),
+          ),
         ),
       ),
     );
@@ -1815,21 +2292,30 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => NusaCard(
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary)),
-          SizedBox(height: 6),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: NusaConfig.activePrimary)),
-        ]),
-      );
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+        ),
+        SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: NusaConfig.activePrimary,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _GrowthBadge extends StatelessWidget {
@@ -1851,28 +2337,40 @@ class _GrowthBadge extends StatelessWidget {
               : NusaConfig.errorSoft.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(children: [
-          Icon(up ? Icons.trending_up : Icons.trending_down,
-              size: 18, color: color),
-          SizedBox(width: 6),
-          Expanded(
-            child: Column(
+        child: Row(
+          children: [
+            Icon(
+              up ? Icons.trending_up : Icons.trending_down,
+              size: 18,
+              color: color,
+            ),
+            SizedBox(width: 6),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary)),
-                  Text('${up ? "+" : ""}${pct.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: color)),
-                ]),
-          ),
-        ]),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    '${up ? "+" : ""}${pct.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1888,54 +2386,75 @@ class _TxCard extends StatelessWidget {
     final dateStr =
         '${tx.date.day}/${tx.date.month}/${tx.date.year} ${tx.date.hour.toString().padLeft(2, '0')}:${tx.date.minute.toString().padLeft(2, '0')}';
     final isVoided = tx.status == 'Void';
-    final textPri =
-        isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
-    final textSec =
-        isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+    final textPri = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
 
     return NusaCard(
       Opacity(
         opacity: isVoided ? 0.55 : 1.0,
-        child: Row(children: [
-          Expanded(
-            child: Column(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Text(tx.invoice,
+                  Row(
+                    children: [
+                      Text(
+                        tx.invoice,
                         style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: textPri)),
-                    if (isVoided) ...[
-                      SizedBox(width: 8),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: NusaConfig.activePrimary
-                              .withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: textPri,
                         ),
-                        child: Text('VOID',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: NusaConfig.activePrimary)),
                       ),
+                      if (isVoided) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.activePrimary.withValues(
+                              alpha: 0.12,
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'VOID',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ]),
+                  ),
                   SizedBox(height: 4),
-                  Text('$dateStr \u2022 ${tx.paymentMethod}',
-                      style: TextStyle(fontSize: 13, color: textSec)),
-                ]),
-          ),
-          Text(formatRupiah(tx.total),
+                  Text(
+                    '$dateStr \u2022 ${tx.paymentMethod}',
+                    style: TextStyle(fontSize: 13, color: textSec),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              formatRupiah(tx.total),
               style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: NusaConfig.activePrimary)),
-        ]),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -51,33 +51,43 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   List<Transaction> _filter(List<Transaction> all) {
     final now = DateTime.now();
     var filtered = switch (_timeFilter) {
-      'Hari ini' => all
-          .where((t) =>
-              !t.date.isBefore(DateTime(now.year, now.month, now.day)))
-          .toList(),
-      'Kemarin' => all
-          .where((t) =>
-              !t.date.isBefore(DateTime(now.year, now.month, now.day - 1)) &&
-              t.date.isBefore(DateTime(now.year, now.month, now.day)))
-          .toList(),
-      'Minggu ini' => all
-          .where((t) => t.date.isAfter(now.subtract(Duration(days: 7))))
-          .toList(),
-      'Bulan ini' => all
-          .where((t) => t.date.isAfter(now.subtract(Duration(days: 30))))
-          .toList(),
-      'Tahun ini' => all
-          .where((t) => !t.date.isBefore(DateTime(now.year, 1, 1)))
-          .toList(),
+      'Hari ini' =>
+        all
+            .where(
+              (t) => !t.date.isBefore(DateTime(now.year, now.month, now.day)),
+            )
+            .toList(),
+      'Kemarin' =>
+        all
+            .where(
+              (t) =>
+                  !t.date.isBefore(
+                    DateTime(now.year, now.month, now.day - 1),
+                  ) &&
+                  t.date.isBefore(DateTime(now.year, now.month, now.day)),
+            )
+            .toList(),
+      'Minggu ini' =>
+        all
+            .where((t) => t.date.isAfter(now.subtract(Duration(days: 7))))
+            .toList(),
+      'Bulan ini' =>
+        all
+            .where((t) => t.date.isAfter(now.subtract(Duration(days: 30))))
+            .toList(),
+      'Tahun ini' =>
+        all.where((t) => !t.date.isBefore(DateTime(now.year, 1, 1))).toList(),
       'Semua' => all,
-      'custom' => _dateRange == null
-          ? all
-          : all
-              .where((t) =>
-                  !t.date.isBefore(_dateRange!.start) &&
-                  !t.date.isAfter(
-                      _dateRange!.end.add(Duration(days: 1))))
-              .toList(),
+      'custom' =>
+        _dateRange == null
+            ? all
+            : all
+                  .where(
+                    (t) =>
+                        !t.date.isBefore(_dateRange!.start) &&
+                        !t.date.isAfter(_dateRange!.end.add(Duration(days: 1))),
+                  )
+                  .toList(),
       _ => all,
     };
     if (_payFilter != 'Semua') {
@@ -114,13 +124,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Invoice: ${tx.invoice}',
-                style: TextStyle(fontWeight: FontWeight.w600)),
+            Text(
+              'Invoice: ${tx.invoice}',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             SizedBox(height: 4),
-            Text('Total: ${formatRupiah(tx.total)}',
-                style: TextStyle(
-                    color: NusaConfig.activePrimary,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              'Total: ${formatRupiah(tx.total)}',
+              style: TextStyle(
+                color: NusaConfig.activePrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             SizedBox(height: 16),
             TextField(
               controller: reasonCtrl,
@@ -128,7 +143,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               decoration: InputDecoration(
                 labelText: 'Alasan void *',
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12))),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                ),
               ),
               maxLines: 2,
             ),
@@ -187,9 +203,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     if (!mounted) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = _parseItems(tx.items)
-        .where((it) => ((it['qty'] as num?) ?? 0) > 0)
-        .toList();
+    final items = _parseItems(
+      tx.items,
+    ).where((it) => ((it['qty'] as num?) ?? 0) > 0).toList();
     if (items.isEmpty) {
       TopToast.error(context, 'Tidak ada item untuk di-retur');
       return;
@@ -212,8 +228,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           int totalRetur() {
             var s = 0;
             items.asMap().forEach((i, it) {
-              s += (selected[i] ?? 0) *
-                  ((it['price'] as num?)?.toInt() ?? 0);
+              s += (selected[i] ?? 0) * ((it['price'] as num?)?.toInt() ?? 0);
             });
             return s;
           }
@@ -221,14 +236,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           return Container(
             decoration: BoxDecoration(
               color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 12,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+              left: 20,
+              right: 20,
+              top: 12,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,21 +265,30 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Icon(Icons.assignment_return_rounded,
-                        color: NusaConfig.activePrimary),
+                    Icon(
+                      Icons.assignment_return_rounded,
+                      color: NusaConfig.activePrimary,
+                    ),
                     const SizedBox(width: 8),
-                    Text('Retur / Refund',
-                        style: TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w700)),
+                    Text(
+                      'Retur / Refund',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('Invoice: ${tx.invoice}',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary)),
+                Text(
+                  'Invoice: ${tx.invoice}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Flexible(
                   child: ListView(
@@ -280,31 +306,35 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             children: [
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name,
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600)),
                                     Text(
-                                        '$qty x ${formatRupiah(price)}',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDark
-                                                ? NusaConfig
-                                                    .darkTextTertiary
-                                                : NusaConfig
-                                                    .textTertiary)),
+                                      name,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$qty x ${formatRupiah(price)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
                               Text(
-                                  'Retur: ${selected[i] ?? 0}',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: NusaConfig.activePrimary)),
+                                'Retur: ${selected[i] ?? 0}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: NusaConfig.activePrimary,
+                                ),
+                              ),
                               _qtyStepper(
                                 ctx,
                                 setSheet,
@@ -328,21 +358,29 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     labelText: 'Alasan retur (mis. barang expired)',
                     isDense: true,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Text('Total Refund',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600)),
+                    Text(
+                      'Total Refund',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const Spacer(),
-                    Text(formatRupiah(totalRetur()),
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: NusaConfig.activePrimary)),
+                    Text(
+                      formatRupiah(totalRetur()),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: NusaConfig.activePrimary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -355,9 +393,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     onPressed: totalRetur() <= 0
                         ? null
                         : () => Navigator.pop(ctx, {
-                              'selected': Map<int, int>.from(selected),
-                              'reason': reasonCtrl.text.trim(),
-                            }),
+                            'selected': Map<int, int>.from(selected),
+                            'reason': reasonCtrl.text.trim(),
+                          }),
                   ),
                 ),
               ],
@@ -400,9 +438,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       return;
     }
     TopToast.success(
-        context,
-        'Retur ${formatRupiah(res.refundAmount)} berhasil — stok & uang '
-        'sudah dikembalikan');
+      context,
+      'Retur ${formatRupiah(res.refundAmount)} berhasil — stok & uang '
+      'sudah dikembalikan',
+    );
     setState(() => _refreshKey++);
   }
 
@@ -415,52 +454,60 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     int current,
     int maxQty,
   ) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      InkWell(
-        onTap: current > 0
-            ? () => setSheet(() => selected[index] = current - 1)
-            : null,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: (isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor)
-                .withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(Icons.remove_rounded,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: current > 0
+              ? () => setSheet(() => selected[index] = current - 1)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color:
+                  (isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor)
+                      .withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.remove_rounded,
               size: 18,
               color: current > 0
                   ? NusaConfig.activePrimary
                   : (isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary)),
-        ),
-      ),
-      const SizedBox(width: 8),
-      InkWell(
-        onTap: current < maxQty
-            ? () => setSheet(() => selected[index] = current + 1)
-            : null,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary),
+            ),
           ),
-          child: Icon(Icons.add_rounded,
+        ),
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: current < maxQty
+              ? () => setSheet(() => selected[index] = current + 1)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.add_rounded,
               size: 18,
               color: current < maxQty
                   ? NusaConfig.activePrimary
                   : (isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary)),
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary),
+            ),
+          ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   /// Void hanya untuk Owner/Manager — dialog peringatan untuk role lain.
@@ -547,8 +594,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     if (mounted) {
       // Deteksi DP (uang muka) saat reprint: Tunai dengan cashGiven < total
       // berarti transaksi DP — uang muka = cashGiven, sisanya piutang.
-      final isDpReprint = tx.paymentMethod.toLowerCase().contains('tunai') &&
-          tx.cashGiven != null && tx.cashGiven! > 0 && tx.cashGiven! < tx.total;
+      final isDpReprint =
+          tx.paymentMethod.toLowerCase().contains('tunai') &&
+          tx.cashGiven != null &&
+          tx.cashGiven! > 0 &&
+          tx.cashGiven! < tx.total;
       await ReceiptSheet.show(
         context,
         sheet: ReceiptSheet.fromMaps(
@@ -580,7 +630,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         color: isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -591,15 +642,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             fontWeight: FontWeight.w600,
             color: isDark
                 ? NusaConfig.darkTextSecondary
-                : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                : isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
           ),
           borderRadius: BorderRadius.circular(12),
           underline: SizedBox.shrink(),
-          icon: Icon(Icons.expand_more_rounded,
-              size: 18,
-              color: isDark
-                  ? NusaConfig.darkTextTertiary
-                  : isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+          icon: Icon(
+            Icons.expand_more_rounded,
+            size: 18,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
           items: [
             _ddItem('Hari ini'),
             _ddItem('Kemarin'),
@@ -614,9 +671,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 child: Text(
                   '${_dateRange!.start.day}/${_dateRange!.start.month} - ${_dateRange!.end.day}/${_dateRange!.end.month}',
                   style: TextStyle(
-                      fontSize: 11,
-                      color: NusaConfig.activePrimary,
-                      fontWeight: FontWeight.w700),
+                    fontSize: 11,
+                    color: NusaConfig.activePrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             _ddItem('Pilih Periode'),
@@ -636,17 +694,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  DropdownMenuItem<String> _ddItem(String label) => DropdownMenuItem(
-        value: label,
-        child: Text(label),
-      );
+  DropdownMenuItem<String> _ddItem(String label) =>
+      DropdownMenuItem(value: label, child: Text(label));
 
   Future<void> _pickDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(Duration(days: 1)),
-      initialDateRange: _dateRange ??
+      initialDateRange:
+          _dateRange ??
           DateTimeRange(start: DateTime.now(), end: DateTime.now()),
     );
     if (picked != null && mounted) {
@@ -665,7 +722,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         color: isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+        ),
       ),
       child: Row(
         children: opts.map((opt) {
@@ -697,8 +755,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     color: active
                         ? Colors.white
                         : (isDark
-                            ? NusaConfig.darkTextSecondary
-                            : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                              ? NusaConfig.darkTextSecondary
+                              : isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary),
                   ),
                 ),
               ),
@@ -721,7 +781,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       if (byteData == null) return null;
       final dir = await getTemporaryDirectory();
       final file = File(
-          '${dir.path}/struk_${tx.invoice.replaceAll('/', '_')}.png');
+        '${dir.path}/struk_${tx.invoice.replaceAll('/', '_')}.png',
+      );
       await file.writeAsBytes(byteData.buffer.asUint8List());
       return file;
     } catch (_) {
@@ -729,41 +790,78 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
-  Widget _buildReceiptPreview(Transaction tx,
-      List<Map<String, dynamic>> rawItems, String dateStr, String? custName,
-      {bool isDark = false, String storeName = 'NUSA Kasir',
-      int fontHeader = 2, int fontItems = 1, int fontFooter = 1}) {
-    final textColor = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
-    final subtleColor = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
-    final itemFontSize = fontItems > 1 ? 12.0 : 10.0;
+  Widget _buildReceiptPreview(
+    Transaction tx,
+    List<Map<String, dynamic>> rawItems,
+    String dateStr,
+    String? custName, {
+    bool isDark = false,
+    String storeName = 'NUSA Kasir',
+    int fontHeader = 2,
+    int fontItems = 1,
+    int fontFooter = 1,
+  }) {
+    final textColor = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final subtleColor = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    // Ukuran font per section mengikuti pengaturan struk (slider 1-8, sama
+    // dengan print). Items dijadikan basis: 1 → 10pt, 8 → 17pt.
+    final itemFontSize = 9.0 + fontItems.clamp(1, 8);
     final mono = TextStyle(
-        fontFamily: 'monospace', fontSize: itemFontSize, height: 1.4, color: textColor);
+      fontFamily: 'monospace',
+      fontSize: itemFontSize,
+      height: 1.4,
+      color: textColor,
+    );
     final monoBig = TextStyle(
-        fontFamily: 'monospace', fontSize: 13, height: 1.4,
-        fontWeight: FontWeight.bold, color: textColor);
+      fontFamily: 'monospace',
+      fontSize: itemFontSize + 2,
+      height: 1.4,
+      fontWeight: FontWeight.bold,
+      color: textColor,
+    );
     final monoHeader = TextStyle(
-        fontFamily: 'monospace',
-        fontSize: switch (fontHeader) {
-          3 => 17.0,
-          1 => 12.0,
-          _ => 14.0,
-        },
-        height: 1.3,
-        fontWeight: FontWeight.bold, color: textColor);
+      fontFamily: 'monospace',
+      fontSize: 9.0 + fontHeader.clamp(1, 8),
+      height: 1.3,
+      fontWeight: FontWeight.bold,
+      color: textColor,
+    );
     final monoGrey = TextStyle(
-        fontFamily: 'monospace', fontSize: itemFontSize, height: 1.4,
-        color: subtleColor);
+      fontFamily: 'monospace',
+      fontSize: itemFontSize,
+      height: 1.4,
+      color: subtleColor,
+    );
     final monoFooter = TextStyle(
-        fontFamily: 'monospace',
-        fontSize: fontFooter > 1 ? 13.0 : 10.0,
-        height: 1.4,
-        fontWeight: FontWeight.bold, color: textColor);
+      fontFamily: 'monospace',
+      fontSize: 9.0 + fontFooter.clamp(1, 8),
+      height: 1.4,
+      fontWeight: FontWeight.bold,
+      color: textColor,
+    );
+    // "Anda hemat" — total potongan dari diskon per item (match print).
+    final totalItemDiscount = rawItems.fold<int>(0, (s, it) {
+      final o = (it['originalPrice'] as num?)?.toInt();
+      final p = (it['price'] as num).toInt();
+      final hasDisc = o != null && o > p;
+      return s + (hasDisc ? o - p : 0);
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Center(child: Text(storeName, style: monoHeader, textAlign: TextAlign.center)),
+        Center(
+          child: Text(
+            storeName,
+            style: monoHeader,
+            textAlign: TextAlign.center,
+          ),
+        ),
         if (tx.invoice.isNotEmpty) ...[
           SizedBox(height: 2),
           Center(child: Text(tx.invoice, style: mono)),
@@ -786,33 +884,25 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final subtotal = qty * price;
           final orig = (it['originalPrice'] as num?)?.toInt();
           final hasDisc = orig != null && orig > price;
+          // qty x harga asli + (potongan) — hemat 2 baris (match print).
+          final qtyPriceTxt = hasDisc
+              ? '$qty x ${formatRupiah(price)} (-${formatRupiah(orig - price)})'
+              : '$qty x ${formatRupiah(price)}';
           return Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: mono),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('$qty x ${formatRupiah(price)}', style: monoGrey),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: mono),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(qtyPriceTxt, style: monoGrey),
                     Text(formatRupiah(subtotal), style: mono),
-                  ]),
-                  if (hasDisc) ...[
-                    Padding(
-                      padding: EdgeInsets.only(top: 1),
-                      child: Text('Harga Normal: ${formatRupiah(orig!)}',
-                          style: TextStyle(
-                              fontFamily: 'monospace', fontSize: 9,
-                              color: subtleColor)),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(top: 1),
-                      child: Text('Diskon: -${formatRupiah(orig - price)}',
-                          style: TextStyle(
-                              fontFamily: 'monospace', fontSize: 9,
-                              color: subtleColor)),
-                    ),
                   ],
-                ]),
+                ),
+              ],
+            ),
           );
         }),
         SizedBox(height: 6),
@@ -820,34 +910,58 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         SizedBox(height: 6),
         Padding(
           padding: EdgeInsets.symmetric(vertical: 4),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('TOTAL', style: monoBig),
-            Text(formatRupiah(tx.total), style: monoBig),
-          ]),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL', style: monoBig),
+              Text(formatRupiah(tx.total), style: monoBig),
+            ],
+          ),
         ),
+        // "Anda hemat" — total potongan diskon item (match print).
+        if (totalItemDiscount > 0)
+          Padding(
+            padding: EdgeInsets.only(bottom: 3),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Anda hemat', style: monoGrey),
+                Text(formatRupiah(totalItemDiscount), style: monoGrey),
+              ],
+            ),
+          ),
         // Total diskon — tepat DI BAWAH TOTAL (komplain user).
         if (tx.discount > 0)
           Padding(
             padding: EdgeInsets.only(bottom: 3),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Diskon', style: monoGrey),
-              Text('-${formatRupiah(tx.discount)}', style: monoGrey),
-            ]),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Diskon', style: monoGrey),
+                Text('-${formatRupiah(tx.discount)}', style: monoGrey),
+              ],
+            ),
           ),
         Padding(
           padding: EdgeInsets.only(bottom: 2),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Bayar (${tx.paymentMethod})', style: monoGrey),
-            Text(formatRupiah(tx.cashGiven ?? tx.total), style: monoGrey),
-          ]),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Bayar (${tx.paymentMethod})', style: monoGrey),
+              Text(formatRupiah(tx.cashGiven ?? tx.total), style: monoGrey),
+            ],
+          ),
         ),
         if (tx.cashReturn != null && tx.cashReturn! > 0)
           Padding(
             padding: EdgeInsets.only(bottom: 2),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Kembali', style: monoGrey),
-              Text(formatRupiah(tx.cashReturn!), style: monoGrey),
-            ]),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Kembali', style: monoGrey),
+                Text(formatRupiah(tx.cashReturn!), style: monoGrey),
+              ],
+            ),
           ),
         SizedBox(height: 6),
         _buildRDash(),
@@ -858,24 +972,37 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   Widget _buildRDash({bool isDark = false}) => SizedBox(
-        height: 2,
-        child: CustomPaint(
-            painter: _DashPainter2(
-                color: isDark ? Colors.grey.shade600 : Colors.grey.shade300)),
-      );
+    height: 2,
+    child: CustomPaint(
+      painter: _DashPainter2(
+        color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
+      ),
+    ),
+  );
 
-  Widget _buildRRow(String label, String value, TextStyle mono, TextStyle monoGrey) =>
-      Padding(
-        padding: EdgeInsets.only(bottom: 2),
-        child: Row(children: [
-          Text(label, style: monoGrey),
-          Spacer(),
-          Flexible(child: Text(value, style: mono, textAlign: TextAlign.right)),
-        ]),
-      );
+  Widget _buildRRow(
+    String label,
+    String value,
+    TextStyle mono,
+    TextStyle monoGrey,
+  ) => Padding(
+    padding: EdgeInsets.only(bottom: 2),
+    child: Row(
+      children: [
+        Text(label, style: monoGrey),
+        Spacer(),
+        Flexible(
+          child: Text(value, style: mono, textAlign: TextAlign.right),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _showShareSheet(
-      Transaction tx, String? custName, String? custPhone) async {
+    Transaction tx,
+    String? custName,
+    String? custPhone,
+  ) async {
     final rawItems = _parseItems(tx.items);
     final dateStr =
         '${tx.date.day.toString().padLeft(2, '0')}/${tx.date.month.toString().padLeft(2, '0')}/${tx.date.year} '
@@ -903,7 +1030,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         return StatefulBuilder(
           builder: (ctx, setSt) => Container(
             decoration: BoxDecoration(
-              color: shareDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+              color: shareDark
+                  ? NusaConfig.darkSurface
+                  : NusaConfig.surfaceColor,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             padding: EdgeInsets.fromLTRB(24, 16, 24, 40),
@@ -920,12 +1049,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   ),
                 ),
                 SizedBox(height: 12),
-                Text('Bagikan Struk ${tx.invoice}',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: shareDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                    )),
+                Text(
+                  'Bagikan Struk ${tx.invoice}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: shareDark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+                  ),
+                ),
                 SizedBox(height: 16),
                 // ── Receipt preview image ──
                 RepaintBoundary(
@@ -938,151 +1071,178 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       color: shareDark ? NusaConfig.darkSurface2 : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: shareDark ? NusaConfig.darkBorder : Colors.grey.shade200),
+                        color: shareDark
+                            ? NusaConfig.darkBorder
+                            : Colors.grey.shade200,
+                      ),
                     ),
                     child: _buildReceiptPreview(
-                        tx, rawItems, dateStr, custName,
-                        isDark: shareDark,
-                        storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
-                        fontHeader: fontHeader,
-                        fontItems: fontItems,
-                        fontFooter: fontFooter),
+                      tx,
+                      rawItems,
+                      dateStr,
+                      custName,
+                      isDark: shareDark,
+                      storeName: storeName.isNotEmpty
+                          ? storeName
+                          : 'NUSA Kasir',
+                      fontHeader: fontHeader,
+                      fontItems: fontItems,
+                      fontFooter: fontFooter,
+                    ),
+                  ),
                 ),
-              ),
-              SizedBox(height: 20),
-              if (capturing)
-                Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 3)),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          setSt(() => capturing = true);
-                          final file =
-                              await _captureReceipt(receiptKey, tx);
-                          setSt(() => capturing = false);
-                          if (file != null && mounted) {
-                            Navigator.pop(ctx);
-                            // Kirim via WA — share file image
-                            if (custPhone != null &&
-                                custPhone.isNotEmpty) {
-                              // Direct WA with text (image not supported via wa.me)
-                              final wabuf = StringBuffer();
-                              wabuf.writeln(
-                                  '*STRUK ${tx.invoice}*');
-                              wabuf.writeln(
-                                  '--------------------------------');
-                              wabuf.writeln(
-                                  'Total: ${formatRupiah(tx.total)}');
-                              wabuf.writeln(
-                                  'Bayar: ${tx.paymentMethod}');
-                              wabuf.writeln(
-                                  '--------------------------------');
-                              wabuf.writeln(
-                                  'Terima kasih!');
-                              final digits = custPhone
-                                  .replaceAll(RegExp(r'\D'), '');
-                              final normalized = digits.startsWith('0')
-                                  ? '62${digits.substring(1)}'
-                                  : digits.startsWith('62')
-                                      ? digits
-                                      : '62$digits';
-                              final waUrl =
-                                  'https://wa.me/$normalized?text=${Uri.encodeComponent(wabuf.toString())}';
-                              launchUrl(Uri.parse(waUrl));
-                            } else {
-                              SharePlus.instance.share(ShareParams(
-                                  files: [XFile(file.path)]));
+                SizedBox(height: 20),
+                if (capturing)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            setSt(() => capturing = true);
+                            final file = await _captureReceipt(receiptKey, tx);
+                            setSt(() => capturing = false);
+                            if (file != null && mounted) {
+                              Navigator.pop(ctx);
+                              // Kirim via WA — share file image
+                              if (custPhone != null && custPhone.isNotEmpty) {
+                                // Direct WA with text (image not supported via wa.me)
+                                final wabuf = StringBuffer();
+                                wabuf.writeln('*STRUK ${tx.invoice}*');
+                                wabuf.writeln(
+                                  '--------------------------------',
+                                );
+                                wabuf.writeln(
+                                  'Total: ${formatRupiah(tx.total)}',
+                                );
+                                wabuf.writeln('Bayar: ${tx.paymentMethod}');
+                                wabuf.writeln(
+                                  '--------------------------------',
+                                );
+                                wabuf.writeln('Terima kasih!');
+                                final digits = custPhone.replaceAll(
+                                  RegExp(r'\D'),
+                                  '',
+                                );
+                                final normalized = digits.startsWith('0')
+                                    ? '62${digits.substring(1)}'
+                                    : digits.startsWith('62')
+                                    ? digits
+                                    : '62$digits';
+                                final waUrl =
+                                    'https://wa.me/$normalized?text=${Uri.encodeComponent(wabuf.toString())}';
+                                launchUrl(Uri.parse(waUrl));
+                              } else {
+                                SharePlus.instance.share(
+                                  ShareParams(files: [XFile(file.path)]),
+                                );
+                              }
                             }
-                          }
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Color(0xFF25D366)
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(children: [
-                            Icon(Icons.chat_rounded,
-                                size: 32, color: Color(0xFF25D366)),
-                            SizedBox(height: 8),
-                            Text(
-                                custPhone != null &&
-                                        custPhone.isNotEmpty
-                                    ? 'Kirim WA'
-                                    : 'Share',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                          },
+                          child: Container(
+                            padding: EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Color(0xFF25D366).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.chat_rounded,
+                                  size: 32,
                                   color: Color(0xFF25D366),
-                                )),
-                            if (custPhone != null &&
-                                custPhone.isNotEmpty)
-                              Text(custPhone,
-                                  style: TextStyle(
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  custPhone != null && custPhone.isNotEmpty
+                                      ? 'Kirim WA'
+                                      : 'Share',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF25D366),
+                                  ),
+                                ),
+                                if (custPhone != null && custPhone.isNotEmpty)
+                                  Text(
+                                    custPhone,
+                                    style: TextStyle(
                                       fontSize: 10,
                                       color: shareDark
                                           ? NusaConfig.darkTextTertiary
-                                          : Colors.grey)),
-                          ]),
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          setSt(() => capturing = true);
-                          final file =
-                              await _captureReceipt(receiptKey, tx);
-                          setSt(() => capturing = false);
-                          if (file != null && mounted) {
-                            Navigator.pop(ctx);
-                            SharePlus.instance.share(ShareParams(
-                                files: [XFile(file.path)]));
-                          }
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.activePrimary
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(children: [
-                            Icon(Icons.download_rounded,
-                                size: 32,
-                                color: NusaConfig.activePrimary),
-                            SizedBox(height: 8),
-                            Text('Unduh Struk',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            setSt(() => capturing = true);
+                            final file = await _captureReceipt(receiptKey, tx);
+                            setSt(() => capturing = false);
+                            if (file != null && mounted) {
+                              Navigator.pop(ctx);
+                              SharePlus.instance.share(
+                                ShareParams(files: [XFile(file.path)]),
+                              );
+                            }
+                          },
+                          child: Container(
+                            padding: EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.activePrimary.withValues(
+                                alpha: 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.download_rounded,
+                                  size: 32,
                                   color: NusaConfig.activePrimary,
-                                )),
-                            Text('Gambar',
-                                style: TextStyle(
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Unduh Struk',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: NusaConfig.activePrimary,
+                                  ),
+                                ),
+                                Text(
+                                  'Gambar',
+                                  style: TextStyle(
                                     fontSize: 10,
                                     color: shareDark
                                         ? NusaConfig.darkTextTertiary
-                                        : NusaConfig.textTertiary)),
-                          ]),
+                                        : NusaConfig.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-            ],
+                    ],
+                  ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
+        );
+      },
     );
   }
 
@@ -1109,22 +1269,32 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ),
               child: TextField(
                 controller: _searchCtrl,
-                onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                onChanged: (v) =>
+                    setState(() => _searchQuery = v.toLowerCase()),
                 style: TextStyle(
                   fontSize: 15,
                   color: isDark
                       ? NusaConfig.darkTextPrimary
-                      : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      : isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Cari nomor invoice…',
                   hintStyle: TextStyle(
                     color: isDark
                         ? NusaConfig.darkTextTertiary
-                        : isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                        : isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
                   ),
-                  prefixIcon: Icon(Icons.search_rounded,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, size: 22),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                    size: 22,
+                  ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? GestureDetector(
                           onTap: () {
@@ -1133,15 +1303,22 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           },
                           child: Container(
                             padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Icon(Icons.clear_rounded,
-                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, size: 20),
+                            child: Icon(
+                              Icons.clear_rounded,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                              size: 20,
+                            ),
                           ),
                         )
                       : null,
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding:
-                      EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 14,
+                  ),
                 ),
               ),
             ),
@@ -1172,8 +1349,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 }
                 if (snap.hasError) {
                   return Center(
-                    child: Text('Gagal memuat: ${snap.error}',
-                        style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : Colors.grey)),
+                    child: Text(
+                      'Gagal memuat: ${snap.error}',
+                      style: TextStyle(
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : Colors.grey,
+                      ),
+                    ),
                   );
                 }
                 final list = _filter(snap.data ?? []);
@@ -1183,8 +1366,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     message: 'Belum ada transaksi',
                   );
                 }
-                final totalRevenue =
-                    list.fold<int>(0, (sum, t) => sum + t.total);
+                final totalRevenue = list.fold<int>(
+                  0,
+                  (sum, t) => sum + t.total,
+                );
                 final avg = list.isNotEmpty
                     ? (totalRevenue / list.length).round()
                     : 0;
@@ -1200,58 +1385,75 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         child: Container(
                           width: double.infinity,
                           padding: EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.activePrimary
-                                .withValues(alpha: 0.08),
-                            borderRadius:
-                                BorderRadius.circular(NusaConfig.radiusMD),
+                            horizontal: 16,
+                            vertical: 14,
                           ),
-                          child: Row(children: [
-                            Icon(Icons.summarize_rounded,
-                                size: 18, color: NusaConfig.activePrimary),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${list.length} transaksi',
+                          decoration: BoxDecoration(
+                            color: NusaConfig.activePrimary.withValues(
+                              alpha: 0.08,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              NusaConfig.radiusMD,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.summarize_rounded,
+                                size: 18,
+                                color: NusaConfig.activePrimary,
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${list.length} transaksi',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700,
                                         color: isDark
                                             ? NusaConfig.darkTextPrimary
-                                            : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                                      )),
-                                  SizedBox(height: 2),
-                                  Text('Rata-rata ${formatRupiah(avg)}',
+                                            : isDark
+                                            ? NusaConfig.darkTextPrimary
+                                            : NusaConfig.textPrimary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Rata-rata ${formatRupiah(avg)}',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w500,
                                         color: isDark
                                             ? NusaConfig.darkTextTertiary
-                                            : isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                                      )),
-                                ],
+                                            : isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Text(formatRupiah(totalRevenue),
+                              Text(
+                                formatRupiah(totalRevenue),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                   color: NusaConfig.activePrimary,
-                                )),
-                          ]),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       SizedBox(height: 12),
                       Expanded(
                         child: ListView.separated(
-                          padding:
-                              EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                           itemCount: list.length,
-                          separatorBuilder: (_, __) =>
-                              SizedBox(height: 12),
+                          separatorBuilder: (_, __) => SizedBox(height: 12),
                           itemBuilder: (_, i) => _TransactionCard(
                             tx: list[i],
                             onVoid: () => _voidTransaction(list[i]),
@@ -1261,8 +1463,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               String? custName;
                               String? custPhone;
                               if (list[i].customerId != null) {
-                                final custRepo = CustomerRepository(ref.read(databaseProvider));
-                                final cust = await custRepo.byId(list[i].customerId!);
+                                final custRepo = CustomerRepository(
+                                  ref.read(databaseProvider),
+                                );
+                                final cust = await custRepo.byId(
+                                  list[i].customerId!,
+                                );
                                 if (cust != null) {
                                   custName = cust.name;
                                   custPhone = cust.phone;
@@ -1319,7 +1525,8 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
   };
 
   Color _payColor(bool isDark) =>
-      _payColors[widget.tx.paymentMethod] ?? (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary);
+      _payColors[widget.tx.paymentMethod] ??
+      (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary);
   IconData _payIcon() =>
       _payIcons[widget.tx.paymentMethod] ?? Icons.payment_rounded;
 
@@ -1361,7 +1568,11 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
     final tx = widget.tx;
     final items = _parseItems(tx.items);
     final isVoided = tx.status == 'Void';
-    final accent = isVoided ? isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary : _payColor(isDark);
+    final accent = isVoided
+        ? isDark
+              ? NusaConfig.darkTextTertiary
+              : NusaConfig.textTertiary
+        : _payColor(isDark);
     final relDate = _relDate(tx.date);
 
     return Opacity(
@@ -1373,27 +1584,25 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
           onTap: () => setState(() {
             _expanded = !_expanded;
             if (_expanded && _refundFuture == null) {
-              _refundFuture =
-                  ref.read(refundRepoProvider).getByTransaction(widget.tx.id);
+              _refundFuture = ref
+                  .read(refundRepoProvider)
+                  .getByTransaction(widget.tx.id);
             }
           }),
           borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
           child: Container(
             decoration: BoxDecoration(
-              color: isDark
-                  ? NusaConfig.darkSurface
-                  : NusaConfig.surfaceColor,
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
               borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
               border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.dividerColor),
+                color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+              ),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black
-                        .withValues(alpha: isDark ? 0.15 : 0.06),
-                    blurRadius: 10,
-                    offset: Offset(0, 3))
+                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.06),
+                  blurRadius: 10,
+                  offset: Offset(0, 3),
+                ),
               ],
             ),
             child: Padding(
@@ -1409,8 +1618,10 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(children: [
-                              Text(tx.invoice,
+                            Row(
+                              children: [
+                                Text(
+                                  tx.invoice,
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
@@ -1419,294 +1630,368 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                         : null,
                                     color: isDark
                                         ? NusaConfig.darkTextPrimary
-                                        : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                                  )),
-                              if (isVoided) ...[
-                                SizedBox(width: 8),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: NusaConfig.activePrimary
-                                        .withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(6),
+                                        : isDark
+                                        ? NusaConfig.darkTextPrimary
+                                        : NusaConfig.textPrimary,
                                   ),
-                                  child: Text('VOID',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          color: NusaConfig.activePrimary)),
                                 ),
+                                if (isVoided) ...[
+                                  SizedBox(width: 8),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: NusaConfig.activePrimary
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'VOID',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ]),
+                            ),
                             SizedBox(height: 4),
-                            Row(children: [
-                              Icon(_payIcon(),
+                            Row(
+                              children: [
+                                Icon(
+                                  _payIcon(),
                                   size: 14,
                                   color: isVoided
-                                      ? isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary
-                                      : accent),
-                              SizedBox(width: 4),
-                              Text('$relDate • ${tx.paymentMethod}',
+                                      ? isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary
+                                      : accent,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  '$relDate • ${tx.paymentMethod}',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                     color: isVoided
-                                        ? isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary
+                                        ? isDark
+                                              ? NusaConfig.darkTextTertiary
+                                              : NusaConfig.textTertiary
                                         : (isDark
-                                            ? NusaConfig.darkTextTertiary
-                                            : isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                                  )),
-                            ]),
+                                              ? NusaConfig.darkTextTertiary
+                                              : isDark
+                                              ? NusaConfig.darkTextTertiary
+                                              : NusaConfig.textTertiary),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                       Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(formatRupiah(tx.total),
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        color: isVoided
-                                            ? isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary
-                                            : NusaConfig.activePrimary,
-                                      )),
-                                  SizedBox(height: 6),
-                                  Row(children: [
-                                    _actionIcon(Icons.print_rounded,
-                                        NusaConfig.info, widget.onReprint),
-                                    SizedBox(width: 6),
-                                    _actionIcon(Icons.share_rounded,
-                                        NusaConfig.accentGreen, widget.onShare),
-                                    if (!isVoided) ...[
-                                      SizedBox(width: 6),
-                                      _actionIcon(Icons.assignment_return_rounded,
-                                          NusaConfig.info, widget.onRetur),
-                                      SizedBox(width: 6),
-                                      _actionIcon(Icons.undo_rounded,
-                                          NusaConfig.activePrimary, widget.onVoid),
-                                    ],
-                                    SizedBox(width: 2),
-                                    _actionIcon(
-                                        _expanded
-                                            ? Icons.expand_less_rounded
-                                            : Icons.expand_more_rounded,
-                                        isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                                        () => setState(() {
-                                          _expanded = !_expanded;
-                                          if (_expanded &&
-                                              _refundFuture == null) {
-                                            _refundFuture = ref
-                                                .read(refundRepoProvider)
-                                                .getByTransaction(
-                                                    widget.tx.id);
-                                          }
-                                        })),
-                                  ]),
-                                ],
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatRupiah(tx.total),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: isVoided
+                                  ? isDark
+                                        ? NusaConfig.darkTextTertiary
+                                        : NusaConfig.textTertiary
+                                  : NusaConfig.activePrimary,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Row(
+                            children: [
+                              _actionIcon(
+                                Icons.print_rounded,
+                                NusaConfig.info,
+                                widget.onReprint,
+                              ),
+                              SizedBox(width: 6),
+                              _actionIcon(
+                                Icons.share_rounded,
+                                NusaConfig.accentGreen,
+                                widget.onShare,
+                              ),
+                              if (!isVoided) ...[
+                                SizedBox(width: 6),
+                                _actionIcon(
+                                  Icons.assignment_return_rounded,
+                                  NusaConfig.info,
+                                  widget.onRetur,
+                                ),
+                                SizedBox(width: 6),
+                                _actionIcon(
+                                  Icons.undo_rounded,
+                                  NusaConfig.activePrimary,
+                                  widget.onVoid,
+                                ),
+                              ],
+                              SizedBox(width: 2),
+                              _actionIcon(
+                                _expanded
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                isDark
+                                    ? NusaConfig.darkTextTertiary
+                                    : NusaConfig.textTertiary,
+                                () => setState(() {
+                                  _expanded = !_expanded;
+                                  if (_expanded && _refundFuture == null) {
+                                    _refundFuture = ref
+                                        .read(refundRepoProvider)
+                                        .getByTransaction(widget.tx.id);
+                                  }
+                                }),
                               ),
                             ],
                           ),
-                          // ── Expanded detail ──
-                          if (_expanded) ...[
-                            SizedBox(height: 12),
-                            Divider(
-                                height: 1,
+                        ],
+                      ),
+                    ],
+                  ),
+                  // ── Expanded detail ──
+                  if (_expanded) ...[
+                    SizedBox(height: 12),
+                    Divider(
+                      height: 1,
+                      color: isDark
+                          ? NusaConfig.darkDivider
+                          : NusaConfig.dividerColor,
+                    ),
+                    SizedBox(height: 10),
+                    ...items.map(
+                      (it) => Padding(
+                        padding: EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${it['name']} x ${it['qty']}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              formatRupiah(
+                                (it['qty'] as int) * (it['price'] as int),
+                              ),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                                 color: isDark
-                                    ? NusaConfig.darkDivider
-                                    : NusaConfig.dividerColor),
-                            SizedBox(height: 10),
-                            ...items.map((it) => Padding(
-                                  padding:
-                                      EdgeInsets.symmetric(vertical: 3),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                          child: Text('${it['name']} x ${it['qty']}',
-                                              style: GoogleFonts.plusJakartaSans(
-                                                fontSize: 13,
-                                                color: isDark
-                                                    ? NusaConfig
-                                                        .darkTextSecondary
-                                                    : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                                              ))),
-                                      Text(
-                                          formatRupiah((it['qty'] as int) *
-                                              (it['price'] as int)),
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: isDark
-                                                ? NusaConfig.darkTextPrimary
-                                                : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                                          )),
-                                    ],
-                                  ),
-                                )),
-                            SizedBox(height: 8),
-                            Divider(
-                                height: 1,
-                                color: isDark
-                                    ? NusaConfig.darkDivider
-                                    : NusaConfig.dividerColor),
-                            SizedBox(height: 8),
-                            FutureBuilder<List<Refund>>(
-                              future: _refundFuture,
-                              builder: (context, snap) {
-                                final refunds = snap.data ?? const [];
-                                if (refunds.isEmpty) {
-                                  return const SizedBox.shrink();
-                                }
-                                final total = refunds.fold(
-                                    0, (int s, r) => s + r.refundAmount);
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                    ? NusaConfig.darkTextPrimary
+                                    : isDark
+                                    ? NusaConfig.darkTextPrimary
+                                    : NusaConfig.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Divider(
+                      height: 1,
+                      color: isDark
+                          ? NusaConfig.darkDivider
+                          : NusaConfig.dividerColor,
+                    ),
+                    SizedBox(height: 8),
+                    FutureBuilder<List<Refund>>(
+                      future: _refundFuture,
+                      builder: (context, snap) {
+                        final refunds = snap.data ?? const [];
+                        if (refunds.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        final total = refunds.fold(
+                          0,
+                          (int s, r) => s + r.refundAmount,
+                        );
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ...refunds.map(
+                              (r) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 3,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    ...refunds.map((r) => Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 3),
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment
-                                                    .spaceBetween,
-                                            children: [
-                                              Expanded(
-                                                  child: Text(
-                                                      '↩ ${r.productName} x ${r.qty}',
-                                                      style: GoogleFonts
-                                                          .plusJakartaSans(
-                                                        fontSize: 13,
-                                                        color: NusaConfig
-                                                            .info,
-                                                      ))),
-                                              Text(
-                                                  formatRupiah(
-                                                      r.refundAmount),
-                                                  style: GoogleFonts
-                                                      .plusJakartaSans(
-                                                    fontSize: 13,
-                                                    fontWeight:
-                                                        FontWeight.w600,
-                                                    color: NusaConfig.info,
-                                                  )),
-                                            ],
-                                          ),
-                                        )),
-                                    Divider(
-                                        height: 1,
-                                        color: isDark
-                                            ? NusaConfig.darkDivider
-                                            : NusaConfig.dividerColor),
-                                    _row(
-                                      'Sudah di-retur',
-                                      formatRupiah(total),
-                                      isDark: isDark,
+                                    Expanded(
+                                      child: Text(
+                                        '↩ ${r.productName} x ${r.qty}',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 13,
+                                          color: NusaConfig.info,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      formatRupiah(r.refundAmount),
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: NusaConfig.info,
+                                      ),
                                     ),
                                   ],
-                                );
-                              },
+                                ),
+                              ),
                             ),
-                            _row('Subtotal', formatRupiah(tx.total + tx.discount), isDark: isDark),
-                            _row('Diskon', formatRupiah(tx.discount), isDark: isDark),
-                            _row('Total', formatRupiah(tx.total), isDark: isDark),
-                            _row('Bayar',
-                                tx.cashGiven != null ? formatRupiah(tx.cashGiven!) : '-', isDark: isDark),
-                            _row('Kembali',
-                                tx.cashReturn != null ? formatRupiah(tx.cashReturn!) : '-', isDark: isDark),
-                            if (isVoided && tx.voidReason != null) ...[
-                              SizedBox(height: 8),
-                              Text(
-                                'Alasan void: ${tx.voidReason}',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  fontStyle: FontStyle.italic,
-                                  color: NusaConfig.activePrimary,
-                                ),
-                              ),
-                            ],
-                            if (!isVoided) ...[
-                              SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: widget.onVoid,
-                                  icon: Icon(Icons.undo_rounded, size: 18),
-                                  label: Text('Void Transaksi',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600)),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: NusaConfig.activePrimary,
-                                    side: BorderSide(
-                                        color: NusaConfig.activePrimary),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                    padding: EdgeInsets.symmetric(
-                                        vertical: 12),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: widget.onRetur,
-                                  icon: Icon(Icons.assignment_return_rounded,
-                                      size: 18),
-                                  label: Text('Retur / Refund Parsial',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600)),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: NusaConfig.info,
-                                    side: BorderSide(
-                                        color: NusaConfig.info),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                    padding: EdgeInsets.symmetric(
-                                        vertical: 12),
-                                  ),
-                                ),
-                              ),
-                            ], // close if(!isVoided)
-                          ], // close if(_expanded)
-                        ], // close Column children
-                      ), // close Column
-                    ), // close Padding
-                  ), // close Container
-                ), // close InkWell
-              ), // close Material
-              ); // close Opacity
+                            Divider(
+                              height: 1,
+                              color: isDark
+                                  ? NusaConfig.darkDivider
+                                  : NusaConfig.dividerColor,
+                            ),
+                            _row(
+                              'Sudah di-retur',
+                              formatRupiah(total),
+                              isDark: isDark,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    _row(
+                      'Subtotal',
+                      formatRupiah(tx.total + tx.discount),
+                      isDark: isDark,
+                    ),
+                    _row('Diskon', formatRupiah(tx.discount), isDark: isDark),
+                    _row('Total', formatRupiah(tx.total), isDark: isDark),
+                    _row(
+                      'Bayar',
+                      tx.cashGiven != null ? formatRupiah(tx.cashGiven!) : '-',
+                      isDark: isDark,
+                    ),
+                    _row(
+                      'Kembali',
+                      tx.cashReturn != null
+                          ? formatRupiah(tx.cashReturn!)
+                          : '-',
+                      isDark: isDark,
+                    ),
+                    if (isVoided && tx.voidReason != null) ...[
+                      SizedBox(height: 8),
+                      Text(
+                        'Alasan void: ${tx.voidReason}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: NusaConfig.activePrimary,
+                        ),
+                      ),
+                    ],
+                    if (!isVoided) ...[
+                      SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onVoid,
+                          icon: Icon(Icons.undo_rounded, size: 18),
+                          label: Text(
+                            'Void Transaksi',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: NusaConfig.activePrimary,
+                            side: BorderSide(color: NusaConfig.activePrimary),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onRetur,
+                          icon: Icon(Icons.assignment_return_rounded, size: 18),
+                          label: Text(
+                            'Retur / Refund Parsial',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: NusaConfig.info,
+                            side: BorderSide(color: NusaConfig.info),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ], // close if(!isVoided)
+                  ], // close if(_expanded)
+                ], // close Column children
+              ), // close Column
+            ), // close Padding
+          ), // close Container
+        ), // close InkWell
+      ), // close Material
+    ); // close Opacity
   }
 
   Widget _row(String label, String value, {bool isDark = false}) => Padding(
-        padding: EdgeInsets.symmetric(vertical: 3),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-            Text(value,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                )),
-          ],
+    padding: EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
         ),
-      );
+        Text(
+          value,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? NusaConfig.darkTextPrimary
+                : isDark
+                ? NusaConfig.darkTextPrimary
+                : NusaConfig.textPrimary,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 List<Map<String, dynamic>> _parseItems(String json) {
@@ -1735,7 +2020,11 @@ class _DashPainter2 extends CustomPainter {
     final gapW = 2.0;
     double x = 0;
     while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset((x + dashW).clamp(0, size.width), 0), paint);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset((x + dashW).clamp(0, size.width), 0),
+        paint,
+      );
       x += dashW + gapW;
     }
   }

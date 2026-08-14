@@ -22,32 +22,31 @@ class AppNotification {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type,
-        'title': title,
-        'body': body,
-        'createdAt': createdAt.toIso8601String(),
-        'read': read,
-      };
+    'id': id,
+    'type': type,
+    'title': title,
+    'body': body,
+    'createdAt': createdAt.toIso8601String(),
+    'read': read,
+  };
 
   AppNotification copyWith({bool? read}) => AppNotification(
-        id: id,
-        type: type,
-        title: title,
-        body: body,
-        createdAt: createdAt,
-        read: read ?? this.read,
-      );
+    id: id,
+    type: type,
+    title: title,
+    body: body,
+    createdAt: createdAt,
+    read: read ?? this.read,
+  );
 
   factory AppNotification.fromJson(Map<String, dynamic> m) => AppNotification(
-        id: '${m['id'] ?? ''}',
-        type: '${m['type'] ?? 'info'}',
-        title: '${m['title'] ?? ''}',
-        body: '${m['body'] ?? ''}',
-        createdAt:
-            DateTime.tryParse('${m['createdAt']}') ?? DateTime.now(),
-        read: m['read'] == true,
-      );
+    id: '${m['id'] ?? ''}',
+    type: '${m['type'] ?? 'info'}',
+    title: '${m['title'] ?? ''}',
+    body: '${m['body'] ?? ''}',
+    createdAt: DateTime.tryParse('${m['createdAt']}') ?? DateTime.now(),
+    read: m['read'] == true,
+  );
 }
 
 /// Manages local notification channel and the in-app Notification Center
@@ -65,18 +64,16 @@ class NotificationService {
 
   /// Initialize the plugin. Call once in main().
   static Future<void> init() async {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
     await _plugin.initialize(
-      const InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      ),
+      const InitializationSettings(android: androidSettings, iOS: iosSettings),
     );
   }
 
@@ -87,10 +84,11 @@ class NotificationService {
     final raw = await SecureStore.read(key: _centerKey);
     if (raw == null || raw.isEmpty) return [];
     try {
-      final list = (jsonDecode(raw) as List<dynamic>)
-          .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final list =
+          (jsonDecode(raw) as List<dynamic>)
+              .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
     } catch (_) {
       return [];
@@ -117,10 +115,20 @@ class NotificationService {
     final now = DateTime.now();
     final list = existing.where((n) => n.id != id).toList();
     list.insert(
-        0, AppNotification(id: id, type: type, title: title, body: body, createdAt: now));
+      0,
+      AppNotification(
+        id: id,
+        type: type,
+        title: title,
+        body: body,
+        createdAt: now,
+      ),
+    );
     if (list.length > _maxStored) list.removeRange(_maxStored, list.length);
     await SecureStore.write(
-        key: _centerKey, value: jsonEncode(list.map((n) => n.toJson()).toList()));
+      key: _centerKey,
+      value: jsonEncode(list.map((n) => n.toJson()).toList()),
+    );
 
     if (showAlert) {
       await _plugin.show(
@@ -153,7 +161,9 @@ class NotificationService {
         ? list.map((n) => n.copyWith(read: true)).toList()
         : list.map((n) => n.id == id ? n.copyWith(read: true) : n).toList();
     await SecureStore.write(
-        key: _centerKey, value: jsonEncode(updated.map((n) => n.toJson()).toList()));
+      key: _centerKey,
+      value: jsonEncode(updated.map((n) => n.toJson()).toList()),
+    );
   }
 
   /// Remove a single notification by id.
@@ -161,6 +171,8 @@ class NotificationService {
     final list = await getCenter();
     final updated = list.where((n) => n.id != id).toList();
     await SecureStore.write(
-        key: _centerKey, value: jsonEncode(updated.map((n) => n.toJson()).toList()));
+      key: _centerKey,
+      value: jsonEncode(updated.map((n) => n.toJson()).toList()),
+    );
   }
 }

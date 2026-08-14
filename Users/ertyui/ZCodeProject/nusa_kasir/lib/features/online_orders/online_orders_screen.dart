@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/providers.dart';
@@ -26,13 +26,21 @@ class OnlineOrdersScreen extends ConsumerStatefulWidget {
   ConsumerState<OnlineOrdersScreen> createState() => _OnlineOrdersScreenState();
 }
 
-class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with SingleTickerProviderStateMixin {
+class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
+    with SingleTickerProviderStateMixin {
   List<OnlineOrder> _orders = [];
   List<OnlineOrder> _allOrders = []; // unfiltered cache for stats
   bool _loading = true;
   late TabController _tabController;
   RealtimeChannel? _channel;
-  final List<String> _tabs = ['Semua', 'Baru', 'Disiapkan', 'Siap Diambil', 'Lunas', 'Direfund'];
+  final List<String> _tabs = [
+    'Semua',
+    'Baru',
+    'Disiapkan',
+    'Siap Diambil',
+    'Lunas',
+    'Direfund',
+  ];
   final _search = TextEditingController();
   String _query = '';
 
@@ -59,13 +67,19 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
 
   void _applySearch() {
     final q = _search.text.toLowerCase();
-    setState(() { _query = q; });
+    setState(() {
+      _query = q;
+    });
   }
 
   Future<void> _load() async {
     final repo = OnlineOrderRepository(ref.read(databaseProvider));
     final all = await repo.getAll();
-    if (mounted) setState(() { _allOrders = all; _filter(); });
+    if (mounted)
+      setState(() {
+        _allOrders = all;
+        _filter();
+      });
   }
 
   void _filter() {
@@ -77,13 +91,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       filtered = filtered.where((o) => o.status == status).toList();
     }
     if (_query.isNotEmpty) {
-      filtered = filtered.where((o) =>
-        o.invoice.toLowerCase().contains(_query) ||
-        o.customerName.toLowerCase().contains(_query) ||
-        o.customerPhone.contains(_query)
-      ).toList();
+      filtered = filtered
+          .where(
+            (o) =>
+                o.invoice.toLowerCase().contains(_query) ||
+                o.customerName.toLowerCase().contains(_query) ||
+                o.customerPhone.contains(_query),
+          )
+          .toList();
     }
-    if (mounted) setState(() { _orders = filtered; _loading = false; });
+    if (mounted)
+      setState(() {
+        _orders = filtered;
+        _loading = false;
+      });
   }
 
   void _listenSupabase() async {
@@ -93,23 +114,35 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       final storeId = await svc.storeId;
       if (storeId == null) return;
 
-      _channel = supabase.channel('online-orders-$storeId').onPostgresChanges(
-        event: PostgresChangeEvent.insert,
-        schema: 'public',
-        table: 'online_orders',
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'store_id', value: storeId),
-        callback: (payload) {
-          if (mounted) _load();
-        },
-      ).onPostgresChanges(
-        event: PostgresChangeEvent.update,
-        schema: 'public',
-        table: 'online_orders',
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'store_id', value: storeId),
-        callback: (payload) {
-          if (mounted) _load();
-        },
-      ).subscribe();
+      _channel = supabase
+          .channel('online-orders-$storeId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'online_orders',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'store_id',
+              value: storeId,
+            ),
+            callback: (payload) {
+              if (mounted) _load();
+            },
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'online_orders',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'store_id',
+              value: storeId,
+            ),
+            callback: (payload) {
+              if (mounted) _load();
+            },
+          )
+          .subscribe();
     } catch (e) {
       // ignore: avoid_print
       print('[OnlineOrders] Gagal subscribe Supabase realtime: $e');
@@ -122,19 +155,57 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     final status = order.status;
 
     if (status == 'Online Baru') {
-      buttons.add(_actionBtn('Terima & Siapkan', NusaConfig.accentGreen, () => _transition(order, 'Disiapkan')));
+      buttons.add(
+        _actionBtn(
+          'Terima & Siapkan',
+          NusaConfig.accentGreen,
+          () => _transition(order, 'Disiapkan'),
+        ),
+      );
       buttons.add(SizedBox(height: 6));
-      buttons.add(_actionBtn('Tolak / Batal', NusaConfig.activePrimary, () => _transition(order, 'Dibatalkan')));
+      buttons.add(
+        _actionBtn(
+          'Tolak / Batal',
+          NusaConfig.activePrimary,
+          () => _transition(order, 'Dibatalkan'),
+        ),
+      );
     } else if (status == 'Disiapkan') {
-      buttons.add(_actionBtn('Siap Diambil', NusaConfig.accentPurple, () => _transition(order, 'Siap Diambil')));
+      buttons.add(
+        _actionBtn(
+          'Siap Diambil',
+          NusaConfig.accentPurple,
+          () => _transition(order, 'Siap Diambil'),
+        ),
+      );
       buttons.add(SizedBox(height: 6));
-      buttons.add(_actionBtn('Batal', NusaConfig.activePrimary, () => _transition(order, 'Dibatalkan')));
+      buttons.add(
+        _actionBtn(
+          'Batal',
+          NusaConfig.activePrimary,
+          () => _transition(order, 'Dibatalkan'),
+        ),
+      );
     } else if (status == 'Siap Diambil') {
-      buttons.add(_actionBtn('Selesai (Lunas)', NusaConfig.accentGreenDark, () => _completeOrder(order)));
+      buttons.add(
+        _actionBtn(
+          'Selesai (Lunas)',
+          NusaConfig.accentGreenDark,
+          () => _completeOrder(order),
+        ),
+      );
       buttons.add(SizedBox(height: 6));
-      buttons.add(_actionBtn('Batal', NusaConfig.activePrimary, () => _transition(order, 'Dibatalkan')));
+      buttons.add(
+        _actionBtn(
+          'Batal',
+          NusaConfig.activePrimary,
+          () => _transition(order, 'Dibatalkan'),
+        ),
+      );
     } else if (status == 'Lunas' || status == 'Dibatalkan') {
-      buttons.add(_actionBtn('Refund', Color(0xFF6B7280), () => _refundOrder(order)));
+      buttons.add(
+        _actionBtn('Refund', Color(0xFF6B7280), () => _refundOrder(order)),
+      );
     }
 
     return buttons;
@@ -150,13 +221,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(newStatus == 'Dibatalkan' ? 'Batalkan Pesanan' : 'Update Status'),
+        title: Text(
+          newStatus == 'Dibatalkan' ? 'Batalkan Pesanan' : 'Update Status',
+        ),
         content: Text(labels[newStatus] ?? 'Update ke "$newStatus"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Tidak')),
-          NusaButton(newStatus == 'Dibatalkan' ? 'Ya, Batalkan' : 'Ya, Lanjutkan',
-              fullWidth: false,
-              onPressed: () => Navigator.pop(context, true)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Tidak'),
+          ),
+          NusaButton(
+            newStatus == 'Dibatalkan' ? 'Ya, Batalkan' : 'Ya, Lanjutkan',
+            fullWidth: false,
+            onPressed: () => Navigator.pop(context, true),
+          ),
         ],
       ),
     );
@@ -170,7 +248,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     // Update Supabase
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
-      await svc.updateOrderStatus(orderId: order.id, status: newStatus, processedBy: session?.name);
+      await svc.updateOrderStatus(
+        orderId: order.id,
+        status: newStatus,
+        processedBy: session?.name,
+      );
     } catch (e) {
       if (mounted) {
         TopToast.error(context, 'Gagal sync ke server: $e');
@@ -188,11 +270,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       context: context,
       builder: (_) => AlertDialog(
         title: Text('Selesaikan Pesanan'),
-        content: Text('Pesanan #${order.invoice} selesai?\n\n'
-            'Stok akan otomatis berkurang & transaksi tercatat.'),
+        content: Text(
+          'Pesanan #${order.invoice} selesai?\n\n'
+          'Stok akan otomatis berkurang & transaksi tercatat.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Batal')),
-          NusaButton('Selesai', fullWidth: false, onPressed: () => Navigator.pop(context, true)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Batal'),
+          ),
+          NusaButton(
+            'Selesai',
+            fullWidth: false,
+            onPressed: () => Navigator.pop(context, true),
+          ),
         ],
       ),
     );
@@ -204,7 +295,10 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       items = (jsonDecode(order.items) as List).cast<Map<String, dynamic>>();
     } catch (e) {
       if (mounted) {
-        TopToast.error(context, 'Gagal membaca data pesanan #${order.invoice}. Hubungi developer.');
+        TopToast.error(
+          context,
+          'Gagal membaca data pesanan #${order.invoice}. Hubungi developer.',
+        );
       }
       return;
     }
@@ -215,12 +309,16 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     final trxRepo = TransactionRepository(db);
     final customerRepo = CustomerRepository(db);
 
-    final cartItems = items.map((i) => {
-      'productId': i['product_id'],
-      'name': i['name'] ?? '',
-      'qty': i['qty'] ?? 1,
-      'price': i['price'] ?? 0,
-    }).toList();
+    final cartItems = items
+        .map(
+          (i) => {
+            'productId': i['product_id'],
+            'name': i['name'] ?? '',
+            'qty': i['qty'] ?? 1,
+            'price': i['price'] ?? 0,
+          },
+        )
+        .toList();
 
     try {
       // Wrap stock deduction, transaction, loyalty, and status in a single DB transaction.
@@ -258,7 +356,9 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
           if (customer == null) {
             // Auto-register: setiap orang yg order online langsung masuk daftar pelanggan
             final newId = await customerRepo.addCustomer(
-              name: order.customerName.isNotEmpty ? order.customerName : 'Pelanggan Online',
+              name: order.customerName.isNotEmpty
+                  ? order.customerName
+                  : 'Pelanggan Online',
               phone: order.customerPhone,
             );
             customer = await customerRepo.byId(newId);
@@ -274,7 +374,10 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       });
     } catch (e) {
       if (mounted) {
-        TopToast.error(context, 'Gagal menyelesaikan pesanan #${order.invoice}: $e');
+        TopToast.error(
+          context,
+          'Gagal menyelesaikan pesanan #${order.invoice}: $e',
+        );
       }
       return;
     }
@@ -282,7 +385,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     // Update Supabase (outside transaction — network call)
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
-      await svc.updateOrderStatus(orderId: order.id, status: 'Lunas', processedBy: session?.name);
+      await svc.updateOrderStatus(
+        orderId: order.id,
+        status: 'Lunas',
+        processedBy: session?.name,
+      );
     } catch (_) {
       // Supabase sync failed but local DB is consistent — will sync on next poll
     }
@@ -298,11 +405,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       context: context,
       builder: (_) => AlertDialog(
         title: Text('Refund Pesanan'),
-        content: Text('Yakin refund pesanan #${order.invoice}?\n\n'
-            'Status akan diubah menjadi "Direfund".'),
+        content: Text(
+          'Yakin refund pesanan #${order.invoice}?\n\n'
+          'Status akan diubah menjadi "Direfund".',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Batal')),
-          NusaButton('Refund', fullWidth: false, onPressed: () => Navigator.pop(context, true)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Batal'),
+          ),
+          NusaButton(
+            'Refund',
+            fullWidth: false,
+            onPressed: () => Navigator.pop(context, true),
+          ),
         ],
       ),
     );
@@ -315,7 +431,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     // Try Supabase
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
-      await svc.updateOrderStatus(orderId: order.id, status: 'Direfund', processedBy: session?.name);
+      await svc.updateOrderStatus(
+        orderId: order.id,
+        status: 'Direfund',
+        processedBy: session?.name,
+      );
     } catch (_) {}
 
     if (mounted) {
@@ -331,11 +451,16 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         ),
         onPressed: fn,
-        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        child: Text(
+          label,
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
@@ -343,7 +468,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
   /// Format JSON items list to readable text
   String _formatItems(String itemsJson) {
     try {
-      final items = (jsonDecode(itemsJson) as List).cast<Map<String, dynamic>>();
+      final items = (jsonDecode(itemsJson) as List)
+          .cast<Map<String, dynamic>>();
       return items.map((i) => '${i['qty']}x ${i['name']}').join(', ');
     } catch (_) {
       return itemsJson;
@@ -362,13 +488,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
 
   Color _statusColor(String status, bool isDark) {
     switch (status) {
-      case 'Online Baru': return NusaConfig.accentGold;
-      case 'Disiapkan': return NusaConfig.accentGreen;
-      case 'Siap Diambil': return NusaConfig.accentPurple;
-      case 'Lunas': return Color(0xFF059669);
-      case 'Dibatalkan': return NusaConfig.activePrimary;
-      case 'Direfund': return Color(0xFF6B7280);
-      default: return isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+      case 'Online Baru':
+        return NusaConfig.accentGold;
+      case 'Disiapkan':
+        return NusaConfig.accentGreen;
+      case 'Siap Diambil':
+        return NusaConfig.accentPurple;
+      case 'Lunas':
+        return Color(0xFF059669);
+      case 'Dibatalkan':
+        return NusaConfig.activePrimary;
+      case 'Direfund':
+        return Color(0xFF6B7280);
+      default:
+        return isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
     }
   }
 
@@ -387,12 +520,18 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
     // Stats from cached _allOrders
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
-    final todayCount = _allOrders.where((o) => o.createdAt.isAfter(todayStart)).length;
-    final pendingCount = _allOrders.where((o) => o.status == 'Online Baru' || o.status == 'Disiapkan').length;
+    final todayCount = _allOrders
+        .where((o) => o.createdAt.isAfter(todayStart))
+        .length;
+    final pendingCount = _allOrders
+        .where((o) => o.status == 'Online Baru' || o.status == 'Disiapkan')
+        .length;
     final doneCount = _allOrders.where((o) => o.status == 'Lunas').length;
 
     return ScreenScaffold(
-      _tabs[_tabController.index] == 'Semua' ? 'Pesanan Online' : 'Pesanan Online — ${_tabs[_tabController.index]}',
+      _tabs[_tabController.index] == 'Semua'
+          ? 'Pesanan Online'
+          : 'Pesanan Online — ${_tabs[_tabController.index]}',
       Column(
         children: [
           // Stats row
@@ -400,13 +539,36 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
             padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: SizedBox(
               height: 64,
-              child: Row(children: [
-                Expanded(child: _statCard('Hari Ini', todayCount.toString(), NusaConfig.activePrimary, isDark)),
-                SizedBox(width: 8),
-                Expanded(child: _statCard('Menunggu', pendingCount.toString(), NusaConfig.accentGold, isDark)),
-                SizedBox(width: 8),
-                Expanded(child: _statCard('Selesai', doneCount.toString(), NusaConfig.accentGreenDark, isDark)),
-              ]),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _statCard(
+                      'Hari Ini',
+                      todayCount.toString(),
+                      NusaConfig.activePrimary,
+                      isDark,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: _statCard(
+                      'Menunggu',
+                      pendingCount.toString(),
+                      NusaConfig.accentGold,
+                      isDark,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: _statCard(
+                      'Selesai',
+                      doneCount.toString(),
+                      NusaConfig.accentGreenDark,
+                      isDark,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(height: 6),
@@ -417,35 +579,46 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
             decoration: BoxDecoration(
               color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+              border: Border.all(
+                color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+              ),
             ),
             child: TabBar(
               controller: _tabController,
-              isScrollable: false,
-              tabAlignment: TabAlignment.fill,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               dividerColor: Colors.transparent,
               labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              unselectedLabelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
               labelColor: Colors.white,
-              unselectedLabelColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textTertiary,
+              unselectedLabelColor: isDark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textTertiary,
               indicator: BoxDecoration(
                 color: NusaConfig.activePrimary,
                 borderRadius: BorderRadius.circular(10),
               ),
               indicatorSize: TabBarIndicatorSize.tab,
               padding: EdgeInsets.all(4),
-              tabs: _tabs.map((t) => Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(t),
-                    if (t != 'Semua') ...[
-                      SizedBox(width: 4),
-                      _badgeFor(t, isDark),
-                    ],
-                  ],
-                ),
-              )).toList(),
+              tabs: _tabs
+                  .map(
+                    (t) => Tab(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(t),
+                          if (t != 'Semua') ...[
+                            SizedBox(width: 4),
+                            _badgeFor(t, isDark),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
               onTap: (_) => setState(() {}),
             ),
           ),
@@ -456,17 +629,40 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
               decoration: BoxDecoration(
                 color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
                 borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                border: Border.all(color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkInputBorder
+                      : NusaConfig.inputBorder,
+                ),
               ),
               child: TextField(
                 controller: _search,
-                style: TextStyle(fontSize: 14, color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Cari invoice atau nama pelanggan…',
-                  hintStyle: TextStyle(color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary, fontSize: 14),
-                  prefixIcon: Icon(Icons.search_rounded, size: 20, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  hintStyle: TextStyle(
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   isDense: false,
                 ),
               ),
@@ -479,16 +675,19 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
             child: _loading
                 ? SkeletonList()
                 : _orders.isEmpty
-                    ? EmptyState(icon: Icons.shopping_cart_outlined, message: 'Belum ada pesanan online')
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.separated(
-                          padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: _orders.length,
-                          separatorBuilder: (_, __) => SizedBox(height: 12),
-                          itemBuilder: (_, i) => _orderCard(_orders[i], isDark),
-                        ),
-                      ),
+                ? EmptyState(
+                    icon: Icons.shopping_cart_outlined,
+                    message: 'Belum ada pesanan online',
+                  )
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: _orders.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 12),
+                      itemBuilder: (_, i) => _orderCard(_orders[i], isDark),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -497,18 +696,25 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
 
   Widget _badgeFor(String tab, bool isDark) {
     int count = 0;
-    if (tab == 'Baru') count = _allOrders.where((o) => o.status == 'Online Baru').length;
-    else if (tab == 'Disiapkan') count = _allOrders.where((o) => o.status == 'Disiapkan').length;
-    else if (tab == 'Siap Diambil') count = _allOrders.where((o) => o.status == 'Siap Diambil').length;
-    else if (tab == 'Lunas') count = _allOrders.where((o) => o.status == 'Lunas').length;
-    else if (tab == 'Direfund') count = _allOrders.where((o) => o.status == 'Direfund').length;
+    if (tab == 'Baru')
+      count = _allOrders.where((o) => o.status == 'Online Baru').length;
+    else if (tab == 'Disiapkan')
+      count = _allOrders.where((o) => o.status == 'Disiapkan').length;
+    else if (tab == 'Siap Diambil')
+      count = _allOrders.where((o) => o.status == 'Siap Diambil').length;
+    else if (tab == 'Lunas')
+      count = _allOrders.where((o) => o.status == 'Lunas').length;
+    else if (tab == 'Direfund')
+      count = _allOrders.where((o) => o.status == 'Direfund').length;
 
     if (count == 0) return SizedBox.shrink();
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: tab == 'Baru' ? NusaConfig.activePrimary.withValues(alpha: 0.12) : NusaConfig.textTertiary.withValues(alpha: 0.12),
+        color: tab == 'Baru'
+            ? NusaConfig.activePrimary.withValues(alpha: 0.12)
+            : NusaConfig.textTertiary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -516,7 +722,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,
-          color: tab == 'Baru' ? NusaConfig.activePrimary : isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+          color: tab == 'Baru'
+              ? NusaConfig.activePrimary
+              : isDark
+              ? NusaConfig.darkTextSecondary
+              : NusaConfig.textSecondary,
         ),
       ),
     );
@@ -547,13 +757,20 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'monospace',
-                          color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
                         ),
                       ),
                       SizedBox(height: 2),
                       Text(
                         _timeAgo(order.createdAt),
-                        style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
+                        ),
                       ),
                     ],
                   ),
@@ -567,7 +784,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
                   ),
                   child: Text(
                     order.status,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: sColor),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: sColor,
+                    ),
                   ),
                 ),
               ],
@@ -575,14 +796,24 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
           ),
 
           // Divider
-          Divider(height: 1, thickness: 1, color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+          ),
 
           // Customer info
           Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Row(
               children: [
-                Icon(Icons.person_outline, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                Icon(
+                  Icons.person_outline,
+                  size: 16,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -590,7 +821,9 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
                     ),
                   ),
                 ),
@@ -603,7 +836,14 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
                         color: Color(0xFF25D366).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text('💬 WA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF128C7E))),
+                      child: Text(
+                        '💬 WA',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF128C7E),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -613,10 +853,22 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
           Padding(
             padding: EdgeInsets.fromLTRB(16, 2, 16, 8),
             child: GestureDetector(
-              onTap: order.customerPhone.isNotEmpty ? () => _openWA(order) : null,
+              onTap: order.customerPhone.isNotEmpty
+                  ? () => _openWA(order)
+                  : null,
               child: Text(
-                order.customerPhone.isNotEmpty ? '📱 ${order.customerPhone}' : 'Tanpa nomor WA',
-                style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, decoration: order.customerPhone.isNotEmpty ? TextDecoration.underline : null),
+                order.customerPhone.isNotEmpty
+                    ? '📱 ${order.customerPhone}'
+                    : 'Tanpa nomor WA',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                  decoration: order.customerPhone.isNotEmpty
+                      ? TextDecoration.underline
+                      : null,
+                ),
               ),
             ),
           ),
@@ -628,7 +880,12 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
               children: [
                 Text(
                   _formatItems(order.items),
-                  style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -642,7 +899,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
                     ),
                     child: Text(
                       '$itemCount item',
-                      style:  TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.activePrimary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: NusaConfig.activePrimary,
+                      ),
                     ),
                   ),
                 ],
@@ -656,25 +917,62 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                Icon(Icons.payment, size: 14, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                Icon(
+                  Icons.payment,
+                  size: 14,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
                 SizedBox(width: 4),
-                Text(order.paymentMethod, style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                Text(
+                  order.paymentMethod,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
                 Spacer(),
-                Text(formatRupiah(order.total),
-                    style:  TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary, letterSpacing: -0.5)),
+                Text(
+                  formatRupiah(order.total),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: NusaConfig.activePrimary,
+                    letterSpacing: -0.5,
+                  ),
+                ),
               ],
             ),
           ),
 
           // Pickup time
-          if (order.pickupTime != null && order.pickupTime!.isNotEmpty && order.pickupTime != 'Segera')
+          if (order.pickupTime != null &&
+              order.pickupTime!.isNotEmpty &&
+              order.pickupTime != 'Segera')
             Padding(
               padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
               child: Row(
                 children: [
-                  Icon(Icons.access_time, size: 14, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  Icon(
+                    Icons.access_time,
+                    size: 14,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
                   SizedBox(width: 4),
-                  Text('Pickup: ${order.pickupTime}', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  Text(
+                    'Pickup: ${order.pickupTime}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -695,7 +993,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
 
   int _itemCount(String itemsJson) {
     try {
-      final items = (jsonDecode(itemsJson) as List).cast<Map<String, dynamic>>();
+      final items = (jsonDecode(itemsJson) as List)
+          .cast<Map<String, dynamic>>();
       return items.fold(0, (sum, i) => sum + (i['qty'] as int? ?? 1));
     } catch (_) {
       return 0;
@@ -708,25 +1007,36 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen> with Si
       decoration: BoxDecoration(
         color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+        border: Border.all(
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textSecondary,
+            ),
+          ),
           SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color, height: 1.1)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1.1,
+            ),
+          ),
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime dt) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    return '${dt.day} ${months[dt.month - 1]} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

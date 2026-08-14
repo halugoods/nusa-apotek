@@ -15,6 +15,7 @@ import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
+import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
@@ -118,11 +119,7 @@ Future<void> _applyPendingRestore() async {
     // the swap. The database has NOT been opened yet at this point (we run
     // before AppDatabase() is constructed in main), so it's safe.
     final dbPath = p.join(dir.path, 'nusa_kasir.sqlite');
-    for (final sidecar in [
-      '$dbPath-wal',
-      '$dbPath-shm',
-      '$dbPath-journal',
-    ]) {
+    for (final sidecar in ['$dbPath-wal', '$dbPath-shm', '$dbPath-journal']) {
       final f = File(sidecar);
       if (await f.exists()) {
         try {
@@ -164,9 +161,10 @@ Future<void> _receiveAtLaunch() async {
 
     final client = Supabase.instance.client;
     final repo = ActivationRepository(client);
-    final cloudTime = await repo
-        .getBackupTimestamp()
-        .timeout(const Duration(seconds: 3), onTimeout: () => null);
+    final cloudTime = await repo.getBackupTimestamp().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => null,
+    );
     if (cloudTime == null) return;
 
     final lastSeen = await SecureStore.getLastCloudSeen();
@@ -182,9 +180,10 @@ Future<void> _receiveAtLaunch() async {
     }
 
     // No local pending changes → adopt cloud backup.
-    final ok = await repo
-        .restoreFromCloud()
-        .timeout(const Duration(seconds: 15), onTimeout: () => false);
+    final ok = await repo.restoreFromCloud().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => false,
+    );
     if (ok) {
       await SecureStore.setLastCloudSeen(cloudTime);
       debugPrint('[AutoSync] Received cloud backup ($cloudTime)');
@@ -303,13 +302,22 @@ void main() async {
       ReceiptPrinter.setCashDrawer(enabled: drawer);
     } catch (_) {}
 
+    // Hapus APK update sisa (auto-cleanup) — user gaptek lupa menghapus,
+    // memori penyimpanan penuh. File tidak bisa dihapus saat installer masih
+    // memakainya, jadi dibersihkan saat app start berikutnya.
+    try {
+      await UpdateService.cleanupApk();
+    } catch (_) {}
+
     // Determine initial route.
     try {
       final activated = (await SecureStore.getActivation()) != null;
       if (!activated) {
         // Dev mode: show variant picker first, then activation
         // Production: go directly to activation with build-time config
-        initialLocation = NusaConfig.isDevBuild ? '/variant-picker' : '/activation';
+        initialLocation = NusaConfig.isDevBuild
+            ? '/variant-picker'
+            : '/activation';
       } else {
         final session = await EmployeeSession.restore();
         if (session != null && !session.isExpired) {

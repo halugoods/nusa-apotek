@@ -401,6 +401,17 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     requiredDuringInsert: false,
     defaultValue: const Constant('pcs'),
   );
+  static const VerificationMeta _supplierIdMeta = const VerificationMeta(
+    'supplierId',
+  );
+  @override
+  late final GeneratedColumn<int> supplierId = GeneratedColumn<int>(
+    'supplier_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -433,6 +444,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     variantsJson,
     wholesaleJson,
     priceType,
+    supplierId,
     createdAt,
   ];
   @override
@@ -571,6 +583,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         priceType.isAcceptableOrUnknown(data['price_type']!, _priceTypeMeta),
       );
     }
+    if (data.containsKey('supplier_id')) {
+      context.handle(
+        _supplierIdMeta,
+        supplierId.isAcceptableOrUnknown(data['supplier_id']!, _supplierIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -658,6 +676,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.string,
         data['${effectivePrefix}price_type'],
       )!,
+      supplierId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}supplier_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -690,6 +712,7 @@ class Product extends DataClass implements Insertable<Product> {
   final String? variantsJson;
   final String? wholesaleJson;
   final String priceType;
+  final int? supplierId;
   final DateTime createdAt;
   const Product({
     required this.id,
@@ -710,6 +733,7 @@ class Product extends DataClass implements Insertable<Product> {
     this.variantsJson,
     this.wholesaleJson,
     required this.priceType,
+    this.supplierId,
     required this.createdAt,
   });
   @override
@@ -747,6 +771,9 @@ class Product extends DataClass implements Insertable<Product> {
       map['wholesale_json'] = Variable<String>(wholesaleJson);
     }
     map['price_type'] = Variable<String>(priceType);
+    if (!nullToAbsent || supplierId != null) {
+      map['supplier_id'] = Variable<int>(supplierId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -783,6 +810,9 @@ class Product extends DataClass implements Insertable<Product> {
           ? const Value.absent()
           : Value(wholesaleJson),
       priceType: Value(priceType),
+      supplierId: supplierId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(supplierId),
       createdAt: Value(createdAt),
     );
   }
@@ -811,6 +841,7 @@ class Product extends DataClass implements Insertable<Product> {
       variantsJson: serializer.fromJson<String?>(json['variantsJson']),
       wholesaleJson: serializer.fromJson<String?>(json['wholesaleJson']),
       priceType: serializer.fromJson<String>(json['priceType']),
+      supplierId: serializer.fromJson<int?>(json['supplierId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -836,6 +867,7 @@ class Product extends DataClass implements Insertable<Product> {
       'variantsJson': serializer.toJson<String?>(variantsJson),
       'wholesaleJson': serializer.toJson<String?>(wholesaleJson),
       'priceType': serializer.toJson<String>(priceType),
+      'supplierId': serializer.toJson<int?>(supplierId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -859,6 +891,7 @@ class Product extends DataClass implements Insertable<Product> {
     Value<String?> variantsJson = const Value.absent(),
     Value<String?> wholesaleJson = const Value.absent(),
     String? priceType,
+    Value<int?> supplierId = const Value.absent(),
     DateTime? createdAt,
   }) => Product(
     id: id ?? this.id,
@@ -881,6 +914,7 @@ class Product extends DataClass implements Insertable<Product> {
         ? wholesaleJson.value
         : this.wholesaleJson,
     priceType: priceType ?? this.priceType,
+    supplierId: supplierId.present ? supplierId.value : this.supplierId,
     createdAt: createdAt ?? this.createdAt,
   );
   Product copyWithCompanion(ProductsCompanion data) {
@@ -915,6 +949,9 @@ class Product extends DataClass implements Insertable<Product> {
           ? data.wholesaleJson.value
           : this.wholesaleJson,
       priceType: data.priceType.present ? data.priceType.value : this.priceType,
+      supplierId: data.supplierId.present
+          ? data.supplierId.value
+          : this.supplierId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -940,6 +977,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('variantsJson: $variantsJson, ')
           ..write('wholesaleJson: $wholesaleJson, ')
           ..write('priceType: $priceType, ')
+          ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -965,6 +1003,7 @@ class Product extends DataClass implements Insertable<Product> {
     variantsJson,
     wholesaleJson,
     priceType,
+    supplierId,
     createdAt,
   );
   @override
@@ -989,6 +1028,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.variantsJson == this.variantsJson &&
           other.wholesaleJson == this.wholesaleJson &&
           other.priceType == this.priceType &&
+          other.supplierId == this.supplierId &&
           other.createdAt == this.createdAt);
 }
 
@@ -1011,6 +1051,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String?> variantsJson;
   final Value<String?> wholesaleJson;
   final Value<String> priceType;
+  final Value<int?> supplierId;
   final Value<DateTime> createdAt;
   const ProductsCompanion({
     this.id = const Value.absent(),
@@ -1031,6 +1072,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.variantsJson = const Value.absent(),
     this.wholesaleJson = const Value.absent(),
     this.priceType = const Value.absent(),
+    this.supplierId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   ProductsCompanion.insert({
@@ -1052,6 +1094,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.variantsJson = const Value.absent(),
     this.wholesaleJson = const Value.absent(),
     this.priceType = const Value.absent(),
+    this.supplierId = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : name = Value(name),
        sellPrice = Value(sellPrice);
@@ -1074,6 +1117,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? variantsJson,
     Expression<String>? wholesaleJson,
     Expression<String>? priceType,
+    Expression<int>? supplierId,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -1095,6 +1139,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (variantsJson != null) 'variants_json': variantsJson,
       if (wholesaleJson != null) 'wholesale_json': wholesaleJson,
       if (priceType != null) 'price_type': priceType,
+      if (supplierId != null) 'supplier_id': supplierId,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -1118,6 +1163,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<String?>? variantsJson,
     Value<String?>? wholesaleJson,
     Value<String>? priceType,
+    Value<int?>? supplierId,
     Value<DateTime>? createdAt,
   }) {
     return ProductsCompanion(
@@ -1139,6 +1185,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       variantsJson: variantsJson ?? this.variantsJson,
       wholesaleJson: wholesaleJson ?? this.wholesaleJson,
       priceType: priceType ?? this.priceType,
+      supplierId: supplierId ?? this.supplierId,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -1200,6 +1247,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (priceType.present) {
       map['price_type'] = Variable<String>(priceType.value);
     }
+    if (supplierId.present) {
+      map['supplier_id'] = Variable<int>(supplierId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1227,6 +1277,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('variantsJson: $variantsJson, ')
           ..write('wholesaleJson: $wholesaleJson, ')
           ..write('priceType: $priceType, ')
+          ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -20713,6 +20764,17 @@ class $PurchaseOrdersTable extends PurchaseOrders
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _extraCostsJsonMeta = const VerificationMeta(
+    'extraCostsJson',
+  );
+  @override
+  late final GeneratedColumn<String> extraCostsJson = GeneratedColumn<String>(
+    'extra_costs_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
@@ -20739,6 +20801,7 @@ class $PurchaseOrdersTable extends PurchaseOrders
     supplierId,
     supplierName,
     total,
+    extraCostsJson,
     note,
     date,
   ];
@@ -20790,6 +20853,15 @@ class $PurchaseOrdersTable extends PurchaseOrders
         total.isAcceptableOrUnknown(data['total']!, _totalMeta),
       );
     }
+    if (data.containsKey('extra_costs_json')) {
+      context.handle(
+        _extraCostsJsonMeta,
+        extraCostsJson.isAcceptableOrUnknown(
+          data['extra_costs_json']!,
+          _extraCostsJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('note')) {
       context.handle(
         _noteMeta,
@@ -20831,6 +20903,10 @@ class $PurchaseOrdersTable extends PurchaseOrders
         DriftSqlType.int,
         data['${effectivePrefix}total'],
       )!,
+      extraCostsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}extra_costs_json'],
+      ),
       note: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}note'],
@@ -20854,6 +20930,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
   final int supplierId;
   final String supplierName;
   final int total;
+  final String? extraCostsJson;
   final String? note;
   final DateTime date;
   const PurchaseOrder({
@@ -20862,6 +20939,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     required this.supplierId,
     required this.supplierName,
     required this.total,
+    this.extraCostsJson,
     this.note,
     required this.date,
   });
@@ -20873,6 +20951,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     map['supplier_id'] = Variable<int>(supplierId);
     map['supplier_name'] = Variable<String>(supplierName);
     map['total'] = Variable<int>(total);
+    if (!nullToAbsent || extraCostsJson != null) {
+      map['extra_costs_json'] = Variable<String>(extraCostsJson);
+    }
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
@@ -20887,6 +20968,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       supplierId: Value(supplierId),
       supplierName: Value(supplierName),
       total: Value(total),
+      extraCostsJson: extraCostsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(extraCostsJson),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       date: Value(date),
     );
@@ -20903,6 +20987,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       supplierId: serializer.fromJson<int>(json['supplierId']),
       supplierName: serializer.fromJson<String>(json['supplierName']),
       total: serializer.fromJson<int>(json['total']),
+      extraCostsJson: serializer.fromJson<String?>(json['extraCostsJson']),
       note: serializer.fromJson<String?>(json['note']),
       date: serializer.fromJson<DateTime>(json['date']),
     );
@@ -20916,6 +21001,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
       'supplierId': serializer.toJson<int>(supplierId),
       'supplierName': serializer.toJson<String>(supplierName),
       'total': serializer.toJson<int>(total),
+      'extraCostsJson': serializer.toJson<String?>(extraCostsJson),
       'note': serializer.toJson<String?>(note),
       'date': serializer.toJson<DateTime>(date),
     };
@@ -20927,6 +21013,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     int? supplierId,
     String? supplierName,
     int? total,
+    Value<String?> extraCostsJson = const Value.absent(),
     Value<String?> note = const Value.absent(),
     DateTime? date,
   }) => PurchaseOrder(
@@ -20935,6 +21022,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
     supplierId: supplierId ?? this.supplierId,
     supplierName: supplierName ?? this.supplierName,
     total: total ?? this.total,
+    extraCostsJson: extraCostsJson.present
+        ? extraCostsJson.value
+        : this.extraCostsJson,
     note: note.present ? note.value : this.note,
     date: date ?? this.date,
   );
@@ -20949,6 +21039,9 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ? data.supplierName.value
           : this.supplierName,
       total: data.total.present ? data.total.value : this.total,
+      extraCostsJson: data.extraCostsJson.present
+          ? data.extraCostsJson.value
+          : this.extraCostsJson,
       note: data.note.present ? data.note.value : this.note,
       date: data.date.present ? data.date.value : this.date,
     );
@@ -20962,6 +21055,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           ..write('supplierId: $supplierId, ')
           ..write('supplierName: $supplierName, ')
           ..write('total: $total, ')
+          ..write('extraCostsJson: $extraCostsJson, ')
           ..write('note: $note, ')
           ..write('date: $date')
           ..write(')'))
@@ -20969,8 +21063,16 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, invoice, supplierId, supplierName, total, note, date);
+  int get hashCode => Object.hash(
+    id,
+    invoice,
+    supplierId,
+    supplierName,
+    total,
+    extraCostsJson,
+    note,
+    date,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -20980,6 +21082,7 @@ class PurchaseOrder extends DataClass implements Insertable<PurchaseOrder> {
           other.supplierId == this.supplierId &&
           other.supplierName == this.supplierName &&
           other.total == this.total &&
+          other.extraCostsJson == this.extraCostsJson &&
           other.note == this.note &&
           other.date == this.date);
 }
@@ -20990,6 +21093,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
   final Value<int> supplierId;
   final Value<String> supplierName;
   final Value<int> total;
+  final Value<String?> extraCostsJson;
   final Value<String?> note;
   final Value<DateTime> date;
   const PurchaseOrdersCompanion({
@@ -20998,6 +21102,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     this.supplierId = const Value.absent(),
     this.supplierName = const Value.absent(),
     this.total = const Value.absent(),
+    this.extraCostsJson = const Value.absent(),
     this.note = const Value.absent(),
     this.date = const Value.absent(),
   });
@@ -21007,6 +21112,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     required int supplierId,
     required String supplierName,
     this.total = const Value.absent(),
+    this.extraCostsJson = const Value.absent(),
     this.note = const Value.absent(),
     this.date = const Value.absent(),
   }) : invoice = Value(invoice),
@@ -21018,6 +21124,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Expression<int>? supplierId,
     Expression<String>? supplierName,
     Expression<int>? total,
+    Expression<String>? extraCostsJson,
     Expression<String>? note,
     Expression<DateTime>? date,
   }) {
@@ -21027,6 +21134,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       if (supplierId != null) 'supplier_id': supplierId,
       if (supplierName != null) 'supplier_name': supplierName,
       if (total != null) 'total': total,
+      if (extraCostsJson != null) 'extra_costs_json': extraCostsJson,
       if (note != null) 'note': note,
       if (date != null) 'date': date,
     });
@@ -21038,6 +21146,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     Value<int>? supplierId,
     Value<String>? supplierName,
     Value<int>? total,
+    Value<String?>? extraCostsJson,
     Value<String?>? note,
     Value<DateTime>? date,
   }) {
@@ -21047,6 +21156,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
       supplierId: supplierId ?? this.supplierId,
       supplierName: supplierName ?? this.supplierName,
       total: total ?? this.total,
+      extraCostsJson: extraCostsJson ?? this.extraCostsJson,
       note: note ?? this.note,
       date: date ?? this.date,
     );
@@ -21070,6 +21180,9 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
     if (total.present) {
       map['total'] = Variable<int>(total.value);
     }
+    if (extraCostsJson.present) {
+      map['extra_costs_json'] = Variable<String>(extraCostsJson.value);
+    }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
@@ -21087,6 +21200,7 @@ class PurchaseOrdersCompanion extends UpdateCompanion<PurchaseOrder> {
           ..write('supplierId: $supplierId, ')
           ..write('supplierName: $supplierName, ')
           ..write('total: $total, ')
+          ..write('extraCostsJson: $extraCostsJson, ')
           ..write('note: $note, ')
           ..write('date: $date')
           ..write(')'))
@@ -22286,6 +22400,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String?> variantsJson,
       Value<String?> wholesaleJson,
       Value<String> priceType,
+      Value<int?> supplierId,
       Value<DateTime> createdAt,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
@@ -22308,6 +22423,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String?> variantsJson,
       Value<String?> wholesaleJson,
       Value<String> priceType,
+      Value<int?> supplierId,
       Value<DateTime> createdAt,
     });
 
@@ -22407,6 +22523,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get priceType => $composableBuilder(
     column: $table.priceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -22515,6 +22636,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -22596,6 +22722,11 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<String> get priceType =>
       $composableBuilder(column: $table.priceType, builder: (column) => column);
 
+  GeneratedColumn<int> get supplierId => $composableBuilder(
+    column: $table.supplierId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -22646,6 +22777,7 @@ class $$ProductsTableTableManager
                 Value<String?> variantsJson = const Value.absent(),
                 Value<String?> wholesaleJson = const Value.absent(),
                 Value<String> priceType = const Value.absent(),
+                Value<int?> supplierId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
@@ -22666,6 +22798,7 @@ class $$ProductsTableTableManager
                 variantsJson: variantsJson,
                 wholesaleJson: wholesaleJson,
                 priceType: priceType,
+                supplierId: supplierId,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -22688,6 +22821,7 @@ class $$ProductsTableTableManager
                 Value<String?> variantsJson = const Value.absent(),
                 Value<String?> wholesaleJson = const Value.absent(),
                 Value<String> priceType = const Value.absent(),
+                Value<int?> supplierId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
@@ -22708,6 +22842,7 @@ class $$ProductsTableTableManager
                 variantsJson: variantsJson,
                 wholesaleJson: wholesaleJson,
                 priceType: priceType,
+                supplierId: supplierId,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -32352,6 +32487,7 @@ typedef $$PurchaseOrdersTableCreateCompanionBuilder =
       required int supplierId,
       required String supplierName,
       Value<int> total,
+      Value<String?> extraCostsJson,
       Value<String?> note,
       Value<DateTime> date,
     });
@@ -32362,6 +32498,7 @@ typedef $$PurchaseOrdersTableUpdateCompanionBuilder =
       Value<int> supplierId,
       Value<String> supplierName,
       Value<int> total,
+      Value<String?> extraCostsJson,
       Value<String?> note,
       Value<DateTime> date,
     });
@@ -32397,6 +32534,11 @@ class $$PurchaseOrdersTableFilterComposer
 
   ColumnFilters<int> get total => $composableBuilder(
     column: $table.total,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get extraCostsJson => $composableBuilder(
+    column: $table.extraCostsJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -32445,6 +32587,11 @@ class $$PurchaseOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get extraCostsJson => $composableBuilder(
+    column: $table.extraCostsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get note => $composableBuilder(
     column: $table.note,
     builder: (column) => ColumnOrderings(column),
@@ -32483,6 +32630,11 @@ class $$PurchaseOrdersTableAnnotationComposer
 
   GeneratedColumn<int> get total =>
       $composableBuilder(column: $table.total, builder: (column) => column);
+
+  GeneratedColumn<String> get extraCostsJson => $composableBuilder(
+    column: $table.extraCostsJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
@@ -32529,6 +32681,7 @@ class $$PurchaseOrdersTableTableManager
                 Value<int> supplierId = const Value.absent(),
                 Value<String> supplierName = const Value.absent(),
                 Value<int> total = const Value.absent(),
+                Value<String?> extraCostsJson = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
               }) => PurchaseOrdersCompanion(
@@ -32537,6 +32690,7 @@ class $$PurchaseOrdersTableTableManager
                 supplierId: supplierId,
                 supplierName: supplierName,
                 total: total,
+                extraCostsJson: extraCostsJson,
                 note: note,
                 date: date,
               ),
@@ -32547,6 +32701,7 @@ class $$PurchaseOrdersTableTableManager
                 required int supplierId,
                 required String supplierName,
                 Value<int> total = const Value.absent(),
+                Value<String?> extraCostsJson = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
               }) => PurchaseOrdersCompanion.insert(
@@ -32555,6 +32710,7 @@ class $$PurchaseOrdersTableTableManager
                 supplierId: supplierId,
                 supplierName: supplierName,
                 total: total,
+                extraCostsJson: extraCostsJson,
                 note: note,
                 date: date,
               ),

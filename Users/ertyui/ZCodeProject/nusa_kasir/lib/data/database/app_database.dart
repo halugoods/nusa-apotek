@@ -6,16 +6,54 @@ import 'package:path/path.dart' as p;
 import 'tables.dart';
 part 'app_database.g.dart';
 
-@DriftDatabase(tables: [Categories, Products, StockMovements, Transactions, Customers, Promos,
-  Employees, Attendance, Expenses, ExpenseCategories, RecurringExpenses, Payroll, Waste,
-  Liquidity, Suppliers, Branches, Settings, ActivationsLocal, SyncQueue, CashierSessions,
-  OnlineOrders, CustomerDebts, DebtPayments, StockCounts, StockCountItems, ChatSessions,
-  DiningTables, LaundryOrders, ServiceTickets, Appointments, Prescriptions, PrintOrders, OpenTabs, Roles, Refunds, PointHistories, PurchaseOrders, PurchaseOrderItems, MaterialPrices])
+@DriftDatabase(
+  tables: [
+    Categories,
+    Products,
+    StockMovements,
+    Transactions,
+    Customers,
+    Promos,
+    Employees,
+    Attendance,
+    Expenses,
+    ExpenseCategories,
+    RecurringExpenses,
+    Payroll,
+    Waste,
+    Liquidity,
+    Suppliers,
+    Branches,
+    Settings,
+    ActivationsLocal,
+    SyncQueue,
+    CashierSessions,
+    OnlineOrders,
+    CustomerDebts,
+    DebtPayments,
+    StockCounts,
+    StockCountItems,
+    ChatSessions,
+    DiningTables,
+    LaundryOrders,
+    ServiceTickets,
+    Appointments,
+    Prescriptions,
+    PrintOrders,
+    OpenTabs,
+    Roles,
+    Refunds,
+    PointHistories,
+    PurchaseOrders,
+    PurchaseOrderItems,
+    MaterialPrices,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 39;
+  int get schemaVersion => 40;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -215,6 +253,13 @@ class AppDatabase extends _$AppDatabase {
         // beli bahan per supplier disimpan di MaterialPrices.
         await m.addColumn(purchaseOrderItems, purchaseOrderItems.isMaterial);
         await m.createTable(materialPrices);
+      }
+      if (from < 40) {
+        // Catat pembelian mode POS: produk bisa terikat supplier langganan
+        // (supplierId) + biaya tambahan (packing/ongkir/stiker) disimpan di
+        // header pembelian (extraCostsJson) untuk HPP akurat.
+        await m.addColumn(products, products.supplierId);
+        await m.addColumn(purchaseOrders, purchaseOrders.extraCostsJson);
       }
     },
   );

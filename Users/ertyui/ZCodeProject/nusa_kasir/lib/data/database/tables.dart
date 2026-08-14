@@ -22,11 +22,19 @@ class Products extends Table {
   BoolColumn get isOnline => boolean().withDefault(const Constant(false))();
   DateTimeColumn get expiryDate => dateTime().nullable()();
   TextColumn get productType => text().nullable()();
-  TextColumn get variantsJson => text().nullable()();   // JSON array: [{name,priceAdjustment,stock}]
-  TextColumn get wholesaleJson => text().nullable()();  // JSON array: [{minQty,price}]
-  TextColumn get priceType => text().withDefault(const Constant('pcs'))(); // 'pcs' or 'kg'
+  TextColumn get variantsJson =>
+      text().nullable()(); // JSON array: [{name,priceAdjustment,stock}]
+  TextColumn get wholesaleJson =>
+      text().nullable()(); // JSON array: [{minQty,price}]
+  TextColumn get priceType =>
+      text().withDefault(const Constant('pcs'))(); // 'pcs' or 'kg'
+  // Supplier langganan produk (nullable): diisi saat produk dibuat dari
+  // Catat Pembelian (toggle supplier). Dipakai untuk tahu produk ini
+  // dipasok supplier mana — HPP tetap dari buyPrice.
+  IntColumn get supplierId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 class StockMovements extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get productId => integer()();
@@ -35,6 +43,7 @@ class StockMovements extends Table {
   TextColumn get note => text().nullable()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 class Transactions extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get invoice => text()();
@@ -77,6 +86,7 @@ class Refunds extends Table {
   IntColumn get employeeId => integer().nullable()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 /// Role permissions — per-role menu access, stored in SQLite so role
 /// permissions ride along with the cloud DB backup/restore (phone ↔ tablet).
 class Roles extends Table {
@@ -87,6 +97,7 @@ class Roles extends Table {
   @override
   Set<Column> get primaryKey => {name};
 }
+
 class Customers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -97,6 +108,7 @@ class Customers extends Table {
   TextColumn get level => text().withDefault(const Constant('Silver'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 /// Riwayat poin per pelanggan (dapat / pakai poin) untuk tampilan
 /// "Poin History" di detail pelanggan & info poin di struk.
 class PointHistories extends Table {
@@ -108,6 +120,7 @@ class PointHistories extends Table {
   TextColumn get note => text().nullable()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 class Promos extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -123,6 +136,7 @@ class Promos extends Table {
   // 'otomatis' (auto-apply saat cart penuhi syarat) | 'kode' (hanya via kode) | 'bebas' (bisa dipilih di kasir)
   TextColumn get mode => text().withDefault(const Constant('otomatis'))();
 }
+
 class Employees extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -134,14 +148,18 @@ class Employees extends Table {
   TextColumn get photoPath => text().nullable()();
   IntColumn get baseSalary => integer().nullable()();
   DateTimeColumn get startDate => dateTime().nullable()();
-  TextColumn get nfcTag => text().nullable()();   // NFC tag hash for tap-to-login
+  TextColumn get nfcTag => text().nullable()(); // NFC tag hash for tap-to-login
   TextColumn get workStart => text().nullable()(); // "HH:mm" default "08:00"
-  TextColumn get workEnd => text().nullable()();   // "HH:mm" default "17:00"
-  BoolColumn get requiresAttendance => boolean().withDefault(const Constant(false))();
-  BoolColumn get requiresCashOpen => boolean().withDefault(const Constant(false))();
-  BoolColumn get requiresCashClose => boolean().withDefault(const Constant(false))();
+  TextColumn get workEnd => text().nullable()(); // "HH:mm" default "17:00"
+  BoolColumn get requiresAttendance =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresCashOpen =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresCashClose =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 class Attendance extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get employeeId => integer()();
@@ -154,6 +172,7 @@ class Attendance extends Table {
   IntColumn get expectedCash => integer().nullable()();
   TextColumn get shiftNotes => text().nullable()();
 }
+
 class Expenses extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
@@ -162,10 +181,12 @@ class Expenses extends Table {
   IntColumn get amount => integer()();
   IntColumn get branchId => integer().nullable()();
 }
+
 class ExpenseCategories extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
 }
+
 class RecurringExpenses extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get category => text()();
@@ -175,6 +196,7 @@ class RecurringExpenses extends Table {
   DateTimeColumn get nextDate => dateTime()();
   BoolColumn get active => boolean().withDefault(const Constant(true))();
 }
+
 class Payroll extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get employeeId => integer()();
@@ -186,6 +208,7 @@ class Payroll extends Table {
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   TextColumn get status => text().withDefault(const Constant('Pending'))();
 }
+
 class Waste extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get productId => integer()();
@@ -194,6 +217,7 @@ class Waste extends Table {
   TextColumn get type => text().withDefault(const Constant('Expired'))();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 class Liquidity extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
@@ -204,6 +228,7 @@ class Liquidity extends Table {
   TextColumn get method => text().nullable()();
   IntColumn get branchId => integer().nullable()();
 }
+
 class Suppliers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -213,6 +238,7 @@ class Suppliers extends Table {
   TextColumn get note => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 // Pembelian/restok dari supplier: header per transaksi pembelian.
 // Saat dicatat (receive), stok produk masuk + harga modal (buyPrice) ikut
 // diperbarui ke harga beli terbaru — HPP/laba rugi jadi presisi.
@@ -220,11 +246,16 @@ class PurchaseOrders extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get invoice => text()();
   IntColumn get supplierId => integer()();
-  TextColumn get supplierName => text()(); // snapshot nama supplier (aman walau supplier dihapus)
+  TextColumn get supplierName =>
+      text()(); // snapshot nama supplier (aman walau supplier dihapus)
   IntColumn get total => integer().withDefault(const Constant(0))();
+  // Biaya tambahan (packing/ongkir/stiker dll): JSON array
+  // [{name, amount}] — total dibagi rata ke qty item → masuk HPP (buyPrice).
+  TextColumn get extraCostsJson => text().nullable()();
   TextColumn get note => text().nullable()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 class PurchaseOrderItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get purchaseOrderId => integer()();
@@ -238,6 +269,7 @@ class PurchaseOrderItems extends Table {
   IntColumn get total => integer()();
   BoolColumn get isMaterial => boolean().withDefault(const Constant(false))();
 }
+
 /// Riwayat harga beli bahan per supplier — dipakai untuk melihat kenaikan /
 /// penurunan harga pembelian (mis. plastik yang harganya fluktuatif).
 class MaterialPrices extends Table {
@@ -249,6 +281,7 @@ class MaterialPrices extends Table {
   IntColumn get qty => integer().withDefault(const Constant(1))();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
+
 class Branches extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -256,6 +289,7 @@ class Branches extends Table {
   TextColumn get phone => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('Aktif'))();
 }
+
 class Settings extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();
   TextColumn get storeName => text().withDefault(const Constant(''))();
@@ -278,31 +312,42 @@ class Settings extends Table {
   IntColumn get pointsPerRupiah => integer().withDefault(const Constant(100))();
   IntColumn get silverThreshold => integer().withDefault(const Constant(0))();
   IntColumn get goldThreshold => integer().withDefault(const Constant(1000))();
-  IntColumn get platinumThreshold => integer().withDefault(const Constant(5000))();
+  IntColumn get platinumThreshold =>
+      integer().withDefault(const Constant(5000))();
   // ── QRIS image (replaces qrisString) ──
   TextColumn get qrisImagePath => text().nullable()();
   // ── Receipt advanced ──
   TextColumn get receiptHeader => text().nullable()();
-  TextColumn get receiptPaperSize => text().withDefault(const Constant('58mm'))();
+  TextColumn get receiptPaperSize =>
+      text().withDefault(const Constant('58mm'))();
   IntColumn get pinLength => integer().withDefault(const Constant(6))();
-  BoolColumn get receiptShowLogo => boolean().withDefault(const Constant(true))();
-  BoolColumn get receiptShowCashier => boolean().withDefault(const Constant(true))();
-  BoolColumn get receiptShowInvoice => boolean().withDefault(const Constant(true))();
-  BoolColumn get receiptShowDate => boolean().withDefault(const Constant(true))();
-  BoolColumn get receiptShowBarcode => boolean().withDefault(const Constant(false))();
+  BoolColumn get receiptShowLogo =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get receiptShowCashier =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get receiptShowInvoice =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get receiptShowDate =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get receiptShowBarcode =>
+      boolean().withDefault(const Constant(false))();
   // ── Kitchen printer (FnB) ──
   TextColumn get kitchenPrinterAddress => text().nullable()();
-  BoolColumn get kitchenPrinterEnabled => boolean().withDefault(const Constant(false))();
+  BoolColumn get kitchenPrinterEnabled =>
+      boolean().withDefault(const Constant(false))();
   @override
   Set<Column> get primaryKey => {id};
 }
+
 class ActivationsLocal extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get key => text()();
   TextColumn get deviceId => text()();
-  DateTimeColumn get activatedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get activatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
   TextColumn get status => text().withDefault(const Constant('active'))();
 }
+
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get taskType => text()();
@@ -312,6 +357,7 @@ class SyncQueue extends Table {
   TextColumn get errorMessage => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 class CashierSessions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get employeeId => integer()();
@@ -320,12 +366,13 @@ class CashierSessions extends Table {
   IntColumn get startingCash => integer().withDefault(const Constant(0))();
   IntColumn get branchId => integer().nullable()();
 }
+
 class OnlineOrders extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get invoice => text()();
   TextColumn get customerName => text()();
   TextColumn get customerPhone => text()();
-  TextColumn get items => text()();  // JSON string
+  TextColumn get items => text()(); // JSON string
   IntColumn get subtotal => integer().withDefault(const Constant(0))();
   IntColumn get discount => integer().withDefault(const Constant(0))();
   IntColumn get handlingFee => integer().withDefault(const Constant(0))();
@@ -338,6 +385,7 @@ class OnlineOrders extends Table {
   TextColumn get processedBy => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 class CustomerDebts extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get customerId => integer()();
@@ -347,8 +395,11 @@ class CustomerDebts extends Table {
   TextColumn get description => text().nullable()();
   DateTimeColumn get debtDate => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get dueDate => dateTime().nullable()();
-  TextColumn get status => text().withDefault(const Constant('Belum Lunas'))(); // Belum Lunas | Lunas
+  TextColumn get status => text().withDefault(
+    const Constant('Belum Lunas'),
+  )(); // Belum Lunas | Lunas
 }
+
 class DebtPayments extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get debtId => integer()();
@@ -357,6 +408,7 @@ class DebtPayments extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get paidAt => dateTime().withDefault(currentDateAndTime)();
 }
+
 class StockCounts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().nullable()();
@@ -367,6 +419,7 @@ class StockCounts extends Table {
   IntColumn get matchCount => integer().withDefault(const Constant(0))();
   IntColumn get diffCount => integer().withDefault(const Constant(0))();
 }
+
 class StockCountItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get countSessionId => integer()();
@@ -383,8 +436,8 @@ class StockCountItems extends Table {
 /// AI chat session history — stored locally with message JSON + metadata.
 class ChatSessions extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get title => text()();           // auto-generated from first message
-  TextColumn get messagesJson => text()();    // JSON array of {role, content}
+  TextColumn get title => text()(); // auto-generated from first message
+  TextColumn get messagesJson => text()(); // JSON array of {role, content}
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -396,7 +449,9 @@ class DiningTables extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
   IntColumn get capacity => integer().withDefault(const Constant(4))();
-  TextColumn get status => text().withDefault(const Constant('Kosong'))(); // Kosong | Dipesan | Tutup
+  TextColumn get status => text().withDefault(
+    const Constant('Kosong'),
+  )(); // Kosong | Dipesan | Tutup
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -405,12 +460,13 @@ class LaundryOrders extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get customerName => text()();
   TextColumn get customerPhone => text().nullable()();
-  TextColumn get itemsJson => text()();       // JSON [{name,qty,price}]
+  TextColumn get itemsJson => text()(); // JSON [{name,qty,price}]
   IntColumn get total => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Baru'))();
-    // Baru | Cuci | Kering | Setrika | Siap | Diantar | Diambil
+  // Baru | Cuci | Kering | Setrika | Siap | Diantar | Diambil
   TextColumn get notes => text().nullable()();
-  DateTimeColumn get estimatedReady => dateTime().nullable()(); // estimasi selesai
+  DateTimeColumn get estimatedReady =>
+      dateTime().nullable()(); // estimasi selesai
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -424,16 +480,20 @@ class ServiceTickets extends Table {
   IntColumn get estimatedCost => integer().withDefault(const Constant(0))();
   IntColumn get finalCost => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Diagnosa'))();
-    // Diagnosa | Estimasi | Perbaikan | Selesai | Diambil
+  // Diagnosa | Estimasi | Perbaikan | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   // ── Bengkel (vehicle workshop) columns ──
-  TextColumn get plateNumber => text().nullable()();   // plat nomor kendaraan (e.g. B 1234 XYZ)
-  TextColumn get vehicleBrand => text().nullable()();  // merk/model kendaraan (e.g. Honda Beat, Toyota Avanza)
+  TextColumn get plateNumber =>
+      text().nullable()(); // plat nomor kendaraan (e.g. B 1234 XYZ)
+  TextColumn get vehicleBrand => text()
+      .nullable()(); // merk/model kendaraan (e.g. Honda Beat, Toyota Avanza)
   IntColumn get vehicleYear => integer().nullable()(); // tahun kendaraan
-  TextColumn get technician => text().nullable()();    // nama teknisi
-  IntColumn get sparepartCost => integer().withDefault(const Constant(0))(); // biaya suku cadang
-  IntColumn get serviceCost => integer().withDefault(const Constant(0))();   // biaya jasa
+  TextColumn get technician => text().nullable()(); // nama teknisi
+  IntColumn get sparepartCost =>
+      integer().withDefault(const Constant(0))(); // biaya suku cadang
+  IntColumn get serviceCost =>
+      integer().withDefault(const Constant(0))(); // biaya jasa
   IntColumn get queueNumber => integer().nullable()(); // nomor antrian harian
 }
 
@@ -442,15 +502,17 @@ class Appointments extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get customerName => text()();
   TextColumn get customerPhone => text().nullable()();
-  TextColumn get service => text()();         // e.g. Haircut, Coloring
+  TextColumn get service => text()(); // e.g. Haircut, Coloring
   TextColumn get stylist => text().nullable()();
   DateTimeColumn get date => dateTime()();
-  TextColumn get timeSlot => text()();        // "HH:mm"
+  TextColumn get timeSlot => text()(); // "HH:mm"
   TextColumn get status => text().withDefault(const Constant('Dikonfirmasi'))();
-    // Dikonfirmasi | Datang | Menunggu | Selesai | Batal
+  // Dikonfirmasi | Datang | Menunggu | Selesai | Batal
   TextColumn get notes => text().nullable()();
-  IntColumn get estimatedDuration => integer().nullable()(); // estimasi durasi dalam menit
-  IntColumn get counterId => integer().nullable()();         // nomor urut booking per hari
+  IntColumn get estimatedDuration =>
+      integer().nullable()(); // estimasi durasi dalam menit
+  IntColumn get counterId =>
+      integer().nullable()(); // nomor urut booking per hari
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -463,7 +525,7 @@ class Prescriptions extends Table {
   TextColumn get dosage => text().nullable()();
   IntColumn get total => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Baru'))();
-    // Baru | Diproses | Siap | Diambil
+  // Baru | Diproses | Siap | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -474,13 +536,13 @@ class PrintOrders extends Table {
   TextColumn get customerName => text()();
   TextColumn get customerPhone => text().nullable()();
   TextColumn get serviceType => text()();
-    // Fotocopy | Print Warna | Print B/W | Jilid | Laminating | Scan
+  // Fotocopy | Print Warna | Print B/W | Jilid | Laminating | Scan
   IntColumn get pages => integer().withDefault(const Constant(0))();
   IntColumn get copies => integer().withDefault(const Constant(1))();
   TextColumn get paperSize => text().withDefault(const Constant('A4'))();
   IntColumn get total => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Baru'))();
-    // Baru | Diproses | Selesai | Diambil
+  // Baru | Diproses | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -494,7 +556,7 @@ class OpenTabs extends Table {
   IntColumn get total => integer().withDefault(const Constant(0))();
   IntColumn get discount => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Open'))();
-    // Open | Completed | Void
+  // Open | Completed | Void
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }

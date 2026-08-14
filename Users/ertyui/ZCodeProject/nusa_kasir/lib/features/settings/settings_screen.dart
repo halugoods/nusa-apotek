@@ -20,7 +20,9 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/features/settings/backup_sheet.dart';
 import 'package:nusa_kasir/features/settings/printer_settings_sheet.dart';
+import 'package:nusa_kasir/features/settings/tutorial_screen.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
+import 'package:nusa_kasir/core/providers/update_progress_provider.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
@@ -38,11 +40,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _activationKey;
   String _themeMode = 'system';
   String? _printerName;
-  bool _checkingUpdate = false;
-  bool _downloadingUpdate = false;
-  double _updateDownloadProgress = 0;
-  UpdateInfo? _updateInfo;
   bool _backingUp = false;
+  UpdateInfo? _updateInfo;
 
   // Manual cloud sync
   bool _syncing = false;
@@ -220,6 +219,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // (Laundry global settings removed — now per-product)
 
       setState(() {});
+    }
+    // Silent update check — kalau ada update, baris "Riwayat Update"
+    // berubah jadi "Update Tersedia!" (notif + popup saat diketuk).
+    if (NusaConfig.isDevBuild == false) {
+      final info = await UpdateService.checkForUpdate();
+      if (mounted && info.hasUpdate) {
+        setState(() => _updateInfo = info);
+      }
     }
   }
 
@@ -1448,42 +1455,219 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── Update Check ──────────────────────────────────────────
 
-  Future<void> _checkUpdate() async {
-    setState(() => _checkingUpdate = true);
-    final info = await UpdateService.checkForUpdate();
-    if (mounted) {
-      setState(() {
-        _checkingUpdate = false;
-        _updateInfo = info;
-      });
-      if (info.hasUpdate) {
-        _showUpdateDialog();
-      } else if (info.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(info.error!),
-            backgroundColor: Colors.orange.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Aplikasi sudah versi terbaru ✨'),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+  /// Bottom-sheet riwayat update: fetch rilis dari GitHub (tag + changelog).
+  /// Offline/gagal → tampilkan versi lokal + pesan ramah.
+  Future<void> _showUpdateHistory() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    var releases = await UpdateService.getReleaseHistory();
+    if (!mounted) return;
+    if (releases.isEmpty) {
+      // Gagal ambil dari GitHub → tampilkan versi lokal saja.
+      final local = ReleaseHistoryItem(
+        version: NusaConfig.appVersion,
+        buildNumber: NusaConfig.appBuildNumber,
+        body: '',
+      );
+      releases = [local];
     }
+    final items = releases;
+    final isLocalOnly =
+        items.length == 1 &&
+        items.first.buildNumber == NusaConfig.appBuildNumber &&
+        items.first.body.isEmpty;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: 0.85,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? NusaConfig.darkBorder
+                              : NusaConfig.dividerColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.history_rounded,
+                          color: NusaConfig.activePrimary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Riwayat Update',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isLocalOnly
+                          ? 'Tidak dapat mengambil riwayat dari internet. '
+                                'Berikut versi yang terpasang di perangkat ini.'
+                          : 'Versi terbaru ada di urutan paling atas.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(
+                height: 1,
+                color: isDark
+                    ? NusaConfig.darkDivider
+                    : NusaConfig.dividerColor,
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) {
+                    final r = items[i];
+                    final isCurrent =
+                        r.buildNumber == NusaConfig.appBuildNumber;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: NusaCard(
+                        Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'v${r.version}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  if (r.buildNumber > 0) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '(+${r.buildNumber})',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                      ),
+                                    ),
+                                  ],
+                                  const Spacer(),
+                                  if (isCurrent)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: NusaConfig.accentGreen
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        'Terpasang',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: NusaConfig.accentGreen,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if (r.publishedAt != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${_month(r.publishedAt!.month)} '
+                                  '${r.publishedAt!.year}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? NusaConfig.darkTextTertiary
+                                        : NusaConfig.textTertiary,
+                                  ),
+                                ),
+                              ],
+                              if (r.body.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  r.body,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.5,
+                                    color: isDark
+                                        ? NusaConfig.darkTextSecondary
+                                        : NusaConfig.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _month(int m) {
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    return months[m];
   }
 
   /// Popup update. Bisa ditutup / diminimalkan kapan saja (tap luar, tombol
@@ -1670,6 +1854,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Progres unduhan — baca dari provider global (satu sumber dengan
+  /// dashboard & drawer notifikasi; realtime tanpa buka-tutup).
+  bool get _downloadingUpdate => ref.read(updateProgressProvider).downloading;
+  double get _updateDownloadProgress =>
+      ref.read(updateProgressProvider).progress;
+
   /// Downloads the APK in-app with progress, then hands off to the system
   /// installer. On failure shows an error toast — the installed version is
   /// untouched (the partial file is deleted by downloadApk).
@@ -1677,26 +1867,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final info = _updateInfo;
     if (info == null || info.downloadUrl == null) return;
     if (!mounted) return;
-    setState(() {
-      _downloadingUpdate = true;
-      _updateDownloadProgress = 0;
-    });
+    final notifier = ref.read(updateProgressProvider.notifier);
+    notifier.startDownload(
+      'nusa-${NusaConfig.productId.replaceFirst('nusa-', '')}-v${info.latestVersion ?? 'latest'}.apk',
+    );
     try {
       final path = await UpdateService.downloadApk(
         url: info.downloadUrl!,
         variantId: NusaConfig.productId,
         version: info.latestVersion ?? 'latest',
-        onProgress: (p) {
-          if (mounted) setState(() => _updateDownloadProgress = p);
-        },
+        onProgress: (p) => notifier.updateProgress(p),
       );
       if (path == null) throw Exception('Gagal membuat file unduhan.');
       await UpdateService.installApk(path);
+      notifier.done();
       if (mounted) {
-        setState(() {
-          _downloadingUpdate = false;
-          _updateDownloadProgress = 0;
-        });
         TopToast.success(
           context,
           'Instalasi dibuka. Selesaikan di layar sistem.',
@@ -1704,11 +1889,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } catch (e) {
       debugPrint('[Settings] update download error: $e');
+      notifier.fail('Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
       if (mounted) {
-        setState(() {
-          _downloadingUpdate = false;
-          _updateDownloadProgress = 0;
-        });
         TopToast.error(
           context,
           'Gagal mengunduh update. Cek koneksi, lalu coba lagi.',
@@ -1923,31 +2105,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _fontSizeRow(
+                    _fontSliderRow(
                       'Header',
-                      3,
-                      'Kecil',
-                      'Besar',
                       fontH,
                       setDark,
                       (v) => setSt(() => fontH = v),
                     ),
                     const SizedBox(height: 10),
-                    _fontSizeRow(
+                    _fontSliderRow(
                       'Rincian',
-                      2,
-                      'Kecil',
-                      'Besar',
                       fontI,
                       setDark,
                       (v) => setSt(() => fontI = v),
                     ),
                     const SizedBox(height: 10),
-                    _fontSizeRow(
+                    _fontSliderRow(
                       'Footer',
-                      2,
-                      'Kecil',
-                      'Besar',
                       fontF,
                       setDark,
                       (v) => setSt(() => fontF = v),
@@ -2234,8 +2407,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ),
 
-                            // ── Store header — ukuran ikut fontH (Kecil/
-                            // Normal/Besar) persis print asli ──
+                            // ── Store header — ukuran ikut fontH (slider
+                            // 1-8) persis print asli ──
                             Text(
                               headerCtrl.text.isNotEmpty
                                   ? headerCtrl.text
@@ -2244,11 +2417,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         : 'NUSA MART'),
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: switch (fontH) {
-                                  3 => 18,
-                                  1 => 12,
-                                  _ => 15,
-                                },
+                                fontSize: (7 + fontH.clamp(1, 8)).toDouble(),
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF111827),
                               ),
@@ -2397,6 +2566,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ],
                             ),
                             // Total diskon — tepat DI BAWAH TOTAL (komplain user).
+                            // "Anda hemat" = total potongan item (Minyak 2xRp4.000)
+                            // — match print (1 baris, tepat di bawah TOTAL).
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Anda hemat',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'Rp   8.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 1),
                             Row(
                               children: [
@@ -2467,14 +2658,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             _dashedLine(false),
                             const SizedBox(height: 4),
 
-                            // ── Footer — ukuran ikut fontF (Kecil/Besar) ──
+                            // ── Footer — ukuran ikut fontF (slider 1-8) ──
                             Text(
                               footerCtrl.text.isNotEmpty
                                   ? footerCtrl.text
                                   : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: fontF > 1 ? 12 : 9,
+                                fontSize: (6 + fontF.clamp(1, 8)).toDouble(),
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF6B7280),
                               ),
@@ -2681,80 +2872,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Baris ukuran font per section struk (Kecil/Besar; header juga Normal).
-  Widget _fontSizeRow(
+  /// Baris ukuran font per section struk — slider kontinu 1-8 (fleksibel,
+  /// bukan cuma Kecil/Normal/Besar). Label angka + pratinjau live.
+  Widget _fontSliderRow(
     String label,
-    int levels,
-    String smallLabel,
-    String bigLabel,
     int current,
     bool isDark,
     ValueChanged<int> onChanged,
   ) {
-    final options = levels == 3
-        ? [(1, 'Kecil'), (2, 'Normal'), (3, 'Besar')]
-        : [(1, smallLabel), (2, bigLabel)];
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 88,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? NusaConfig.darkTextPrimary
-                  : NusaConfig.textPrimary,
+        Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
+              ),
             ),
-          ),
-        ),
-        Expanded(
-          child: Row(
-            children: options.map((o) {
-              final (val, name) = o;
-              final sel = current == val;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => onChanged(val),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: sel
-                            ? NusaConfig.primarySoft
-                            : (isDark
-                                  ? NusaConfig.darkSurface2
-                                  : const Color(0xFFF3F4F6)),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: sel
-                              ? NusaConfig.activePrimary
-                              : (isDark
-                                    ? NusaConfig.darkBorder
-                                    : NusaConfig.dividerColor),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: sel
-                                ? NusaConfig.activePrimary
-                                : (isDark
-                                      ? NusaConfig.darkTextSecondary
-                                      : NusaConfig.textSecondary),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: NusaConfig.primarySoft,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${current}x',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: NusaConfig.activePrimary,
                 ),
-              );
-            }).toList(),
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: current.clamp(1, 8).toDouble(),
+          min: 1,
+          max: 8,
+          divisions: 7,
+          activeColor: NusaConfig.activePrimary,
+          inactiveColor: isDark
+              ? NusaConfig.darkDivider
+              : NusaConfig.dividerColor,
+          onChanged: (v) => onChanged(v.round()),
+        ),
+        // Skala 1-8
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '1',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+              Text(
+                '8',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -2794,9 +2988,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// Single receipt item row for preview — persis seperti print:
-  /// baris 1 nama item, baris 2 "qty x Rp harga ... subtotal", lalu
-  /// (bila ada diskon) "Harga Normal: Rp xxx" + "Diskon: -Rp xxx".
-  /// Ukuran huruf mengikuti fontI (Kecil/Besar) — preview = print.
+  /// baris 1 nama item, baris 2 "qty x Rp harga (-Rp diskon) ... subtotal"
+  /// (diskon inline — hemat baris, match print).
+  /// Ukuran huruf mengikuti fontI (slider 1-8) — preview = print.
   Widget _receiptItem(
     String name,
     int qty,
@@ -2806,11 +3000,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     int fontI = 1,
   }) {
     final hasDiscount = originalPrice != null && originalPrice > price;
-    final itemSize = fontI > 1 ? 11.0 : 9.0;
-    final lineSize = fontI > 1 ? 9.5 : 8.0;
+    final f = fontI.clamp(1, 8);
+    final itemSize = (6.0 + f).toDouble();
+    final lineSize = itemSize - 1.5;
     final nameColor = const Color(0xFF374151);
     final subtleColor = const Color(0xFF6B7280);
-    final dimColor = const Color(0xFF9CA3AF);
+    final qtyPriceTxt = hasDiscount
+        ? '$qty x ${formatRupiah(price)} (-${formatRupiah(originalPrice - price)})'
+        : '$qty x ${formatRupiah(price)}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Column(
@@ -2825,7 +3022,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '$qty x ${formatRupiah(price)}',
+                qtyPriceTxt,
                 style: TextStyle(fontSize: lineSize, color: subtleColor),
               ),
               Text(
@@ -2838,16 +3035,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          if (hasDiscount) ...[
-            Text(
-              'Harga Normal: ${formatRupiah(originalPrice!)}',
-              style: TextStyle(fontSize: lineSize, color: dimColor),
-            ),
-            Text(
-              'Diskon: -${formatRupiah(originalPrice - price)}',
-              style: TextStyle(fontSize: lineSize, color: Color(0xFFE63946)),
-            ),
-          ],
         ],
       ),
     );
@@ -3488,7 +3675,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // Update
+            // Riwayat Update
             _menuRow(
               icon: _updateInfo?.hasUpdate == true
                   ? Icons.system_update
@@ -3498,30 +3685,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : NusaConfig.activePrimary,
               title: _updateInfo?.hasUpdate == true
                   ? 'Update Tersedia!'
-                  : 'Cek Update',
+                  : 'Riwayat Update',
               subtitle: _updateInfo?.hasUpdate == true
                   ? 'Versi ${_updateInfo!.latestVersion} (build ${_updateInfo!.latestBuildNumber})'
-                  : _checkingUpdate
-                  ? 'Memeriksa...'
-                  : 'v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+                  : 'Daftar versi & perubahan terbaru',
               isDark: isDark,
               onTap: _updateInfo?.hasUpdate == true
                   ? _showUpdateDialog
-                  : _checkUpdate,
-              trailing: _checkingUpdate
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      _updateInfo?.hasUpdate == true
-                          ? Icons.download
-                          : Icons.refresh,
-                      color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary,
-                    ),
+                  : _showUpdateHistory,
+              trailing: Icon(
+                _updateInfo?.hasUpdate == true
+                    ? Icons.download
+                    : Icons.history_rounded,
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
             ),
 
             const SizedBox(height: 32),
@@ -3530,6 +3709,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             //  BANTUAN
             // ════════════════════════════════════════
             _sectionHeader('BANTUAN', isDark),
+            _menuRow(
+              icon: Icons.school_outlined,
+              iconColor: NusaConfig.activePrimary,
+              title: 'Tutorial',
+              subtitle: 'Cara pakai tiap menu, mudah dipahami',
+              isDark: isDark,
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const TutorialScreen())),
+            ),
+            const SizedBox(height: 12),
             _menuRow(
               icon: Icons.feedback_outlined,
               iconColor: NusaConfig.info,

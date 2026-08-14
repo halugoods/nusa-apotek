@@ -30,7 +30,38 @@ class UpdateInfo {
   });
 
   factory UpdateInfo.noUpdate() => const UpdateInfo(hasUpdate: false);
-  factory UpdateInfo.error(String msg) => UpdateInfo(hasUpdate: false, error: msg);
+  factory UpdateInfo.error(String msg) =>
+      UpdateInfo(hasUpdate: false, error: msg);
+}
+
+/// Satu entri riwayat rilis — versi + isi changelog dari GitHub Releases.
+@immutable
+class ReleaseHistoryItem {
+  final String version;
+  final int buildNumber;
+  final String body;
+  final DateTime? publishedAt;
+
+  const ReleaseHistoryItem({
+    required this.version,
+    required this.buildNumber,
+    required this.body,
+    this.publishedAt,
+  });
+
+  factory ReleaseHistoryItem.fromJson(Map<String, dynamic> json) {
+    final tag = (json['tag_name'] as String?) ?? '';
+    final parsed = UpdateService._parseTag(
+      tag,
+      fallbackBuildNumber: (json['id'] as int?) ?? 0,
+    );
+    return ReleaseHistoryItem(
+      version: parsed?.$1 ?? tag.replaceAll(RegExp(r'^v'), ''),
+      buildNumber: parsed?.$2 ?? 0,
+      body: ((json['body'] as String?) ?? '').trim(),
+      publishedAt: DateTime.tryParse((json['published_at'] as String?) ?? ''),
+    );
+  }
 }
 
 /// Checks GitHub Releases for newer versions.
@@ -62,8 +93,10 @@ class UpdateService {
     if (NusaConfig.isDevBuild) return UpdateInfo.noUpdate();
     // If we recently hit GitHub's rate limit, don't hammer it again
     // immediately — return the cached (error) result instead.
-    if (_rateLimitedUntil != null && DateTime.now().isBefore(_rateLimitedUntil!)) {
-      return _cached ?? UpdateInfo.error('Terlalu banyak permintaan. Coba lagi nanti.');
+    if (_rateLimitedUntil != null &&
+        DateTime.now().isBefore(_rateLimitedUntil!)) {
+      return _cached ??
+          UpdateInfo.error('Terlalu banyak permintaan. Coba lagi nanti.');
     }
     if (!force && _cacheTime != null && _cached != null) {
       if (DateTime.now().difference(_cacheTime!) < _cacheTtl) {
@@ -81,7 +114,9 @@ class UpdateService {
       final res = await req.close().timeout(_timeout);
 
       if (res.statusCode == 403 || res.statusCode == 429) {
-        final err = UpdateInfo.error('Terlalu banyak permintaan. Coba lagi nanti.');
+        final err = UpdateInfo.error(
+          'Terlalu banyak permintaan. Coba lagi nanti.',
+        );
         _cached = err;
         _cacheTime = DateTime.now();
         _rateLimitedUntil = DateTime.now().add(const Duration(minutes: 2));
@@ -143,7 +178,9 @@ class UpdateService {
       return UpdateInfo.error('Waktu koneksi habis. Periksa koneksi internet.');
     } catch (e) {
       debugPrint('[UpdateService] checkForUpdate error: $e');
-      return UpdateInfo.error('Tidak dapat memeriksa update. Periksa koneksi internet.');
+      return UpdateInfo.error(
+        'Tidak dapat memeriksa update. Periksa koneksi internet.',
+      );
     }
   }
 
@@ -170,6 +207,36 @@ class UpdateService {
     }
 
     return null;
+  }
+
+  /// Mengambil riwayat rilis (changelog) untuk menu "Riwayat Update".
+  ///
+  /// Ambil maks 20 rilis terbaru dari GitHub (tag + body). Gagal/jaringan
+  /// mati → kembalikan daftar kosong; pemanggil menampilkan versi lokal.
+  static Future<List<ReleaseHistoryItem>> getReleaseHistory() async {
+    if (NusaConfig.isDevBuild) return [];
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = _timeout;
+      final req = await client.getUrl(
+        Uri.parse(
+          '$_apiBase/repos/${NusaConfig.githubRepo}/releases?per_page=20',
+        ),
+      );
+      req.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      req.headers.set(HttpHeaders.userAgentHeader, _userAgent);
+      final res = await req.close().timeout(_timeout);
+      if (res.statusCode != 200) return [];
+      final body = await res.transform(utf8.decoder).join();
+      final list = jsonDecode(body) as List<dynamic>;
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map(ReleaseHistoryItem.fromJson)
+          .toList();
+    } catch (e) {
+      debugPrint('[UpdateService] getReleaseHistory error: $e');
+      return [];
+    }
   }
 
   /// Formats file size for display.
@@ -200,7 +267,9 @@ class UpdateService {
         // Remove stale APKs for this variant so we never install an old build.
         await for (final f in downloads.list()) {
           if (f is File && p.extension(f.path).toLowerCase() == '.apk') {
-            try { await f.delete(); } catch (_) {}
+            try {
+              await f.delete();
+            } catch (_) {}
           }
         }
       } else {
@@ -236,8 +305,12 @@ class UpdateService {
       client.close();
       return filePath;
     } catch (e) {
-      try { await sink.close(); } catch (_) {}
-      try { client.close(); } catch (_) {}
+      try {
+        await sink.close();
+      } catch (_) {}
+      try {
+        client.close();
+      } catch (_) {}
       try {
         final f = File(filePath);
         if (await f.exists()) await f.delete();
@@ -263,5 +336,25 @@ class UpdateService {
     } on PlatformException catch (e) {
       throw Exception(e.message ?? 'Installer error');
     }
+  }
+
+  /// Hapus APK sisa unduhan (folder downloads app-private). Dipanggil saat
+  /// app start berikutnya — menutup celah "APK sampah" untuk user gaptek
+  /// (file tidak bisa dihapus seketika saat installer masih memakainya).
+  static Future<void> cleanupApk() async {
+    try {
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) return;
+      final downloads = Directory(p.join(dir.path, 'downloads'));
+      if (!await downloads.exists()) return;
+      await for (final f in downloads.list()) {
+        if (f is File && p.extension(f.path).toLowerCase() == '.apk') {
+          try {
+            await f.delete();
+            debugPrint('[UpdateService] cleanupApk: hapus ${f.path}');
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 }

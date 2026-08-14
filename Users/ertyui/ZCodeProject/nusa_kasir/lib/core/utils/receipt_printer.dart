@@ -22,6 +22,7 @@ class ReceiptLine {
   final String name;
   final int qty;
   final int price;
+
   /// Harga jual sebelum diskon (null = tanpa diskon). Saat diisi, struk
   /// mencetak baris potongan NOMINAL per item ("Diskon: -Rp 5.000").
   final int? originalPrice;
@@ -47,6 +48,19 @@ String _fit(String text, int maxChars) {
   return '${s.substring(0, maxChars - 3)}...';
 }
 
+/// ESC/POS perbesaran 1-8 → PosTextSize (class dengan static const, bukan
+/// enum — jadi tidak punya `.values`; mapping manual 1:1).
+PosTextSize _posSize(int v) => switch (v.clamp(1, 8)) {
+  1 => PosTextSize.size1,
+  2 => PosTextSize.size2,
+  3 => PosTextSize.size3,
+  4 => PosTextSize.size4,
+  5 => PosTextSize.size5,
+  6 => PosTextSize.size6,
+  7 => PosTextSize.size7,
+  _ => PosTextSize.size8,
+};
+
 /// Wrap text into multiple lines, each ≤ maxChars.
 /// First line returns the first chunk; rest are returned as a list for
 /// follow-up rows. This prevents truncation of long product names and
@@ -71,10 +85,7 @@ List<String> _wrap(String text, int maxChars) {
 
 /// A discovered Bluetooth thermal printer.
 class PrinterDevice {
-  const PrinterDevice({
-    required this.name,
-    required this.address,
-  });
+  const PrinterDevice({required this.name, required this.address});
 
   final String name;
   final String address;
@@ -177,10 +188,12 @@ class ReceiptPrinter {
   }) async {
     final rawDevices = await BluetoothUtils.scanDevices();
     return rawDevices
-        .map((d) => PrinterDevice(
-              name: d['name'] ?? 'Printer',
-              address: d['address'] ?? '',
-            ))
+        .map(
+          (d) => PrinterDevice(
+            name: d['name'] ?? 'Printer',
+            address: d['address'] ?? '',
+          ),
+        )
         .where((d) => d.address.isNotEmpty)
         .toList();
   }
@@ -280,15 +293,15 @@ class ReceiptPrinter {
           // aspect ratio.
           final maxHeight = paperWidth == '80' ? 160 : 96;
           var resized = logoImage;
-          if (logoImage.width > maxWidth ||
-              logoImage.height > maxHeight) {
-            final scale =
-                (maxWidth / logoImage.width).clamp(0.0, 1.0);
+          if (logoImage.width > maxWidth || logoImage.height > maxHeight) {
+            final scale = (maxWidth / logoImage.width).clamp(0.0, 1.0);
             final hScale = maxHeight / logoImage.height;
             final s = scale < hScale ? scale : hScale;
-            resized = img.copyResize(logoImage,
-                width: (logoImage.width * s).round(),
-                height: (logoImage.height * s).round());
+            resized = img.copyResize(
+              logoImage,
+              width: (logoImage.width * s).round(),
+              height: (logoImage.height * s).round(),
+            );
           }
           // ESC * bit-image (image()) is far more widely supported than
           // GS v 0 raster (imageRaster()) on cheap thermal printers — many
@@ -306,53 +319,74 @@ class ReceiptPrinter {
       } catch (_) {}
     }
 
-    // Header — wrap long store names. Ukuran mengikuti setting (default 2x),
+    // Header — wrap long store names. Ukuran dari slider 1-8 (default 2x),
     // jenis font mengikuti pilihan Standar/Kompak.
-    final headerHeight = switch (headerSize) {
-      3 => PosTextSize.size3,
-      1 => PosTextSize.size1,
-      _ => PosTextSize.size2,
-    };
-    bytes.addAll(generator.text(
-      _san(storeName),
-      styles: PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: headerHeight,
-        width: headerHeight,
-        fontType: itemFont,
+    final headerHeight = _posSize(headerSize);
+    bytes.addAll(
+      generator.text(
+        _san(storeName),
+        styles: PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: headerHeight,
+          width: headerHeight,
+          fontType: itemFont,
+        ),
+        linesAfter: 1,
       ),
-      linesAfter: 1,
-    ));
+    );
     if (invoice.isNotEmpty) {
-      bytes.addAll(generator.text(_san(invoice),
-          styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
+      bytes.addAll(
+        generator.text(
+          _san(invoice),
+          styles: PosStyles(align: PosAlign.center, fontType: itemFont),
+        ),
+      );
     }
     if (dateStr.isNotEmpty) {
-      bytes.addAll(generator.text(_san(dateStr),
-          styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
+      bytes.addAll(
+        generator.text(
+          _san(dateStr),
+          styles: PosStyles(align: PosAlign.center, fontType: itemFont),
+        ),
+      );
     }
     final isWide = paperWidth == '80';
     if (cashierName != null && cashierName.isNotEmpty) {
       final csrParts = _wrap('Kasir: $cashierName', isWide ? 30 : 24);
       for (final part in csrParts) {
-        bytes.addAll(generator.text(_san(part),
-            styles: PosStyles(align: PosAlign.left, fontType: itemFont)));
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: PosStyles(align: PosAlign.left, fontType: itemFont),
+          ),
+        );
       }
     }
     if (customerName != null && customerName.isNotEmpty) {
       final custParts = _wrap('Pelanggan: $customerName', isWide ? 30 : 24);
       for (final part in custParts) {
-        bytes.addAll(generator.text(_san(part),
-            styles: PosStyles(align: PosAlign.left, fontType: itemFont)));
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: PosStyles(align: PosAlign.left, fontType: itemFont),
+          ),
+        );
       }
     }
     if (orderType != null && orderType.isNotEmpty) {
       String line = orderType;
       if (tableName != null && tableName.isNotEmpty) line += ' - $tableName';
-      bytes.addAll(generator.text(_san(line),
+      bytes.addAll(
+        generator.text(
+          _san(line),
           styles: PosStyles(
-              align: PosAlign.center, bold: true, fontType: itemFont)));
+            align: PosAlign.center,
+            bold: true,
+            fontType: itemFont,
+          ),
+        ),
+      );
     }
     bytes.addAll(generator.hr());
 
@@ -365,20 +399,23 @@ class ReceiptPrinter {
     // Default = Standar: printer clone murah (VSC dkk) merender Font B
     // kosong/garbled, sehingga rincian hilang. Standar selalu muncul.
     final baseLineWidth = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
-    // Ukuran rincian: 1x = Kecil (2 baris: nama, lalu qty x harga + subtotal),
-    // 2x = Besar (3 baris: nama, qty x harga, subtotal) karena 2x memotong
-    // lebar baris jadi ~16 char di 58mm.
-    final itemBig = itemsSize > 1;
+    // Ukuran rincian: slider 1-8 (default 1). Baris teks dipecah setengah
+    // tiap kenaikan ukuran (2x → ~16 char di 58mm, 3x → ~10 char, dst) —
+    // ESC/POS height/width perbesaran memangkas karakter per baris.
+    final itemSizeMapped = itemsSize.clamp(1, 8);
+    final itemBig = itemSizeMapped > 1;
     final itemStyles = PosStyles(
       align: PosAlign.left,
       fontType: itemFont,
-      height: itemsSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
-      width: itemsSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
+      height: _posSize(itemSizeMapped),
+      width: _posSize(itemSizeMapped),
     );
-    // Lebar teks rincian saat 2x: setengah dari lebar baris normal.
-    final itemLineWidth = itemBig ? (baseLineWidth ~/ 2) : baseLineWidth;
-    final qtyPriceWidth = useFontB ? 14 : 12;    // "2xRp10.000" max
-    final subWidth = useFontB ? 11 : 10;         // "Rp20.000" max
+    // Lebar teks rincian saat >1x: lebar baris normal dibagi perbesaran.
+    final itemLineWidth = itemBig
+        ? (baseLineWidth ~/ itemSizeMapped)
+        : baseLineWidth;
+    final qtyPriceWidth = useFontB ? 14 : 12; // "2xRp10.000" max
+    final subWidth = useFontB ? 11 : 10; // "Rp20.000" max
     // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──
     // Sebelumnya nama di-squeeze ke sisa setelah qty×harga + subtotal
     // (58mm Font A → hanya 8 karakter → "enter2 kebawah" dengan ~15 char).
@@ -389,7 +426,10 @@ class ReceiptPrinter {
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       final nameParts = _wrap(line.name, nameWidth);
-      final qtyPrice = _fit('${line.qty}x${formatRupiah(line.price)}', qtyPriceWidth);
+      final qtyPrice = _fit(
+        '${line.qty}x${formatRupiah(line.price)}',
+        qtyPriceWidth,
+      );
       final subtotal = _fit(formatRupiah(line.subtotal), subWidth);
 
       // Baris 1: nama item (wrap). Nama sendiri — tidak digabung dengan qty.
@@ -400,28 +440,36 @@ class ReceiptPrinter {
       if (itemBig) {
         // Rincian "Besar" (2x): qty x harga baris sendiri (KIRI), subtotal
         // baris sendiri menempel KANAN — sejajar dengan nominal TOTAL.
-        bytes.addAll(generator.text(
-          _san(qtyPrice),
-          styles: itemStyles,
-        ));
-        bytes.addAll(generator.text(
-          _san(subtotal.padLeft(itemLineWidth)),
-          styles: itemStyles,
-        ));
+        // Diskon per item ditulis inline di qty x harga: ( -Rp potongan ).
+        final qpDisc = line.hasDiscount
+            ? _fit(
+                '${line.qty}x${formatRupiah(line.price)} (-${formatRupiah(line.discountNominal)})',
+                itemLineWidth - 2,
+              )
+            : qtyPrice;
+        bytes.addAll(generator.text(_san(qpDisc), styles: itemStyles));
+        bytes.addAll(
+          generator.text(
+            _san(subtotal.padLeft(itemLineWidth)),
+            styles: itemStyles,
+          ),
+        );
       } else {
         // Rincian "Kecil" (default): satu baris = qty x harga di KIRI,
         // subtotal di KANAN (menempel tepi kanan = sejajar kolom TOTAL).
-        // Padding tengah dihitung manual supaya qty×harga tetap di kiri dan
-        // subtotal presisi menempel kanan — sama seperti preview layar
-        // (Row spaceBetween: qty kiri, subtotal kanan).
-        final gap = itemLineWidth - qtyPrice.length - subtotal.length;
+        // Diskon per item menyatu di qty x harga: "4 x Rp2.000 (-Rp1.000)"
+        // — hemat 2 baris struk dibanding format "Harga Normal/Diskon".
+        final qpDisc = line.hasDiscount
+            ? _fit(
+                '${line.qty}x${formatRupiah(line.price)} (-${formatRupiah(line.discountNominal)})',
+                qtyPriceWidth + 12,
+              )
+            : qtyPrice;
+        final gap = itemLineWidth - qpDisc.length - subtotal.length;
         final line2 = gap >= 3
-            ? '${qtyPrice}${' ' * (gap - 2)}  $subtotal'
-            : '$qtyPrice  $subtotal';
-        bytes.addAll(generator.text(
-          _san(line2),
-          styles: itemStyles,
-        ));
+            ? '$qpDisc${' ' * (gap - 2)}  $subtotal'
+            : '$qpDisc  $subtotal';
+        bytes.addAll(generator.text(_san(line2), styles: itemStyles));
       }
 
       // Item notes
@@ -431,134 +479,181 @@ class ReceiptPrinter {
           itemNotes[i]!.isNotEmpty) {
         final noteParts = _wrap('  > ${itemNotes[i]!}', itemLineWidth - 2);
         for (final part in noteParts) {
-          bytes.addAll(generator.text(
-            _san(part),
-            styles: itemStyles,
-          ));
+          bytes.addAll(generator.text(_san(part), styles: itemStyles));
         }
-      }
-
-      // Per-item discount (NOMINAL, not percent) — the discount the customer
-      // actually saved on this line. Show the original (pre-discount) price
-      // AND the saved amount so the receipt is transparent for promos, e.g.
-      //   Harga Normal: Rp 87.500
-      //   Diskon: -Rp 37.500
-      if (line.hasDiscount) {
-        final normal = _fit('Harga Normal: ${formatRupiah(line.originalPrice!)}',
-            itemLineWidth - 2);
-        bytes.addAll(generator.text(
-          _san(normal),
-          styles: itemStyles,
-        ));
-        final potongan = _fit('Diskon: -${formatRupiah(line.discountNominal)}',
-            itemLineWidth - 2);
-        bytes.addAll(generator.text(
-          _san(potongan),
-          styles: itemStyles,
-        ));
       }
     }
     bytes.addAll(generator.hr());
 
     // Total.
-    bytes.addAll(generator.row([
-      PosColumn(
-        text: 'TOTAL',
-        width: isWide ? 8 : 6,
-        styles: PosStyles(
-            bold: true, height: PosTextSize.size2, fontType: itemFont),
-      ),
-      PosColumn(
-        text: _fit(formatRupiah(total), isWide ? 16 : 11),
-        width: isWide ? 8 : 6,
-        styles: PosStyles(
-            bold: true, align: PosAlign.right, height: PosTextSize.size2,
-            fontType: itemFont),
-      ),
-    ]));
+    bytes.addAll(
+      generator.row([
+        PosColumn(
+          text: 'TOTAL',
+          width: isWide ? 8 : 6,
+          styles: PosStyles(
+            bold: true,
+            height: PosTextSize.size2,
+            fontType: itemFont,
+          ),
+        ),
+        PosColumn(
+          text: _fit(formatRupiah(total), isWide ? 16 : 11),
+          width: isWide ? 8 : 6,
+          styles: PosStyles(
+            bold: true,
+            align: PosAlign.right,
+            height: PosTextSize.size2,
+            fontType: itemFont,
+          ),
+        ),
+      ]),
+    );
+
+    // "Anda hemat" — total potongan dari semua diskon per item (1 baris,
+    // ringkas & profesional). Tepat di bawah TOTAL, sebelum Diskon transaksi.
+    final totalItemDiscount = lines.fold<int>(
+      0,
+      (s, l) => s + (l.hasDiscount ? l.discountNominal : 0),
+    );
+    if (totalItemDiscount > 0) {
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Anda hemat',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit(formatRupiah(totalItemDiscount), isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
+    }
 
     // Total diskon — baris sendiri TEPAT DI BAWAH TOTAL (komplain user:
     // "total diskon di total bawah"). TOTAL sudah setelah diskon; baris ini
     // menegaskan nominal potongan transaksi (promo/manual/tier/poin).
     if (discount > 0) {
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Diskon', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Diskon',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
     }
 
     // Payment details. When DP is active, show uang muka + sisa piutang
     // instead of the generic Bayar line (cashGiven holds the DP amount).
     if (downPayment > 0) {
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit(formatRupiah(downPayment), isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Sisa Piutang', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit(formatRupiah(remainingDue), isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Bayar ($paymentMethod)',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit(formatRupiah(downPayment), isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Sisa Piutang',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit(formatRupiah(remainingDue), isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
     } else if (paymentMethod != null && paymentMethod.isNotEmpty) {
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Bayar ($paymentMethod)', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit(formatRupiah(cashGiven ?? total), isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Bayar ($paymentMethod)',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit(formatRupiah(cashGiven ?? total), isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
     }
     if (cashReturn != null && cashReturn > 0 && downPayment <= 0) {
-      bytes.addAll(generator.row([
-        PosColumn(text: 'Kembali', width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont)),
-        PosColumn(
-          text: _fit(formatRupiah(cashReturn), isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-        ),
-      ]));
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Kembali',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit(formatRupiah(cashReturn), isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
+          ),
+        ]),
+      );
     }
 
     bytes.addAll(generator.hr());
 
-    // Footer — wrap long text. Ukuran footer mengikuti setting (default 1x).
+    // Footer — wrap long text. Ukuran dari slider 1-8 (default 1x).
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
+      final footerSizeMapped = footerSize.clamp(1, 8);
       final footerParts = _wrap(footerText, isWide ? 40 : 32);
       for (final part in footerParts) {
-        bytes.addAll(generator.text(
-          _san(part),
-          styles: PosStyles(
-              align: PosAlign.center, fontType: itemFont,
-              height: footerSize > 1 ? PosTextSize.size2 : PosTextSize.size1,
-              width: footerSize > 1 ? PosTextSize.size2 : PosTextSize.size1),
-        ));
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: PosStyles(
+              align: PosAlign.center,
+              fontType: itemFont,
+              height: _posSize(footerSizeMapped),
+              width: _posSize(footerSizeMapped),
+            ),
+          ),
+        );
       }
     }
-    bytes.addAll(generator.text(
-      _san('Terima Kasih!'),
-      styles: PosStyles(
-          align: PosAlign.center, bold: true, fontType: itemFont),
-    ));
-    bytes.addAll(generator.text(_san(storeName),
-        styles: PosStyles(align: PosAlign.center, fontType: itemFont)));
+    bytes.addAll(
+      generator.text(
+        _san('Terima Kasih!'),
+        styles: PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          fontType: itemFont,
+        ),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san(storeName),
+        styles: PosStyles(align: PosAlign.center, fontType: itemFont),
+      ),
+    );
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
@@ -654,46 +749,58 @@ class ReceiptPrinter {
     bytes.addAll(generator.reset());
 
     // Header
-    bytes.addAll(generator.text(
-      _san('TIKET SERVIS'),
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: PosTextSize.size2,
-        width: PosTextSize.size2,
+    bytes.addAll(
+      generator.text(
+        _san('TIKET SERVIS'),
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+        linesAfter: 1,
       ),
-      linesAfter: 1,
-    ));
-    bytes.addAll(generator.text(
-      _san(storeName),
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    ));
-    if (ticketNo.isNotEmpty) {
-      bytes.addAll(generator.text(
-        _san(ticketNo),
+    );
+    bytes.addAll(
+      generator.text(
+        _san(storeName),
         styles: const PosStyles(align: PosAlign.center, bold: true),
-      ));
+      ),
+    );
+    if (ticketNo.isNotEmpty) {
+      bytes.addAll(
+        generator.text(
+          _san(ticketNo),
+          styles: const PosStyles(align: PosAlign.center, bold: true),
+        ),
+      );
     }
     if (dateStr.isNotEmpty) {
-      bytes.addAll(generator.text(
-        _san(dateStr),
-        styles: const PosStyles(align: PosAlign.center),
-      ));
+      bytes.addAll(
+        generator.text(
+          _san(dateStr),
+          styles: const PosStyles(align: PosAlign.center),
+        ),
+      );
     }
     if (customerName != null && customerName.isNotEmpty) {
       final custParts = _wrap('Pelanggan: $customerName', 24);
       for (final part in custParts) {
-        bytes.addAll(generator.text(
-          _san(part),
-          styles: const PosStyles(align: PosAlign.left),
-        ));
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: const PosStyles(align: PosAlign.left),
+          ),
+        );
       }
     }
     if (customerPhone != null && customerPhone.isNotEmpty) {
-      bytes.addAll(generator.text(
-        _san('HP: $customerPhone'),
-        styles: const PosStyles(align: PosAlign.left),
-      ));
+      bytes.addAll(
+        generator.text(
+          _san('HP: $customerPhone'),
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+      );
     }
     bytes.addAll(generator.hr());
 
@@ -701,39 +808,50 @@ class ReceiptPrinter {
     for (final line in lines) {
       final nameParts = _wrap(line.name, 32);
       for (final part in nameParts) {
-        bytes.addAll(generator.text(
-          _san(part),
-          styles: const PosStyles(align: PosAlign.left),
-        ));
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: const PosStyles(align: PosAlign.left),
+          ),
+        );
       }
     }
 
     bytes.addAll(generator.hr());
 
     // Total (bold, size2)
-    bytes.addAll(generator.row([
-      PosColumn(
-        text: 'TOTAL',
-        width: 6,
-        styles: const PosStyles(bold: true, height: PosTextSize.size2),
-      ),
-      PosColumn(
-        text: _fit(formatRupiah(total), 11),
-        width: 6,
-        styles: const PosStyles(
-            bold: true, align: PosAlign.right, height: PosTextSize.size2),
-      ),
-    ]));
+    bytes.addAll(
+      generator.row([
+        PosColumn(
+          text: 'TOTAL',
+          width: 6,
+          styles: const PosStyles(bold: true, height: PosTextSize.size2),
+        ),
+        PosColumn(
+          text: _fit(formatRupiah(total), 11),
+          width: 6,
+          styles: const PosStyles(
+            bold: true,
+            align: PosAlign.right,
+            height: PosTextSize.size2,
+          ),
+        ),
+      ]),
+    );
 
     bytes.addAll(generator.feed(1));
-    bytes.addAll(generator.text(
-      _san('Simpan tiket ini untuk pengambilan'),
-      styles: const PosStyles(align: PosAlign.center),
-    ));
-    bytes.addAll(generator.text(
-      _san('Terima Kasih!'),
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    ));
+    bytes.addAll(
+      generator.text(
+        _san('Simpan tiket ini untuk pengambilan'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san('Terima Kasih!'),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ),
+    );
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
@@ -778,30 +896,36 @@ class ReceiptPrinter {
     bytes.addAll(generator.reset());
 
     // Big bold header: "DAPUR"
-    bytes.addAll(generator.text(
-      _san('DAPUR'),
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: PosTextSize.size2,
-        width: PosTextSize.size2,
+    bytes.addAll(
+      generator.text(
+        _san('DAPUR'),
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+        linesAfter: 1,
       ),
-      linesAfter: 1,
-    ));
+    );
 
     // Table name
     if (tableName != null && tableName.isNotEmpty) {
-      bytes.addAll(generator.text(
-        _san(tableName),
-        styles: const PosStyles(align: PosAlign.center, bold: true),
-      ));
+      bytes.addAll(
+        generator.text(
+          _san(tableName),
+          styles: const PosStyles(align: PosAlign.center, bold: true),
+        ),
+      );
     }
 
     // Order type badge
-    bytes.addAll(generator.text(
-      _san(orderType),
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    ));
+    bytes.addAll(
+      generator.text(
+        _san(orderType),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ),
+    );
 
     bytes.addAll(generator.hr());
 
@@ -812,18 +936,19 @@ class ReceiptPrinter {
       // Wrap long item names across multiple lines.
       final nameParts = _wrap(line.name, 16); // 16 chars for size2 text on 58mm
       for (final part in nameParts) {
-        bytes.addAll(generator.text(
-          _san(part),
-          styles: const PosStyles(
-            bold: true,
-            height: PosTextSize.size2,
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: const PosStyles(bold: true, height: PosTextSize.size2),
           ),
-        ));
+        );
       }
-      bytes.addAll(generator.text(
-        _san('Qty: ${line.qty}'),
-        styles: const PosStyles(align: PosAlign.left),
-      ));
+      bytes.addAll(
+        generator.text(
+          _san('Qty: ${line.qty}'),
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+      );
 
       if (itemNotes != null &&
           i < itemNotes.length &&
@@ -831,10 +956,12 @@ class ReceiptPrinter {
           itemNotes[i]!.isNotEmpty) {
         final noteParts = _wrap('  > ${itemNotes[i]!}', 20);
         for (final part in noteParts) {
-          bytes.addAll(generator.text(
-            _san(part),
-            styles: const PosStyles(align: PosAlign.left),
-          ));
+          bytes.addAll(
+            generator.text(
+              _san(part),
+              styles: const PosStyles(align: PosAlign.left),
+            ),
+          );
         }
       }
     }
@@ -843,10 +970,12 @@ class ReceiptPrinter {
 
     // Timestamp
     final now = DateTime.now();
-    bytes.addAll(generator.text(
-      '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}:${now.second}',
-      styles: const PosStyles(align: PosAlign.center),
-    ));
+    bytes.addAll(
+      generator.text(
+        '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}:${now.second}',
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
 
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
@@ -892,23 +1021,49 @@ class ReceiptPrinter {
 
     final List<int> bytes = [];
     bytes.addAll(generator.reset());
-    bytes.addAll(generator.text(_san('TEST PRINT'),
+    bytes.addAll(
+      generator.text(
+        _san('TEST PRINT'),
         styles: const PosStyles(
-            align: PosAlign.center, bold: true, height: PosTextSize.size2)));
-    bytes.addAll(generator.text(_san(storeName),
-        styles: const PosStyles(align: PosAlign.center)));
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+        ),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san(storeName),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
     bytes.addAll(generator.hr());
-    bytes.addAll(generator.text(_san('Printer thermal berfungsi dengan baik.'),
-        styles: const PosStyles(align: PosAlign.center)));
-    bytes.addAll(generator.text(_san('Kertas: ${paperWidth}mm'),
-        styles: const PosStyles(align: PosAlign.center)));
+    bytes.addAll(
+      generator.text(
+        _san('Printer thermal berfungsi dengan baik.'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san('Kertas: ${paperWidth}mm'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
     final now = DateTime.now();
-    bytes.addAll(generator.text(
+    bytes.addAll(
+      generator.text(
         _san('${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}'),
-        styles: const PosStyles(align: PosAlign.center)));
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
     bytes.addAll(generator.hr());
-    bytes.addAll(generator.text(_san('NUSA Kasir'),
-        styles: const PosStyles(align: PosAlign.center, bold: true)));
+    bytes.addAll(
+      generator.text(
+        _san('NUSA Kasir'),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ),
+    );
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 

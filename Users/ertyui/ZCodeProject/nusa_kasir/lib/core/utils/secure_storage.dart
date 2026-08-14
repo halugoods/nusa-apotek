@@ -46,8 +46,7 @@ class SecureStore {
   }
 
   // -- Activation (namespaced per product to prevent cross-variant license leaks) --
-  static String get _activationKey =>
-      'nusa_activation_${NusaConfig.productId}';
+  static String get _activationKey => 'nusa_activation_${NusaConfig.productId}';
   static const String _legacyActivationKey = 'nusa_activation';
 
   static Future<void> saveActivation(String key) =>
@@ -65,7 +64,9 @@ class SecureStore {
     }
     // Migration: nusa-servicehp → nusa-servis (variant rename v1.6.9)
     if (NusaConfig.productId == 'nusa-servis') {
-      final oldKey = await SecureStore.read(key: 'nusa_activation_nusa-servicehp');
+      final oldKey = await SecureStore.read(
+        key: 'nusa_activation_nusa-servicehp',
+      );
       if (oldKey != null) {
         await SecureStore.write(key: _activationKey, value: oldKey);
         await SecureStore.delete(key: 'nusa_activation_nusa-servicehp');
@@ -74,6 +75,7 @@ class SecureStore {
     }
     return null;
   }
+
   static Future<void> clearActivation() async {
     await SecureStore.delete(key: _activationKey);
     await SecureStore.delete(key: _legacyActivationKey);
@@ -207,20 +209,29 @@ class SecureStore {
   static Future<String> getReceiptFontType() async =>
       (await SecureStore.read(key: 'nusa_receipt_font_type')) ?? 'standar';
 
-  // Ukuran per section (ESC/POS perbesaran 1x-8x):
-  // header: 1/2/3 → Kecil/Normal/Besar. items: 1/2 → Kecil/Besar. footer: 1/2.
+  // Ukuran per section (ESC/POS perbesaran 1x-8x, slider fleksibel):
+  // header: default 2. items: default 1. footer: default 1.
   static Future<void> setReceiptFontHeader(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_header', value: v.toString());
   static Future<int> getReceiptFontHeader() async =>
-      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_header') ?? '') ?? 2;
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_receipt_font_header') ?? '',
+      ) ??
+      2;
   static Future<void> setReceiptFontItems(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
   static Future<int> getReceiptFontItems() async =>
-      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_items') ?? '') ?? 1;
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_receipt_font_items') ?? '',
+      ) ??
+      1;
   static Future<void> setReceiptFontFooter(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_footer', value: v.toString());
   static Future<int> getReceiptFontFooter() async =>
-      int.tryParse(await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '') ?? 1;
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '',
+      ) ??
+      1;
 
   // -- Printer logo path --
   static Future<void> setPrinterLogoPath(String? v) async {
@@ -273,16 +284,21 @@ class SecureStore {
       SecureStore.write(key: 'nusa_laundry_notify_ready', value: v.toString());
   static Future<bool> getLaundryStatsExpanded() async =>
       (await SecureStore.read(key: 'nusa_laundry_stats_expanded')) == 'true';
-  static Future<void> setLaundryStatsExpanded(bool v) =>
-      SecureStore.write(key: 'nusa_laundry_stats_expanded', value: v.toString());
+  static Future<void> setLaundryStatsExpanded(bool v) => SecureStore.write(
+    key: 'nusa_laundry_stats_expanded',
+    value: v.toString(),
+  );
 
   // ── Salon settings ──
   static Future<int> getSalonDefaultDuration() async {
     final v = await SecureStore.read(key: 'nusa_salon_default_duration');
     return v != null ? int.tryParse(v) ?? 60 : 60;
   }
-  static Future<void> setSalonDefaultDuration(int v) =>
-      SecureStore.write(key: 'nusa_salon_default_duration', value: v.toString());
+
+  static Future<void> setSalonDefaultDuration(int v) => SecureStore.write(
+    key: 'nusa_salon_default_duration',
+    value: v.toString(),
+  );
   static Future<bool> getSalonNotifyBooking() async =>
       (await SecureStore.read(key: 'nusa_salon_notify_booking')) == 'true';
   static Future<void> setSalonNotifyBooking(bool v) =>
@@ -295,8 +311,10 @@ class SecureStore {
   // ── Bengkel settings ──
   static Future<bool> getBengkelStatsExpanded() async =>
       (await SecureStore.read(key: 'nusa_bengkel_stats_expanded')) == 'true';
-  static Future<void> setBengkelStatsExpanded(bool v) =>
-      SecureStore.write(key: 'nusa_bengkel_stats_expanded', value: v.toString());
+  static Future<void> setBengkelStatsExpanded(bool v) => SecureStore.write(
+    key: 'nusa_bengkel_stats_expanded',
+    value: v.toString(),
+  );
 
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>
@@ -309,6 +327,7 @@ class SecureStore {
     final v = await SecureStore.read(key: 'nusa_pinpad_kasir_enabled');
     return v == null || v == 'true'; // default aktif
   }
+
   static Future<void> setPinPadEnabled(bool v) =>
       SecureStore.write(key: 'nusa_pinpad_kasir_enabled', value: v.toString());
 
@@ -323,20 +342,27 @@ class SecureStore {
     final v = await SecureStore.read(key: 'nusa_last_cloud_seen');
     return v != null ? DateTime.tryParse(v) : null;
   }
-  static Future<void> setLastCloudSeen(DateTime v) =>
-      SecureStore.write(key: 'nusa_last_cloud_seen', value: v.toUtc().toIso8601String());
+
+  static Future<void> setLastCloudSeen(DateTime v) => SecureStore.write(
+    key: 'nusa_last_cloud_seen',
+    value: v.toUtc().toIso8601String(),
+  );
 
   static Future<DateTime?> getLastLocalChange() async {
     final v = await SecureStore.read(key: 'nusa_last_local_change');
     return v != null ? DateTime.tryParse(v) : null;
   }
-  static Future<void> setLastLocalChange(DateTime v) =>
-      SecureStore.write(key: 'nusa_last_local_change', value: v.toUtc().toIso8601String());
+
+  static Future<void> setLastLocalChange(DateTime v) => SecureStore.write(
+    key: 'nusa_last_local_change',
+    value: v.toUtc().toIso8601String(),
+  );
 
   static Future<int> getConflictCount() async {
     final v = await SecureStore.read(key: 'nusa_conflict_count');
     return v != null ? int.tryParse(v) ?? 0 : 0;
   }
+
   static Future<void> setConflictCount(int v) =>
       SecureStore.write(key: 'nusa_conflict_count', value: v.toString());
   static Future<void> bumpConflictCount() async {

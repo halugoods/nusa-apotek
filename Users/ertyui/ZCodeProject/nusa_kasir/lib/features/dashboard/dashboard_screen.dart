@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +26,7 @@ import 'package:nusa_kasir/shared/widgets/profile_stats_card.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
+import 'package:nusa_kasir/core/providers/update_progress_provider.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -59,10 +60,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // PIN pad kasir (opsional — dikendalikan dari Pengaturan)
   bool _pinPadEnabled = true;
 
-  // In-app update: latest GitHub release + whether we're downloading now.
+  // In-app update: latest GitHub release + download state.
+  // Download progress lives in the global [updateProgressProvider] so the
+  // notification drawer shows realtime progress without closing/reopening.
   UpdateInfo? _updateInfo;
-  bool _downloadingUpdate = false;
-  double _downloadProgress = 0;
   String? _downloadError;
 
   // Notification Center: unread badge count.
@@ -168,8 +169,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // Feature toggles
       final togglesRaw = await SecureStore.getFeatureToggles();
       if (togglesRaw != null) {
-        final toggles = (jsonDecode(togglesRaw) as Map<String, dynamic>)
-            .map((k, v) => MapEntry(k, v as bool));
+        final toggles = (jsonDecode(togglesRaw) as Map<String, dynamic>).map(
+          (k, v) => MapEntry(k, v as bool),
+        );
         ref.read(featureTogglesProvider.notifier).state = toggles;
       }
       // Menu order
@@ -249,15 +251,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     setState(() => _updateInfo = info);
     if (info.hasUpdate) {
       // Record in Notification Center (deduped by id → single card).
-      final sizeTxt =
-          info.fileSizeBytes != null && info.fileSizeBytes! > 0
-              ? ' • ${UpdateService.formatSize(info.fileSizeBytes)}'
-              : '';
+      final sizeTxt = info.fileSizeBytes != null && info.fileSizeBytes! > 0
+          ? ' • ${UpdateService.formatSize(info.fileSizeBytes)}'
+          : '';
       await NotificationService.add(
         id: 'update',
         type: 'update',
         title: '🔄 Update Tersedia v${info.latestVersion}',
-        body: 'Versi baru NUSA tersedia$sizeTxt. Klik untuk mengunduh & menginstal.',
+        body:
+            'Versi baru NUSA tersedia$sizeTxt. Klik untuk mengunduh & menginstal.',
       );
     }
   }
@@ -301,7 +303,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.borderColor,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -312,13 +316,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   children: [
                     const Text(
                       'Notifikasi',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.of(ctx).pop(),
-                      icon: Icon(Icons.close,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                      icon: Icon(
+                        Icons.close,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -330,15 +341,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.notifications_off_outlined,
-                                size: 40,
-                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            Icon(
+                              Icons.notifications_off_outlined,
+                              size: 40,
+                              color: isDark
+                                  ? NusaConfig.darkTextTertiary
+                                  : NusaConfig.textTertiary,
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               'Tidak ada notifikasi',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                                color: isDark
+                                    ? NusaConfig.darkTextSecondary
+                                    : NusaConfig.textSecondary,
                               ),
                             ),
                           ],
@@ -373,14 +390,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       'attendance' => Colors.teal,
       _ => NusaConfig.activePrimary,
     };
+    // Live download progress for the update card — global provider so it
+    // updates in realtime even while the drawer is open (no close/reopen).
+    final upd = ref.watch(updateProgressProvider);
     return InkWell(
       onTap: () {
-        Navigator.of(ctx).pop();
         if (n.type == 'update') {
           final info = _updateInfo;
-          if (info != null && info.hasUpdate) {
-            // Langsung mulai unduh + popup progres muncul seketika —
-            // tanpa perlu buka-tutup notif berulang.
+          if (info != null && info.hasUpdate && !upd.downloading) {
+            // Langsung mulai unduh dari drawer — progress tampil realtime.
+            Navigator.of(ctx).pop();
             _showUpdateDialog(autoStart: true);
           }
         }
@@ -407,7 +426,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 children: [
                   Text(
                     n.title,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -415,15 +437,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     style: TextStyle(
                       fontSize: 12.5,
                       height: 1.4,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
                     ),
                   ),
+                  // Realtime progress bar saat update sedang diunduh —
+                  // tidak perlu buka-tutup drawer untuk refresh (fix bug).
+                  if (n.type == 'update' && upd.downloading) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: upd.progress > 0 ? upd.progress : null,
+                        minHeight: 6,
+                        backgroundColor: isDark
+                            ? NusaConfig.darkSurface2
+                            : NusaConfig.backgroundColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Mengunduh… ${(upd.progress * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(
                     _notifTime(n.createdAt),
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
                     ),
                   ),
                 ],
@@ -468,7 +519,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 color: Colors.orange.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.system_update, color: Colors.orange, size: 22),
+              child: const Icon(
+                Icons.system_update,
+                color: Colors.orange,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -531,7 +586,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
           ),
         ),
         if (info.fileSizeBytes != null && info.fileSizeBytes! > 0) ...[
@@ -540,7 +597,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             'Ukuran: ${UpdateService.formatSize(info.fileSizeBytes)}',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              color: isDark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textSecondary,
             ),
           ),
         ],
@@ -550,14 +609,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+              color: isDark
+                  ? NusaConfig.darkSurface2
+                  : NusaConfig.backgroundColor,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               info.changelog!,
               style: TextStyle(
                 fontSize: 13,
-                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
                 height: 1.5,
               ),
             ),
@@ -568,13 +631,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           'Unduh APK langsung di aplikasi, lalu instal otomatis.',
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
             height: 1.4,
           ),
         ),
       ],
     );
   }
+
+  /// Progres unduhan — baca dari provider global (realtime di notif drawer
+  /// tanpa buka-tutup). Dipakai dashboard, settings, dan drawer notifikasi.
+  bool get _downloadingUpdate => ref.read(updateProgressProvider).downloading;
+  double get _downloadProgress => ref.read(updateProgressProvider).progress;
 
   Widget _buildDownloadProgress(bool isDark) {
     return Padding(
@@ -597,7 +667,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ? null
                   : (_downloadProgress > 0 ? _downloadProgress : null),
               minHeight: 8,
-              backgroundColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+              backgroundColor: isDark
+                  ? NusaConfig.darkSurface2
+                  : NusaConfig.backgroundColor,
             ),
           ),
           if (_downloadError != null) ...[
@@ -618,7 +690,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 : 'Jangan tutup aplikasi selama proses berjalan.',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
             ),
           ),
           if (_downloadError != null) ...[
@@ -651,40 +725,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final info = _updateInfo;
     if (info == null || info.downloadUrl == null) return;
     if (!mounted) return;
-    setState(() {
-      _downloadingUpdate = true;
-      _downloadProgress = 0;
-      _downloadError = null;
-    });
+    final notifier = ref.read(updateProgressProvider.notifier);
+    notifier.startDownload(
+      'nusa-${NusaConfig.productId.replaceFirst('nusa-', '')}-v${info.latestVersion ?? 'latest'}.apk',
+    );
+    setState(() => _downloadError = null);
 
     try {
       final path = await UpdateService.downloadApk(
         url: info.downloadUrl!,
         variantId: NusaConfig.productId,
         version: info.latestVersion ?? 'latest',
-        onProgress: (p) {
-          if (mounted) setState(() => _downloadProgress = p);
-        },
+        onProgress: (p) => notifier.updateProgress(p),
       );
       if (path == null) throw Exception('Gagal membuat file unduhan.');
       await UpdateService.installApk(path);
+      notifier.done();
       if (mounted) {
-        setState(() {
-          _downloadingUpdate = false;
-          _downloadProgress = 0;
-        });
         // Keep showing "Update" until the next version is installed.
-        TopToast.success(context, 'Instalasi dibuka. Selesaikan di layar sistem.');
+        TopToast.success(
+          context,
+          'Instalasi dibuka. Selesaikan di layar sistem.',
+        );
       }
     } catch (e) {
       debugPrint('[Dashboard] update download error: $e');
+      notifier.fail('Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
       if (mounted) {
-        setState(() {
-          _downloadingUpdate = false;
-          _downloadProgress = 0;
-          _downloadError = 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.';
-        });
-        TopToast.error(context, 'Gagal mengunduh update. Cek koneksi, lalu coba lagi.');
+        setState(
+          () => _downloadError =
+              'Gagal mengunduh update. Cek koneksi, lalu coba lagi.',
+        );
+        TopToast.error(
+          context,
+          'Gagal mengunduh update. Cek koneksi, lalu coba lagi.',
+        );
       }
     }
   }
@@ -695,8 +770,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final db = ref.read(databaseProvider);
     final attRepo = AttendanceRepository(db);
     final emps = await attRepo.getEmployees();
-    final branches =
-        await BranchRepository(ref.read(databaseProvider)).getAll();
+    final branches = await BranchRepository(
+      ref.read(databaseProvider),
+    ).getAll();
     final session = ref.read(employeeSessionProvider);
     // A null branch keeps owner/global dashboards scoped to all branches.
     final branchId = _activeBranch?.id ?? session?.branchId;
@@ -715,8 +791,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       employeeId: isGlobalRole ? null : session?.employeeId,
     );
 
-    final cashierRepo =
-        CashierSessionRepository(ref.read(databaseProvider));
+    final cashierRepo = CashierSessionRepository(ref.read(databaseProvider));
     final lastSession = await cashierRepo.getLast();
 
     String? lastCashierName;
@@ -725,9 +800,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     String? lastCashierPhoto;
     if (lastSession != null) {
       final emp = emps.cast<Employee?>().firstWhere(
-            (e) => e!.id == lastSession.employeeId,
-            orElse: () => null,
-          );
+        (e) => e!.id == lastSession.employeeId,
+        orElse: () => null,
+      );
       if (emp != null) {
         lastCashierName = emp.name;
         lastCashierRole = emp.role;
@@ -760,8 +835,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Load low stock count (stok menipis: stock < minStock && minStock > 0)
     int lowStockCount = 0;
     try {
-      final allProducts = await ProductRepository(ref.read(databaseProvider)).getProducts();
-      lowStockCount = allProducts.where((p) => p.stock < p.minStock && p.minStock > 0).length;
+      final allProducts = await ProductRepository(
+        ref.read(databaseProvider),
+      ).getProducts();
+      lowStockCount = allProducts
+          .where((p) => p.stock < p.minStock && p.minStock > 0)
+          .length;
       // Record low-stock notification in the in-app center (deduped by count).
       if (lowStockCount > 0) {
         final lowNames = allProducts
@@ -782,10 +861,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     // Load keuangan summary
     final financeRepo = FinanceRepository(ref.read(databaseProvider));
-    final finSummary = await financeRepo.getDashboardSummary(branchId: branchId);
+    final finSummary = await financeRepo.getDashboardSummary(
+      branchId: branchId,
+    );
 
     // Load laundry stats
-    int laundryToday = 0, laundryPending = 0, laundryReady = 0, laundryDelivered = 0;
+    int laundryToday = 0,
+        laundryPending = 0,
+        laundryReady = 0,
+        laundryDelivered = 0;
     bool laundryStatsExpanded = false;
     if (NusaConfig.isLaundryVariant) {
       final laundryRepo = LaundryOrderRepository(db);
@@ -809,16 +893,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     // Load bengkel stats
-    int bengkelToday = 0, bengkelQueue = 0, bengkelInProgress = 0, bengkelDone = 0, bengkelEstimate = 0;
+    int bengkelToday = 0,
+        bengkelQueue = 0,
+        bengkelInProgress = 0,
+        bengkelDone = 0,
+        bengkelEstimate = 0;
     bool bengkelStatsExpanded = false;
     if (NusaConfig.isBengkelVariant) {
       final bengkelRepo = ServiceTicketRepository(db);
       bengkelToday = await bengkelRepo.countToday();
-      bengkelQueue = await bengkelRepo.countByStatus('Diagnosa') + await bengkelRepo.countByStatus('Estimasi');
+      bengkelQueue =
+          await bengkelRepo.countByStatus('Diagnosa') +
+          await bengkelRepo.countByStatus('Estimasi');
       bengkelInProgress = await bengkelRepo.countByStatus('Perbaikan');
       bengkelDone = await bengkelRepo.countByStatus('Selesai');
-      bengkelEstimate = await bengkelRepo.sumByStatus('Perbaikan', costOf: (t) => t.sparepartCost + t.serviceCost)
-          + await bengkelRepo.sumByStatus('Estimasi', costOf: (t) => t.sparepartCost + t.serviceCost);
+      bengkelEstimate =
+          await bengkelRepo.sumByStatus(
+            'Perbaikan',
+            costOf: (t) => t.sparepartCost + t.serviceCost,
+          ) +
+          await bengkelRepo.sumByStatus(
+            'Estimasi',
+            costOf: (t) => t.sparepartCost + t.serviceCost,
+          );
       bengkelStatsExpanded = await SecureStore.getBengkelStatsExpanded();
     }
 
@@ -830,7 +927,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _storeName = name.isNotEmpty ? name : 'NUSA';
         _branches = branches;
         // Only auto-set first branch if session didn't already scope
-        if (branches.isNotEmpty && _activeBranch == null && ref.read(employeeSessionProvider)?.branchId == null) {
+        if (branches.isNotEmpty &&
+            _activeBranch == null &&
+            ref.read(employeeSessionProvider)?.branchId == null) {
           _activeBranch = branches.first;
           ref.read(activeBranchProvider.notifier).state = branches.first;
         }
@@ -877,8 +976,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final onlineRepo = OnlineOrderRepository(db);
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final branchId = _activeBranch?.id ??
-          ref.read(employeeSessionProvider)?.branchId;
+      final branchId =
+          _activeBranch?.id ?? ref.read(employeeSessionProvider)?.branchId;
 
       // Today's sales summary
       final sum = await reportRepo.summary(
@@ -905,7 +1004,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           final h = int.tryParse(parts[0]) ?? 0;
           final m = int.tryParse(parts[1]) ?? 0;
           final diff = now.difference(
-              DateTime(now.year, now.month, now.day, h, m));
+            DateTime(now.year, now.month, now.day, h, m),
+          );
           if (diff.inMinutes > 0) {
             shiftHours = '${diff.inHours}j ${diff.inMinutes.remainder(60)}m';
           }
@@ -925,7 +1025,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // Attendance — count records this month
       final history = await attRepo.history(employeeId: employeeId);
       final hadirDays = history
-          .where((a) => a.date.isAfter(monthStart.subtract(const Duration(days: 1))) && a.checkIn != null)
+          .where(
+            (a) =>
+                a.date.isAfter(monthStart.subtract(const Duration(days: 1))) &&
+                a.checkIn != null,
+          )
           .length;
       final totalDays = now.day;
 
@@ -969,109 +1073,170 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Container(
-              width: 38, height: 38,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                color: isDark
+                    ? NusaConfig.darkDivider
+                    : NusaConfig.dividerColor,
+                borderRadius: BorderRadius.circular(2),
               ),
-              child: const Icon(Icons.store, color: NusaConfig.accentPurple, size: 20),
             ),
-            const SizedBox(width: 12),
-            const Text('Pilih Cabang', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          ]),
-          const SizedBox(height: 4),
-          // "Semua Cabang" option
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: NusaConfig.accentGreen.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.store,
+                    color: NusaConfig.accentPurple,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Pilih Cabang',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // "Semua Cabang" option
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: NusaConfig.accentGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.layers,
+                  color: NusaConfig.accentGreen,
+                  size: 20,
+                ),
               ),
-              child: const Icon(Icons.layers, color: NusaConfig.accentGreen, size: 20),
-            ),
-            title: const Text('Semua Cabang',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-            subtitle: const Text('Lihat data dari seluruh cabang',
-                style: TextStyle(fontSize: 12)),
-            trailing: _activeBranch == null
-                ? const Icon(Icons.check_circle, color: NusaConfig.accentGreen, size: 22)
-                : null,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              title: const Text(
+                'Semua Cabang',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              subtitle: const Text(
+                'Lihat data dari seluruh cabang',
+                style: TextStyle(fontSize: 12),
+              ),
+              trailing: _activeBranch == null
+                  ? const Icon(
+                      Icons.check_circle,
+                      color: NusaConfig.accentGreen,
+                      size: 22,
+                    )
+                  : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               onTap: () async {
                 setState(() => _activeBranch = null);
                 ref.read(activeBranchProvider.notifier).state = null;
                 Navigator.pop(ctx);
                 await _load();
               },
-          ),
-          const SizedBox(height: 4),
-          // Branch list
-          ..._branches.map((b) {
-            final active = _activeBranch?.id == b.id;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              leading: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: (active ? NusaConfig.accentPurple : const Color(0xFF9CA3AF)).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+            ),
+            const SizedBox(height: 4),
+            // Branch list
+            ..._branches.map((b) {
+              final active = _activeBranch?.id == b.id;
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color:
+                        (active
+                                ? NusaConfig.accentPurple
+                                : const Color(0xFF9CA3AF))
+                            .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.storefront,
+                    color: active
+                        ? NusaConfig.accentPurple
+                        : const Color(0xFF9CA3AF),
+                    size: 20,
+                  ),
                 ),
-                child: Icon(Icons.storefront,
-                    color: active ? NusaConfig.accentPurple : const Color(0xFF9CA3AF), size: 20),
-              ),
-              title: Text(b.name,
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15,
-                      color: active ? NusaConfig.accentPurple : null)),
-              subtitle: b.address != null && b.address!.isNotEmpty
-                  ? Text(b.address!, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)
-                  : null,
-              trailing: active
-                  ? const Icon(Icons.check_circle, color: NusaConfig.accentPurple, size: 22)
-                  : null,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              onTap: () async {
-                setState(() => _activeBranch = b);
-                ref.read(activeBranchProvider.notifier).state = b;
-                Navigator.pop(ctx);
-                await _load();
-              },
-            );
-          }),
-          const SizedBox(height: 8),
-          // Kelola Cabang button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                context.push('/cabang');
-              },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Kelola Cabang',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: NusaConfig.accentPurple,
-                side: const BorderSide(color: NusaConfig.accentPurple),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                title: Text(
+                  b.name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: active ? NusaConfig.accentPurple : null,
+                  ),
+                ),
+                subtitle: b.address != null && b.address!.isNotEmpty
+                    ? Text(
+                        b.address!,
+                        style: const TextStyle(fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : null,
+                trailing: active
+                    ? const Icon(
+                        Icons.check_circle,
+                        color: NusaConfig.accentPurple,
+                        size: 22,
+                      )
+                    : null,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: () async {
+                  setState(() => _activeBranch = b);
+                  ref.read(activeBranchProvider.notifier).state = b;
+                  Navigator.pop(ctx);
+                  await _load();
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+            // Kelola Cabang button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.push('/cabang');
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text(
+                  'Kelola Cabang',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.accentPurple,
+                  side: const BorderSide(color: NusaConfig.accentPurple),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -1087,7 +1252,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final currentRole = ref.read(employeeSessionProvider)?.role ?? 'Kasir';
 
     // 2. Owner-only guard
-    if (isOwnerOnly(route) && currentRole != 'Owner' && currentRole != 'Manager') {
+    if (isOwnerOnly(route) &&
+        currentRole != 'Owner' &&
+        currentRole != 'Manager') {
       _showOwnerOnlyDialog(route);
       return;
     }
@@ -1124,10 +1291,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   /// Show "Hanya owner" dialog with lock icon.
   void _showOwnerOnlyDialog(String route) {
-    final label = _items.firstWhere(
-      (i) => i['id'] == route,
-      orElse: () => {'label': route},
-    )['label'] as String;
+    final label =
+        _items.firstWhere(
+              (i) => i['id'] == route,
+              orElse: () => {'label': route},
+            )['label']
+            as String;
 
     showDialog(
       context: context,
@@ -1149,7 +1318,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: NusaConfig.activePrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Mengerti'),
@@ -1165,9 +1336,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (session == null) return false;
 
     final emp = _employees.cast<Employee?>().firstWhere(
-          (e) => e!.id == session.employeeId,
-          orElse: () => null,
-        );
+      (e) => e!.id == session.employeeId,
+      orElse: () => null,
+    );
     if (emp == null) return false;
 
     final result = await PinDialog.show(
@@ -1214,8 +1385,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final active = await cashierRepo.getActive();
     if (active != null) {
       if (mounted) {
-        TopToast.error(context,
-            'Tutup kasir dulu sebelum ganti pengguna. Shift kasir masih berjalan.');
+        TopToast.error(
+          context,
+          'Tutup kasir dulu sebelum ganti pengguna. Shift kasir masih berjalan.',
+        );
       }
       return;
     }
@@ -1270,7 +1443,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final active = await cashierRepo.getActive();
     if (active != null) {
       if (mounted) {
-        TopToast.info(context, 'Kasir masih terbuka. Melanjutkan sesi sebelumnya.');
+        TopToast.info(
+          context,
+          'Kasir masih terbuka. Melanjutkan sesi sebelumnya.',
+        );
         context.push('/kasir?sessionId=${active.id}');
       }
       return;
@@ -1324,55 +1500,83 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text('Hubungi Karyawan',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          ..._employees.where((e) => e.phone != null && e.phone!.isNotEmpty).map((e) {
-            return ListTile(
-              leading: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Text(e.name[0].toUpperCase(),
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: NusaConfig.activePrimary)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkDivider
+                    : NusaConfig.dividerColor,
+                borderRadius: BorderRadius.circular(2),
               ),
-              title: Text(e.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(e.role,
-                  style: const TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chat, color: NusaConfig.accentGreen),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _launchWa(e.phone!);
-              },
-            );
-          }),
-          if (_employees.where((e) => e.phone != null && e.phone!.isNotEmpty).isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text('Tidak ada karyawan dengan nomor WA',
-                  style: TextStyle(fontSize: 13, color: NusaConfig.textSecondary)),
             ),
-          const SizedBox(height: 8),
-        ]),
+            const SizedBox(height: 8),
+            const Text(
+              'Hubungi Karyawan',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            ..._employees
+                .where((e) => e.phone != null && e.phone!.isNotEmpty)
+                .map((e) {
+                  return ListTile(
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        e.name[0].toUpperCase(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: NusaConfig.activePrimary,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      e.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      e.role,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: const Icon(
+                      Icons.chat,
+                      color: NusaConfig.accentGreen,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _launchWa(e.phone!);
+                    },
+                  );
+                }),
+            if (_employees
+                .where((e) => e.phone != null && e.phone!.isNotEmpty)
+                .isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  'Tidak ada karyawan dengan nomor WA',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: NusaConfig.textSecondary,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -1380,7 +1584,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _launchWa(String phone) async {
     final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
     final uri = Uri.parse(
-        'https://wa.me/${clean.startsWith('0') ? '62${clean.substring(1)}' : clean}');
+      'https://wa.me/${clean.startsWith('0') ? '62${clean.substring(1)}' : clean}',
+    );
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
@@ -1409,28 +1614,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           // Hide domain-inappropriate menus for this variant
           if (NusaConfig.hiddenMenus.contains(id)) return false;
           // Hide menus the employee's role cannot access (no lock gimmick)
-          if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager') return false;
+          if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager')
+            return false;
           if (!hasAccess(ref, role, id)) return false;
           return true;
         })
         .map((item) {
-      final id = item['id'] as String;
-      final label = item['label'] as String;
-      final icon = item['icon'] as String;
+          final id = item['id'] as String;
+          final label = item['label'] as String;
+          final icon = item['icon'] as String;
 
-      // Only PIN-guarded menus need an indicator; everything else is accessible
-      String accessType = '';
-      if (needsPinGuard(id) && _pinPadEnabled) {
-        accessType = '🔐';
-      }
+          // Only PIN-guarded menus need an indicator; everything else is accessible
+          String accessType = '';
+          if (needsPinGuard(id) && _pinPadEnabled) {
+            accessType = '🔐';
+          }
 
-      return {
-        'id': id,
-        'label': label,
-        'icon': icon,
-        'access': accessType,
-      };
-    }).toList();
+          return {'id': id, 'label': label, 'icon': icon, 'access': accessType};
+        })
+        .toList();
 
     // Apply user-defined menu order from Kelola Fitur drag-reorder
     if (menuOrder.isNotEmpty) {
@@ -1483,7 +1685,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               userName: userName,
               role: roleText,
               branch: _storeName,
-              hasNotification: (_updateInfo?.hasUpdate ?? false) ||
+              hasNotification:
+                  (_updateInfo?.hasUpdate ?? false) ||
                   _notifUnread > 0 ||
                   (!_hasCheckedIn && _currentName.isNotEmpty),
               onBellTap: _onBellTap,
@@ -1497,37 +1700,71 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: GestureDetector(
                   onTap: () => _showBranchPicker(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
-                      color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                      color: isDark
+                          ? NusaConfig.darkSurface
+                          : NusaConfig.surfaceColor,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+                        color: isDark
+                            ? NusaConfig.darkBorder
+                            : NusaConfig.borderColor,
                       ),
                     ),
-                    child: Row(children: [
-                      Icon(Icons.store, size: 18, color: NusaConfig.accentPurple.withValues(alpha: 0.8)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _activeBranch?.name ?? 'Semua Cabang',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
-                              color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.store,
+                          size: 18,
+                          color: NusaConfig.accentPurple.withValues(alpha: 0.8),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: NusaConfig.accentPurple.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _activeBranch?.name ?? 'Semua Cabang',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary,
+                            ),
+                          ),
                         ),
-                        child: Text('${_branches.length} cabang',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.accentPurple)),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.expand_more, size: 20,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                    ]),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.accentPurple.withValues(
+                              alpha: 0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_branches.length} cabang',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: NusaConfig.accentPurple,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.expand_more,
+                          size: 20,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1535,7 +1772,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             // Scrollable content: Profile card + Menu grid
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () async { await _load(); },
+                onRefresh: () async {
+                  await _load();
+                },
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
@@ -1561,15 +1800,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ? () async {
                                 // Owner authenticating from non-Owner session
                                 final attRepo = AttendanceRepository(
-                                    ref.read(databaseProvider));
+                                  ref.read(databaseProvider),
+                                );
                                 final emps = await attRepo.getEmployees();
-                                final owner =
-                                    emps.cast<Employee?>().firstWhere(
-                                          (e) =>
-                                              e!.role == 'Owner' &&
-                                              e.status != 'Nonaktif',
-                                          orElse: () => null,
-                                        );
+                                final owner = emps.cast<Employee?>().firstWhere(
+                                  (e) =>
+                                      e!.role == 'Owner' &&
+                                      e.status != 'Nonaktif',
+                                  orElse: () => null,
+                                );
                                 if (owner == null) return false;
                                 final result = await PinDialog.show(
                                   context: context,
@@ -1579,9 +1818,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   showRemember: false,
                                   showFingerprint: true,
                                   showNfc: true,
-                                  onFingerprint: () async => await _authFingerprint(),
+                                  onFingerprint: () async =>
+                                      await _authFingerprint(),
                                   onNfc: () async {
-                                    final id = await NfcTagService.readEmployeeTag();
+                                    final id =
+                                        await NfcTagService.readEmployeeTag();
                                     return id?.toString();
                                   },
                                   pinLength: 6,
@@ -1614,7 +1855,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ],
 
                       // Laundry stats
-                      if (NusaConfig.isLaundryVariant && (_laundryToday > 0 || _laundryPending > 0)) ...[
+                      if (NusaConfig.isLaundryVariant &&
+                          (_laundryToday > 0 || _laundryPending > 0)) ...[
                         const SizedBox(height: 12),
                         _LaundryStatsCard(
                           today: _laundryToday,
@@ -1623,14 +1865,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           delivered: _laundryDelivered,
                           expanded: _laundryStatsExpanded,
                           onToggle: () {
-                            setState(() => _laundryStatsExpanded = !_laundryStatsExpanded);
-                            SecureStore.setLaundryStatsExpanded(!_laundryStatsExpanded);
+                            setState(
+                              () => _laundryStatsExpanded =
+                                  !_laundryStatsExpanded,
+                            );
+                            SecureStore.setLaundryStatsExpanded(
+                              !_laundryStatsExpanded,
+                            );
                           },
                         ),
                       ],
 
                       // Salon stats
-                      if (NusaConfig.isSalonVariant && (_salonToday > 0 || _salonConfirmed > 0)) ...[
+                      if (NusaConfig.isSalonVariant &&
+                          (_salonToday > 0 || _salonConfirmed > 0)) ...[
                         const SizedBox(height: 12),
                         _SalonStatsCard(
                           today: _salonToday,
@@ -1639,14 +1887,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           done: _salonDone,
                           expanded: _salonStatsExpanded,
                           onToggle: () {
-                            setState(() => _salonStatsExpanded = !_salonStatsExpanded);
-                            SecureStore.setSalonStatsExpanded(!_salonStatsExpanded);
+                            setState(
+                              () => _salonStatsExpanded = !_salonStatsExpanded,
+                            );
+                            SecureStore.setSalonStatsExpanded(
+                              !_salonStatsExpanded,
+                            );
                           },
                         ),
                       ],
 
                       // Bengkel stats
-                      if (NusaConfig.isBengkelVariant && (_bengkelToday > 0 || _bengkelQueue > 0)) ...[
+                      if (NusaConfig.isBengkelVariant &&
+                          (_bengkelToday > 0 || _bengkelQueue > 0)) ...[
                         const SizedBox(height: 12),
                         _BengkelStatsCard(
                           today: _bengkelToday,
@@ -1656,8 +1909,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           estimate: _bengkelEstimate,
                           expanded: _bengkelStatsExpanded,
                           onToggle: () {
-                            setState(() => _bengkelStatsExpanded = !_bengkelStatsExpanded);
-                            SecureStore.setBengkelStatsExpanded(!_bengkelStatsExpanded);
+                            setState(
+                              () => _bengkelStatsExpanded =
+                                  !_bengkelStatsExpanded,
+                            );
+                            SecureStore.setBengkelStatsExpanded(
+                              !_bengkelStatsExpanded,
+                            );
                           },
                         ),
                       ],
@@ -1665,31 +1923,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       const SizedBox(height: 12),
 
                       // Menu grid with lock indicators (responsive columns)
-                      LayoutBuilder(builder: (_, constraints) {
-                        final w = constraints.maxWidth;
-                        final cols = w > 900 ? 5 : (w > 600 ? 4 : 3);
-                        final spacing = w > 900 ? 24.0 : 20.0;
-                        final pad = w > 900 ? 32.0 : 24.0;
-                        return GridView.count(
-                          crossAxisCount: cols,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-                          crossAxisSpacing: spacing,
-                          mainAxisSpacing: spacing,
-                          childAspectRatio: 0.72,
-                          children: menuItems.map((item) {
-                            return _MenuItem(
-                              label: item['label'] as String,
-                              icon: item['icon'] as String,
-                              access: item['access'] as String,
-                              onTap: () => _handleMenuTap(item['id'] as String),
-                              badgeCount: item['id'] == 'pesanan_online' ? _onlinePending : (item['id'] == 'stok' ? _lowStockCount : null),
-                              badgeColor: item['id'] == 'stok' ? NusaConfig.warning : null,
-                            );
-                          }).toList(),
-                        );
-                      }),
+                      LayoutBuilder(
+                        builder: (_, constraints) {
+                          final w = constraints.maxWidth;
+                          final cols = w > 900 ? 5 : (w > 600 ? 4 : 3);
+                          final spacing = w > 900 ? 24.0 : 20.0;
+                          final pad = w > 900 ? 32.0 : 24.0;
+                          return GridView.count(
+                            crossAxisCount: cols,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+                            crossAxisSpacing: spacing,
+                            mainAxisSpacing: spacing,
+                            childAspectRatio: 0.72,
+                            children: menuItems.map((item) {
+                              return _MenuItem(
+                                label: item['label'] as String,
+                                icon: item['icon'] as String,
+                                access: item['access'] as String,
+                                onTap: () =>
+                                    _handleMenuTap(item['id'] as String),
+                                badgeCount: item['id'] == 'pesanan_online'
+                                    ? _onlinePending
+                                    : (item['id'] == 'stok'
+                                          ? _lowStockCount
+                                          : null),
+                                badgeColor: item['id'] == 'stok'
+                                    ? NusaConfig.warning
+                                    : null,
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
 
                       const SizedBox(height: 76), // space for FAB
                     ],
@@ -1711,10 +1978,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             backgroundColor: NusaConfig.activePrimary,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.point_of_sale_rounded, size: 24),
-            label: const Text('Kasir',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            label: const Text(
+              'Kasir',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
             elevation: 6,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             onPressed: () => _bukaKasir(),
           ),
         ),
@@ -1759,10 +2030,7 @@ class _MenuItem extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(4),
-                child: MenuIcon(
-                  name: icon,
-                  size: 72,
-                ),
+                child: MenuIcon(name: icon, size: 72),
               ),
               // PIN guard badge (kasir only)
               if (isPinGuarded)
@@ -1776,12 +2044,18 @@ class _MenuItem extends StatelessWidget {
                       color: NusaConfig.warning,
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: isDark ? NusaConfig.darkBackground : Colors.white,
-                          width: 1.5),
+                        color: isDark
+                            ? NusaConfig.darkBackground
+                            : Colors.white,
+                        width: 1.5,
+                      ),
                     ),
                     alignment: Alignment.center,
-                    child:
-                        const Icon(Icons.lock_rounded, size: 10, color: Colors.white),
+                    child: const Icon(
+                      Icons.lock_rounded,
+                      size: 10,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               // Badge (count)
@@ -1800,9 +2074,10 @@ class _MenuItem extends StatelessWidget {
                     child: Text(
                       '$badgeCount',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800),
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
@@ -1816,11 +2091,11 @@ class _MenuItem extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: isPinGuarded
                   ? (isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary)
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary)
                   : (isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary),
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary),
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
@@ -1848,43 +2123,90 @@ class _KeuanganSummary extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+          ),
         ),
-        child: Column(children: [
-          Row(children: [
-            Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(
-                color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.account_balance_wallet, size: 16, color: NusaConfig.accentPurple),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet,
+                    size: 16,
+                    color: NusaConfig.accentPurple,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Keuangan Bulan Ini',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text('Keuangan Bulan Ini',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            _finStat('Pengeluaran', expense, NusaConfig.activePrimary, isDark),
-            const SizedBox(width: 12),
-            _finStat('Pemasukan', income, NusaConfig.accentGreen, isDark),
-            const SizedBox(width: 12),
-            _finStat('Selisih', net, net >= 0 ? NusaConfig.accentGreen : NusaConfig.activePrimary, isDark),
-          ]),
-        ]),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _finStat(
+                  'Pengeluaran',
+                  expense,
+                  NusaConfig.activePrimary,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _finStat('Pemasukan', income, NusaConfig.accentGreen, isDark),
+                const SizedBox(width: 12),
+                _finStat(
+                  'Selisih',
+                  net,
+                  net >= 0 ? NusaConfig.accentGreen : NusaConfig.activePrimary,
+                  isDark,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _finStat(String label, int amount, Color color, bool isDark) {
     return Expanded(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(formatRupiah(amount > 0 ? amount : 0),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
-        Text(label, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            formatRupiah(amount > 0 ? amount : 0),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1895,21 +2217,35 @@ class _LaundryStatsCard extends StatefulWidget {
   final int today, pending, ready, delivered;
   final bool expanded;
   final VoidCallback onToggle;
-  const _LaundryStatsCard({required this.today, required this.pending, required this.ready, required this.delivered, required this.expanded, required this.onToggle});
+  const _LaundryStatsCard({
+    required this.today,
+    required this.pending,
+    required this.ready,
+    required this.delivered,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   @override
   State<_LaundryStatsCard> createState() => _LaundryStatsCardState();
 }
 
-class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerProviderStateMixin {
+class _LaundryStatsCardState extends State<_LaundryStatsCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   late Animation<double> _slideAnim;
 
   @override
   void initState() {
     super.initState();
-    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
-    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnim = CurvedAnimation(
+      parent: _slideCtrl,
+      curve: Curves.easeOutCubic,
+    );
     if (widget.expanded) _slideCtrl.value = 1.0;
   }
 
@@ -1935,83 +2271,146 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
+    final hintColor = isDark
+        ? NusaConfig.darkTextTertiary
+        : const Color(0xFFB0B0B0);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(children: [
-        // ── Pull pill bar (no card, no text, no animation — just the bar) ──
-        GestureDetector(
-          onTap: widget.onToggle,
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: widget.expanded
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Container(
-                      width: 48, height: 5,
-                      decoration: BoxDecoration(
-                        color: hintColor.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(3),
+      child: Column(
+        children: [
+          // ── Pull pill bar (no card, no text, no animation — just the bar) ──
+          GestureDetector(
+            onTap: widget.onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: widget.expanded
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: hintColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
-                  ),
-          ),
-        ),
-
-        // ── Expanded card (slide animation) ──
-        SizeTransition(
-          sizeFactor: _slideAnim,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.local_laundry_service_rounded, size: 18, color: primaryColor),
-                ),
-                const SizedBox(width: 10),
-                Text('Laundry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-                const Spacer(),
-                GestureDetector(
-                  onTap: widget.onToggle,
-                  child: Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                _laundryStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
-                _laundryStat('Diproses', widget.pending, NusaConfig.info, isDark),
-                _laundryStat('Siap', widget.ready, NusaConfig.success, isDark),
-                _laundryStat('Diambil', widget.delivered, NusaConfig.activePrimary, isDark),
-              ]),
-            ]),
           ),
-        ),
-      ]),
+
+          // ── Expanded card (slide animation) ──
+          SizeTransition(
+            sizeFactor: _slideAnim,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.local_laundry_service_rounded,
+                          size: 18,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Laundry',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: widget.onToggle,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 18,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _laundryStat(
+                        'Hari Ini',
+                        widget.today,
+                        NusaConfig.accentPurple,
+                        isDark,
+                      ),
+                      _laundryStat(
+                        'Diproses',
+                        widget.pending,
+                        NusaConfig.info,
+                        isDark,
+                      ),
+                      _laundryStat(
+                        'Siap',
+                        widget.ready,
+                        NusaConfig.success,
+                        isDark,
+                      ),
+                      _laundryStat(
+                        'Diambil',
+                        widget.delivered,
+                        NusaConfig.activePrimary,
+                        isDark,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2023,14 +2422,33 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard> with SingleTickerP
         decoration: BoxDecoration(
           color: color.withValues(alpha: isDark ? 0.10 : 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+          border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
+          ),
         ),
-        child: Column(children: [
-          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-        ]),
+        child: Column(
+          children: [
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2041,21 +2459,35 @@ class _SalonStatsCard extends StatefulWidget {
   final int today, confirmed, waiting, done;
   final bool expanded;
   final VoidCallback onToggle;
-  const _SalonStatsCard({required this.today, required this.confirmed, required this.waiting, required this.done, required this.expanded, required this.onToggle});
+  const _SalonStatsCard({
+    required this.today,
+    required this.confirmed,
+    required this.waiting,
+    required this.done,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   @override
   State<_SalonStatsCard> createState() => _SalonStatsCardState();
 }
 
-class _SalonStatsCardState extends State<_SalonStatsCard> with SingleTickerProviderStateMixin {
+class _SalonStatsCardState extends State<_SalonStatsCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   late Animation<double> _slideAnim;
 
   @override
   void initState() {
     super.initState();
-    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
-    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnim = CurvedAnimation(
+      parent: _slideCtrl,
+      curve: Curves.easeOutCubic,
+    );
     if (widget.expanded) _slideCtrl.value = 1.0;
   }
 
@@ -2081,83 +2513,146 @@ class _SalonStatsCardState extends State<_SalonStatsCard> with SingleTickerProvi
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
+    final hintColor = isDark
+        ? NusaConfig.darkTextTertiary
+        : const Color(0xFFB0B0B0);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(children: [
-        // ── Pull pill bar ──
-        GestureDetector(
-          onTap: widget.onToggle,
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: widget.expanded
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Container(
-                      width: 48, height: 5,
-                      decoration: BoxDecoration(
-                        color: hintColor.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(3),
+      child: Column(
+        children: [
+          // ── Pull pill bar ──
+          GestureDetector(
+            onTap: widget.onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: widget.expanded
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: hintColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
-                  ),
-          ),
-        ),
-
-        // ── Expanded card (slide animation) ──
-        SizeTransition(
-          sizeFactor: _slideAnim,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.content_cut_rounded, size: 18, color: primaryColor),
-                ),
-                const SizedBox(width: 10),
-                Text('Salon', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-                const Spacer(),
-                GestureDetector(
-                  onTap: widget.onToggle,
-                  child: Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                _salonStat('Hari Ini', widget.today, NusaConfig.accentPurple, isDark),
-                _salonStat('Dikonfirmasi', widget.confirmed, NusaConfig.info, isDark),
-                _salonStat('Menunggu', widget.waiting, NusaConfig.warning, isDark),
-                _salonStat('Selesai', widget.done, NusaConfig.success, isDark),
-              ]),
-            ]),
           ),
-        ),
-      ]),
+
+          // ── Expanded card (slide animation) ──
+          SizeTransition(
+            sizeFactor: _slideAnim,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.content_cut_rounded,
+                          size: 18,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Salon',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: widget.onToggle,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 18,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _salonStat(
+                        'Hari Ini',
+                        widget.today,
+                        NusaConfig.accentPurple,
+                        isDark,
+                      ),
+                      _salonStat(
+                        'Dikonfirmasi',
+                        widget.confirmed,
+                        NusaConfig.info,
+                        isDark,
+                      ),
+                      _salonStat(
+                        'Menunggu',
+                        widget.waiting,
+                        NusaConfig.warning,
+                        isDark,
+                      ),
+                      _salonStat(
+                        'Selesai',
+                        widget.done,
+                        NusaConfig.success,
+                        isDark,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2169,14 +2664,33 @@ class _SalonStatsCardState extends State<_SalonStatsCard> with SingleTickerProvi
         decoration: BoxDecoration(
           color: color.withValues(alpha: isDark ? 0.10 : 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+          border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
+          ),
         ),
-        child: Column(children: [
-          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-        ]),
+        child: Column(
+          children: [
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2187,21 +2701,36 @@ class _BengkelStatsCard extends StatefulWidget {
   final int today, queue, inProgress, done, estimate;
   final bool expanded;
   final VoidCallback onToggle;
-  const _BengkelStatsCard({required this.today, required this.queue, required this.inProgress, required this.done, required this.estimate, required this.expanded, required this.onToggle});
+  const _BengkelStatsCard({
+    required this.today,
+    required this.queue,
+    required this.inProgress,
+    required this.done,
+    required this.estimate,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   @override
   State<_BengkelStatsCard> createState() => _BengkelStatsCardState();
 }
 
-class _BengkelStatsCardState extends State<_BengkelStatsCard> with SingleTickerProviderStateMixin {
+class _BengkelStatsCardState extends State<_BengkelStatsCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   late Animation<double> _slideAnim;
 
   @override
   void initState() {
     super.initState();
-    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
-    _slideAnim = CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic);
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnim = CurvedAnimation(
+      parent: _slideCtrl,
+      curve: Curves.easeOutCubic,
+    );
     if (widget.expanded) _slideCtrl.value = 1.0;
   }
 
@@ -2227,100 +2756,191 @@ class _BengkelStatsCardState extends State<_BengkelStatsCard> with SingleTickerP
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark ? NusaConfig.darkTextTertiary : const Color(0xFFB0B0B0);
+    final hintColor = isDark
+        ? NusaConfig.darkTextTertiary
+        : const Color(0xFFB0B0B0);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(children: [
-        // ── Pull pill bar ──
-        GestureDetector(
-          onTap: widget.onToggle,
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: widget.expanded
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Container(
-                      width: 48, height: 5,
-                      decoration: BoxDecoration(
-                        color: hintColor.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(3),
+      child: Column(
+        children: [
+          // ── Pull pill bar ──
+          GestureDetector(
+            onTap: widget.onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: widget.expanded
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: hintColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
-                  ),
-          ),
-        ),
-
-        // ── Expanded card (slide animation) ──
-        SizeTransition(
-          sizeFactor: _slideAnim,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04), blurRadius: 8, offset: const Offset(0, 2))],
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.directions_car_filled_outlined, size: 18, color: primaryColor),
-                ),
-                const SizedBox(width: 10),
-                Text('Bengkel', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
-                const Spacer(),
-                GestureDetector(
-                  onTap: widget.onToggle,
-                  child: Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(Icons.keyboard_arrow_up_rounded, size: 18,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                _bengkelStat('Hari Ini', widget.today, NusaConfig.warning, isDark),
-                _bengkelStat('Antrian', widget.queue, NusaConfig.info, isDark),
-                _bengkelStat('Dikerjakan', widget.inProgress, NusaConfig.accentPurple, isDark),
-                _bengkelStat('Selesai', widget.done, NusaConfig.success, isDark),
-              ]),
-              if (widget.estimate > 0) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: NusaConfig.accentGold.withValues(alpha: isDark ? 0.12 : 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: NusaConfig.accentGold.withValues(alpha: 0.2)),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.receipt_long_outlined, size: 16, color: NusaConfig.accentGold),
-                    const SizedBox(width: 8),
-                    Text('Estimasi berjalan: ', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    Text(formatRupiah(widget.estimate), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: NusaConfig.accentGold)),
-                  ]),
-                ),
-              ],
-            ]),
           ),
-        ),
-      ]),
+
+          // ── Expanded card (slide animation) ──
+          SizeTransition(
+            sizeFactor: _slideAnim,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.directions_car_filled_outlined,
+                          size: 18,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Bengkel',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: widget.onToggle,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 18,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _bengkelStat(
+                        'Hari Ini',
+                        widget.today,
+                        NusaConfig.warning,
+                        isDark,
+                      ),
+                      _bengkelStat(
+                        'Antrian',
+                        widget.queue,
+                        NusaConfig.info,
+                        isDark,
+                      ),
+                      _bengkelStat(
+                        'Dikerjakan',
+                        widget.inProgress,
+                        NusaConfig.accentPurple,
+                        isDark,
+                      ),
+                      _bengkelStat(
+                        'Selesai',
+                        widget.done,
+                        NusaConfig.success,
+                        isDark,
+                      ),
+                    ],
+                  ),
+                  if (widget.estimate > 0) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: NusaConfig.accentGold.withValues(
+                          alpha: isDark ? 0.12 : 0.10,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: NusaConfig.accentGold.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.receipt_long_outlined,
+                            size: 16,
+                            color: NusaConfig.accentGold,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Estimasi berjalan: ',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                          ),
+                          Text(
+                            formatRupiah(widget.estimate),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: NusaConfig.accentGold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2332,14 +2952,33 @@ class _BengkelStatsCardState extends State<_BengkelStatsCard> with SingleTickerP
         decoration: BoxDecoration(
           color: color.withValues(alpha: isDark ? 0.10 : 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: isDark ? 0.15 : 0.12)),
+          border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
+          ),
         ),
-        child: Column(children: [
-          Text('$count', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-        ]),
+        child: Column(
+          children: [
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2353,11 +2992,14 @@ class MenuIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Image.asset(
-        iconAssetPath(name),
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Icon(Icons.grid_view_rounded, size: size, color: NusaConfig.activePrimary),
-      );
+    iconAssetPath(name),
+    width: size,
+    height: size,
+    fit: BoxFit.contain,
+    errorBuilder: (_, __, ___) => Icon(
+      Icons.grid_view_rounded,
+      size: size,
+      color: NusaConfig.activePrimary,
+    ),
+  );
 }
-
