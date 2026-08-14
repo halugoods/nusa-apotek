@@ -62,8 +62,6 @@ const _protectedRouteKeys = {
   '/kasir': 'kasir',
   '/checkout': 'kasir',
   '/produk': 'produk',
-  '/produk/tambah': 'produk',
-  '/produk/edit': 'produk',
   '/produk/kategori': 'produk',
   '/produk/kategori/': 'produk',
   '/stok': 'stok',
@@ -96,8 +94,7 @@ String? _protectedRouteKey(String location) {
   final path = Uri.parse(location).path;
   for (final entry in _protectedRouteKeys.entries) {
     if (path == entry.key ||
-        (entry.key.endsWith('/') && path.startsWith(entry.key)) ||
-        (entry.key == '/produk/edit' && path.startsWith('/produk/edit/'))) {
+        (entry.key.endsWith('/') && path.startsWith(entry.key))) {
       return entry.value;
     }
   }
@@ -152,18 +149,12 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/activation',
       pageBuilder: (_, __) => _slidePage(ActivationScreen()),
     ),
-    GoRoute(
-      path: '/login',
-      pageBuilder: (_, __) => _slidePage(LoginScreen()),
-    ),
+    GoRoute(path: '/login', pageBuilder: (_, __) => _slidePage(LoginScreen())),
     GoRoute(
       path: '/onboarding',
       pageBuilder: (_, __) => _slidePage(OnboardingScreen()),
     ),
-    GoRoute(
-      path: '/setup',
-      pageBuilder: (_, __) => _slidePage(SetupScreen()),
-    ),
+    GoRoute(path: '/setup', pageBuilder: (_, __) => _slidePage(SetupScreen())),
     GoRoute(
       path: '/home',
       pageBuilder: (_, __) => _slidePage(DashboardScreen()),
@@ -187,16 +178,6 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     GoRoute(
       path: '/produk',
       pageBuilder: (_, __) => _slidePage(ProductsScreen()),
-    ),
-    GoRoute(
-      path: '/produk/tambah',
-      pageBuilder: (_, __) => _slidePage(ProductFormScreen()),
-    ),
-    GoRoute(
-      path: '/produk/edit/:id',
-      pageBuilder: (_, state) => _slidePage(
-        ProductFormScreen(productId: int.parse(state.pathParameters['id']!)),
-      ),
     ),
     GoRoute(
       path: '/produk/kategori',
@@ -224,14 +205,8 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/pelanggan',
       pageBuilder: (_, __) => _slidePage(CustomersScreen()),
     ),
-    GoRoute(
-      path: '/piutang',
-      pageBuilder: (_, __) => _slidePage(DebtScreen()),
-    ),
-    GoRoute(
-      path: '/promo',
-      pageBuilder: (_, __) => _slidePage(PromoScreen()),
-    ),
+    GoRoute(path: '/piutang', pageBuilder: (_, __) => _slidePage(DebtScreen())),
+    GoRoute(path: '/promo', pageBuilder: (_, __) => _slidePage(PromoScreen())),
     GoRoute(
       path: '/laporan',
       pageBuilder: (_, __) => _slidePage(ReportsScreen()),
@@ -289,10 +264,7 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       pageBuilder: (_, __) => _slidePage(PaymentSettingsScreen()),
     ),
     // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Servis) ──
-    GoRoute(
-      path: '/meja',
-      pageBuilder: (_, __) => _slidePage(MejaScreen()),
-    ),
+    GoRoute(path: '/meja', pageBuilder: (_, __) => _slidePage(MejaScreen())),
     GoRoute(
       path: '/laundry_status',
       pageBuilder: (_, __) => _slidePage(LaundryStatusScreen()),
@@ -305,10 +277,7 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/booking',
       pageBuilder: (_, __) => _slidePage(BookingScreen()),
     ),
-    GoRoute(
-      path: '/resep',
-      pageBuilder: (_, __) => _slidePage(ResepScreen()),
-    ),
+    GoRoute(path: '/resep', pageBuilder: (_, __) => _slidePage(ResepScreen())),
     GoRoute(
       path: '/print_order',
       pageBuilder: (_, __) => _slidePage(PrintOrderScreen()),
@@ -336,8 +305,7 @@ class NusaApp extends ConsumerStatefulWidget {
   ConsumerState<NusaApp> createState() => _NusaAppState();
 }
 
-class _NusaAppState extends ConsumerState<NusaApp>
-    with WidgetsBindingObserver {
+class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
   late final GoRouter _router = buildRouter(widget.initialLocation, ref);
 
   @override

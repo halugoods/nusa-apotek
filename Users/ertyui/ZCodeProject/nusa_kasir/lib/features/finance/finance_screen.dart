@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:csv/csv.dart';
+import 'package:excel/excel.dart' hide Border;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
@@ -49,6 +52,7 @@ class FinanceScreen extends ConsumerStatefulWidget {
 class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   final _tabs = ['Pengeluaran', 'Payroll', 'Waste', 'Berulang', 'Likuiditas'];
   int _tab = 0;
+  bool _exporting = false;
   List<Expense> _expenses = [];
   List<PayrollData> _payroll = [];
   List<WasteData> _waste = [];
@@ -415,7 +419,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   ],
                   if (_tab == 0) ...[_timeDropdown(isDark), SizedBox(width: 6)],
                   GestureDetector(
-                    onTap: () => _showExportOptions(isDark),
+                    onTap: () => _handleExport(),
                     child: Container(
                       height: 36,
                       width: 36,
@@ -430,13 +434,23 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                               : NusaConfig.borderColor,
                         ),
                       ),
-                      child: Icon(
-                        Icons.file_download_outlined,
-                        size: 18,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
+                      child: _exporting
+                          ? Padding(
+                              padding: EdgeInsets.all(8),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: isDark
+                                    ? NusaConfig.darkTextSecondary
+                                    : NusaConfig.textSecondary,
+                              ),
+                            )
+                          : Icon(
+                              Icons.share_rounded,
+                              size: 18,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
                     ),
                   ),
                 ],
@@ -456,7 +470,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
 
   Widget _segBtn(String label, int idx, {bool isDark = false}) {
     final sel = idx == _tab;
-    final hint = _tabHints[label];
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _tab = idx),
@@ -467,50 +480,22 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             color: sel ? NusaConfig.activePrimary : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: sel
-                      ? Colors.white
-                      : (isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary),
-                ),
-              ),
-              if (hint != null)
-                Text(
-                  hint,
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w500,
-                    height: 1.1,
-                    color: sel
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : (isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary),
-                  ),
-                ),
-            ],
+          child: Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: sel
+                  ? Colors.white
+                  : (isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary),
+            ),
           ),
         ),
       ),
     );
   }
-
-  /// G: teks hint abu2 kecil di bawah label tab — konteks tiap menu.
-  static const _tabHints = {
-    'Pengeluaran': 'bulan ini',
-    'Payroll': 'gaji',
-    'Waste': 'buang',
-    'Berulang': 'langganan',
-    'Likuiditas': 'kas',
-  };
 
   Widget _timeDropdown(bool isDark) {
     return Container(
@@ -1411,164 +1396,286 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
 
   // ── Export ─────────────────────────────────────────────────────
 
-  void _showExportOptions(bool isDark) {
-    showModalBottomSheet(
+  /// Buka sheet pilihan format export (Excel/CSV/PDF) — pola laporan.
+  Future<String?> _pickFormat() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return showModalBottomSheet<String>(
       context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(NusaConfig.spaceLG),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Ekspor Data Keuangan',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              SizedBox(height: NusaConfig.spaceMD),
-              ListTile(
-                leading: Icon(
-                  Icons.table_chart_outlined,
-                  color: NusaConfig.accentGreen,
+            ),
+            Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Export Data Keuangan',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
                 ),
-                title: Text(
-                  'Ekspor CSV (Excel)',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  'File spreadsheet, bisa dibuka di Excel',
-                  style: TextStyle(fontSize: 12),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-                ),
-                tileColor: NusaConfig.accentGreen.withValues(alpha: 0.06),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _exportCsv();
-                },
               ),
-              SizedBox(height: NusaConfig.spaceXS),
-              ListTile(
-                leading: Icon(
-                  Icons.picture_as_pdf_outlined,
-                  color: NusaConfig.activePrimary,
-                ),
-                title: Text(
-                  'Ekspor PDF',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  'Dokumen PDF siap cetak',
-                  style: TextStyle(fontSize: 12),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-                ),
-                tileColor: NusaConfig.activePrimary.withValues(alpha: 0.06),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _exportPdf();
-                },
-              ),
-            ],
-          ),
+            ),
+            _exportOption(
+              icon: Icons.table_chart,
+              title: 'Export Excel (.xlsx)',
+              desc: 'Spreadsheet lengkap, bisa dibuka di Excel',
+              color: NusaConfig.accentGreen,
+              isDark: isDark,
+              onTap: () => Navigator.of(ctx).pop('excel'),
+            ),
+            SizedBox(height: 8),
+            _exportOption(
+              icon: Icons.description,
+              title: 'Export CSV (.csv)',
+              desc: 'File CSV ringan untuk import ke aplikasi lain',
+              color: NusaConfig.info,
+              isDark: isDark,
+              onTap: () => Navigator.of(ctx).pop('csv'),
+            ),
+            SizedBox(height: 8),
+            _exportOption(
+              icon: Icons.picture_as_pdf,
+              title: 'Export PDF (.pdf)',
+              desc: 'Dokumen PDF siap cetak',
+              color: NusaConfig.activePrimary,
+              isDark: isDark,
+              onTap: () => Navigator.of(ctx).pop('pdf'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _exportCsv() async {
-    List<List<dynamic>> rows;
-    String name;
-    switch (_tab) {
-      case 0:
-        name = 'pengeluaran';
-        rows = [
-          ['Tanggal', 'Kategori', 'Keterangan', 'Jumlah'],
-        ];
-        for (final e in _filteredExpenses) {
-          rows.add([_date(e.date), e.category, e.description, e.amount]);
-        }
-        break;
-      case 1:
-        name = 'payroll';
-        rows = [
-          ['Karyawan', 'Periode', 'Gaji', 'Bonus', 'Potongan', 'Status'],
-        ];
-        for (final p in _payroll) {
-          rows.add([
-            _empName(p.employeeId),
-            p.period,
-            p.salary,
-            p.bonus,
-            p.deduction,
-            p.status,
-          ]);
-        }
-        break;
-      case 2:
-        name = 'waste';
-        rows = [
-          ['Produk', 'Qty', 'Tipe', 'Alasan', 'Tanggal'],
-        ];
-        for (final w in _waste) {
-          rows.add([
-            _prodName(w.productId),
-            w.qty,
-            w.type,
-            w.reason ?? '',
-            _date(w.date),
-          ]);
-        }
-        break;
-      case 3:
-        name = 'pengeluaran_berulang';
-        rows = [
-          ['Kategori', 'Jumlah', 'Keterangan', 'Frekuensi', 'Aktif'],
-        ];
-        for (final r in _recurring) {
-          rows.add([
-            r.category,
-            r.amount,
-            r.description,
-            r.frequency,
-            r.active ? 'Ya' : 'Tidak',
-          ]);
-        }
-        break;
-      default:
-        name = 'likuiditas';
-        rows = [
-          ['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah', 'Metode'],
-        ];
-        for (final l in _liquidity) {
-          rows.add([
-            _date(l.date),
-            l.type == 'in' ? 'Masuk' : 'Keluar',
-            l.category,
-            l.description,
-            l.amount,
-            l.method ?? '',
-          ]);
-        }
-    }
+  Widget _exportOption({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    desc,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  Future<void> _handleExport() async {
+    final format = await _pickFormat();
+    if (format == null || !mounted) return;
+    setState(() => _exporting = true);
     try {
-      final csv = ListToCsvConverter().convert(rows);
-      final dir = await getApplicationDocumentsDirectory();
-      final now = DateTime.now();
-      final stamp =
-          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-      final file = File('${dir.path}/${name}_$stamp.csv');
-      await file.writeAsString(csv);
-      if (mounted) TopToast.success(context, 'CSV diexport ke ${file.path}');
+      switch (format) {
+        case 'excel':
+          final file = await _exportExcel();
+          await _shareFile(file, 'Data Keuangan (Excel)');
+        case 'csv':
+          final file = await _exportCsvFile();
+          await _shareFile(file, 'Data Keuangan (CSV)');
+        default:
+          final file = await _buildFinancePdf();
+          if (file != null) {
+            await _shareFile(file, 'Data Keuangan (PDF)');
+          }
+      }
     } catch (e) {
       if (mounted) TopToast.error(context, 'Gagal export: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  Future<void> _shareFile(File file, String label) async {
+    if (!mounted) return;
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        subject: 'NUSA Kasir — $label',
+        text: '$label — ${_tabs[_tab]}',
+      ),
+    );
+  }
+
+  /// Kolom + baris data untuk tab aktif (dipakai CSV & Excel).
+  List<List<dynamic>> _financeRows() {
+    switch (_tab) {
+      case 0:
+        return [
+          ['Tanggal', 'Kategori', 'Keterangan', 'Jumlah'],
+          ..._filteredExpenses.map(
+            (e) => [_date(e.date), e.category, e.description, e.amount],
+          ),
+        ];
+      case 1:
+        return [
+          ['Karyawan', 'Periode', 'Gaji', 'Bonus', 'Potongan', 'Status'],
+          ..._payroll.map(
+            (p) => [
+              _empName(p.employeeId),
+              p.period,
+              p.salary,
+              p.bonus,
+              p.deduction,
+              p.status,
+            ],
+          ),
+        ];
+      case 2:
+        return [
+          ['Produk', 'Qty', 'Tipe', 'Alasan', 'Tanggal'],
+          ..._waste.map(
+            (w) => [
+              _prodName(w.productId),
+              w.qty,
+              w.type,
+              w.reason ?? '',
+              _date(w.date),
+            ],
+          ),
+        ];
+      case 3:
+        return [
+          ['Kategori', 'Jumlah', 'Keterangan', 'Frekuensi', 'Aktif'],
+          ..._recurring.map(
+            (r) => [
+              r.category,
+              r.amount,
+              r.description,
+              r.frequency,
+              r.active ? 'Ya' : 'Tidak',
+            ],
+          ),
+        ];
+      default:
+        return [
+          ['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah', 'Metode'],
+          ..._liquidity.map(
+            (l) => [
+              _date(l.date),
+              l.type == 'in' ? 'Masuk' : 'Keluar',
+              l.category,
+              l.description,
+              l.amount,
+              l.method ?? '',
+            ],
+          ),
+        ];
+    }
+  }
+
+  String get _financeFileName {
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final names = ['pengeluaran', 'payroll', 'waste', 'berulang', 'likuiditas'];
+    return '${names[_tab]}_$stamp';
+  }
+
+  Future<File> _exportExcel() async {
+    final excel = Excel.createExcel();
+    final sheet = excel.sheets[excel.getDefaultSheet()]!;
+    for (final row in _financeRows()) {
+      sheet.appendRow(row.map(_cellValue).toList());
+    }
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/${_financeFileName}.xlsx');
+    await file.writeAsBytes(excel.encode()!);
+    return file;
+  }
+
+  CellValue _cellValue(dynamic v) {
+    if (v is int) return IntCellValue(v);
+    if (v is num) return DoubleCellValue(v.toDouble());
+    return TextCellValue(v.toString());
+  }
+
+  Future<File> _exportCsvFile() async {
+    final csv = const ListToCsvConverter().convert(_financeRows());
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/${_financeFileName}.csv');
+    await file.writeAsString(csv);
+    return file;
   }
 
   Future<void> _exportPdf() async {

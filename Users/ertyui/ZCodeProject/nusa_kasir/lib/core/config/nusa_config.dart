@@ -4,14 +4,14 @@ import 'package:nusa_kasir/core/dev/variant_data.dart';
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-		static String _productId = "nusa-laundry";
-		static String _appSubtitle = "Aplikasi Kasir untuk Usaha Laundry";
-  static const String appVersion = "2.2.12";
-  static const int appBuildNumber = 64;
-		static String _githubRepo = "halugoods/nusa-laundry";
+		static String _productId = "nusa-bengkel";
+		static String _appSubtitle = "Aplikasi Kasir untuk Bengkel & Otomotif";
+  static const String appVersion = "2.2.13";
+  static const int appBuildNumber = 65;
+		static String _githubRepo = "halugoods/nusa-bengkel";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
-		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Laundry";
-		static String _applicationId = "com.nusa.laundry";
+		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Bengkel";
+		static String _applicationId = "com.nusa.bengkel";
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 
@@ -98,9 +98,9 @@ abstract class NusaConfig {
   // ── Brand colors (build-time defaults, patched by _build_all.py) ──
   // These remain const for broad compatibility with const constructors
   // across 50+ widget files. Theme switching uses overrides below.
-  static const Color primaryColor = const Color(0xFFEC4899);
-  static const Color primaryDark = const Color(0xFFDB2777);
-  static const Color primarySoft = const Color(0xFFFDF2F8);
+  static const Color primaryColor = const Color(0xFFEAB308);
+  static const Color primaryDark = const Color(0xFFCA8A04);
+  static const Color primarySoft = const Color(0xFFFEF9C3);
   static const Color backgroundColor = const Color(0xFFF7F7F9);
 
   // ── Runtime theme override (set by user via Settings → Tema Warna) ──
@@ -276,25 +276,25 @@ abstract class NusaConfig {
   // ── Category maps (single source across all screens) ──
   // Build-time defaults (patched by _build_all.py)
 		static Map<String, String> _catEmoji = {
-		  'Cuci Kering': '👕',
-		  'Cuci Setrika': '✨',
-		  'Setrika Only': '🔥',
-		  'Express': '⚡',
+		  'Oli': '🛢️',
+		  'Ban': '🛞',
+		  'Servis': '🔧',
+		  'Sparepart': '⚙️',
 		  'Lainnya': '📦',
 		};
 		  static Map<String, List<Color>> _catGradients = {
-		    'Cuci Kering': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-		    'Cuci Setrika': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-		    'Setrika Only': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
-		    'Express': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+		    'Oli': [Color(0xFFF3F4F6), Color(0xFFE5E7EB), Color(0xFFF9FAFB)],
+		    'Ban': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+		    'Servis': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+		    'Sparepart': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
 		    'Lainnya': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
 		  };
 		  static Map<String, IconData> _catIcons = {
 		    'Semua': Icons.grid_view_rounded,
-		    'Cuci Kering': Icons.local_laundry_service_rounded,
-		    'Cuci Setrika': Icons.auto_awesome_rounded,
-		    'Setrika Only': Icons.whatshot_rounded,
-		    'Express': Icons.bolt_rounded,
+		    'Oli': Icons.oil_barrel_rounded,
+		    'Ban': Icons.tire_repair_rounded,
+		    'Servis': Icons.build_rounded,
+		    'Sparepart': Icons.settings_rounded,
 		    'Lainnya': Icons.category_rounded,
 		  };
 

@@ -4,7 +4,7 @@ import 'package:barcode_widget/barcode_widget.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
@@ -16,8 +16,8 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
-import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
@@ -51,24 +51,45 @@ class _WholesaleTier {
       _WholesaleTier(minQty: j['minQty'] ?? 1, price: j['price'] ?? 0);
 }
 
-class ProductFormScreen extends ConsumerStatefulWidget {
+/// Buka form produk sebagai slide-up bottom sheet (state design baru).
+/// Kembali dengan `int?` = id produk BARU saat mode tambah (dipakai Catat
+/// Pembelian C3 untuk langsung memasukkan produk ke keranjang).
+Future<int?> showProductFormSheet(
+  BuildContext context, {
+  int? productId,
+  int? supplierId,
+  String? supplierName,
+}) {
+  return showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => ProductFormSheet(
+      productId: productId,
+      supplierId: supplierId,
+      supplierName: supplierName,
+    ),
+  );
+}
+
+class ProductFormSheet extends ConsumerStatefulWidget {
   final int? productId;
 
   /// Supplier yang sudah dipilih (dari Catat Pembelian) — toggle supplier
-  /// langsung ON + terisi. Bisa lewat constructor atau query param.
+  /// langsung ON + terisi.
   final int? supplierId;
   final String? supplierName;
-  ProductFormScreen({
+  const ProductFormSheet({
     this.productId,
     this.supplierId,
     this.supplierName,
     super.key,
   });
   @override
-  ConsumerState<ProductFormScreen> createState() => _ProductFormScreenState();
+  ConsumerState<ProductFormSheet> createState() => _ProductFormSheetState();
 }
 
-class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
+class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   final _name = TextEditingController();
   final _sku = TextEditingController();
   final _buy = TextEditingController();
@@ -155,19 +176,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     await _loadCategories();
     await _loadSuppliers();
     // C6: dibuka dari Catat Pembelian → toggle supplier ON + terisi
-    // (via query param /produk/tambah?supplierId=..&supplierName=..).
-    var fromSupplierId = widget.supplierId;
-    var fromSupplierName = widget.supplierName;
-    if (fromSupplierId == null) {
-      try {
-        final uri = GoRouterState.of(context).uri;
-        final sid = int.tryParse(uri.queryParameters['supplierId'] ?? '');
-        if (sid != null && sid > 0) {
-          fromSupplierId = sid;
-          fromSupplierName = uri.queryParameters['supplierName'];
-        }
-      } catch (_) {}
-    }
+    // (via constructor supplierId/supplierName — sheet tidak punya GoRouter).
+    final fromSupplierId = widget.supplierId;
+    final fromSupplierName = widget.supplierName;
     if (fromSupplierId != null && !_isEdit) {
       _hasSupplier = true;
       final match = _suppliers.where((s) => s.id == fromSupplierId).firstOrNull;
@@ -484,7 +495,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           _isEdit ? 'Produk diperbarui' : 'Produk disimpan',
         );
         // C3: balik ke Catat Pembelian dengan id produk baru (untuk masuk keranjang).
-        context.pop(createdId);
+        Navigator.pop(context, createdId);
       }
     } catch (e) {
       debugPrint('[ProductForm] save error: $e');
@@ -546,15 +557,75 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ScreenScaffold(
-      _isEdit ? 'Edit Produk' : 'Tambah Produk',
-      _loading
-          ? Center(child: CircularProgressIndicator())
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        10,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: _loading
+          ? Padding(
+              padding: EdgeInsets.symmetric(vertical: 60),
+              child: Center(child: CircularProgressIndicator()),
+            )
           : SingleChildScrollView(
-              padding: EdgeInsets.all(NusaConfig.spaceMD),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ── Drag handle ──
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.dividerColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 14),
+                  // ── Header ──
+                  Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: NusaConfig.activePrimary.withValues(
+                            alpha: 0.12,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          _isEdit
+                              ? Icons.edit_outlined
+                              : Icons.inventory_2_outlined,
+                          color: NusaConfig.activePrimary,
+                          size: 20,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _isEdit ? 'Edit Produk' : 'Tambah Produk',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 18),
+
                   // ── 1. Product image ──
                   _buildImagePicker(isDark),
                   SizedBox(height: NusaConfig.spaceMD),
@@ -690,7 +761,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             decoration: BoxDecoration(
                               color: isDark
                                   ? NusaConfig.darkSurface2
-                                  : Color(0xFFF9FAFB),
+                                  : NusaConfig.surfaceColor,
                               borderRadius: BorderRadius.only(
                                 bottomLeft: Radius.circular(12),
                                 bottomRight: Radius.circular(12),
@@ -776,7 +847,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             decoration: BoxDecoration(
                               color: isDark
                                   ? NusaConfig.darkSurface2
-                                  : Color(0xFFF9FAFB),
+                                  : NusaConfig.surfaceColor,
                               borderRadius: BorderRadius.only(
                                 bottomLeft: Radius.circular(12),
                                 bottomRight: Radius.circular(12),
@@ -812,7 +883,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             decoration: BoxDecoration(
                               color: isDark
                                   ? NusaConfig.darkSurface2
-                                  : Color(0xFFF9FAFB),
+                                  : NusaConfig.surfaceColor,
                               borderRadius: BorderRadius.only(
                                 bottomLeft: Radius.circular(12),
                                 bottomRight: Radius.circular(12),
@@ -916,41 +987,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   SizedBox(height: NusaConfig.spaceLG),
 
                   // ── Save button ──
-                  SizedBox(
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: _saving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: NusaConfig.activePrimary,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: NusaConfig.activePrimary
-                            .withValues(alpha: 0.6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        textStyle: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      child: _saving
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                Text('Menyimpan…'),
-                              ],
-                            )
-                          : Text('Simpan Produk'),
-                    ),
+                  NusaButton(
+                    _saving ? 'Menyimpan…' : 'Simpan Produk',
+                    onPressed: _saving ? null : _save,
                   ),
                 ],
               ),
@@ -1594,7 +1633,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 Expanded(
                   child: Text(
                     title,
-                    style: TextStyle(
+                    style: GoogleFonts.plusJakartaSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: isDark
@@ -1646,7 +1685,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     return Container(
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface2 : Color(0xFFF9FAFB),
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(12),
           bottomRight: Radius.circular(12),
@@ -1799,7 +1838,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     return Container(
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface2 : Color(0xFFF9FAFB),
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(12),
           bottomRight: Radius.circular(12),
