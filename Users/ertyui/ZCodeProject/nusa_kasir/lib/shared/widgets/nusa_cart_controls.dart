@@ -9,20 +9,23 @@ class NusaAddButton extends StatelessWidget {
   final bool fullWidth;
   final double height;
   final bool compact;
+  final Color? color;
   NusaAddButton({
     required this.onTap,
     this.fullWidth = false,
     this.height = 36,
     this.compact = false,
+    this.color,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bg = color ?? NusaConfig.activePrimary;
     final btn = ElevatedButton(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
-        backgroundColor: NusaConfig.activePrimary,
+        backgroundColor: bg,
         foregroundColor: Colors.white,
         elevation: 0,
         padding: EdgeInsets.symmetric(

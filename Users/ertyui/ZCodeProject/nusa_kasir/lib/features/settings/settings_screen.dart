@@ -1862,6 +1862,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : NusaConfig.textSecondary,
                       ),
                     ),
+                    if (font == 'kompak') ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFF0B429)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              size: 16,
+                              color: Color(0xFFB7791F),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Beberapa printer murah (klon VSC) mencetak '
+                                'huruf Ramping KOSONG. Kalau hasilnya blank, '
+                                'kembali ke Standar.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF7C4A03),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -1899,7 +1935,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Atur ukuran huruf tiap bagian struk secara terpisah.',
+                      'Ukuran huruf LITERAL yang tercetak: 12 · 18 · 24 · 36. '
+                      '24 & 36 diabaikan printer murah → pilih terbesar yang '
+                      'tercetak benar (cek lewat Tes Cetak).',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -1908,7 +1946,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _fontSliderRow(
+                    _fontSizeRow(
                       'Header',
                       fontH,
                       setDark,
@@ -1918,7 +1956,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }),
                     ),
                     const SizedBox(height: 10),
-                    _fontSliderRow(
+                    _fontSizeRow(
                       'Rincian',
                       fontI,
                       setDark,
@@ -1928,7 +1966,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }),
                     ),
                     const SizedBox(height: 10),
-                    _fontSliderRow(
+                    _fontSizeRow(
                       'Footer',
                       fontF,
                       setDark,
@@ -2219,8 +2257,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ),
 
-                            // ── Store header — ukuran ikut fontH (slider
-                            // 1-8) persis print asli ──
+                            // ── Store header — ukuran ikut fontH (literal
+                            // 12/18/24/36) persis print asli ──
                             Text(
                               headerCtrl.text.isNotEmpty
                                   ? headerCtrl.text
@@ -2229,7 +2267,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         : 'NUSA MART'),
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: (7 + fontH.clamp(1, 8)).toDouble(),
+                                fontSize: magnificationToLiteral(
+                                  fontH.clamp(1, 4),
+                                ).toDouble(),
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF111827),
                               ),
@@ -2470,14 +2510,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             _dashedLine(false),
                             const SizedBox(height: 4),
 
-                            // ── Footer — ukuran ikut fontF (slider 1-8) ──
+                            // ── Footer — ukuran ikut fontF (literal 12/18/24/36) ──
                             Text(
                               footerCtrl.text.isNotEmpty
                                   ? footerCtrl.text
                                   : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: (6 + fontF.clamp(1, 8)).toDouble(),
+                                fontSize: magnificationToLiteral(
+                                  fontF.clamp(1, 4),
+                                ).toDouble(),
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF6B7280),
                               ),
@@ -2597,7 +2639,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         if (ok) {
                                           TopToast.success(
                                             ctx,
-                                            'Tes cetak dikirim — cek ukuran header di kertas.',
+                                            'Tes kalibrasi dikirim — cek ukuran 12/18/24/36 di kertas.',
                                           );
                                         } else {
                                           TopToast.error(
@@ -2640,7 +2682,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  testPrinting ? 'Mencetak…' : 'Tes Cetak',
+                                  testPrinting
+                                      ? 'Mencetak…'
+                                      : 'Tes Cetak Kalibrasi',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
@@ -2852,14 +2896,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Baris ukuran font per section struk — slider kontinu 1-8 (fleksibel,
-  /// bukan cuma Kecil/Normal/Besar). Label angka + pratinjau live.
-  Widget _fontSliderRow(
+  /// Baris ukuran font per section struk — 4 pilihan UKURAN LITERAL
+  /// 12 · 18 · 24 · 36 (bukan skala perkalian 1x-8x yang bikin ukuran
+  /// "diam" di printer murah). Current = perbesaran 1-4; chip menampilkan
+  /// ukuran literal (12/18/24/36) + label Kecil/Normal/Besar/Extra Besar.
+  Widget _fontSizeRow(
     String label,
     int current,
     bool isDark,
     ValueChanged<int> onChanged,
   ) {
+    const literals = [12, 18, 24, 36];
+    const labels = ['Kecil', 'Normal', 'Besar', 'Extra Besar'];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2883,7 +2931,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${current}x',
+                '${literalSizeLabel(magnificationToLiteral(current))} '
+                '(${magnificationToLiteral(current)})',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -2893,43 +2942,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
-        Slider(
-          value: current.clamp(1, 8).toDouble(),
-          min: 1,
-          max: 8,
-          divisions: 7,
-          activeColor: NusaConfig.activePrimary,
-          inactiveColor: isDark
-              ? NusaConfig.darkDivider
-              : NusaConfig.dividerColor,
-          onChanged: (v) => onChanged(v.round()),
-        ),
-        // Skala 1-8
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '1',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
-                ),
-              ),
-              Text(
-                '8',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
+        const SizedBox(height: 8),
+        // 4 chip ukuran literal — dipilih → ukuran persis yang tercetak.
+        Row(
+          children: [
+            for (var i = 0; i < literals.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(i + 1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: (i + 1) == current
+                          ? NusaConfig.activePrimary.withValues(alpha: 0.12)
+                          : (isDark
+                                ? NusaConfig.darkSurface2
+                                : NusaConfig.inputFill),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: (i + 1) == current
+                            ? NusaConfig.activePrimary
+                            : (isDark
+                                  ? NusaConfig.darkBorder
+                                  : NusaConfig.dividerColor),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          '${literals[i]}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: (i + 1) == current
+                                ? NusaConfig.activePrimary
+                                : (isDark
+                                      ? NusaConfig.darkTextPrimary
+                                      : NusaConfig.textPrimary),
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          labels[i],
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: (i + 1) == current
+                                ? NusaConfig.activePrimary
+                                : (isDark
+                                      ? NusaConfig.darkTextTertiary
+                                      : NusaConfig.textTertiary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
+          ],
         ),
       ],
     );

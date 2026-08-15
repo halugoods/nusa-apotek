@@ -61,6 +61,35 @@ PosTextSize _posSize(int v) => switch (v.clamp(1, 8)) {
   _ => PosTextSize.size8,
 };
 
+/// Ukuran font struk LITERAL → perbesaran ESC/POS.
+///
+/// Printer termal murah hanya menjamin perbesaran 1x-4x (GS !); 5x-8x
+/// non-standar → diabaikan printer → "ukurannya gak berubah" padahal wrap
+/// sudah dihitung untuk 8x (8 karakter/baris) — penyebab "Halu Goo\nds".
+/// Karena itu maks 4x (max 4x = 36pt di preview, label Extra Besar).
+///
+/// Stored values tetap int (1-4) → default lama (header=2, rincian=1,
+/// footer=1) TIDAK berubah, tanpa migrasi.
+const _literalSizes = [12, 18, 24, 36];
+
+int literalToMagnification(int literal) {
+  final idx = _literalSizes.indexOf(literal);
+  return idx < 0 ? (literal.clamp(1, 4)) : idx + 1;
+}
+
+int magnificationToLiteral(int mag) {
+  final m = mag.clamp(1, 4);
+  return _literalSizes[m - 1];
+}
+
+/// Label ukuran literal — dipakai di UI Pengaturan Struk.
+String literalSizeLabel(int literal) => switch (literal) {
+  12 => 'Kecil',
+  18 => 'Normal',
+  24 => 'Besar',
+  _ => 'Extra Besar',
+};
+
 /// Wrap text into multiple lines, each ≤ maxChars.
 /// First line returns the first chunk; rest are returned as a list for
 /// follow-up rows. This prevents truncation of long product names and
@@ -329,30 +358,21 @@ class ReceiptPrinter {
     }
 
     // Header — teks header custom (atau nama toko jika kosong). Ukuran dari
-    // slider 1-8 (default 2x), jenis font mengikuti pilihan Standar/Kompak.
+    // Pengaturan Struk: nilai literal 12/18/24/36 → perbesaran 1x-4x.
     //
     // Ukuran besar (GS !) memangkas jumlah karakter per baris: di 58mm,
-    // perbesaran N → ~32/N karakter. Tanpa pembatasan, header panjang di
-    // size 8 terpecah jadi baris 4-6 karakter → hancur & terkesan "kecil".
-    // AUTO-FIT: magnification diturunkan otomatis jika teks tidak muat satu
-    // baris di lebar kertas, sehingga teks mencapai pinggir kertas seperti
-    // rincian (user: "baris teks header jgn dibatasi pokoknya smpe pinggir
-    // kertas"). Wrap tetap di baseLineWidth/effSize + feed proporsional.
-    final headerSizeMapped = headerSize.clamp(1, 8);
+    // perbesaran N → ~32/N karakter. Maks 4x (5x-8x diabaikan printer murah
+    // → ukuran "diam" padahal wrap sudah hancur). Wrap DETERMINISTIK:
+    // chars/baris = lebar kertas ~/ perbesaran — persis lebar yang benar-
+    // benar dicetak (tidak ada auto-fit yang bikin ukuran "stuck").
+    final headerMag = headerSize.clamp(1, 4);
     final isWideHeader = paperWidth == '80';
     final baseLineWidth = isWideHeader
         ? (useFontB ? 64 : 48)
         : (useFontB ? 42 : 32);
-    // Auto-fit: jangan biarkan header panjang hancur jadi baris 4-6 karakter
-    // di perbesaran besar. Perbesarannya dibatasi agar teks tetap muat —
-    // minimal 1x. Teks mencapai pinggir kertas seperti rincian.
-    final effHeaderSize = headerSizeMapped.clamp(
-      1,
-      baseLineWidth <= 0 ? 1 : baseLineWidth,
-    );
-    final headerLineChars = (baseLineWidth ~/ effHeaderSize).clamp(1, 40);
+    final headerLineChars = (baseLineWidth ~/ headerMag).clamp(4, 40);
     final headerParts = _wrap(headerText, headerLineChars);
-    final headerHeight = _posSize(effHeaderSize);
+    final headerHeight = _posSize(headerMag);
     for (final part in headerParts) {
       bytes.addAll(
         generator.text(
@@ -370,8 +390,8 @@ class ReceiptPrinter {
     // Feed proporsional: header besar (>2x) butuh jarak agar tidak nempel
     // dengan baris invoice/kasir berikutnya (kadang malah terlihat "kecil"
     // karena tumpang tindih dengan baris berikut).
-    if (effHeaderSize > 2) {
-      bytes.addAll(generator.feed((effHeaderSize >= 6 ? 2 : 1)));
+    if (headerMag > 2) {
+      bytes.addAll(generator.feed(headerMag >= 4 ? 2 : 1));
     }
     if (invoice.isNotEmpty) {
       bytes.addAll(
@@ -439,20 +459,20 @@ class ReceiptPrinter {
     final itemBaseLineWidth = isWide
         ? (useFontB ? 64 : 48)
         : (useFontB ? 42 : 32);
-    // Ukuran rincian: slider 1-8 (default 1). Baris teks dipecah setengah
-    // tiap kenaikan ukuran (2x → ~16 char di 58mm, 3x → ~10 char, dst) —
-    // ESC/POS height/width perbesaran memangkas karakter per baris.
-    final itemSizeMapped = itemsSize.clamp(1, 8);
-    final itemBig = itemSizeMapped > 1;
+    // Ukuran rincian: nilai literal 12/18/24/36 → perbesaran 1x-4x (maks 4x;
+    // 5x-8x diabaikan printer murah). Baris teks dipecah: 2x → ~16 char di
+    // 58mm, 3x → ~10 char, 4x → 8 char — DETERMINISTIK (lebar ~/ perbesaran).
+    final itemMag = itemsSize.clamp(1, 4);
+    final itemBig = itemMag > 1;
     final itemStyles = PosStyles(
       align: PosAlign.left,
       fontType: itemFont,
-      height: _posSize(itemSizeMapped),
-      width: _posSize(itemSizeMapped),
+      height: _posSize(itemMag),
+      width: _posSize(itemMag),
     );
     // Lebar teks rincian saat >1x: lebar baris normal dibagi perbesaran.
     final itemLineWidth = itemBig
-        ? (itemBaseLineWidth ~/ itemSizeMapped)
+        ? (itemBaseLineWidth ~/ itemMag)
         : itemBaseLineWidth;
     final qtyPriceWidth = useFontB ? 14 : 12; // "2xRp10.000" max
     final subWidth = useFontB ? 11 : 10; // "Rp20.000" max
@@ -528,7 +548,7 @@ class ReceiptPrinter {
     // Total. Beri jarak ekstra jika rincian besar — baris TOTAL 2x bisa
     // nempel dengan baris rincian terakhir.
     if (itemBig) {
-      bytes.addAll(generator.feed(itemSizeMapped >= 4 ? 2 : 1));
+      bytes.addAll(generator.feed(itemMag >= 4 ? 2 : 1));
     }
     bytes.addAll(
       generator.row([
@@ -663,11 +683,13 @@ class ReceiptPrinter {
 
     bytes.addAll(generator.hr());
 
-    // Footer — wrap long text. Ukuran dari slider 1-8 (default 1x).
+    // Footer — wrap long text. Ukuran literal 12/18/24/36 → 1x-4x (maks 4x).
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
-      final footerSizeMapped = footerSize.clamp(1, 8);
-      final footerParts = _wrap(footerText, isWide ? 40 : 32);
+      final footerMag = footerSize.clamp(1, 4);
+      final footerBase = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
+      final footerLineChars = (footerBase ~/ footerMag).clamp(4, 40);
+      final footerParts = _wrap(footerText, footerLineChars);
       for (final part in footerParts) {
         bytes.addAll(
           generator.text(
@@ -675,15 +697,15 @@ class ReceiptPrinter {
             styles: PosStyles(
               align: PosAlign.center,
               fontType: itemFont,
-              height: _posSize(footerSizeMapped),
-              width: _posSize(footerSizeMapped),
+              height: _posSize(footerMag),
+              width: _posSize(footerMag),
             ),
           ),
         );
       }
       // Footer besar butuh jarak sebelum "Terima Kasih!" agar tidak nempel.
-      if (footerSizeMapped > 2) {
-        bytes.addAll(generator.feed(footerSizeMapped >= 6 ? 2 : 1));
+      if (footerMag > 2) {
+        bytes.addAll(generator.feed(footerMag >= 4 ? 2 : 1));
       }
     }
     bytes.addAll(
@@ -1058,7 +1080,11 @@ class ReceiptPrinter {
     return Uint8List.fromList([0x1B, 0x70, m, 0x19, 0x19]);
   }
 
-  /// Print a test receipt.
+  /// Print a TEST KALIBRASI — mencetak semua 4 ukuran literal sekaligus
+  /// (12/18/24/36) supaya user langsung melihat di kertas ukuran mana yang
+  /// printer-nya dukung (verifikasi fisik, bukan tebak-tebakan). Jika 24/36
+  /// tercetak sama besar dengan 12/18 → printer hanya dukung sampai ukuran
+  /// tsb; tinggal pilih ukuran terbesar yang tercetak dengan benar.
   Future<bool> printTest(
     String storeName, {
     String paperWidth = '58',
@@ -1072,88 +1098,78 @@ class ReceiptPrinter {
     final profile = await CapabilityProfile.load();
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paperSize, profile);
+    final isWide = paperWidth == '80';
 
     final List<int> bytes = [];
     bytes.addAll(generator.reset());
-    // Header dengan ukuran dari slider — supaya user bisa verifikasi
-    // ukuran header yang benar-benar tercetak sebelum menekan Simpan.
-    final hSize = headerSize.clamp(1, 8);
-    final hLineChars = ((paperWidth == '80' ? 48 : 32) ~/ hSize).clamp(4, 32);
-    final hParts = _wrap('TEST PRINT - HEADER', hLineChars);
-    for (final part in hParts) {
+
+    // Judul tes kalibrasi.
+    bytes.addAll(
+      generator.text(
+        _san('TES UKURAN FONT'),
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san('Kertas ${paperWidth}mm — cek ukuran terbesar yang tercetak'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+    bytes.addAll(generator.hr());
+
+    // Header "Halu Goods" di 4 ukuran literal → perbesaran 1x/2x/3x/4x.
+    // Wrap deterministik: chars/baris = lebar kertas ~/ perbesaran, persis
+    // yang dilakukan struk asli — jadi ukuran di kertas = ukuran di struk.
+    final fontType = await SecureStore.getReceiptFontType();
+    final useFontB = fontType == 'kompak';
+    final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
+    final baseLineWidth = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
+    const labelSizes = [
+      'Kecil (12)',
+      'Normal (18)',
+      'Besar (24)',
+      'Extra Besar (36)',
+    ];
+    for (var i = 0; i < 4; i++) {
+      final mag = i + 1;
+      final chars = (baseLineWidth ~/ mag).clamp(4, baseLineWidth);
       bytes.addAll(
         generator.text(
-          _san(part),
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: _posSize(hSize),
-            width: _posSize(hSize),
-          ),
+          _san('${labelSizes[i]} — ${mag}x'),
+          styles: const PosStyles(align: PosAlign.center),
         ),
       );
+      final parts = _wrap(storeName, chars);
+      for (final part in parts) {
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: PosStyles(
+              align: PosAlign.center,
+              bold: true,
+              height: _posSize(mag),
+              width: _posSize(mag),
+              fontType: itemFont,
+            ),
+          ),
+        );
+      }
+      bytes.addAll(generator.feed(1));
     }
-    if (hSize > 2) {
-      bytes.addAll(generator.feed(hSize >= 6 ? 2 : 1));
-    }
-    bytes.addAll(
-      generator.text(
-        _san(storeName),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
     bytes.addAll(generator.hr());
-    // Rincian dengan ukuran dari slider.
-    final iSize = itemsSize.clamp(1, 8);
     bytes.addAll(
       generator.text(
-        _san('Rincian (${iSize}x):'),
-        styles: PosStyles(
-          align: PosAlign.center,
-          height: _posSize(iSize),
-          width: _posSize(iSize),
-        ),
-      ),
-    );
-    if (iSize > 2) {
-      bytes.addAll(generator.feed(iSize >= 6 ? 2 : 1));
-    }
-    bytes.addAll(
-      generator.text(
-        _san('Printer thermal berfungsi dengan baik.'),
+        _san('Pilih ukuran terbesar yang tercetak BENAR.'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
     bytes.addAll(
       generator.text(
-        _san('Kertas: ${paperWidth}mm'),
+        _san('24 & 36 tampak sama dengan 12/18? Printer hanya dukung 1x-2x.'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
-    final now = DateTime.now();
-    bytes.addAll(
-      generator.text(
-        _san('${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}'),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
-    bytes.addAll(generator.hr());
-    // Footer dengan ukuran dari slider.
-    final fSize = footerSize.clamp(1, 8);
-    bytes.addAll(
-      generator.text(
-        _san('FOOTER (${fSize}x)'),
-        styles: PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: _posSize(fSize),
-          width: _posSize(fSize),
-        ),
-      ),
-    );
-    if (fSize > 2) {
-      bytes.addAll(generator.feed(fSize >= 6 ? 2 : 1));
-    }
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 

@@ -36,6 +36,9 @@ class _OnlineStoreSetupScreenState
   bool _isActive = false;
   String? _logoPath;
   int _onlineProductCount = 0;
+  // Produk yang gagal upload gambarnya (nama) — ditampilkan sebagai banner
+  // peringatan, bukan cuma toast yang gampang terlewat.
+  List<String> _imgFailedNames = [];
   WebViewController? _webViewCtrl;
   // Wizard 2 langkah: 1 = setup alamat toko, 2 = detail & simpan.
   int _step = 1;
@@ -321,7 +324,10 @@ class _OnlineStoreSetupScreenState
   }
 
   Future<void> _syncProducts() async {
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _imgFailedNames = [];
+    });
     int imgSuccess = 0;
     int imgFailed = 0;
     try {
@@ -385,6 +391,7 @@ class _OnlineStoreSetupScreenState
                 );
               } else {
                 imgFailed++;
+                _imgFailedNames.add(prod.name);
                 debugPrint(
                   '[OnlineStoreSetup] ⚠ All upload attempts failed for ${prod.name}',
                 );
@@ -394,9 +401,11 @@ class _OnlineStoreSetupScreenState
                 '[OnlineStoreSetup] ⚠ File not found: ${prod.imagePath}',
               );
               imgFailed++;
+              _imgFailedNames.add(prod.name);
             }
           } catch (e) {
             imgFailed++;
+            _imgFailedNames.add(prod.name);
             debugPrint(
               '[OnlineStoreSetup] ⚠ Image skipped for ${prod.name}: $e',
             );
@@ -454,6 +463,16 @@ class _OnlineStoreSetupScreenState
             '${online.length} produk disinkronkan'
             '${imgSuccess > 0 ? " ($imgSuccess gambar)" : ""}'
             '${imgFailed > 0 ? " — $imgFailed gambar gagal" : ""}';
+        if (imgFailed > 0 && _imgFailedNames.isNotEmpty) {
+          // Nama produk yang gagal — dipakai banner peringatan di bawah.
+          setState(() {});
+          TopToast.info(
+            context,
+            '${_imgFailedNames.length} produk gagal upload gambar: '
+            '${_imgFailedNames.take(3).join(', ')}'
+            '${_imgFailedNames.length > 3 ? ', dll.' : ''}',
+          );
+        }
         TopToast.success(context, msg);
       }
     } catch (e) {
@@ -1459,51 +1478,109 @@ class _OnlineStoreSetupScreenState
     Color borderC,
   ) {
     return NusaCard(
-      Row(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Color(0xFFF59E0B).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.inventory_2, size: 22, color: Color(0xFFF59E0B)),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Produk Online',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: textColor,
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Color(0xFFF59E0B).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.inventory_2,
+                  size: 22,
+                  color: Color(0xFFF59E0B),
+                ),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Produk Online',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      _onlineProductCount > 0
+                          ? '$_onlineProductCount produk siap tampil di website'
+                          : 'Belum ada produk online. Tandai produk saat edit.',
+                      style: TextStyle(fontSize: 12, color: subColor),
+                    ),
+                  ],
+                ),
+              ),
+              // Sync button
+              if (_isActive)
+                TextButton(
+                  onPressed: _saving ? null : _syncProducts,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Color(0xFFF59E0B),
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: Text(
+                    'Sinkronkan',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                   ),
                 ),
-                SizedBox(height: 2),
-                Text(
-                  _onlineProductCount > 0
-                      ? '$_onlineProductCount produk siap tampil di website'
-                      : 'Belum ada produk online. Tandai produk saat edit.',
-                  style: TextStyle(fontSize: 12, color: subColor),
-                ),
-              ],
-            ),
+            ],
           ),
-          // Sync button
-          if (_isActive)
-            TextButton(
-              onPressed: _saving ? null : _syncProducts,
-              style: TextButton.styleFrom(
-                foregroundColor: Color(0xFFF59E0B),
-                padding: EdgeInsets.symmetric(horizontal: 12),
+          // Peringatan upload gambar gagal — jangan senyap (K6).
+          if (_imgFailedNames.isNotEmpty)
+            Container(
+              margin: EdgeInsets.only(top: 12),
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(
+                  0xFFEF4444,
+                ).withValues(alpha: isDark ? 0.15 : 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                ),
               ),
-              child: Text(
-                'Sinkronkan',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 18,
+                    color: const Color(0xFFEF4444),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_imgFailedNames.length} produk gagal upload gambar',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFEF4444),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          '${_imgFailedNames.take(3).join(', ')}'
+                          '${_imgFailedNames.length > 3 ? ', dll.' : ''} — '
+                          'periksa koneksi & coba Sinkronkan lagi. '
+                          'Produk tetap tampil tanpa foto.',
+                          style: TextStyle(fontSize: 11.5, color: subColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
         ],
