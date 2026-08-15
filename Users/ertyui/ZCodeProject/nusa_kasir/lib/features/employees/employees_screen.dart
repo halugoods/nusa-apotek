@@ -1427,7 +1427,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                NusaInput('Nama Role', controller: nameCtrl),
+                NusaInput('Nama Role', controller: nameCtrl, hint: 'Cth: Kasir'),
                 SizedBox(height: 12),
                 Text(
                   'Warna',

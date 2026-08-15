@@ -1938,6 +1938,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         int fontH = fontHeader;
         int fontI = fontItems;
         int fontF = fontFooter;
+        // True saat slider font digeser — preview berubah tapi belum tersimpan.
+        bool fontDirty = false;
         return StatefulBuilder(
           builder: (ctx, setSt) {
             return Container(
@@ -2109,21 +2111,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       'Header',
                       fontH,
                       setDark,
-                      (v) => setSt(() => fontH = v),
+                      (v) => setSt(() {
+                        fontH = v;
+                        fontDirty = true;
+                      }),
                     ),
                     const SizedBox(height: 10),
                     _fontSliderRow(
                       'Rincian',
                       fontI,
                       setDark,
-                      (v) => setSt(() => fontI = v),
+                      (v) => setSt(() {
+                        fontI = v;
+                        fontDirty = true;
+                      }),
                     ),
                     const SizedBox(height: 10),
                     _fontSliderRow(
                       'Footer',
                       fontF,
                       setDark,
-                      (v) => setSt(() => fontF = v),
+                      (v) => setSt(() {
+                        fontF = v;
+                        fontDirty = true;
+                      }),
                     ),
                     const SizedBox(height: 20),
 
@@ -2685,6 +2696,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
+                    // Banner: preview berubah tapi belum tersimpan.
+                    if (fontDirty)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFF0B429)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Color(0xFFB7791F),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Preview berubah — tekan Simpan agar ukuran font tercetak.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF7C4A03),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
                     // Save button
                     NusaButton(
                       'Simpan',
@@ -2707,6 +2753,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         await SecureStore.setReceiptFontHeader(fontH);
                         await SecureStore.setReceiptFontItems(fontI);
                         await SecureStore.setReceiptFontFooter(fontF);
+                        fontDirty = false;
                         // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
                         if (logoPath != null && logoPath!.isNotEmpty) {
                           await repo.setStoreLogoPath(logoPath!);

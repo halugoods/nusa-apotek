@@ -1981,12 +1981,17 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   onChanged: (v) => setSt(() => category = v!),
                 ),
                 SizedBox(height: 12),
-                NusaInput('Keterangan', controller: descCtrl),
+                NusaInput(
+                  'Keterangan',
+                  controller: descCtrl,
+                  hint: 'Cth: Listrik, air, sewa',
+                ),
                 SizedBox(height: 12),
                 NusaInput(
                   'Jumlah (Rp)',
                   controller: amtCtrl,
                   type: TextInputType.number,
+                  hint: 'Cth: 100000',
                 ),
                 SizedBox(height: 20),
                 _sheetActions(
@@ -2102,7 +2107,11 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             Row(
               children: [
                 Expanded(
-                  child: NusaInput('Kategori Baru', controller: nameCtrl),
+                  child: NusaInput(
+                    'Kategori Baru',
+                    controller: nameCtrl,
+                    hint: 'Cth: Transportasi',
+                  ),
                 ),
                 SizedBox(width: 8),
                 ElevatedButton(
@@ -2201,24 +2210,31 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     },
                   ),
                   SizedBox(height: 12),
-                  NusaInput('Periode (cth: Jul 26)', controller: periodCtrl),
+                  NusaInput(
+                    'Periode (cth: Jul 26)',
+                    controller: periodCtrl,
+                    hint: 'Cth: Jul 26',
+                  ),
                   SizedBox(height: 12),
                   NusaInput(
                     'Gaji (Rp)',
                     controller: salaryCtrl,
                     type: TextInputType.number,
+                    hint: 'Cth: 2500000',
                   ),
                   SizedBox(height: 12),
                   NusaInput(
                     'Bonus (Rp)',
                     controller: bonusCtrl,
                     type: TextInputType.number,
+                    hint: 'Cth: 500000',
                   ),
                   SizedBox(height: 12),
                   NusaInput(
                     'Potongan (Rp)',
                     controller: dedCtrl,
                     type: TextInputType.number,
+                    hint: 'Cth: 200000',
                   ),
                 ],
                 SizedBox(height: 20),
@@ -2313,6 +2329,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     'Jumlah (pcs)',
                     controller: qtyCtrl,
                     type: TextInputType.number,
+                    hint: 'Cth: 5',
                   ),
                   SizedBox(height: 12),
                   _sheetDropdown(
@@ -2323,7 +2340,11 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     onChanged: (v) => setSt(() => type = v!),
                   ),
                   SizedBox(height: 12),
-                  NusaInput('Alasan', controller: reasonCtrl),
+                  NusaInput(
+                    'Alasan',
+                    controller: reasonCtrl,
+                    hint: 'Cth: Kadaluarsa',
+                  ),
                 ],
                 SizedBox(height: 20),
                 _sheetActions(
@@ -2403,9 +2424,14 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   'Jumlah (Rp)',
                   controller: amtCtrl,
                   type: TextInputType.number,
+                  hint: 'Cth: 1500000',
                 ),
                 SizedBox(height: 12),
-                NusaInput('Keterangan', controller: descCtrl),
+                NusaInput(
+                  'Keterangan',
+                  controller: descCtrl,
+                  hint: 'Cth: Sewa kios',
+                ),
                 SizedBox(height: 12),
                 _sheetDropdown(
                   label: 'Frekuensi',
@@ -2509,17 +2535,26 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   onChanged: (v) => setSt(() => type = v!),
                 ),
                 SizedBox(height: 12),
-                NusaInput('Kategori', controller: catCtrl),
+                NusaInput('Kategori', controller: catCtrl, hint: 'Cth: Kas'),
                 SizedBox(height: 12),
-                NusaInput('Keterangan', controller: descCtrl),
+                NusaInput(
+                  'Keterangan',
+                  controller: descCtrl,
+                  hint: 'Cth: Setoran harian',
+                ),
                 SizedBox(height: 12),
                 NusaInput(
                   'Jumlah (Rp)',
                   controller: amtCtrl,
                   type: TextInputType.number,
+                  hint: 'Cth: 500000',
                 ),
                 SizedBox(height: 12),
-                NusaInput('Metode (opsional)', controller: methodCtrl),
+                NusaInput(
+                  'Metode (opsional)',
+                  controller: methodCtrl,
+                  hint: 'Cth: Tunai',
+                ),
                 SizedBox(height: 20),
                 _sheetActions(
                   ctx,
@@ -2774,6 +2809,7 @@ class _SummaryCard extends StatelessWidget {
             SizedBox(height: 8),
             Text(
               value,
+              maxLines: 1,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -2784,13 +2820,20 @@ class _SummaryCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
+            // Tinggi label dibuat tetap (2 baris) supaya kartu status tetap
+            // sejajar walau label seperti "Pengeluaran bln ini" wrap 2 baris.
+            SizedBox(
+              height: 30,
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
               ),
             ),
           ],

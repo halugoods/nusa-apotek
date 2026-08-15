@@ -520,7 +520,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
             color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
           ),
           decoration: InputDecoration(
-            hintText: 'Nama kategori',
+            labelText: 'Nama Kategori',
+            hintText: 'Cth: Sembako',
             hintStyle: TextStyle(
               color: isDark
                   ? NusaConfig.darkTextTertiary
@@ -631,11 +632,19 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   SizedBox(height: NusaConfig.spaceMD),
 
                   // ── 2. Nama Produk ──
-                  NusaFormField(label: 'Nama Produk', controller: _name),
+                  NusaFormField(
+                    label: 'Nama Produk',
+                    controller: _name,
+                    hintText: 'Cth: Indomie Goreng',
+                  ),
                   SizedBox(height: NusaConfig.spaceSM),
 
                   // ── 3. SKU (opsional) ──
-                  NusaFormField(label: 'SKU (opsional)', controller: _sku),
+                  NusaFormField(
+                    label: 'SKU (opsional)',
+                    controller: _sku,
+                    hintText: 'Cth: SKU-001',
+                  ),
                   SizedBox(height: NusaConfig.spaceMD),
 
                   // ── 4. Kategori ──
@@ -647,6 +656,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     label: 'Harga Beli (opsional)',
                     controller: _buy,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 2500',
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
 
@@ -655,6 +665,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     label: 'Harga Jual',
                     controller: _sell,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 3000',
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
 
@@ -667,6 +678,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     label: 'Stok',
                     controller: _stock,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 100',
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
 
@@ -679,6 +691,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     label: 'Stok Minimum (opsional)',
                     controller: _min,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 10',
                   ),
                   SizedBox(height: NusaConfig.spaceMD),
 
@@ -1746,6 +1759,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     label: 'Nama Varian',
                     controller: TextEditingController(text: v.name),
                     onChanged: (val) => _variants[i].name = val,
+                    hintText: 'Cth: Ukuran M',
                   ),
                   SizedBox(height: 8),
                   // Â± Harga — card sendiri
@@ -1761,6 +1775,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                         _variants[i].priceAdjustment = int.tryParse(val) ?? 0,
                     keyboardType: TextInputType.number,
                     prefixText: '+/- ',
+                    hintText: 'Cth: 2000',
                   ),
                   SizedBox(height: 8),
                   // Stok — card sendiri
@@ -1773,6 +1788,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     onChanged: (val) =>
                         _variants[i].stock = int.tryParse(val) ?? 0,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 50',
                   ),
                 ],
               ),
@@ -1799,6 +1815,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
     required ValueChanged<String> onChanged,
     TextInputType? keyboardType,
     String? prefixText,
+    String? hintText,
   }) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1819,6 +1836,13 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
         ),
         decoration: InputDecoration(
           labelText: label,
+          hintText: hintText,
+          hintStyle: TextStyle(
+            fontSize: 12,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
           labelStyle: TextStyle(
             fontSize: 12,
             color: isDark
@@ -1904,6 +1928,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     onChanged: (val) =>
                         _wholesaleTiers[i].minQty = int.tryParse(val) ?? 1,
                     keyboardType: TextInputType.number,
+                    hintText: 'Cth: 10',
                   ),
                   SizedBox(height: 8),
                   // Harga Grosir — card sendiri
@@ -1917,6 +1942,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                         _wholesaleTiers[i].price = int.tryParse(val) ?? 0,
                     keyboardType: TextInputType.number,
                     prefixText: 'Rp ',
+                    hintText: 'Cth: 27000',
                   ),
                 ],
               ),

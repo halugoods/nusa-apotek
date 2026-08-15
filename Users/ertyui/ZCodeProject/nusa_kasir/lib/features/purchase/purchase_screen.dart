@@ -1382,17 +1382,21 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
       borderRadius: BorderRadius.circular(8),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? NusaConfig.activePrimary : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : textPri,
+        child: Center(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : textPri,
+            ),
           ),
         ),
       ),
@@ -1768,9 +1772,6 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
 
   // ── Katalog produk (kiri / atas): search + scan + supplier + grid/list ──
   Widget _buildCatalogPanel(bool isDark, {required bool wide}) {
-    final textPri = isDark
-        ? NusaConfig.darkTextPrimary
-        : NusaConfig.textPrimary;
     final textTer = isDark
         ? NusaConfig.darkTextTertiary
         : NusaConfig.textTertiary;
@@ -1921,10 +1922,37 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
           isDark: isDark,
           qtyInCart: qty,
           expanded: _expandedProductId == p.id.toString(),
+          qtyField: idx >= 0 ? _qtyTextField(_productItems[idx].$2) : null,
           onToggleExpand: () => _toggleProductExpanded(p),
           onChangeQty: (delta) => _changeCartQty(p, delta),
         );
       },
+    );
+  }
+
+  // ── Qty editable — TextField kecil di tengah stepper "- qty +" ──
+  Widget _qtyTextField(TextEditingController qtyC) {
+    return Container(
+      decoration: BoxDecoration(
+        color: NusaConfig.activePrimary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: TextField(
+        controller: qtyC,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          color: NusaConfig.activePrimary,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(vertical: 8),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
     );
   }
 
@@ -1993,26 +2021,55 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                             onTap: () => _changeCartQty(p, -1),
                           ),
                           SizedBox(width: 6),
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: NusaConfig.activePrimary.withValues(
-                                alpha: 0.10,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '$qty×',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: NusaConfig.activePrimary,
-                              ),
-                            ),
-                          ),
+                          idx >= 0
+                              ? SizedBox(
+                                  width: 56,
+                                  child: TextField(
+                                    controller: _productItems[idx].$2,
+                                    textAlign: TextAlign.center,
+                                    keyboardType: TextInputType.number,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: NusaConfig.activePrimary
+                                          .withValues(alpha: 0.10),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                )
+                              : Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: NusaConfig.activePrimary.withValues(
+                                      alpha: 0.10,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$qty×',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                  ),
+                                ),
                           SizedBox(width: 6),
                           _QtyBtn(
                             icon: Icons.add,
@@ -3003,6 +3060,7 @@ class _PurchaseProductCard extends StatelessWidget {
   final bool isDark;
   final int qtyInCart;
   final bool expanded;
+  final Widget? qtyField;
   final VoidCallback onToggleExpand;
   final ValueChanged<int> onChangeQty;
   const _PurchaseProductCard({
@@ -3010,6 +3068,7 @@ class _PurchaseProductCard extends StatelessWidget {
     required this.isDark,
     required this.qtyInCart,
     required this.expanded,
+    this.qtyField,
     required this.onToggleExpand,
     required this.onChangeQty,
   });
@@ -3139,24 +3198,26 @@ class _PurchaseProductCard extends StatelessWidget {
                     _QtyBtn(icon: Icons.remove, onTap: () => onChangeQty(-1)),
                     SizedBox(width: 8),
                     Expanded(
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: NusaConfig.activePrimary.withValues(
-                            alpha: 0.10,
+                      child:
+                          qtyField ??
+                          Container(
+                            alignment: Alignment.center,
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.activePrimary.withValues(
+                                alpha: 0.10,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$qtyInCart×',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: NusaConfig.activePrimary,
+                              ),
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$qtyInCart×',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: NusaConfig.activePrimary,
-                          ),
-                        ),
-                      ),
                     ),
                     SizedBox(width: 8),
                     _QtyBtn(icon: Icons.add, onTap: () => onChangeQty(1)),

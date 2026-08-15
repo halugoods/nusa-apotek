@@ -1,6 +1,26 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:functions_client/functions_client.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Klasifikasi kegagalan edge function — dipakai UI untuk menampilkan
+/// pesan yang akurat (jangan bilang "Cek koneksi" saat sebenarnya 404).
+enum OnlineStoreError {
+  /// Edge function belum ter-deploy / route tidak ditemukan (HTTP 404).
+  notDeployed,
+
+  /// Server merespons 5xx / timeout — coba lagi nanti.
+  serverError,
+
+  /// Perangkat tidak punya koneksi (SocketException/TimeoutException).
+  noInternet,
+
+  /// Lain-lain.
+  unknown,
+}
 
 /// Handles all Supabase communication for the online store feature.
 /// Uses Supabase Edge Function `online-store` for admin operations
@@ -17,11 +37,41 @@ class OnlineOrderService {
     return key; // activation key as store_id
   }
 
+  /// Klasifikasi error → OnlineStoreError yang bisa ditampilkan ke user.
+  OnlineStoreError _classify(Object? e) {
+    if (e is FunctionException) {
+      if (e.status == 404) return OnlineStoreError.notDeployed;
+      if (e.status >= 500) return OnlineStoreError.serverError;
+      return OnlineStoreError.unknown;
+    }
+    if (e is SocketException || e is TimeoutException) {
+      return OnlineStoreError.noInternet;
+    }
+    return OnlineStoreError.unknown;
+  }
+
+  /// Invoke edge function + retry 1x saat error server transient (5xx).
+  /// Error lain (404, no internet, dll) langsung dilempar ulang.
+  Future<FunctionResponse> _invoke(String function, Map body) async {
+    try {
+      return await supabase.functions.invoke(function, body: body);
+    } catch (e) {
+      final cls = _classify(e);
+      if (cls == OnlineStoreError.serverError) {
+        debugPrint('[OnlineOrderService] retry 1x setelah error server: $e');
+        await Future.delayed(const Duration(milliseconds: 600));
+        return await supabase.functions.invoke(function, body: body);
+      }
+      rethrow;
+    }
+  }
+
   /// ---------------------------------------------------------------
   /// Store Settings
   /// ---------------------------------------------------------------
 
-  Future<bool> upsertStore({
+  /// Returns (ok, error). `error` hanya relevan saat `ok == false`.
+  Future<({bool ok, OnlineStoreError error})> upsertStore({
     required String storeName,
     String? description,
     String? whatsapp,
@@ -32,12 +82,16 @@ class OnlineOrderService {
   }) async {
     final sid = await storeId;
     if (sid == null) {
-      debugPrint('[OnlineOrderService] upsertStore: no store_id (activation key missing)');
-      return false;
+      debugPrint(
+        '[OnlineOrderService] upsertStore: no store_id (activation key missing)',
+      );
+      return (ok: false, error: OnlineStoreError.unknown);
     }
     try {
-      debugPrint('[OnlineOrderService] upsertStore: invoking online-store edge function...');
-      final res = await supabase.functions.invoke('online-store', body: {
+      debugPrint(
+        '[OnlineOrderService] upsertStore: invoking online-store edge function...',
+      );
+      final res = await _invoke('online-store', {
         'action': 'upsert_store',
         'store_id': sid,
         'store_name': storeName,
@@ -49,10 +103,10 @@ class OnlineOrderService {
         'is_active': isActive,
       });
       debugPrint('[OnlineOrderService] upsertStore: status=${res.status}');
-      return res.status < 400;
+      return (ok: res.status < 400, error: OnlineStoreError.unknown);
     } catch (e) {
       debugPrint('[OnlineOrderService] upsertStore ERROR: $e');
-      return false;
+      return (ok: false, error: _classify(e));
     }
   }
 
@@ -60,7 +114,7 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return null;
     try {
-      final res = await supabase.functions.invoke('online-store', body: {
+      final res = await _invoke('online-store', {
         'action': 'get_store',
         'store_id': sid,
       });
@@ -80,7 +134,7 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return false;
     try {
-      final res = await supabase.functions.invoke('online-store', body: {
+      final res = await _invoke('online-store', {
         'action': 'sync_products',
         'store_id': sid,
         'products': products,
@@ -95,11 +149,14 @@ class OnlineOrderService {
   /// Orders (live via Supabase Realtime)
   /// ---------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> getOrders({String? status, int limit = 50}) async {
+  Future<List<Map<String, dynamic>>> getOrders({
+    String? status,
+    int limit = 50,
+  }) async {
     final sid = await storeId;
     if (sid == null) return [];
     try {
-      final res = await supabase.functions.invoke('online-store', body: {
+      final res = await _invoke('online-store', {
         'action': 'get_orders',
         'store_id': sid,
         'status': status,
@@ -121,7 +178,7 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return false;
     try {
-      final res = await supabase.functions.invoke('online-store', body: {
+      final res = await _invoke('online-store', {
         'action': 'update_order',
         'store_id': sid,
         'order_id': orderId,
