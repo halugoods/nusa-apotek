@@ -213,8 +213,9 @@ class UpdateService {
   ///
   /// Ambil maks 20 rilis terbaru dari GitHub (tag + body). Gagal/jaringan
   /// mati → kembalikan daftar kosong; pemanggil menampilkan versi lokal.
+  /// Tidak ada guard isDevBuild — di build dev sekalipun riwayat rilis tetap
+  /// berguna (user bisa lihat changelog versi yang pernah dirilis).
   static Future<List<ReleaseHistoryItem>> getReleaseHistory() async {
-    if (NusaConfig.isDevBuild) return [];
     try {
       final client = HttpClient();
       client.connectionTimeout = _timeout;

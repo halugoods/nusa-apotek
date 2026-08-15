@@ -33,18 +33,20 @@ List<List<dynamic>> _buildRows(List<Transaction> list) {
     'Kembali',
     'Kasir',
   ];
-  final body = list.map((t) => <dynamic>[
-        t.invoice,
-        '${t.date.day}/${t.date.month}/${t.date.year} ${t.date.hour.toString().padLeft(2, '0')}:${t.date.minute.toString().padLeft(2, '0')}',
-        t.customerId == null ? 'Umum' : 'ID ${t.customerId}',
-        t.paymentMethod,
-        _itemCount(t),
-        t.total,
-        t.discount,
-        t.cashGiven ?? 0,
-        t.cashReturn ?? 0,
-        t.cashierName ?? '-',
-      ]);
+  final body = list.map(
+    (t) => <dynamic>[
+      t.invoice,
+      '${t.date.day}/${t.date.month}/${t.date.year} ${t.date.hour.toString().padLeft(2, '0')}:${t.date.minute.toString().padLeft(2, '0')}',
+      t.customerId == null ? 'Umum' : 'ID ${t.customerId}',
+      t.paymentMethod,
+      _itemCount(t),
+      t.total,
+      t.discount,
+      t.cashGiven ?? 0,
+      t.cashReturn ?? 0,
+      t.cashierName ?? '-',
+    ],
+  );
   return [head, ...body];
 }
 
@@ -72,4 +74,40 @@ CellValue _cell(dynamic v) {
   if (v is int) return IntCellValue(v);
   if (v is num) return DoubleCellValue(v.toDouble());
   return TextCellValue(v.toString());
+}
+
+// ── Export Pengeluaran (CSV / Excel) ────────────────────────────────
+List<List<dynamic>> _buildExpenseRows(List<Expense> list) {
+  const head = ['Tanggal', 'Kategori', 'Deskripsi', 'Jumlah'];
+  final body = list
+      .map(
+        (e) => <dynamic>[
+          '${e.date.day}/${e.date.month}/${e.date.year}',
+          e.category,
+          e.description,
+          e.amount,
+        ],
+      )
+      .toList();
+  return [head, ...body];
+}
+
+Future<File> exportExpenseCsv(List<Expense> list, String fileName) async {
+  final csv = const ListToCsvConverter().convert(_buildExpenseRows(list));
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$fileName.csv');
+  await file.writeAsString(csv);
+  return file;
+}
+
+Future<File> exportExpenseExcel(List<Expense> list, String fileName) async {
+  final excel = Excel.createExcel();
+  final sheet = excel.sheets[excel.getDefaultSheet()]!;
+  for (final row in _buildExpenseRows(list)) {
+    sheet.appendRow(row.map(_cell).toList());
+  }
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$fileName.xlsx');
+  await file.writeAsBytes(excel.encode()!);
+  return file;
 }

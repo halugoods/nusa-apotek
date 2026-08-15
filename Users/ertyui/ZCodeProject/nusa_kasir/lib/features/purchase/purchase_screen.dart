@@ -1902,13 +1902,21 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   Widget _buildProductGrid(bool isDark) {
     final count = _filteredProducts.length;
     final crossAxis = count > 24 ? 4 : (count > 8 ? 3 : 2);
+    // Ratio dinamis: colW = (lebar - padding - spacing) / kolom.
+    // Gambar persegi (colW-20) + footer (nama 2 baris + kategori + harga +
+    // stok + tombol) ≈ 150px → rasio disesuaikan supaya tombol tidak
+    // meluber keluar card di HP sempit.
+    final colW =
+        (MediaQuery.of(context).size.width - 32 - 10 * (crossAxis - 1)) /
+        crossAxis;
+    final ratio = (colW / (colW + 150)).clamp(0.55, 0.85);
     return GridView.builder(
       padding: EdgeInsets.zero,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxis,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.72,
+        childAspectRatio: ratio,
       ),
       itemCount: _filteredProducts.length,
       itemBuilder: (_, i) {
@@ -3229,22 +3237,13 @@ class _PurchaseProductCard extends StatelessWidget {
                   children: [
                     GestureDetector(
                       onTap: onToggleExpand,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.add_circle_outline_rounded,
+                          size: 28,
                           color: NusaConfig.activePrimary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          qtyInCart > 0 ? '$qtyInCart×' : '+',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
                         ),
                       ),
                     ),

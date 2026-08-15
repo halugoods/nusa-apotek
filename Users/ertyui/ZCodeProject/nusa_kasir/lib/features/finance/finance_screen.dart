@@ -445,7 +445,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                               ),
                             )
                           : Icon(
-                              Icons.share_rounded,
+                              Icons.download_for_offline_outlined,
                               size: 18,
                               color: isDark
                                   ? NusaConfig.darkTextSecondary
@@ -569,12 +569,14 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       DropdownMenuItem(value: label, child: Text(label));
 
   Widget _branchDropdown(bool isDark) {
+    // Seragam dengan _timeDropdown: tinggi 36, padding 12, radius 10,
+    // font 12, chevron 18, warna fill backgroundColor.
     return Container(
-      height: 32,
-      padding: EdgeInsets.symmetric(horizontal: 10),
+      height: 36,
+      padding: EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(8),
+        color: isDark ? NusaConfig.darkSurface : NusaConfig.backgroundColor,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
         ),
@@ -585,13 +587,13 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           isDense: true,
           icon: Icon(
             Icons.expand_more_rounded,
-            size: 16,
+            size: 18,
             color: isDark
                 ? NusaConfig.darkTextTertiary
                 : NusaConfig.textTertiary,
           ),
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: isDark
                 ? NusaConfig.darkTextSecondary
@@ -603,12 +605,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           items: [
             DropdownMenuItem<int?>(
               value: null,
-              child: Text('Semua', style: TextStyle(fontSize: 11)),
+              child: Text('Semua', style: TextStyle(fontSize: 12)),
             ),
             ..._branches.map(
               (b) => DropdownMenuItem<int?>(
                 value: b.id,
-                child: Text(b.name, style: TextStyle(fontSize: 11)),
+                child: Text(b.name, style: TextStyle(fontSize: 12)),
               ),
             ),
           ],

@@ -258,7 +258,10 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
       }
 
       await printer.connect(found.first);
-      final ok = await printer.printTest('NUSA Kasir', paperWidth: _paperSize);
+      final ok = await printer.printTest(
+        'NUSA Kasir',
+        paperWidth: _paperSize,
+      );
       if (mounted) {
         if (ok) {
           TopToast.success(context, 'Test print berhasil dikirim');

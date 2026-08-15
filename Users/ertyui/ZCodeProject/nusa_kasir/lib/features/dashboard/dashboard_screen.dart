@@ -1599,7 +1599,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final session = ref.watch(employeeSessionProvider);
     final role = session?.role ?? 'Owner';
 
@@ -1691,83 +1690,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   (!_hasCheckedIn && _currentName.isNotEmpty),
               onBellTap: _onBellTap,
               onLogout: _confirmLogout,
+              // Ikon cabang di header (ergonomis) — tap → bottom sheet.
+              showBranchIcon: _branches.isNotEmpty,
+              branchName: _activeBranch?.name,
+              onBranchTap: _branches.isNotEmpty ? _showBranchPicker : null,
             ),
-
-            // Branch selector — bottom sheet picker
-            if (_branches.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: GestureDetector(
-                  onTap: () => _showBranchPicker(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? NusaConfig.darkSurface
-                          : NusaConfig.surfaceColor,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: isDark
-                            ? NusaConfig.darkBorder
-                            : NusaConfig.borderColor,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.store,
-                          size: 18,
-                          color: NusaConfig.accentPurple.withValues(alpha: 0.8),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _activeBranch?.name ?? 'Semua Cabang',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: isDark
-                                  ? NusaConfig.darkTextPrimary
-                                  : NusaConfig.textPrimary,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.accentPurple.withValues(
-                              alpha: 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${_branches.length} cabang',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: NusaConfig.accentPurple,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.expand_more,
-                          size: 20,
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
 
             // Scrollable content: Profile card + Menu grid
             Expanded(

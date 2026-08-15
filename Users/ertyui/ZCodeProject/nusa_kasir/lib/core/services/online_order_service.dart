@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:functions_client/functions_client.dart';
+import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,6 +18,9 @@ enum OnlineStoreError {
 
   /// Perangkat tidak punya koneksi (SocketException/TimeoutException).
   noInternet,
+
+  /// Slug sudah dipakai toko lain — user harus ganti slug (HTTP 409).
+  slugTaken,
 
   /// Lain-lain.
   unknown,
@@ -71,6 +75,9 @@ class OnlineOrderService {
   /// ---------------------------------------------------------------
 
   /// Returns (ok, error). `error` hanya relevan saat `ok == false`.
+  /// Slug divalidasi unik oleh edge function: jika sudah dipakai toko lain,
+  /// edge function mengembalikan error 'slug_taken' → (ok: false,
+  /// error: OnlineStoreError.slugTaken).
   Future<({bool ok, OnlineStoreError error})> upsertStore({
     required String storeName,
     String? description,
@@ -79,6 +86,11 @@ class OnlineOrderService {
     String? openHours,
     bool isActive = false,
     String? slug,
+    String? variant,
+    String? themeId,
+    String? primaryColor,
+    String? darkColor,
+    String? softColor,
   }) async {
     final sid = await storeId;
     if (sid == null) {
@@ -96,6 +108,11 @@ class OnlineOrderService {
         'store_id': sid,
         'store_name': storeName,
         'slug': slug ?? '',
+        'variant': variant ?? '',
+        'theme_id': themeId ?? '',
+        'primary_color': primaryColor ?? '',
+        'dark_color': darkColor ?? '',
+        'soft_color': softColor ?? '',
         'description': description ?? '',
         'whatsapp': whatsapp ?? '',
         'address': address ?? '',
@@ -106,7 +123,28 @@ class OnlineOrderService {
       return (ok: res.status < 400, error: OnlineStoreError.unknown);
     } catch (e) {
       debugPrint('[OnlineOrderService] upsertStore ERROR: $e');
+      if (e is FunctionException && e.status == 409) {
+        return (ok: false, error: OnlineStoreError.slugTaken);
+      }
       return (ok: false, error: _classify(e));
+    }
+  }
+
+  /// Cek ketersediaan slug (debounce di UI). Sistem memastikan slug unik
+  /// per varian — mencegah dua toko (varian sama) memakai alamat yang sama.
+  Future<bool> isSlugAvailable(String slug, {String? variant}) async {
+    if (slug.trim().isEmpty) return false;
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'check_slug',
+        'slug': slug.trim().toLowerCase(),
+        'variant': variant ?? NusaConfig.productId,
+      });
+      if (res.status >= 400) return false;
+      final data = res.data as Map<String, dynamic>;
+      return (data['available'] as bool?) ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

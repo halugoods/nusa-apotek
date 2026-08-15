@@ -315,7 +315,6 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   icon: Icons.add_rounded,
                   label: 'Stok Masuk',
                   color: NusaConfig.accentGreen,
-                  expanded: false,
                   onTap: () => _openAdjustSheet('in'),
                 ),
               ),
@@ -325,7 +324,6 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   icon: Icons.remove_rounded,
                   label: 'Stok Keluar',
                   color: NusaConfig.activePrimary,
-                  expanded: false,
                   onTap: () => _openAdjustSheet('out'),
                 ),
               ),
@@ -529,6 +527,10 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         : constraints.maxWidth >= 560
                         ? 3
                         : 2);
+              // Rasio dinamis: thumbnail 1.35 + info (nama+kategori+stok) ≈85px.
+              // Kolom sempit → kartu lebih tinggi supaya konten tidak meluber.
+              final colW = (constraints.maxWidth - 12 * (cross - 1)) / cross;
+              final ratio = (colW / (colW / 1.35 + 85)).clamp(0.55, 0.95);
               return GridView.builder(
                 shrinkWrap: true,
                 physics: NeverScrollableScrollPhysics(),
@@ -537,7 +539,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   crossAxisCount: cross,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
-                  childAspectRatio: 0.78,
+                  childAspectRatio: ratio,
                 ),
                 itemBuilder: (_, i) => _StockGridCard(
                   product: list[i],
@@ -732,14 +734,12 @@ class _QuickAction extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
-  final bool expanded;
 
   _QuickAction({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
-    this.expanded = false,
   });
 
   @override
@@ -756,10 +756,7 @@ class _QuickAction extends StatelessWidget {
           decoration: BoxDecoration(
             color: color.withValues(alpha: isDark ? 0.14 : 0.08),
             borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-            border: Border.all(
-              color: expanded ? color : color.withValues(alpha: 0.25),
-              width: expanded ? 1.6 : 1,
-            ),
+            border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -774,21 +771,17 @@ class _QuickAction extends StatelessWidget {
                 child: Icon(icon, size: 20, color: Colors.white),
               ),
               SizedBox(width: 10),
-              Text(
-                label,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: color,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
                 ),
-              ),
-              SizedBox(width: 6),
-              Icon(
-                expanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                size: 18,
-                color: color.withValues(alpha: 0.7),
               ),
             ],
           ),
@@ -1653,6 +1646,7 @@ class _AdjustProductCard extends StatelessWidget {
                           final cur = int.tryParse(qtyC.text) ?? 1;
                           if (cur > 1) {
                             qtyC.text = (cur - 1).toString();
+                            onQtyChanged();
                           }
                         },
                       ),
@@ -1696,6 +1690,7 @@ class _AdjustProductCard extends StatelessWidget {
                         onTap: () {
                           final cur = int.tryParse(qtyC.text) ?? 1;
                           qtyC.text = (cur + 1).toString();
+                          onQtyChanged();
                         },
                       ),
                       SizedBox(width: 12),
@@ -1850,6 +1845,8 @@ class _ProductRow extends StatelessWidget {
                               SizedBox(height: 2),
                               Text(
                                 '${product.category}  \u2022  Stok ${product.stock}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: isDark

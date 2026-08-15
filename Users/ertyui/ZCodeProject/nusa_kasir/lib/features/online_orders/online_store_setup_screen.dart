@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -42,6 +43,10 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
   final _waCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _hoursCtrl = TextEditingController(text: '08:00 - 21:00');
+  // Slug custom (alamat website) + status validasi ketersediaan.
+  final _slugCtrl = TextEditingController();
+  String? _slugStatus; // 'checking' | 'available' | 'taken' | 'invalid'
+  Timer? _slugDebounce;
 
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseAnim;
@@ -67,6 +72,8 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
     _waCtrl.dispose();
     _addressCtrl.dispose();
     _hoursCtrl.dispose();
+    _slugCtrl.dispose();
+    _slugDebounce?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -79,6 +86,14 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
         .replaceAll(RegExp(r'\s+'), '-')
         .replaceAll(RegExp(r'-+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
+  }
+
+  /// Color → hex string '#RRGGBB' untuk dikirim ke server (warna website).
+  String _colorToHex(Color c) {
+    final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
+    final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
+    final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
+    return '#$r$g$b';
   }
 
   Future<void> _load() async {
@@ -96,7 +111,8 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
     _logoPath = await repo.getStoreLogoPath();
 
     final fallbackSlug = _slugify(name);
-    _storeUrl = 'https://nusa-online.vercel.app/toko/$fallbackSlug';
+    _storeUrl =
+        'https://nusa-online.vercel.app/toko/${NusaConfig.productId}/$fallbackSlug';
 
     // Count online products
     try {
@@ -116,8 +132,13 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
         _addressCtrl.text = store['address'] as String? ?? '';
         _hoursCtrl.text = store['open_hours'] as String? ?? '08:00 - 21:00';
         final cloudSlug = store['slug'] as String?;
+        if (cloudSlug != null && cloudSlug.isNotEmpty) {
+          _slugCtrl.text = cloudSlug;
+          _slugStatus = 'available';
+        }
         _storeUrl =
-            'https://nusa-online.vercel.app/toko/${cloudSlug ?? _slugify(_nameCtrl.text)}';
+            'https://nusa-online.vercel.app/toko/${NusaConfig.productId}/'
+            '${(cloudSlug != null && cloudSlug.isNotEmpty) ? cloudSlug : _slugify(_nameCtrl.text)}';
       }
     } catch (_) {}
 
@@ -130,16 +151,44 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
       TopToast.error(context, 'Nama toko wajib diisi');
       return;
     }
+    final slug = _slugCtrl.text.trim().toLowerCase();
+    if (slug.isEmpty) {
+      TopToast.error(context, 'Slug (alamat toko) wajib diisi');
+      return;
+    }
+    if (_slugStatus != 'available' && _slugStatus != 'checking') {
+      if (_slugStatus == 'taken') {
+        TopToast.error(
+          context,
+          'Slug sudah dipakai toko lain. Ganti slug lain.',
+        );
+      } else {
+        TopToast.error(
+          context,
+          'Slug tidak valid. Gunakan huruf kecil, angka, dan tanda hubung (-).',
+        );
+      }
+      return;
+    }
 
     setState(() => _saving = true);
     final isActive = activate ?? _isActive;
 
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
-      final slug = _slugify(name);
+      // Kirim tema app (warna) ke server — website memakai warna yang sama.
+      final themeId = ref.read(themePresetProvider);
+      final theme = NusaConfig.themePresets[themeId];
       final result = await svc.upsertStore(
         storeName: name,
         slug: slug,
+        variant: NusaConfig.productId,
+        themeId: themeId,
+        primaryColor: theme?['primary'] != null
+            ? _colorToHex(theme!['primary']!)
+            : '',
+        darkColor: theme?['dark'] != null ? _colorToHex(theme!['dark']!) : '',
+        softColor: theme?['soft'] != null ? _colorToHex(theme!['soft']!) : '',
         description: _descCtrl.text.trim(),
         whatsapp: _waCtrl.text.trim(),
         address: _addressCtrl.text.trim(),
@@ -150,14 +199,16 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
 
       if (ok) {
         await ref.read(settingsRepoProvider).setStoreName(name);
-        _storeUrl = 'https://nusa-online.vercel.app/toko/$slug';
+        _storeUrl =
+            'https://nusa-online.vercel.app/toko/${NusaConfig.productId}/$slug';
 
         if (isActive) await _syncProducts();
 
         if (mounted) {
           setState(() {
             _isActive = isActive;
-            _storeUrl = 'https://nusa-online.vercel.app/toko/$slug';
+            _storeUrl =
+                'https://nusa-online.vercel.app/toko/${NusaConfig.productId}/$slug';
           });
           TopToast.success(
             context,
@@ -176,6 +227,27 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
     if (mounted) setState(() => _saving = false);
   }
 
+  /// Validasi + cek ketersediaan slug (debounce 400ms). Slug unik global —
+  /// dua toko tidak boleh memakai alamat yang sama.
+  void _onSlugChanged(String value) {
+    _slugDebounce?.cancel();
+    final s = value.trim().toLowerCase();
+    final valid = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(s);
+    if (s.isEmpty || !valid || s.length > 40) {
+      setState(() => _slugStatus = s.isEmpty ? null : 'invalid');
+      return;
+    }
+    setState(() => _slugStatus = 'checking');
+    _slugDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final svc = OnlineOrderService(Supabase.instance.client);
+      final available = await svc.isSlugAvailable(s);
+      if (!mounted) return;
+      setState(() {
+        _slugStatus = available ? 'available' : 'taken';
+      });
+    });
+  }
+
   /// Pesan error yang akurat — jangan asal "Cek koneksi internet".
   String _errorMessage(OnlineStoreError err) {
     switch (err) {
@@ -185,6 +257,8 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
         return 'Server sedang sibuk. Coba beberapa saat lagi.';
       case OnlineStoreError.noInternet:
         return 'Gagal menyimpan. Cek koneksi internet.';
+      case OnlineStoreError.slugTaken:
+        return 'Slug sudah digunakan toko lain. Ganti slug lain.';
       case OnlineStoreError.unknown:
         return 'Gagal menyimpan. Coba lagi.';
     }
@@ -1024,7 +1098,144 @@ class _OnlineStoreSetupScreenState extends ConsumerState<OnlineStoreSetupScreen>
             hint: 'Cth: Toko Berkah Jaya',
             prefixIcon: Icon(Icons.store),
           ),
-          SizedBox(height: 12),
+          SizedBox(height: 14),
+
+          // ── Slug custom (alamat website) + validasi unik ──
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Alamat Toko (Slug) *',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkInputFill
+                      : NusaConfig.inputFill,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _slugStatus == 'taken'
+                        ? const Color(0xFFE63946)
+                        : _slugStatus == 'available'
+                        ? const Color(0xFF059669)
+                        : borderC,
+                  ),
+                ),
+                child: TextField(
+                  controller: _slugCtrl,
+                  onChanged: _onSlugChanged,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: textColor,
+                    fontFamily: 'monospace',
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'cth: berkah-jaya',
+                    hintStyle: TextStyle(
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                      fontSize: 15,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.alternate_email,
+                      size: 20,
+                      color: subColor,
+                    ),
+                    suffixIcon: _slugStatus == null || _slugStatus == 'checking'
+                        ? (mounted && _slugStatus == 'checking'
+                              ? Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: subColor,
+                                    ),
+                                  ),
+                                )
+                              : null)
+                        : Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Icon(
+                              _slugStatus == 'available'
+                                  ? Icons.check_circle
+                                  : Icons.cancel,
+                              size: 20,
+                              color: _slugStatus == 'available'
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFE63946),
+                            ),
+                          ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Status / penjelasan slug untuk user awam.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _slugStatus == 'taken'
+                        ? Icons.error_outline
+                        : _slugStatus == 'available'
+                        ? Icons.check_circle_outline
+                        : Icons.info_outline,
+                    size: 14,
+                    color: _slugStatus == 'taken'
+                        ? const Color(0xFFE63946)
+                        : _slugStatus == 'available'
+                        ? const Color(0xFF059669)
+                        : subColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _slugStatus == 'taken'
+                          ? 'Slug ini sudah dipakai toko lain. Ganti slug lain.'
+                          : _slugStatus == 'available'
+                          ? 'Slug tersedia ✓ — alamat toko kamu: '
+                                'nusa-online.vercel.app/toko/'
+                                '${NusaConfig.productId}/${_slugCtrl.text.trim().toLowerCase()}'
+                          : _slugStatus == 'invalid'
+                          ? 'Slug tidak valid. Gunakan huruf kecil, angka, dan tanda hubung (-). '
+                                'Contoh: berkah-jaya'
+                          : 'Apa itu slug? Slug adalah alamat website toko kamu, '
+                                'contoh: "berkah-jaya". Gunakan huruf kecil, angka, '
+                                'dan tanda hubung (-). Sistem otomatis memeriksa apakah '
+                                'slug sudah dipakai toko lain.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.4,
+                        color: _slugStatus == 'taken'
+                            ? const Color(0xFFE63946)
+                            : _slugStatus == 'available'
+                            ? const Color(0xFF059669)
+                            : subColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 14),
 
           // Deskripsi
           Column(

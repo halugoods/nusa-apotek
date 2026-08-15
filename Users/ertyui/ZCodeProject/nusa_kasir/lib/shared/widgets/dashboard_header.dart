@@ -15,6 +15,9 @@ class DashboardHeader extends StatelessWidget {
   final bool hasNotification;
   final VoidCallback? onBellTap;
   final VoidCallback? onLogout;
+  final String? branchName;
+  final bool showBranchIcon;
+  final VoidCallback? onBranchTap;
 
   DashboardHeader({
     super.key,
@@ -24,6 +27,9 @@ class DashboardHeader extends StatelessWidget {
     this.hasNotification = false,
     this.onBellTap,
     this.onLogout,
+    this.branchName,
+    this.showBranchIcon = false,
+    this.onBranchTap,
   });
 
   @override
@@ -70,7 +76,9 @@ class DashboardHeader extends StatelessWidget {
                   Icon(
                     Icons.notifications_outlined,
                     size: 22,
-                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                    color: isDark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
                   ),
                   if (hasNotification)
                     Positioned(
@@ -89,6 +97,53 @@ class DashboardHeader extends StatelessWidget {
               ),
             ),
           ),
+          // Branch icon — antara lonceng dan logout. Tap → bottom sheet
+          // pemilih cabang (slide-up). Hanya muncul jika ada cabang > 1.
+          if (showBranchIcon && onBranchTap != null) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onBranchTap,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(
+                      Icons.store_mall_directory_outlined,
+                      size: 22,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                    // Dot indikator cabang aktif (bukan "Semua Cabang").
+                    if (branchName != null && branchName!.isNotEmpty)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: NusaConfig.accentGreen,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isDark
+                                  ? NusaConfig.darkSurface
+                                  : NusaConfig.surfaceColor,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (onLogout != null) ...[
             SizedBox(width: 4),
             // Logout / Ganti Pengguna — switch role tanpa buka ulang app
@@ -103,7 +158,9 @@ class DashboardHeader extends StatelessWidget {
                 child: Icon(
                   Icons.logout_rounded,
                   size: 22,
-                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
                 ),
               ),
             ),

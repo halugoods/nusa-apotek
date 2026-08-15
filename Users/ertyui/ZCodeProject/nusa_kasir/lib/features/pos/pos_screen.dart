@@ -839,32 +839,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             ]
                           : [],
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          NusaConfig.catIcons[chip] ?? Icons.circle,
-                          size: 16,
-                          color: selected
-                              ? Colors.white
-                              : isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          chip,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: selected
-                                ? Colors.white
-                                : (isDark
-                                      ? NusaConfig.darkTextSecondary
-                                      : NusaConfig.textSecondary),
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      chip,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: selected
+                            ? Colors.white
+                            : (isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary),
+                      ),
                     ),
                   ),
                 );
@@ -1158,8 +1145,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final colW =
         (MediaQuery.of(context).size.width - 32 - 10 * (cross - 1)) / cross;
     // Image is inset (10px all sides) → ≈square of (colW-20).
-    // Footer (name+cat+price+action) ≈110px. Ratio = colW/(colW+110).
-    final ratio = (colW / (colW + 110)).clamp(0.4, 0.85);
+    // Footer (name 2 baris + kategori + harga + grosir + tombol) ≈150px.
+    // Ratio dinamis per rasio HP: kolom sempit → kartu proporsional lebih
+    // tinggi supaya tombol tambah tidak meluber keluar card.
+    final ratio = (colW / (colW + 150)).clamp(0.42, 0.85);
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -2295,6 +2284,8 @@ class _ProductCard extends StatelessWidget {
               // ── Category ──
               Text(
                 product.category,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 11,
                   color: isDark

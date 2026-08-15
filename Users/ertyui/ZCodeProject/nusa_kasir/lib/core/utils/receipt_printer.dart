@@ -321,20 +321,38 @@ class ReceiptPrinter {
 
     // Header — wrap long store names. Ukuran dari slider 1-8 (default 2x),
     // jenis font mengikuti pilihan Standar/Kompak.
-    final headerHeight = _posSize(headerSize);
-    bytes.addAll(
-      generator.text(
-        _san(storeName),
-        styles: PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: headerHeight,
-          width: headerHeight,
-          fontType: itemFont,
+    //
+    // Ukuran besar (GS !) memangkas jumlah karakter per baris: di 58mm,
+    // perbesaran N → ~32/N karakter. Store name yang panjang di-wrap
+    // supaya tidak terpotong di tepi kertas. Feed sesudahnya proporsional:
+    // huruf besar butuh jarak antar baris lebih banyak, kalau tidak baris
+    // berikutnya nempel/tumpang tindih dan terkesan "kecil".
+    final headerSizeMapped = headerSize.clamp(1, 8);
+    final headerHeight = _posSize(headerSizeMapped);
+    final headerLineChars =
+        ((paperWidth == '80' ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32)) ~/
+        headerSizeMapped);
+    final headerParts = _wrap(storeName, headerLineChars);
+    for (final part in headerParts) {
+      bytes.addAll(
+        generator.text(
+          _san(part),
+          styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: headerHeight,
+            width: headerHeight,
+            fontType: itemFont,
+          ),
         ),
-        linesAfter: 1,
-      ),
-    );
+      );
+    }
+    // Feed proporsional: header besar (>2x) butuh jarak agar tidak nempel
+    // dengan baris invoice/kasir berikutnya (kadang malah terlihat "kecil"
+    // karena tumpang tindih dengan baris berikut).
+    if (headerSizeMapped > 2) {
+      bytes.addAll(generator.feed((headerSizeMapped >= 6 ? 2 : 1)));
+    }
     if (invoice.isNotEmpty) {
       bytes.addAll(
         generator.text(
@@ -485,7 +503,11 @@ class ReceiptPrinter {
     }
     bytes.addAll(generator.hr());
 
-    // Total.
+    // Total. Beri jarak ekstra jika rincian besar — baris TOTAL 2x bisa
+    // nempel dengan baris rincian terakhir.
+    if (itemBig) {
+      bytes.addAll(generator.feed(itemSizeMapped >= 4 ? 2 : 1));
+    }
     bytes.addAll(
       generator.row([
         PosColumn(
@@ -636,6 +658,10 @@ class ReceiptPrinter {
             ),
           ),
         );
+      }
+      // Footer besar butuh jarak sebelum "Terima Kasih!" agar tidak nempel.
+      if (footerSizeMapped > 2) {
+        bytes.addAll(generator.feed(footerSizeMapped >= 6 ? 2 : 1));
       }
     }
     bytes.addAll(
@@ -1011,7 +1037,13 @@ class ReceiptPrinter {
   }
 
   /// Print a test receipt.
-  Future<bool> printTest(String storeName, {String paperWidth = '58'}) async {
+  Future<bool> printTest(
+    String storeName, {
+    String paperWidth = '58',
+    int headerSize = 2,
+    int itemsSize = 1,
+    int footerSize = 1,
+  }) async {
     final connected = await BluetoothUtils.isConnected();
     if (!connected) return false;
 
@@ -1021,16 +1053,27 @@ class ReceiptPrinter {
 
     final List<int> bytes = [];
     bytes.addAll(generator.reset());
-    bytes.addAll(
-      generator.text(
-        _san('TEST PRINT'),
-        styles: const PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: PosTextSize.size2,
+    // Header dengan ukuran dari slider — supaya user bisa verifikasi
+    // ukuran header yang benar-benar tercetak sebelum menekan Simpan.
+    final hSize = headerSize.clamp(1, 8);
+    final hLineChars = ((paperWidth == '80' ? 48 : 32) ~/ hSize).clamp(4, 32);
+    final hParts = _wrap('TEST PRINT - HEADER', hLineChars);
+    for (final part in hParts) {
+      bytes.addAll(
+        generator.text(
+          _san(part),
+          styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: _posSize(hSize),
+            width: _posSize(hSize),
+          ),
         ),
-      ),
-    );
+      );
+    }
+    if (hSize > 2) {
+      bytes.addAll(generator.feed(hSize >= 6 ? 2 : 1));
+    }
     bytes.addAll(
       generator.text(
         _san(storeName),
@@ -1038,6 +1081,21 @@ class ReceiptPrinter {
       ),
     );
     bytes.addAll(generator.hr());
+    // Rincian dengan ukuran dari slider.
+    final iSize = itemsSize.clamp(1, 8);
+    bytes.addAll(
+      generator.text(
+        _san('Rincian (${iSize}x):'),
+        styles: PosStyles(
+          align: PosAlign.center,
+          height: _posSize(iSize),
+          width: _posSize(iSize),
+        ),
+      ),
+    );
+    if (iSize > 2) {
+      bytes.addAll(generator.feed(iSize >= 6 ? 2 : 1));
+    }
     bytes.addAll(
       generator.text(
         _san('Printer thermal berfungsi dengan baik.'),
@@ -1058,12 +1116,22 @@ class ReceiptPrinter {
       ),
     );
     bytes.addAll(generator.hr());
+    // Footer dengan ukuran dari slider.
+    final fSize = footerSize.clamp(1, 8);
     bytes.addAll(
       generator.text(
-        _san('NUSA Kasir'),
-        styles: const PosStyles(align: PosAlign.center, bold: true),
+        _san('FOOTER (${fSize}x)'),
+        styles: PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: _posSize(fSize),
+          width: _posSize(fSize),
+        ),
       ),
     );
+    if (fSize > 2) {
+      bytes.addAll(generator.feed(fSize >= 6 ? 2 : 1));
+    }
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 

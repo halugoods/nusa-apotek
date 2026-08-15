@@ -12,6 +12,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -1455,27 +1456,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── Update Check ──────────────────────────────────────────
 
-  /// Bottom-sheet riwayat update: fetch rilis dari GitHub (tag + changelog).
-  /// Offline/gagal → tampilkan versi lokal + pesan ramah.
+  /// Bottom-sheet riwayat update: sheet langsung terbuka (loading state),
+  /// fetch GitHub berjalan di dalam sheet (initState) supaya tap terasa
+  /// responsif. Tap kartu versi → changelog penuh expand. Offline/gagal →
+  /// tampilkan versi lokal + pesan ramah.
   Future<void> _showUpdateHistory() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    var releases = await UpdateService.getReleaseHistory();
-    if (!mounted) return;
-    if (releases.isEmpty) {
-      // Gagal ambil dari GitHub → tampilkan versi lokal saja.
-      final local = ReleaseHistoryItem(
-        version: NusaConfig.appVersion,
-        buildNumber: NusaConfig.appBuildNumber,
-        body: '',
-      );
-      releases = [local];
-    }
-    final items = releases;
-    final isLocalOnly =
-        items.length == 1 &&
-        items.first.buildNumber == NusaConfig.appBuildNumber &&
-        items.first.body.isEmpty;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1483,198 +1468,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => FractionallySizedBox(
-        heightFactor: 0.85,
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? NusaConfig.darkBorder
-                              : NusaConfig.dividerColor,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.history_rounded,
-                          color: NusaConfig.activePrimary,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Riwayat Update',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isLocalOnly
-                          ? 'Tidak dapat mengambil riwayat dari internet. '
-                                'Berikut versi yang terpasang di perangkat ini.'
-                          : 'Versi terbaru ada di urutan paling atas.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.5,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(
-                height: 1,
-                color: isDark
-                    ? NusaConfig.darkDivider
-                    : NusaConfig.dividerColor,
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) {
-                    final r = items[i];
-                    final isCurrent =
-                        r.buildNumber == NusaConfig.appBuildNumber;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: NusaCard(
-                        Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'v${r.version}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  if (r.buildNumber > 0) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '(+${r.buildNumber})',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isDark
-                                            ? NusaConfig.darkTextTertiary
-                                            : NusaConfig.textTertiary,
-                                      ),
-                                    ),
-                                  ],
-                                  const Spacer(),
-                                  if (isCurrent)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: NusaConfig.accentGreen
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        'Terpasang',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: NusaConfig.accentGreen,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              if (r.publishedAt != null) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${_month(r.publishedAt!.month)} '
-                                  '${r.publishedAt!.year}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? NusaConfig.darkTextTertiary
-                                        : NusaConfig.textTertiary,
-                                  ),
-                                ),
-                              ],
-                              if (r.body.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  r.body,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    height: 1.5,
-                                    color: isDark
-                                        ? NusaConfig.darkTextSecondary
-                                        : NusaConfig.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (_) => const _UpdateHistorySheet(),
     );
-  }
-
-  String _month(int m) {
-    const months = [
-      '',
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'Mei',
-      'Jun',
-      'Jul',
-      'Agu',
-      'Sep',
-      'Okt',
-      'Nov',
-      'Des',
-    ];
-    return months[m];
   }
 
   /// Popup update. Bisa ditutup / diminimalkan kapan saja (tap luar, tombol
   /// back) — proses unduh tetap berjalan di latar belakang; buka lagi kapan
   /// saja untuk melihat progres.
-  ///
-  /// [autoStart] = langsung mulai unduh, popup langsung tampil progres.
   void _showUpdateDialog({bool autoStart = false}) {
     final info = _updateInfo;
     if (info == null || !info.hasUpdate) return;
@@ -1940,6 +1740,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         int fontF = fontFooter;
         // True saat slider font digeser — preview berubah tapi belum tersimpan.
         bool fontDirty = false;
+        bool testPrinting = false;
         return StatefulBuilder(
           builder: (ctx, setSt) {
             return Container(
@@ -2731,38 +2532,165 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
 
-                    // Save button
-                    NusaButton(
-                      'Simpan',
-                      onPressed: () async {
-                        await repo.setReceiptHeader(headerCtrl.text.trim());
-                        await repo.setReceiptFooter(footerCtrl.text.trim());
-                        await repo.setReceiptPaperSize(paper);
-                        await repo.setReceiptToggles(togs);
-                        // ── Sync to SecureStore (single source for printing) ──
-                        // DB stores '58mm'/'80mm'; SecureStore stores '58'/'80'.
-                        // Printing reads SecureStore, so mirror both ways to keep
-                        // "Pengaturan Struk" and the receipt printer in sync.
-                        final norm = paper.replaceAll('mm', '');
-                        await SecureStore.setPaperSize(norm);
-                        await SecureStore.setPrinterFooter(
-                          footerCtrl.text.trim(),
-                        );
-                        // Font struk.
-                        await SecureStore.setReceiptFontType(font);
-                        await SecureStore.setReceiptFontHeader(fontH);
-                        await SecureStore.setReceiptFontItems(fontI);
-                        await SecureStore.setReceiptFontFooter(fontF);
-                        fontDirty = false;
-                        // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
-                        if (logoPath != null && logoPath!.isNotEmpty) {
-                          await repo.setStoreLogoPath(logoPath!);
-                          await SecureStore.setPrinterLogoPath(logoPath);
-                        } else {
-                          await SecureStore.setPrinterLogoPath(null);
-                        }
-                        if (mounted) Navigator.pop(ctx);
-                      },
+                    // ── Aksi: Tes Cetak (kiri) + Simpan (kanan) ──
+                    // Tes Cetak memakai ukuran slider SEKARANG (belum
+                    // disimpan) supaya user bisa verifikasi ukuran header
+                    // yang benar-benar tercetak di kertas sebelum Simpan.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              side: BorderSide(
+                                color: NusaConfig.activePrimary.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                              foregroundColor: NusaConfig.activePrimary,
+                            ),
+                            onPressed: testPrinting
+                                ? null
+                                : () async {
+                                    setSt(() => testPrinting = true);
+                                    final printer = ReceiptPrinter();
+                                    try {
+                                      if (!await ReceiptPrinter.ensureBluetoothReady()) {
+                                        TopToast.error(
+                                          ctx,
+                                          'Bluetooth tidak siap. Periksa izin pengaturan.',
+                                        );
+                                        return;
+                                      }
+                                      final devices = await printer.discover();
+                                      final savedAddr =
+                                          await SecureStore.getPrinterAddress();
+                                      final addr =
+                                          savedAddr != null &&
+                                              savedAddr.contains('|')
+                                          ? savedAddr.split('|').last
+                                          : null;
+                                      final found = addr != null
+                                          ? devices
+                                                .where((d) => d.address == addr)
+                                                .toList()
+                                          : <dynamic>[];
+                                      if (found.isEmpty) {
+                                        TopToast.error(
+                                          ctx,
+                                          'Printer belum terhubung. Buka Pengaturan Printer untuk memindai.',
+                                        );
+                                        return;
+                                      }
+                                      await printer.connect(found.first);
+                                      final ok = await printer.printTest(
+                                        storeName,
+                                        paperWidth: paper.replaceAll('mm', ''),
+                                        headerSize: fontH,
+                                        itemsSize: fontI,
+                                        footerSize: fontF,
+                                      );
+                                      if (ctx.mounted) {
+                                        if (ok) {
+                                          TopToast.success(
+                                            ctx,
+                                            'Tes cetak dikirim — cek ukuran header di kertas.',
+                                          );
+                                        } else {
+                                          TopToast.error(
+                                            ctx,
+                                            'Gagal mengirim tes cetak',
+                                          );
+                                        }
+                                      }
+                                    } catch (_) {
+                                      if (ctx.mounted) {
+                                        TopToast.error(
+                                          ctx,
+                                          'Gagal mencetak: pastikan printer menyala dan terhubung',
+                                        );
+                                      }
+                                    } finally {
+                                      await printer.dispose();
+                                      if (ctx.mounted) {
+                                        setSt(() => testPrinting = false);
+                                      }
+                                    }
+                                  },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (testPrinting)
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.print_outlined,
+                                    size: 18,
+                                    color: NusaConfig.activePrimary,
+                                  ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  testPrinting ? 'Mencetak…' : 'Tes Cetak',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: NusaConfig.activePrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: NusaButton(
+                            'Simpan',
+                            onPressed: () async {
+                              await repo.setReceiptHeader(
+                                headerCtrl.text.trim(),
+                              );
+                              await repo.setReceiptFooter(
+                                footerCtrl.text.trim(),
+                              );
+                              await repo.setReceiptPaperSize(paper);
+                              await repo.setReceiptToggles(togs);
+                              // ── Sync to SecureStore (single source for printing) ──
+                              // DB stores '58mm'/'80mm'; SecureStore stores '58'/'80'.
+                              // Printing reads SecureStore, so mirror both ways to keep
+                              // "Pengaturan Struk" and the receipt printer in sync.
+                              final norm = paper.replaceAll('mm', '');
+                              await SecureStore.setPaperSize(norm);
+                              await SecureStore.setPrinterFooter(
+                                footerCtrl.text.trim(),
+                              );
+                              // Font struk.
+                              await SecureStore.setReceiptFontType(font);
+                              await SecureStore.setReceiptFontHeader(fontH);
+                              await SecureStore.setReceiptFontItems(fontI);
+                              await SecureStore.setReceiptFontFooter(fontF);
+                              fontDirty = false;
+                              // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
+                              if (logoPath != null && logoPath!.isNotEmpty) {
+                                await repo.setStoreLogoPath(logoPath!);
+                                await SecureStore.setPrinterLogoPath(logoPath);
+                              } else {
+                                await SecureStore.setPrinterLogoPath(null);
+                              }
+                              if (mounted) Navigator.pop(ctx);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -3866,6 +3794,306 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Riwayat Update sheet (fetch async di dalam sheet) ──
+// Fetch GitHub di initState → sheet terbuka instan (loading dulu), data
+// muncul setelah fetch selesai. Tap kartu versi → changelog penuh expand.
+class _UpdateHistorySheet extends StatefulWidget {
+  const _UpdateHistorySheet();
+
+  @override
+  State<_UpdateHistorySheet> createState() => _UpdateHistorySheetState();
+}
+
+class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
+  List<ReleaseHistoryItem>? _releases; // null = masih loading
+  int? _expandedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final releases = await UpdateService.getReleaseHistory();
+    if (!mounted) return;
+    setState(() {
+      _releases = releases.isEmpty
+          ? [
+              ReleaseHistoryItem(
+                version: NusaConfig.appVersion,
+                buildNumber: NusaConfig.appBuildNumber,
+                body: '',
+              ),
+            ]
+          : releases;
+    });
+  }
+
+  String _month(int m) {
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    return months[m];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final loading = _releases == null;
+    final releases = _releases ?? const <ReleaseHistoryItem>[];
+    // Offline/gagal → hanya 1 item = versi lokal tanpa body.
+    final localOnly =
+        releases.length == 1 &&
+        releases.first.buildNumber == NusaConfig.appBuildNumber &&
+        releases.first.body.isEmpty;
+
+    return FractionallySizedBox(
+      heightFactor: 0.85,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? NusaConfig.darkBorder
+                            : NusaConfig.dividerColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.history_rounded,
+                        color: NusaConfig.activePrimary,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Riwayat Update',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    loading
+                        ? 'Memuat riwayat update…'
+                        : localOnly
+                        ? 'Tidak dapat mengambil riwayat dari internet. '
+                              'Berikut versi yang terpasang di perangkat ini.'
+                        : 'Versi terbaru ada di urutan paling atas. '
+                              'Ketuk kartu untuk lihat changelog lengkap.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(
+              height: 1,
+              color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+            ),
+            Expanded(
+              child: loading
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Menghubungi GitHub…',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                      itemCount: releases.length,
+                      itemBuilder: (context, i) {
+                        final r = releases[i];
+                        final isCurrent =
+                            r.buildNumber == NusaConfig.appBuildNumber;
+                        final expanded = _expandedIndex == i;
+                        // Ringkasan: 2 baris pertama changelog untuk pratinjau.
+                        final bullets = r.body
+                            .split('\n')
+                            .map((l) => l.trim())
+                            .where((l) => l.isNotEmpty)
+                            .toList();
+                        final preview = bullets.take(2).join('\n');
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: NusaCard(
+                            InkWell(
+                              onTap: () => setState(() {
+                                _expandedIndex = expanded ? null : i;
+                              }),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'v${r.version}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                            color: isDark
+                                                ? NusaConfig.darkTextPrimary
+                                                : NusaConfig.textPrimary,
+                                          ),
+                                        ),
+                                        if (r.buildNumber > 0) ...[
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '(+${r.buildNumber})',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark
+                                                  ? NusaConfig.darkTextTertiary
+                                                  : NusaConfig.textTertiary,
+                                            ),
+                                          ),
+                                        ],
+                                        const Spacer(),
+                                        if (isCurrent)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: NusaConfig.accentGreen
+                                                  .withValues(alpha: 0.12),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              'Terpasang',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: NusaConfig.accentGreen,
+                                              ),
+                                            ),
+                                          ),
+                                        Icon(
+                                          expanded
+                                              ? Icons.expand_less_rounded
+                                              : Icons.expand_more_rounded,
+                                          size: 20,
+                                          color: isDark
+                                              ? NusaConfig.darkTextSecondary
+                                              : NusaConfig.textSecondary,
+                                        ),
+                                      ],
+                                    ),
+                                    if (r.publishedAt != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${_month(r.publishedAt!.month)} '
+                                        '${r.publishedAt!.year}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark
+                                              ? NusaConfig.darkTextTertiary
+                                              : NusaConfig.textTertiary,
+                                        ),
+                                      ),
+                                    ],
+                                    if (preview.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        preview,
+                                        maxLines: expanded ? null : 2,
+                                        overflow: expanded
+                                            ? null
+                                            : TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          height: 1.5,
+                                          color: isDark
+                                              ? NusaConfig.darkTextSecondary
+                                              : NusaConfig.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                    if (r.body.isNotEmpty && !expanded)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          'Ketuk untuk lihat changelog lengkap',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: NusaConfig.activePrimary,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),

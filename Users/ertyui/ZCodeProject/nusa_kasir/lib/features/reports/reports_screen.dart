@@ -381,6 +381,59 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     }
   }
 
+  /// Export daftar pengeluaran (CSV/Excel) sesuai periode filter.
+  Future<void> _exportExpenses() async {
+    final format = await _pickFormat();
+    if (format == null) return;
+    if (format == 'pdf') {
+      // PDF lengkap laporan periode juga mencakup ringkasan pengeluaran.
+      await _quickSharePdf();
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      final (from, to) = _range();
+      final financeRepo = FinanceRepository(ref.read(databaseProvider));
+      final all = await financeRepo.getExpenses();
+      final list = all.where((e) {
+        if (from != null &&
+            e.date.isBefore(DateTime(from.year, from.month, from.day))) {
+          return false;
+        }
+        if (to != null &&
+            e.date.isAfter(DateTime(to.year, to.month, to.day, 23, 59, 59))) {
+          return false;
+        }
+        return true;
+      }).toList();
+      if (list.isEmpty) {
+        if (mounted)
+          TopToast.info(context, 'Tidak ada pengeluaran pada periode ini');
+        return;
+      }
+      final stamp =
+          '${DateTime.now().year}${DateTime.now().month}${DateTime.now().day}_${DateTime.now().hour}${DateTime.now().minute}';
+      final name =
+          'pengeluaran_${_periodLabel().replaceAll(' ', '').toLowerCase()}_$stamp';
+      final file = format == 'excel'
+          ? await exportExpenseExcel(list, name)
+          : await exportExpenseCsv(list, name);
+      if (!mounted) return;
+      TopToast.success(context, 'Pengeluaran berhasil diexport');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          subject: 'Pengeluaran NUSA Kasir',
+          text: 'Laporan pengeluaran NUSA Kasir (${_periodLabel()})',
+        ),
+      );
+    } catch (e) {
+      if (mounted) TopToast.error(context, 'Gagal ekspor pengeluaran: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   // ── PENJUALAN TAB ──────────────────────────────────────────────────
 
   Widget _penjualanTab() {
@@ -945,10 +998,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                   ),
                   SizedBox(width: 10),
-                  _shareButton(
-                    isDark,
-                    loading: _exporting,
+                  _iconButton(
+                    icon: Icons.download_for_offline_outlined,
+                    label: 'Export',
+                    color: NusaConfig.activePrimary,
+                    isDark: isDark,
                     onPressed: _exporting ? null : _quickSharePdf,
+                    loading: _exporting,
                   ),
                 ],
               ),
@@ -1056,50 +1112,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _shareButton(
-    bool isDark, {
-    VoidCallback? onPressed,
-    bool loading = false,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
-            ),
-          ),
-          alignment: Alignment.center,
-          child: loading
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary,
-                  ),
-                )
-              : Icon(
-                  Icons.share_rounded,
-                  size: 20,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
         ),
       ),
     );
@@ -1367,9 +1379,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                     SizedBox(width: 10),
                     _iconButton(
-                      icon: Icons.share_rounded,
-                      label: 'Bagikan',
-                      color: NusaConfig.info,
+                      icon: Icons.download_for_offline_outlined,
+                      label: 'Export',
+                      color: NusaConfig.activePrimary,
                       isDark: isDark,
                       onPressed: _exporting ? null : _quickSharePdf,
                       loading: _exporting,
@@ -1599,6 +1611,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                   ),
                   SizedBox(height: 16),
+                  // ── Export Pengeluaran ──
+                  Row(
+                    children: [
+                      Expanded(
+                        child: NusaButton(
+                          _exporting ? 'Memproses...' : 'Export Laporan',
+                          fullWidth: true,
+                          onPressed: _exporting ? null : _exportExpenses,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      _iconButton(
+                        icon: Icons.download_for_offline_outlined,
+                        label: 'Export',
+                        color: NusaConfig.activePrimary,
+                        isDark: isDark,
+                        onPressed: _exporting ? null : _quickSharePdf,
+                        loading: _exporting,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12),
                   // F: ringkas dulu — detail grafik di balik toggle
                   Padding(
                     padding: EdgeInsets.only(bottom: 16),
