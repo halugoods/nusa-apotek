@@ -999,8 +999,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   ),
                   SizedBox(width: 10),
                   _iconButton(
-                    icon: Icons.download_for_offline_outlined,
-                    label: 'Export',
+                    icon: Icons.share_rounded,
+                    label: 'Bagikan',
                     color: NusaConfig.activePrimary,
                     isDark: isDark,
                     onPressed: _exporting ? null : _quickSharePdf,
@@ -1125,41 +1125,46 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     required VoidCallback? onPressed,
     bool loading = false,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: isDark ? 0.15 : 0.1),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withValues(alpha: 0.25)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              loading
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: color,
-                      ),
-                    )
-                  : Icon(icon, size: 18, color: color),
-              SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+    // Tinggi 40 konsisten dengan NusaButton 'Export Laporan' di Row yang
+    // sama — supaya sejajar atas-bawah.
+    return SizedBox(
+      height: 40,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: isDark ? 0.15 : 0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: color.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                loading
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: color,
+                        ),
+                      )
+                    : Icon(icon, size: 18, color: color),
+                SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1379,8 +1384,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                     SizedBox(width: 10),
                     _iconButton(
-                      icon: Icons.download_for_offline_outlined,
-                      label: 'Export',
+                      icon: Icons.share_rounded,
+                      label: 'Bagikan',
                       color: NusaConfig.activePrimary,
                       isDark: isDark,
                       onPressed: _exporting ? null : _quickSharePdf,
@@ -1623,8 +1628,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       ),
                       SizedBox(width: 10),
                       _iconButton(
-                        icon: Icons.download_for_offline_outlined,
-                        label: 'Export',
+                        icon: Icons.share_rounded,
+                        label: 'Bagikan',
                         color: NusaConfig.activePrimary,
                         isDark: isDark,
                         onPressed: _exporting ? null : _quickSharePdf,

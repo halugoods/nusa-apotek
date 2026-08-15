@@ -268,6 +268,15 @@ class ReceiptPrinter {
     final useFontB = fontType == 'kompak';
     final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
 
+    // Header struk custom (Teks Header di Pengaturan Struk). Kosong →
+    // fallback ke nama toko — SAMA persis perilaku preview di settings.
+    // Sebelumnya printer SELALU mencetak storeName → teks header custom
+    // tidak pernah tercetak (komplain user: "header gabisa dibesarin").
+    final customHeader = await SecureStore.getReceiptHeader();
+    final headerText = (customHeader != null && customHeader.trim().isNotEmpty)
+        ? customHeader.trim()
+        : storeName;
+
     final List<int> bytes = [];
 
     // ── ESC @ Reset: ensure printer is in a clean state ──
@@ -319,20 +328,31 @@ class ReceiptPrinter {
       } catch (_) {}
     }
 
-    // Header — wrap long store names. Ukuran dari slider 1-8 (default 2x),
-    // jenis font mengikuti pilihan Standar/Kompak.
+    // Header — teks header custom (atau nama toko jika kosong). Ukuran dari
+    // slider 1-8 (default 2x), jenis font mengikuti pilihan Standar/Kompak.
     //
     // Ukuran besar (GS !) memangkas jumlah karakter per baris: di 58mm,
-    // perbesaran N → ~32/N karakter. Store name yang panjang di-wrap
-    // supaya tidak terpotong di tepi kertas. Feed sesudahnya proporsional:
-    // huruf besar butuh jarak antar baris lebih banyak, kalau tidak baris
-    // berikutnya nempel/tumpang tindih dan terkesan "kecil".
+    // perbesaran N → ~32/N karakter. Tanpa pembatasan, header panjang di
+    // size 8 terpecah jadi baris 4-6 karakter → hancur & terkesan "kecil".
+    // AUTO-FIT: magnification diturunkan otomatis jika teks tidak muat satu
+    // baris di lebar kertas, sehingga teks mencapai pinggir kertas seperti
+    // rincian (user: "baris teks header jgn dibatasi pokoknya smpe pinggir
+    // kertas"). Wrap tetap di baseLineWidth/effSize + feed proporsional.
     final headerSizeMapped = headerSize.clamp(1, 8);
-    final headerHeight = _posSize(headerSizeMapped);
-    final headerLineChars =
-        ((paperWidth == '80' ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32)) ~/
-        headerSizeMapped);
-    final headerParts = _wrap(storeName, headerLineChars);
+    final isWideHeader = paperWidth == '80';
+    final baseLineWidth = isWideHeader
+        ? (useFontB ? 64 : 48)
+        : (useFontB ? 42 : 32);
+    // Auto-fit: jangan biarkan header panjang hancur jadi baris 4-6 karakter
+    // di perbesaran besar. Perbesarannya dibatasi agar teks tetap muat —
+    // minimal 1x. Teks mencapai pinggir kertas seperti rincian.
+    final effHeaderSize = headerSizeMapped.clamp(
+      1,
+      baseLineWidth <= 0 ? 1 : baseLineWidth,
+    );
+    final headerLineChars = (baseLineWidth ~/ effHeaderSize).clamp(1, 40);
+    final headerParts = _wrap(headerText, headerLineChars);
+    final headerHeight = _posSize(effHeaderSize);
     for (final part in headerParts) {
       bytes.addAll(
         generator.text(
@@ -350,8 +370,8 @@ class ReceiptPrinter {
     // Feed proporsional: header besar (>2x) butuh jarak agar tidak nempel
     // dengan baris invoice/kasir berikutnya (kadang malah terlihat "kecil"
     // karena tumpang tindih dengan baris berikut).
-    if (headerSizeMapped > 2) {
-      bytes.addAll(generator.feed((headerSizeMapped >= 6 ? 2 : 1)));
+    if (effHeaderSize > 2) {
+      bytes.addAll(generator.feed((effHeaderSize >= 6 ? 2 : 1)));
     }
     if (invoice.isNotEmpty) {
       bytes.addAll(
@@ -416,7 +436,9 @@ class ReceiptPrinter {
     //   Kompak  (Font B): 58mm → 42 char, 80mm → 64 char  (ramping)
     // Default = Standar: printer clone murah (VSC dkk) merender Font B
     // kosong/garbled, sehingga rincian hilang. Standar selalu muncul.
-    final baseLineWidth = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
+    final itemBaseLineWidth = isWide
+        ? (useFontB ? 64 : 48)
+        : (useFontB ? 42 : 32);
     // Ukuran rincian: slider 1-8 (default 1). Baris teks dipecah setengah
     // tiap kenaikan ukuran (2x → ~16 char di 58mm, 3x → ~10 char, dst) —
     // ESC/POS height/width perbesaran memangkas karakter per baris.
@@ -430,8 +452,8 @@ class ReceiptPrinter {
     );
     // Lebar teks rincian saat >1x: lebar baris normal dibagi perbesaran.
     final itemLineWidth = itemBig
-        ? (baseLineWidth ~/ itemSizeMapped)
-        : baseLineWidth;
+        ? (itemBaseLineWidth ~/ itemSizeMapped)
+        : itemBaseLineWidth;
     final qtyPriceWidth = useFontB ? 14 : 12; // "2xRp10.000" max
     final subWidth = useFontB ? 11 : 10; // "Rp20.000" max
     // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──

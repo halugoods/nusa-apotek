@@ -1142,36 +1142,56 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }
 
     final cross = _gridColumns;
-    final colW =
-        (MediaQuery.of(context).size.width - 32 - 10 * (cross - 1)) / cross;
-    // Image is inset (10px all sides) → ≈square of (colW-20).
-    // Footer (name 2 baris + kategori + harga + grosir + tombol) ≈150px.
-    // Ratio dinamis per rasio HP: kolom sempit → kartu proporsional lebih
-    // tinggi supaya tombol tambah tidak meluber keluar card.
-    final ratio = (colW / (colW + 150)).clamp(0.42, 0.85);
-    return GridView.builder(
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: _gridColumns,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: ratio,
-      ),
-      itemCount: products.length,
-      itemBuilder: (_, i) {
-        final product = products[i];
-        final cartItem = cart.cast<CartItem?>().firstWhere(
-          (c) => c?.productId == product.id,
-          orElse: () => null,
-        );
-        return _ProductCard(
-          product: product,
-          isDark: isDark,
-          qtyInCart: cartItem?.qty ?? 0,
-          onAdd: () => _addToCart(product),
-          onDecrement: () =>
-              ref.read(cartProvider.notifier).changeQty(product.id, -1),
-          onIncrement: () => _addToCart(product),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // ── Rasio pintar (2x2, 3x3, dst) ──
+        // colW dari lebar aktual grid (bukan MediaQuery seluruh layar).
+        // Tinggi kartu = gambar persegi (colW-20) + footer konten-real
+        // (nama 2 baris + kategori + harga + grosir + gap + tombol 36).
+        // Tanpa clamp yang mendistorsi → tombol TIDAK pernah meluber keluar
+        // card di HP panjang/sempit, dan margin bawah antar kartu konsisten.
+        final colW = (constraints.maxWidth - 32 - 10 * (cross - 1)) / cross;
+        final imgH = colW - 20; // padding kartu 10 tiap sisi
+        const footerH =
+            150.0; // nama 2 baris + kategori + harga + grosir + gap + tombol
+        final ratio = (colW / (imgH + footerH)).clamp(0.4, 0.95);
+        return GridView.builder(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: _gridColumns,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: ratio,
+          ),
+          itemCount: products.length,
+          itemBuilder: (_, i) {
+            final product = products[i];
+            final cartItem = cart.cast<CartItem?>().firstWhere(
+              (c) => c?.productId == product.id,
+              orElse: () => null,
+            );
+            return _ProductCard(
+              product: product,
+              isDark: isDark,
+              qtyInCart: cartItem?.qty ?? 0,
+              onAdd: () => _addToCart(product),
+              onDecrement: () =>
+                  ref.read(cartProvider.notifier).changeQty(product.id, -1),
+              onIncrement: () => _addToCart(product),
+              onQtyEdited: cartItem == null || cartItem.isPerKg
+                  ? null
+                  : (v) {
+                      final nq = int.tryParse(v) ?? 0;
+                      if (nq <= 0) {
+                        ref
+                            .read(cartProvider.notifier)
+                            .changeQty(product.id, -9999);
+                      } else {
+                        ref.read(cartProvider.notifier).setQty(product.id, nq);
+                      }
+                    },
+            );
+          },
         );
       },
     );
@@ -2102,6 +2122,9 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onAdd;
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
+
+  /// Qty diubah manual dari kolom editable (null = non-editable, mis. per-kg).
+  final ValueChanged<String>? onQtyEdited;
   _ProductCard({
     required this.product,
     required this.isDark,
@@ -2109,6 +2132,7 @@ class _ProductCard extends StatelessWidget {
     required this.onAdd,
     required this.onDecrement,
     required this.onIncrement,
+    this.onQtyEdited,
   });
 
   String _initials(String name) {
@@ -2377,10 +2401,11 @@ class _ProductCard extends StatelessWidget {
                     )
                   : qtyInCart == 0
                   ? NusaAddButton(onTap: onAdd, fullWidth: true)
-                  : NusaQtyStepper(
-                      qty: qtyInCart,
+                  : _PosQtyField(
+                      qtyInCart: qtyInCart,
                       onDecrement: onDecrement,
                       onIncrement: onIncrement,
+                      onChanged: onQtyEdited,
                       fullWidth: true,
                     ),
             ],
@@ -2389,6 +2414,92 @@ class _ProductCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Stepper "- qty +" dengan qty EDITABLE (keyboard device & fisik) — pola
+/// sama di POS, Stok Masuk/Keluar, dan Catat Pembelian. Qty yang diketik
+/// langsung diterapkan ke keranjang lewat [onChanged].
+class _PosQtyField extends StatelessWidget {
+  final int qtyInCart;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+  final ValueChanged<String>? onChanged;
+  final bool fullWidth;
+  const _PosQtyField({
+    required this.qtyInCart,
+    required this.onDecrement,
+    required this.onIncrement,
+    this.onChanged,
+    this.fullWidth = false,
+  });
+
+  static const double _h = 36;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final field = Container(
+      height: _h,
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.activeSoft,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: NusaConfig.activePrimary.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          _btn(Icons.remove, onDecrement),
+          Expanded(
+            child: TextField(
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: NusaConfig.activePrimary,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: '$qtyInCart',
+                hintStyle: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: NusaConfig.activePrimary,
+                ),
+              ),
+              onChanged: onChanged,
+            ),
+          ),
+          _btn(Icons.add, onIncrement),
+        ],
+      ),
+    );
+    return SizedBox(
+      height: _h,
+      width: fullWidth ? double.infinity : null,
+      child: field,
+    );
+  }
+
+  Widget _btn(IconData icon, VoidCallback onTap) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: _h,
+        height: _h,
+        child: Center(
+          child: Icon(icon, size: 18, color: NusaConfig.activePrimary),
+        ),
+      ),
+    ),
+  );
 }
 
 class _CartItemTile extends StatelessWidget {

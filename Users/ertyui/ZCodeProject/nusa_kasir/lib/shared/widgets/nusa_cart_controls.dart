@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 
@@ -8,31 +8,41 @@ class NusaAddButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool fullWidth;
   final double height;
+  final bool compact;
   NusaAddButton({
     required this.onTap,
     this.fullWidth = false,
     this.height = 36,
+    this.compact = false,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final btn = ElevatedButton(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
         backgroundColor: NusaConfig.activePrimary,
         foregroundColor: Colors.white,
         elevation: 0,
-        padding: EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 16,
+          vertical: 0,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        textStyle: GoogleFonts.plusJakartaSans(fontSize: 13.5, fontWeight: FontWeight.w700),
+        textStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.add, size: 18),
-        SizedBox(width: 4),
-        Text('Tambah'),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.add, size: compact ? 16 : 18),
+          SizedBox(width: 4),
+          Text('Tambah'),
+        ],
+      ),
     );
     return SizedBox(
       height: height,
@@ -66,20 +76,30 @@ class NusaQtyStepper extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? NusaConfig.darkSurface2 : NusaConfig.activeSoft,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: NusaConfig.activePrimary.withValues(alpha: 0.5), width: 1.2),
-      ),
-      child: Row(children: [
-        _btn(Icons.remove, onDecrement),
-        Expanded(
-          child: Container(
-            alignment: Alignment.center,
-            child: Text('$qty',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14, fontWeight: FontWeight.w800, color: NusaConfig.activePrimary)),
-          ),
+        border: Border.all(
+          color: NusaConfig.activePrimary.withValues(alpha: 0.5),
+          width: 1.2,
         ),
-        _btn(Icons.add, onIncrement),
-      ]),
+      ),
+      child: Row(
+        children: [
+          _btn(Icons.remove, onDecrement),
+          Expanded(
+            child: Container(
+              alignment: Alignment.center,
+              child: Text(
+                '$qty',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: NusaConfig.activePrimary,
+                ),
+              ),
+            ),
+          ),
+          _btn(Icons.add, onIncrement),
+        ],
+      ),
     );
     return SizedBox(
       height: height,
@@ -96,7 +116,9 @@ class NusaQtyStepper extends StatelessWidget {
       child: SizedBox(
         width: height,
         height: height,
-        child: Center(child: Icon(icon, size: 18, color: NusaConfig.activePrimary)),
+        child: Center(
+          child: Icon(icon, size: 18, color: NusaConfig.activePrimary),
+        ),
       ),
     ),
   );

@@ -202,6 +202,15 @@ class SecureStore {
   static Future<String> getPrinterFooter() async =>
       (await SecureStore.read(key: 'nusa_printer_footer')) ?? '';
 
+  // -- Teks Header struk (single source untuk printing) --
+  // Disinkronkan dari DB (SettingsRepository.setReceiptHeader) saat
+  // Pengaturan Struk disimpan; printer membaca ini supaya teks header
+  // custom benar-benar tercetak (fallback: nama toko).
+  static Future<void> setReceiptHeader(String v) =>
+      SecureStore.write(key: 'nusa_receipt_header_text', value: v);
+  static Future<String?> getReceiptHeader() =>
+      SecureStore.read(key: 'nusa_receipt_header_text');
+
   // -- Receipt font settings (universal ESC/POS: Standar=Font A, Kompak=Font B) --
   // Jenis font: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
   static Future<void> setReceiptFontType(String v) =>

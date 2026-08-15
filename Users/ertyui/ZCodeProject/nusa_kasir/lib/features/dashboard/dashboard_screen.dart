@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/report_repository.dart';
@@ -206,7 +210,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final attRepo = AttendanceRepository(ref.read(databaseProvider));
         final emp = await attRepo.getEmployee(session.employeeId);
         if (emp != null && mounted) {
-          setState(() => _currentPhotoPath = emp.photoPath);
+          final resolved = await _resolvePhoto(emp.photoPath);
+          if (mounted) {
+            setState(() => _currentPhotoPath = resolved ?? emp.photoPath);
+          }
         }
       } catch (_) {}
     }
@@ -922,6 +929,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Load flip card data
     await _fetchCardData(ref.read(employeeSessionProvider)?.employeeId);
 
+    // Foto kasir terakhir: jika file lokal hilang (restore/pindah device),
+    // unduh ulang dari cloud (bucket nusa-images/employees/).
+    String? resolvedLastPhoto = lastCashierPhoto;
+    if (lastCashierPhoto != null && lastCashierPhoto.isNotEmpty) {
+      resolvedLastPhoto = await _resolvePhoto(lastCashierPhoto);
+    }
+
+    // Resolve foto semua karyawan (untuk flip card / picker) — hanya yang
+    // file lokalnya hilang; sisanya langsung.
+    var resolvedEmps = emps;
+    if (emps.any(
+      (e) =>
+          e.photoPath != null &&
+          e.photoPath!.isNotEmpty &&
+          !File(e.photoPath!).existsSync(),
+    )) {
+      resolvedEmps = [];
+      for (final e in emps) {
+        if (e.photoPath != null && e.photoPath!.isNotEmpty) {
+          final r = await _resolvePhoto(e.photoPath);
+          resolvedEmps.add(e.copyWith(photoPath: Value(r ?? e.photoPath)));
+        } else {
+          resolvedEmps.add(e);
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
         _storeName = name.isNotEmpty ? name : 'NUSA';
@@ -936,13 +970,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _omzet = formatRupiah(sum['omzet'] as int);
         _trxCount = '${sum['count']}';
         _avg = formatRupiah(sum['avg'] as int);
-        _employees = emps;
+        _employees = resolvedEmps;
         _onlinePending = onlinePending;
         _lowStockCount = lowStockCount;
         _lastCashierName = lastCashierName;
         _lastCashierRole = lastCashierRole;
         _lastCashierTime = lastCashierTime;
-        _lastCashierPhoto = lastCashierPhoto;
+        _lastCashierPhoto = resolvedLastPhoto;
         _financeExpense = finSummary['totalExpense'] ?? 0;
         _financeIncome = finSummary['totalIncome'] ?? 0;
         _laundryToday = laundryToday;
@@ -1058,6 +1092,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   // ── Branch Picker ──────────────────────────────────────────────
+
+  /// Pastikan foto karyawan tersedia di device. Jika file lokal hilang
+  /// (restore/pindah device), unduh ulang dari cloud ke cache lokal
+  /// `{productId}_{filename}` — lalu kembalikan path yang valid.
+  Future<String?> _resolvePhoto(String? photoPath) async {
+    if (photoPath == null || photoPath.trim().isEmpty) return null;
+    try {
+      final f = File(photoPath);
+      if (await f.exists()) return photoPath;
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid == null) return null;
+      final filename = photoPath.split(RegExp(r'[\\/]')).last;
+      final svc = ImageStorageService(Supabase.instance.client, uid);
+      final cached = await svc.ensureLocal('employees', filename);
+      if (cached != null && await File(cached).exists()) return cached;
+    } catch (_) {}
+    return null;
+  }
 
   void _showBranchPicker() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1691,9 +1743,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               onBellTap: _onBellTap,
               onLogout: _confirmLogout,
               // Ikon cabang di header (ergonomis) — tap → bottom sheet.
-              showBranchIcon: _branches.isNotEmpty,
+              // Hanya Owner/Manager yang boleh pindah cabang; role lain
+              // mendapat cabang saat login (lihat _load / login flow).
+              showBranchIcon:
+                  _branches.isNotEmpty &&
+                  (role == 'Owner' || role == 'Manager'),
               branchName: _activeBranch?.name,
-              onBranchTap: _branches.isNotEmpty ? _showBranchPicker : null,
+              onBranchTap:
+                  (_branches.isNotEmpty &&
+                      (role == 'Owner' || role == 'Manager'))
+                  ? _showBranchPicker
+                  : null,
             ),
 
             // Scrollable content: Profile card + Menu grid

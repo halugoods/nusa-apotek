@@ -2673,6 +2673,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               await SecureStore.setPrinterFooter(
                                 footerCtrl.text.trim(),
                               );
+                              // Teks Header struk → SecureStore supaya printer
+                              // benar-benar mencetak teks custom ini.
+                              await SecureStore.setReceiptHeader(
+                                headerCtrl.text.trim(),
+                              );
                               // Font struk.
                               await SecureStore.setReceiptFontType(font);
                               await SecureStore.setReceiptFontHeader(fontH);
@@ -3856,6 +3861,25 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
     return months[m];
   }
 
+  /// Parse changelog (markdown ringan) menjadi daftar baris rapi:
+  /// - "## " → judul section (ditebalkan saat render)
+  /// - "- "/"* " → bullet list
+  /// - lainnya → paragraf biasa
+  List<String> _parseChangelog(String body) {
+    return body.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).map(
+      (l) {
+        if (l.startsWith('## ')) return l.substring(3).trim();
+        if (l.startsWith('# ')) return l.substring(2).trim();
+        if (l.startsWith('- ')) return '• ${l.substring(2).trim()}';
+        if (l.startsWith('* ') || l.startsWith('*')) {
+          return '• ${l.replaceFirst('*', '').trim()}';
+        }
+        if (l.startsWith('### ')) return l.substring(4).trim();
+        return l;
+      },
+    ).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -3966,13 +3990,10 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
                         final isCurrent =
                             r.buildNumber == NusaConfig.appBuildNumber;
                         final expanded = _expandedIndex == i;
-                        // Ringkasan: 2 baris pertama changelog untuk pratinjau.
-                        final bullets = r.body
-                            .split('\n')
-                            .map((l) => l.trim())
-                            .where((l) => l.isNotEmpty)
-                            .toList();
-                        final preview = bullets.take(2).join('\n');
+                        // Changelog di-render rapi: baris "- "/"* " → bullet
+                        // list, "## " → judul section, sisanya paragraf.
+                        final blocks = _parseChangelog(r.body);
+                        final preview = blocks.take(4).join('\n');
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: NusaCard(
@@ -4058,20 +4079,24 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
                                     ],
                                     if (preview.isNotEmpty) ...[
                                       const SizedBox(height: 8),
-                                      Text(
-                                        preview,
-                                        maxLines: expanded ? null : 2,
-                                        overflow: expanded
-                                            ? null
-                                            : TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          height: 1.5,
-                                          color: isDark
-                                              ? NusaConfig.darkTextSecondary
-                                              : NusaConfig.textSecondary,
+                                      if (expanded)
+                                        _ChangelogBody(
+                                          body: r.body,
+                                          isDark: isDark,
+                                        )
+                                      else
+                                        Text(
+                                          preview,
+                                          maxLines: 4,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            height: 1.5,
+                                            color: isDark
+                                                ? NusaConfig.darkTextSecondary
+                                                : NusaConfig.textSecondary,
+                                          ),
                                         ),
-                                      ),
                                     ],
                                     if (r.body.isNotEmpty && !expanded)
                                       Padding(
@@ -4097,6 +4122,53 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Changelog body (riwayat update) ──
+// Render markdown ringan changelog GitHub: "- " / "* " → bullet list,
+// "## " → judul section tebal, baris lainnya → paragraf biasa.
+class _ChangelogBody extends StatelessWidget {
+  final String body;
+  final bool isDark;
+  const _ChangelogBody({required this.body, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final secondaryColor = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    final primaryColor = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: body.split('\n').map((line) {
+        final l = line.trim();
+        if (l.isEmpty) return const SizedBox.shrink();
+
+        final isSection = l.startsWith('## ') || l.startsWith('# ');
+        final isBullet =
+            l.startsWith('- ') || l.startsWith('* ') || l.startsWith('• ');
+        final text = isSection
+            ? l.replaceFirst(RegExp(r'^#+ '), '')
+            : (isBullet ? l.replaceFirst(RegExp(r'^[-*•] '), '') : l);
+
+        return Padding(
+          padding: EdgeInsets.only(bottom: 4, left: isBullet ? 8 : 0),
+          child: Text(
+            (isBullet ? '•  ' : '') + text,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              fontWeight: isSection ? FontWeight.w700 : FontWeight.w400,
+              color: isSection ? primaryColor : secondaryColor,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

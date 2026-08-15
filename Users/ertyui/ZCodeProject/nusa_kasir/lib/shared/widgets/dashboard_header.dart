@@ -116,8 +116,8 @@ class DashboardHeader extends StatelessWidget {
                       Icons.store_mall_directory_outlined,
                       size: 22,
                       color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary,
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
                     ),
                     // Dot indikator cabang aktif (bukan "Semua Cabang").
                     if (branchName != null && branchName!.isNotEmpty)
@@ -159,8 +159,8 @@ class DashboardHeader extends StatelessWidget {
                   Icons.logout_rounded,
                   size: 22,
                   color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
                 ),
               ),
             ),

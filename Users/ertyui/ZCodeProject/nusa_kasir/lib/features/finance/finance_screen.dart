@@ -424,15 +424,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                       height: 36,
                       width: 36,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? NusaConfig.darkSurface
-                            : NusaConfig.surfaceColor,
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isDark
-                              ? NusaConfig.darkBorder
-                              : NusaConfig.borderColor,
-                        ),
                       ),
                       child: _exporting
                           ? Padding(
@@ -445,11 +438,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                               ),
                             )
                           : Icon(
-                              Icons.download_for_offline_outlined,
+                              Icons.download_rounded,
                               size: 18,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary,
+                              color: NusaConfig.activePrimary,
                             ),
                     ),
                   ),

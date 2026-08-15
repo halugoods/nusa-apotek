@@ -13,6 +13,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -1611,17 +1612,12 @@ class _AdjustProductCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(
-                    expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.add_circle_outline_rounded,
-                    size: 26,
-                    color: expanded
-                        ? accent
-                        : (isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary),
-                  ),
+                  if (expanded)
+                    Icon(Icons.expand_less_rounded, size: 26, color: accent)
+                  else
+                    // Pill "+ Tambah" persis pola POS — tap → kartu melebar
+                    // ke bawah (stepper "- qty +" + subtotal + simpan).
+                    NusaAddButton(onTap: onToggle, compact: true),
                 ],
               ),
             ),

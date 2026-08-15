@@ -1005,8 +1005,18 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   }
 
   // Tap "+" → expand panel stepper. Tap lagi → collapse.
+  // Jika produk belum ada di keranjang, langsung tambahkan (qty 1) supaya
+  // kolom qty di panel selalu editable (bukan badge "0×" yang terkunci).
   void _toggleProductExpanded(Product p) {
+    final idx = _productItems.indexWhere((e) => e.$1.id == p.id);
     setState(() {
+      if (idx < 0) {
+        _productItems.add((
+          p,
+          TextEditingController(text: '1'),
+          TextEditingController(),
+        ));
+      }
       _expandedProductId = _expandedProductId == p.id.toString()
           ? ''
           : p.id.toString();
@@ -1902,37 +1912,40 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   Widget _buildProductGrid(bool isDark) {
     final count = _filteredProducts.length;
     final crossAxis = count > 24 ? 4 : (count > 8 ? 3 : 2);
-    // Ratio dinamis: colW = (lebar - padding - spacing) / kolom.
-    // Gambar persegi (colW-20) + footer (nama 2 baris + kategori + harga +
-    // stok + tombol) ≈ 150px → rasio disesuaikan supaya tombol tidak
-    // meluber keluar card di HP sempit.
-    final colW =
-        (MediaQuery.of(context).size.width - 32 - 10 * (crossAxis - 1)) /
-        crossAxis;
-    final ratio = (colW / (colW + 150)).clamp(0.55, 0.85);
-    return GridView.builder(
-      padding: EdgeInsets.zero,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxis,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: ratio,
-      ),
-      itemCount: _filteredProducts.length,
-      itemBuilder: (_, i) {
-        final p = _filteredProducts[i];
-        final idx = _productItems.indexWhere((e) => e.$1.id == p.id);
-        final qty = idx >= 0
-            ? (int.tryParse(_productItems[idx].$2.text) ?? 0)
-            : 0;
-        return _PurchaseProductCard(
-          product: p,
-          isDark: isDark,
-          qtyInCart: qty,
-          expanded: _expandedProductId == p.id.toString(),
-          qtyField: idx >= 0 ? _qtyTextField(_productItems[idx].$2) : null,
-          onToggleExpand: () => _toggleProductExpanded(p),
-          onChangeQty: (delta) => _changeCartQty(p, delta),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Ratio dinamis: colW = (lebar - padding - spacing) / kolom.
+        // Gambar persegi (colW-20) + footer konten-real (nama 2 baris +
+        // kategori + harga + stok + gap + tombol 36) → rasio pas sehingga
+        // tombol tidak pernah meluber keluar card, di 2/3/4 kolom sekalipun.
+        final colW = (constraints.maxWidth - 10 * (crossAxis - 1)) / crossAxis;
+        const footerH = 168.0; // nama 2 baris + kategori + harga + stok + aksi
+        final ratio = (colW / (colW - 20 + footerH)).clamp(0.4, 0.9);
+        return GridView.builder(
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxis,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: ratio,
+          ),
+          itemCount: _filteredProducts.length,
+          itemBuilder: (_, i) {
+            final p = _filteredProducts[i];
+            final idx = _productItems.indexWhere((e) => e.$1.id == p.id);
+            final qty = idx >= 0
+                ? (int.tryParse(_productItems[idx].$2.text) ?? 0)
+                : 0;
+            return _PurchaseProductCard(
+              product: p,
+              isDark: isDark,
+              qtyInCart: qty,
+              expanded: _expandedProductId == p.id.toString(),
+              qtyField: idx >= 0 ? _qtyTextField(_productItems[idx].$2) : null,
+              onToggleExpand: () => _toggleProductExpanded(p),
+              onChangeQty: (delta) => _changeCartQty(p, delta),
+            );
+          },
         );
       },
     );
@@ -2008,10 +2021,11 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                 ),
                 title: Text(
                   p.name,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
+                    height: 1.2,
                     fontWeight: FontWeight.w600,
                     color: textPri,
                   ),
