@@ -71,7 +71,7 @@ class ReceiptRenderConfig {
     this.footer = '',
     this.logoBytes,
     this.showLogo = true,
-    this.headerSizePx = 24,
+    this.headerPercent = 100,
     this.itemsSizePx = 12,
     this.footerSizePx = 12,
     this.logoWidthPercent = 60,
@@ -100,9 +100,9 @@ class ReceiptRenderConfig {
   final String footer; // teks footer custom (kosong → 'Terima Kasih!')
   final Uint8List? logoBytes;
   final bool showLogo;
-  final int headerSizePx; // 12..48
-  final int itemsSizePx; // 12..48
-  final int footerSizePx; // 12..48
+  final int headerPercent; // 1..100 dari lebar kertas (header/logo image)
+  final int itemsSizePx; // 12..48 (share/PDF saja)
+  final int footerSizePx; // 12..48 (share/PDF saja)
   final int logoWidthPercent; // 1..100 dari lebar kertas
 
   int get paperWidthPx => paperWidth == '80' ? 576 : 384;
@@ -116,15 +116,17 @@ const int receiptMinPx = 12;
 const int receiptMaxPx = 48;
 const int receiptLogoDefaultPercent = 60;
 
+/// Rentang slider persen (header/logo saat PRINT).
+const int receiptPercentMin = 1;
+const int receiptPercentMax = 100;
+const int receiptHeaderDefaultPercent = 100;
+
 /// Render struk menjadi PNG (bitmap hitam-putih) via Flutter canvas.
 ///
-/// SEMUA bagian (logo, header, rincian, total, footer) digambar jadi piksel
-/// di HP, lalu hasilnya dipakai:
-///   - print  → `generator.image()` (ESC * bit-image — printer cuma menggambar,
-///              tidak menafsirkan perbesaran → ukuran bebas & pasti tercetak)
-///   - preview → `Image.memory(png)`
-///   - share/PDF → PNG yang sama
-/// Artinya preview SELALU sama dengan print (satu renderer).
+/// Dipakai untuk share/PDF dan pengaturan lama — SEMUA bagian digambar jadi
+/// piksel. Untuk PRINT, hanya HEADER + LOGO yang dipakai (lihat
+/// `renderReceiptHeaderPng`); rincian & footer dicetak sebagai TEKS ESC/POS
+/// biasa (cepat) supaya print tidak lambat.
 Future<Uint8List> renderReceiptPng(ReceiptRenderConfig cfg) async {
   final paperW = cfg.paperWidthPx.toDouble();
   final padH = paperW * 0.06; // padding kiri/kanan
@@ -212,9 +214,10 @@ Future<Uint8List> renderReceiptPng(ReceiptRenderConfig cfg) async {
   final headerText = (cfg.header.isNotEmpty ? cfg.header : cfg.storeName)
       .trim();
   if (headerText.isNotEmpty) {
+    // Header = lebar 100% (skala mengikuti lebar kertas) — share/PDF.
     final t = tp(
       headerText,
-      cfg.headerSizePx.toDouble(),
+      cfg.headerPercent.clamp(1, 100).toDouble(),
       w: FontWeight.w800,
       align: TextAlign.center,
       maxW: maxTextW,
@@ -355,6 +358,108 @@ Future<Uint8List> renderReceiptPng(ReceiptRenderConfig cfg) async {
   y += draw(storeT, (paperW - storeT.width) / 2, y);
 
   y += 10;
+
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(paperW.round(), y.ceil().clamp(24, 6000));
+  picture.dispose();
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return byteData!.buffer.asUint8List();
+}
+
+/// Render HANYA bagian atas struk (logo + header) menjadi PNG — dipakai
+/// untuk PRINT bit-image (ESC \*). Ukuran header/logo memakai PERSEN dari
+/// lebar kertas (`headerPercent` & `logoWidthPercent`, 1-100), sehingga
+/// printer termal murah apa pun tetap mencetaknya sesuai slider.
+///
+/// Rincian & footer TIDAK digambar di sini — dicetak sebagai TEKS ESC/POS
+/// biasa (cepat) oleh `ReceiptPrinter`. Gambar yang dikembalikan berisi:
+/// logo (jika ada) + header (nama toko / header custom) + 1 baris kosong.
+Future<Uint8List> renderReceiptHeaderPng(ReceiptRenderConfig cfg) async {
+  final paperW = cfg.paperWidthPx.toDouble();
+  final padH = paperW * 0.06;
+  const padTop = 10.0;
+  final maxTextW = paperW - padH * 2;
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+
+  double y = padTop;
+
+  TextPainter tp(String text, double size, {
+    FontWeight? w,
+    Color color = const Color(0xFF000000),
+    TextAlign align = TextAlign.center,
+    double? maxW,
+  }) {
+    final t = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: size,
+          fontWeight: w,
+          color: color,
+          height: 1.35,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: align,
+      maxLines: null,
+    )..layout(maxWidth: maxW ?? double.infinity);
+    return t;
+  }
+
+  double draw(TextPainter t, double x, double yy) {
+    t.paint(canvas, Offset(x, yy));
+    return t.height;
+  }
+
+  // ── Logo (persen dari lebar kertas) ──
+  if (cfg.showLogo && cfg.logoBytes != null && cfg.logoBytes!.isNotEmpty) {
+    try {
+      final codec = await ui.instantiateImageCodec(cfg.logoBytes!);
+      final frame = await codec.getNextFrame();
+      final logo = frame.image;
+      final targetW = math.min(
+        logo.width.toDouble(),
+        paperW * (cfg.logoWidthPercent.clamp(1, 100) / 100),
+      );
+      final targetH = logo.height * (targetW / logo.width);
+      final dst = Rect.fromLTWH(
+        (paperW - targetW) / 2,
+        y,
+        targetW,
+        targetH,
+      );
+      canvas.drawImageRect(
+        logo,
+        Rect.fromLTWH(0, 0, logo.width.toDouble(), logo.height.toDouble()),
+        dst,
+        Paint(),
+      );
+      logo.dispose();
+      y += targetH + 8;
+    } catch (_) {
+      // Logo gagal decode → lewati.
+    }
+  }
+
+  // ── Header (persen dari lebar kertas) ──
+  final headerText = (cfg.header.isNotEmpty ? cfg.header : cfg.storeName)
+      .trim();
+  if (headerText.isNotEmpty) {
+    final t = tp(
+      headerText,
+      cfg.headerPercent.clamp(1, 100).toDouble(),
+      w: FontWeight.w800,
+      maxW: maxTextW,
+    );
+    y += draw(t, (paperW - t.width) / 2, y);
+  }
+
+  // Sisa kosong kecil — memisahkan gambar dari teks ESC/POS di bawahnya.
+  y += 6;
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(paperW.round(), y.ceil().clamp(24, 6000));

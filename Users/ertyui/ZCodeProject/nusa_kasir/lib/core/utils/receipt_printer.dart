@@ -189,9 +189,9 @@ class ReceiptPrinter {
     Uint8List? logoBytes,
     bool showLogo = true,
   }) async {
-    final headerSize = await SecureStore.getReceiptFontHeader(); // px 12..48
-    final itemsSize = await SecureStore.getReceiptFontItems(); // px 12..48
-    final footerSize = await SecureStore.getReceiptFontFooter(); // px 12..48
+    final headerPercent = await SecureStore.getReceiptFontHeader(); // 1..100
+    final itemsMode = await SecureStore.getReceiptFontItems(); // 0=kecil 1=besar
+    final footerMode = await SecureStore.getReceiptFontFooter(); // 0=kecil 1=besar
     final logoRatio = await SecureStore.getReceiptLogoWidthPercent();
     final headerText = header ?? await SecureStore.getReceiptHeader();
     final footerText = footer ?? _footerText;
@@ -227,9 +227,9 @@ class ReceiptPrinter {
       footer: footerText,
       logoBytes: logoBytes ?? _logoBytes,
       showLogo: showLogo,
-      headerSizePx: headerSize.clamp(receiptMinPx, receiptMaxPx),
-      itemsSizePx: itemsSize.clamp(receiptMinPx, receiptMaxPx),
-      footerSizePx: footerSize.clamp(receiptMinPx, receiptMaxPx),
+      headerPercent: headerPercent.clamp(1, 100),
+      itemsSizePx: itemsMode >= 1 ? 24 : 12,
+      footerSizePx: footerMode >= 1 ? 24 : 12,
       logoWidthPercent: logoRatio,
     );
   }
@@ -267,51 +267,115 @@ class ReceiptPrinter {
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paperSize, profile);
 
-    // Render struk jadi bitmap (satu-satunya sumber — preview = print).
-    final cfg = await loadRenderConfig(
-      storeName: storeName,
-      lines: lines,
-      total: total,
-      paymentMethod: paymentMethod,
-      cashierName: cashierName,
-      invoice: invoice,
-      dateStr: dateStr,
-      discount: discount,
-      cashGiven: cashGiven,
-      cashReturn: cashReturn,
-      downPayment: downPayment,
-      remainingDue: remainingDue,
-      customerName: customerName,
-      paperWidth: paperWidth,
-      orderType: orderType,
-      tableName: tableName,
-      itemNotes: itemNotes,
-      header: header == null ? null : header,
-      footer: footer,
-      logoBytes: logo,
-      showLogo: showLogo ?? true,
-    );
-    final png = await renderReceiptPng(cfg);
+    // Header & footer teks custom (header di-gambar, footer di-teks).
+    final headerText = header ?? await SecureStore.getReceiptHeader() ?? '';
+    final footerText = footer ?? _footerText;
+
+    // Mode teks rincian/footer: 0 = Kecil (×1), 1 = Besar (×2).
+    final itemsMode = await SecureStore.getReceiptFontItems();
+    final footerMode = await SecureStore.getReceiptFontFooter();
 
     final List<int> bytes = [];
     // ESC @ Reset: bersihkan state printer (bit-image mode sebelumnya dll).
     bytes.addAll(generator.reset());
 
-    // ── Cetak struk sebagai GAMBAR (ESC * bit-image) ──
-    // Printer cuma menggambar piksel — tidak menafsirkan perbesaran teks.
-    // Jalur ini SAMA dengan logo yang selama ini selalu muncul di printer
-    // user, jadi hasilnya pasti tampil (ukuran bebas 12-48px).
+    // ── Bagian ATAS (logo + header) = GAMBAR (ESC * bit-image) ──
+    // Ukuran diatur PERSEN dari lebar kertas (1-100) — printer cuma
+    // menggambar piksel, jadi ukuran header/logo PASTI tercetak sesuai
+    // slider, di printer termal murah apa pun.
+    final headerCfg = ReceiptRenderConfig(
+      storeName: storeName,
+      lines: const [],
+      total: 0,
+      paperWidth: paperWidth,
+      header: headerText,
+      footer: '',
+      logoBytes: logo,
+      showLogo: showLogo ?? true,
+    );
     try {
-      final receiptImage = img.decodeImage(png);
-      if (receiptImage != null) {
-        bytes.addAll(generator.image(receiptImage, align: PosAlign.center));
+      final headerPng = await renderReceiptHeaderPng(headerCfg);
+      final headerImage = img.decodeImage(headerPng);
+      if (headerImage != null) {
+        bytes.addAll(generator.image(headerImage, align: PosAlign.center));
         bytes.addAll(generator.reset());
-      } else {
-        return false;
       }
     } catch (_) {
-      return false;
+      // Header gagal dirender → lewati, struk teks tetap jalan.
     }
+
+    // ── Bagian TENGAH & BAWAH (info, rincian, TOTAL, footer) = TEKS ──
+    // Teks ESC/POS biasa → print CEPAT. Mode Kecil(×1)/Besar(×2) dijamin
+    // selalu tercetak di printer murah (×3+ tidak dipakai).
+    void text(String t, {PosTextSize size = PosTextSize.size1}) {
+      bytes.addAll(
+        generator.text(
+          t,
+          styles: PosStyles(height: size, width: size),
+        ),
+      );
+    }
+
+    text('');
+    if (invoice.isNotEmpty) text(invoice);
+    if (dateStr.isNotEmpty) text(dateStr);
+    text('');
+    if (cashierName != null && cashierName.isNotEmpty) {
+      text('Kasir: $cashierName');
+    }
+    if (customerName != null && customerName.isNotEmpty) {
+      text('Pelanggan: $customerName');
+    }
+    if (orderType != null && orderType.isNotEmpty) {
+      final label = tableName != null && tableName.isNotEmpty
+          ? '$orderType - $tableName'
+          : orderType;
+      text(label);
+    }
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+
+    final itemsSize = itemsMode >= 1 ? PosTextSize.size2 : PosTextSize.size1;
+    final smallSize = PosTextSize.size1;
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      text(line.name, size: itemsSize);
+      final qtyTxt = '${line.qty} x ${_fmt(line.price)}';
+      final discSuffix = line.hasDiscount
+          ? '( -${_fmt(line.discountTotal)} ) '
+          : '';
+      final subtotalTxt = '${discSuffix}${_fmt(line.subtotal)}';
+      // Baris qty × harga di kiri, subtotal di kanan — rata kanan penuh.
+      final note = (itemNotes != null && i < itemNotes.length)
+          ? itemNotes[i]
+          : null;
+      if (note != null && note.isNotEmpty) {
+        text('  > $note', size: smallSize);
+      }
+      text('$qtyTxt', size: smallSize);
+      text(subtotalTxt, size: smallSize);
+    }
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+
+    text('TOTAL', size: PosTextSize.size2);
+    text(_fmt(total), size: PosTextSize.size2);
+    if (discount > 0) {
+      text('Diskon -${_fmt(discount)}', size: smallSize);
+    }
+    if (downPayment > 0) {
+      text('Bayar (${paymentMethod ?? ''}) ${_fmt(downPayment)}', size: smallSize);
+      text('Sisa Piutang ${_fmt(remainingDue)}', size: smallSize);
+    } else if (paymentMethod != null && paymentMethod.isNotEmpty) {
+      text('Bayar (${paymentMethod}) ${_fmt(cashGiven ?? total)}', size: smallSize);
+    }
+    if (cashReturn != null && cashReturn > 0 && downPayment <= 0) {
+      text('Kembali ${_fmt(cashReturn)}', size: smallSize);
+    }
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+
+    if (footerText.isNotEmpty) {
+      text(footerText, size: footerMode >= 1 ? PosTextSize.size2 : PosTextSize.size1);
+    }
+    text(storeName, size: smallSize);
 
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
@@ -466,7 +530,7 @@ class ReceiptPrinter {
       itemNotes: itemNotes,
       footer: '',
       header: 'DAPUR',
-      headerSizePx: 24,
+      headerPercent: 24,
       itemsSizePx: 14,
       footerSizePx: 12,
     );
@@ -519,15 +583,29 @@ class ReceiptPrinter {
     return Uint8List.fromList([0x1B, 0x70, m, 0x19, 0x19]);
   }
 
-  /// Print a TEST KALIBRASI — mencetak satu struk contoh (bit-image) dengan
-  /// ukuran header/rincian/footer yang sedang dipilih, plus baris "semua
-  /// ukuran" supaya user langsung melihat ukuran slider bekerja di kertas.
+  /// Format angka jadi "Rp1.234" ringkas untuk teks struk.
+  static String _fmt(int v) {
+    final s = v.toString();
+    final buf = StringBuffer('Rp');
+    for (int i = 0; i < s.length; i++) {
+      buf.write(s[i]);
+      final remaining = s.length - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) buf.write('.');
+    }
+    return buf.toString();
+  }
+
+  /// Print a TEST KALIBRASI — header (image) sesuai persen, lalu baris
+  /// rincian Kecil(×1)/Besar(×2) dan footer Kecil/Besar, plus garis ukuran
+  /// penuh supaya user langsung melihat ukuran di kertas.
   Future<bool> printTest(
     String storeName, {
     String paperWidth = '58',
-    int headerSize = 24,
-    int itemsSize = 12,
-    int footerSize = 12,
+    int headerPercent = 100,
+    int itemsMode = 0,
+    int footerMode = 0,
+    Uint8List? logo,
+    bool showLogo = true,
   }) async {
     final connected = await BluetoothUtils.isConnected();
     if (!connected) return false;
@@ -536,34 +614,55 @@ class ReceiptPrinter {
     final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
     final generator = Generator(paperSize, profile);
 
-    final cfg = ReceiptRenderConfig(
-      storeName: storeName,
-      lines: [
-        ReceiptRenderLine(name: 'Tes Ukuran Font', qty: 1, price: 0),
-        ReceiptRenderLine(name: 'Header ${headerSize}px', qty: 1, price: 0),
-        ReceiptRenderLine(name: 'Rincian ${itemsSize}px', qty: 1, price: 0),
-        ReceiptRenderLine(name: 'Footer ${footerSize}px', qty: 1, price: 0),
-        ReceiptRenderLine(name: 'Struk kini dicetak sebagai gambar', qty: 1, price: 0),
-      ],
-      total: 0,
-      paperWidth: paperWidth,
-      headerSizePx: headerSize.clamp(receiptMinPx, receiptMaxPx),
-      itemsSizePx: itemsSize.clamp(receiptMinPx, receiptMaxPx),
-      footerSizePx: footerSize.clamp(receiptMinPx, receiptMaxPx),
-      footer: '',
-    );
-
-    final png = await renderReceiptPng(cfg);
-    final receiptImage = img.decodeImage(png);
-    if (receiptImage == null) return false;
-
     final List<int> bytes = [];
     bytes.addAll(generator.reset());
-    bytes.addAll(generator.image(receiptImage, align: PosAlign.center));
-    bytes.addAll(generator.reset());
+
+    // Header sebagai GAMBAR (bit-image) — seperti print struk asli.
+    final headerCfg = ReceiptRenderConfig(
+      storeName: storeName,
+      lines: const [],
+      total: 0,
+      paperWidth: paperWidth,
+      header: '',
+      footer: '',
+      logoBytes: logo,
+      showLogo: showLogo,
+    );
+    try {
+      final headerPng = await renderReceiptHeaderPng(headerCfg);
+      final headerImage = img.decodeImage(headerPng);
+      if (headerImage != null) {
+        bytes.addAll(generator.image(headerImage, align: PosAlign.center));
+        bytes.addAll(generator.reset());
+      }
+    } catch (_) {}
+
+    void text(String t, {PosTextSize size = PosTextSize.size1}) {
+      bytes.addAll(
+        generator.text(
+          t,
+          styles: PosStyles(height: size, width: size),
+        ),
+      );
+    }
+
+    text('');
+    text('= TEST KALIBRASI =');
+    text('Header: ${headerPercent}%');
+    text('Rincian: ${itemsMode >= 1 ? 'BESAR' : 'kecil'}');
+    text('Footer: ${footerMode >= 1 ? 'BESAR' : 'kecil'}');
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+    text('Baris rincian KECIL (x1)', size: PosTextSize.size1);
+    text('Baris rincian BESAR (x2)', size: PosTextSize.size2);
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+    text('Footer KECIL (x1)', size: PosTextSize.size1);
+    text('Footer BESAR (x2)', size: PosTextSize.size2);
+    bytes.addAll(generator.text('--------------------------------', styles: const PosStyles()));
+    text('Jika garis penuh terpotong,', size: PosTextSize.size1);
+    text('pilih kertas 80mm di pengaturan.', size: PosTextSize.size1);
+
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
-
     return await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
   }
 

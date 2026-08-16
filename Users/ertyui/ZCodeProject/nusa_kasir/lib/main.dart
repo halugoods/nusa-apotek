@@ -270,19 +270,19 @@ void main() async {
       await _receiveAtLaunch();
     } catch (_) {}
 
-    // Reset pengaturan struk ke v2 (bit-image, ukuran pixel) SEKALI saat
-    // upgrade ke v2.2.24+76 — nilai lama (perbesaran ESC/POS 1-5) tidak
-    // kompatibel dengan kamus pixel 12-48 baru, jadi dibersihkan ke default
-    // (Header 24, Rincian 12, Footer 12, Logo 60%, Font Standar).
+    // Reset pengaturan struk ke v3 (hybrid: header image persen + teks
+    // kecil/besar) SEKALI saat upgrade ke v2.2.25+77 — kamus v2.2.24
+    // (pixel 12-48) tidak kompatibel dengan mode baru, jadi dibersihkan ke
+    // default (Header 100%, Rincian Kecil, Footer Kecil, Logo 60%).
     try {
       if (!await SecureStore.getReceiptV2ResetDone()) {
         await SecureStore.setReceiptFontType('standar');
-        await SecureStore.setReceiptFontHeader(receiptHeaderDefaultPx);
-        await SecureStore.setReceiptFontItems(receiptItemsDefaultPx);
-        await SecureStore.setReceiptFontFooter(receiptFooterDefaultPx);
+        await SecureStore.setReceiptFontHeader(receiptHeaderDefaultPercent);
+        await SecureStore.setReceiptFontItems(0);
+        await SecureStore.setReceiptFontFooter(0);
         await SecureStore.setReceiptLogoWidthPercent(receiptLogoDefaultPercent);
         await SecureStore.setReceiptV2ResetDone();
-        debugPrint('[Receipt] pengaturan struk di-reset ke v2 (bit-image)');
+        debugPrint('[Receipt] pengaturan struk di-reset ke v3 (hybrid)');
       }
     } catch (_) {}
 

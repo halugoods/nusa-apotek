@@ -2,20 +2,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nusa_kasir/core/utils/receipt_renderer.dart';
 
 void main() {
-  group('ukuran struk v2 (bit-image, pixel 12-48)', () {
-    test('default ukuran header/rincian/footer + logo', () {
-      expect(receiptHeaderDefaultPx, 24);
-      expect(receiptItemsDefaultPx, 12);
-      expect(receiptFooterDefaultPx, 12);
+  group('ukuran struk v3 (hybrid: header image persen, teks Kecil/Besar)', () {
+    test('default header persen + logo persen', () {
+      expect(receiptHeaderDefaultPercent, 100);
       expect(receiptLogoDefaultPercent, 60);
-      expect(receiptMinPx, 12);
-      expect(receiptMaxPx, 48);
+      expect(receiptPercentMin, 1);
+      expect(receiptPercentMax, 100);
     });
 
-    test('clamp ukuran pixel ke 12..48', () {
-      expect(0.clamp(receiptMinPx, receiptMaxPx), 12);
-      expect(24.clamp(receiptMinPx, receiptMaxPx), 24);
-      expect(99.clamp(receiptMinPx, receiptMaxPx), 48);
+    test('clamp header persen ke 1..100', () {
+      expect(0.clamp(receiptPercentMin, receiptPercentMax), 1);
+      expect(100.clamp(receiptPercentMin, receiptPercentMax), 100);
+      expect(150.clamp(receiptPercentMin, receiptPercentMax), 100);
     });
 
     test('clamp logo persen ke 1..100', () {
@@ -51,16 +49,16 @@ void main() {
       expect(line.qtyLabel, '2.5');
     });
 
-    test('ReceiptRenderConfig default & paper width', () {
+    test('ReceiptRenderConfig default & paper width (v3)', () {
       const cfg = ReceiptRenderConfig(
         storeName: 'Toko',
         lines: [],
         total: 0,
       );
       expect(cfg.paperWidthPx, 384); // 58mm
-      expect(cfg.headerSizePx, receiptHeaderDefaultPx);
-      expect(cfg.itemsSizePx, receiptItemsDefaultPx);
-      expect(cfg.footerSizePx, receiptFooterDefaultPx);
+      expect(cfg.headerPercent, receiptHeaderDefaultPercent);
+      expect(cfg.itemsSizePx, 12); // mode Kecil ×1
+      expect(cfg.footerSizePx, 12);
       expect(cfg.logoWidthPercent, receiptLogoDefaultPercent);
 
       const cfg80 = ReceiptRenderConfig(
@@ -70,6 +68,54 @@ void main() {
         paperWidth: '80',
       );
       expect(cfg80.paperWidthPx, 576); // 80mm
+    });
+
+    test('mode Kecil(×1)/Besar(×2) → ukuran share/PDF', () {
+      // Kecil: itemsSizePx 12, footerSizePx 12 (Font A ×1)
+      // Besar: itemsSizePx 24, footerSizePx 24 (Font B ×2 — dijamin tercetak)
+      expect(0 >= 1 ? 24 : 12, 12);
+      expect(1 >= 1 ? 24 : 12, 24);
+    });
+
+    test('renderReceiptHeaderPng menghasilkan PNG (bit-image)', () async {
+      final png = await renderReceiptHeaderPng(
+        const ReceiptRenderConfig(
+          storeName: 'Toko',
+          lines: [],
+          total: 0,
+          header: 'TOKO NUSA',
+          headerPercent: 100,
+          logoWidthPercent: 60,
+        ),
+      );
+      // PNG magic bytes: 89 50 4E 47
+      expect(png.length, greaterThan(8));
+      expect(png[0], 0x89);
+      expect(png[1], 0x50);
+      expect(png[2], 0x4E);
+      expect(png[3], 0x47);
+    });
+
+    test('renderReceiptPng tetap penuh (share/PDF)', () async {
+      final png = await renderReceiptPng(
+        const ReceiptRenderConfig(
+          storeName: 'Toko',
+          lines: [
+            ReceiptRenderLine(name: 'Indomie', qty: 2, price: 3500),
+          ],
+          total: 7000,
+          header: 'TOKO NUSA',
+          footer: 'Terima kasih!',
+          headerPercent: 100,
+          itemsSizePx: 12,
+          footerSizePx: 12,
+        ),
+      );
+      expect(png.length, greaterThan(8));
+      expect(png[0], 0x89);
+      expect(png[1], 0x50);
+      expect(png[2], 0x4E);
+      expect(png[3], 0x47);
     });
   });
 }

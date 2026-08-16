@@ -212,41 +212,45 @@ class SecureStore {
   static Future<String?> getReceiptHeader() =>
       SecureStore.read(key: 'nusa_receipt_header_text');
 
-  // -- Receipt font settings (v2.2.24+76: bit-image, ukuran px 12-48 slider) --
-  // SEMUA struk dicetak sebagai gambar (bit-image) — ukuran di SecureStore
-  // adalah PIXEL literal 12..48 (slider step 1), bukan perbesaran ESC/POS.
-  // 'standar' = Font A monospace | 'kompak' = Font B monospace (kerampingan).
+  // -- Receipt settings (v2.2.25+77: hybrid — header image + teks) --
+  // PRINT: header+logo = GAMBAR (bit-image) diatur PERSEN dari lebar kertas
+  // (1-100); rincian+footer = TEKS ESC/POS biasa dengan mode Kecil(0)/Besar(1)
+  // (×1/×2 — dijamin selalu tercetak di printer murah, print cepat).
+  // SHARE/PDF: full render PNG (mode kecil/besar → 12/24px).
   static Future<void> setReceiptFontType(String v) =>
       SecureStore.write(key: 'nusa_receipt_font_type', value: v);
   static Future<String> getReceiptFontType() async =>
       (await SecureStore.read(key: 'nusa_receipt_font_type')) ?? 'standar';
 
-  /// Ukuran pixel header struk (12-48). Default 24.
+  /// Ukuran header struk saat PRINT — PERSEN dari lebar kertas (1-100).
+  /// Default 100 (selebar kertas).
   static Future<void> setReceiptFontHeader(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_header', value: v.toString());
   static Future<int> getReceiptFontHeader() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_header') ?? '',
       ) ??
-      receiptHeaderDefaultPx;
+      receiptHeaderDefaultPercent;
 
-  /// Ukuran pixel rincian item (12-48). Default 12.
+  /// Mode rincian item saat PRINT: 0 = Kecil (×1), 1 = Besar (×2).
+  /// Default 0 (Kecil).
   static Future<void> setReceiptFontItems(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
   static Future<int> getReceiptFontItems() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_items') ?? '',
       ) ??
-      receiptItemsDefaultPx;
+      0;
 
-  /// Ukuran pixel footer struk (12-48). Default 12.
+  /// Mode footer saat PRINT: 0 = Kecil (×1), 1 = Besar (×2).
+  /// Default 0 (Kecil).
   static Future<void> setReceiptFontFooter(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_footer', value: v.toString());
   static Future<int> getReceiptFontFooter() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '',
       ) ??
-      receiptFooterDefaultPx;
+      0;
 
   /// Lebar logo struk dalam PERSEN lebar kertas (1..100). Default 60.
   static Future<void> setReceiptLogoWidthPercent(int v) =>
@@ -257,13 +261,13 @@ class SecureStore {
       ) ??
       receiptLogoDefaultPercent;
 
-  /// Flag "reset pengaturan struk ke v2 (bit-image)" — dijalankan SEKALI
-  /// saat upgrade ke v2.2.24+76, membersihkan nilai lama (perbesaran 1-5)
-  /// yang tidak kompatibel dengan kamus pixel baru.
+  /// Flag "reset pengaturan struk ke v3 (hybrid: header image + teks)" —
+  /// dijalankan SEKALI saat upgrade ke v2.2.25+77, karena kamus ukuran
+  /// berubah total (header px → persen; rincian/footer px → kecil/besar).
   static Future<bool> getReceiptV2ResetDone() async =>
-      (await SecureStore.read(key: 'nusa_receipt_v2_reset_done')) == '1';
+      (await SecureStore.read(key: 'nusa_receipt_v3_reset_done')) == '1';
   static Future<void> setReceiptV2ResetDone() =>
-      SecureStore.write(key: 'nusa_receipt_v2_reset_done', value: '1');
+      SecureStore.write(key: 'nusa_receipt_v3_reset_done', value: '1');
 
   /// PIN cash drawer (2 atau 5).
   static Future<void> setCashDrawerPin(int v) =>

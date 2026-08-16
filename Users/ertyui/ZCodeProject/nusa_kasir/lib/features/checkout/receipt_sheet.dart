@@ -553,39 +553,274 @@ class ReceiptSheet extends ConsumerWidget {
     );
   }
 
-  /// Preview struk = PNG yang SAMA dengan yang dicetak printer (bit-image).
-  /// Data transaksi asli dirender via `renderReceiptPng` dengan pengaturan
-  /// dari SecureStore — preview tidak mungkin beda dengan print.
+  /// Preview struk = widget NYATA (bukan PNG) yang meniru hasil print:
+  /// header + logo digambar sebagai image dengan skala PERSEN dari lebar
+  /// kertas (sama seperti bit-image di printer), rincian & footer sebagai
+  /// teks mode Kecil(×1)/Besar(×2) — persis alur print hybrid v2.2.25.
   Widget _receiptPreview(
     BuildContext context,
     String storeName,
     bool isDark,
     _ReceiptSettings s,
   ) {
-    final paperW = s.paperWidth == '80' ? 330 : 250;
-    return FutureBuilder<Uint8List?>(
-      future: _renderPng(s, real: true),
-      builder: (context, snap) {
-        if (snap.hasData && snap.data != null) {
-          return Image.memory(
-            snap.data!,
-            width: paperW.toDouble(),
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-          );
-        }
-        return Container(
-          height: 320,
-          alignment: Alignment.center,
-          child: const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+    final paperW = s.paperWidth == '80' ? 330.0 : 250.0;
+    final headerScale = s.fontHeader.clamp(1, 100) / 100;
+    final logoScale = s.logoPercent.clamp(1, 100) / 100;
+    final itemsBig = s.fontItems >= 1;
+    final footerBig = s.fontFooter >= 1;
+
+    final mono = TextStyle(
+      fontFamily: 'monospace',
+      color: isDark ? NusaConfig.darkTextPrimary : Colors.black,
+      fontSize: 11,
+      height: 1.35,
+    );
+    final monoBold = mono.copyWith(fontWeight: FontWeight.w800);
+    final monoGrey = mono.copyWith(
+      color: isDark ? NusaConfig.darkTextSecondary : Colors.grey.shade600,
+    );
+    final itemsStyle = itemsBig ? mono.copyWith(fontSize: 15) : mono;
+    final smallStyle = itemsBig ? mono.copyWith(fontSize: 11) : monoGrey;
+    final footerStyle = footerBig
+        ? mono.copyWith(fontSize: 13, fontWeight: FontWeight.w700)
+        : mono.copyWith(fontSize: 11, fontWeight: FontWeight.w700);
+
+    // Header yang benar-benar dicetak sebagai image: header custom jika ada,
+    // fallback nama toko.
+    final headerText = s.header.trim().isNotEmpty
+        ? s.header.trim()
+        : (storeName.isNotEmpty ? storeName : 'NUSA Kasir');
+    final footerText = s.footer.trim().isNotEmpty
+        ? s.footer.trim()
+        : 'Terima Kasih!';
+
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Logo (image, skala persen) — sama dengan bit-image print ──
+          if (s.showLogo && s.logoPath != null && s.logoPath!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Center(
+                child: Image.file(
+                  File(s.logoPath!),
+                  width: paperW * logoScale,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          // ── Header (image, skala persen) ──
+          Center(
+            child: Text(
+              headerText,
+              style: monoBold.copyWith(fontSize: 12 * headerScale),
+              textAlign: TextAlign.center,
+            ),
           ),
-        );
-      },
+          if (s.showInvoice && invoice != null && invoice!.isNotEmpty)
+            Center(child: Text(invoice!, style: smallStyle)),
+          if (s.showDate && dateStr != null && dateStr!.isNotEmpty)
+            Center(child: Text(dateStr!, style: smallStyle)),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          if (s.showCashier && cashierName != null && cashierName!.isNotEmpty)
+            Text('Kasir: $cashierName', style: smallStyle),
+          if (customerName != null && customerName!.isNotEmpty)
+            Text('Pelanggan: $customerName', style: smallStyle),
+          if (orderType != null && orderType!.isNotEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  tableName != null && tableName!.isNotEmpty
+                      ? '$orderType - $tableName'
+                      : orderType!,
+                  style: monoBold,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          if (laundryOrderId != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  '#LND-${laundryOrderId.toString().padLeft(3, '0')} • Baru',
+                  style: monoBold,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          if (salonBookingId != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  '#BKG-${salonBookingId.toString().padLeft(3, '0')} • Dikonfirmasi',
+                  style: monoBold,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          // ── Rincian (teks mode Kecil/Besar — seperti print) ──
+          ...items.map(
+            (i) => _previewItem(i, itemsStyle, smallStyle),
+          ),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL', style: monoBold),
+              Text(_fmtPreview(total), style: monoBold),
+            ],
+          ),
+          if (discount > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Diskon', style: smallStyle),
+                  Text('-${_fmtPreview(discount)}', style: smallStyle),
+                ],
+              ),
+            ),
+          if (downPayment > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Bayar ($paymentMethod)', style: smallStyle),
+                  Text(_fmtPreview(downPayment), style: smallStyle),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Sisa Piutang', style: smallStyle),
+                  Text(_fmtPreview(remainingDue), style: smallStyle),
+                ],
+              ),
+            ),
+          ] else ...[
+            if (paymentMethod.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Bayar ($paymentMethod)', style: smallStyle),
+                    Text(_fmtPreview(cashGiven ?? total), style: smallStyle),
+                  ],
+                ),
+              ),
+            if (cashReturn != null && cashReturn! > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Kembali', style: smallStyle),
+                    Text(_fmtPreview(cashReturn!), style: smallStyle),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 8),
+          if (footerText.isNotEmpty)
+            Center(
+              child: Text(
+                footerText,
+                style: footerStyle,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          Center(child: Text(storeName, style: smallStyle)),
+        ],
+      ),
     );
   }
+
+  /// Baris item preview — nama (teks mode), lalu qty × harga + diskon kurung
+  /// + subtotal, persis layout print hybrid.
+  Widget _previewItem(_ReceiptItem item, TextStyle itemsStyle, TextStyle smallStyle) {
+    final isPerKg = item.isPerKg;
+    final qtyLabel = isPerKg
+        ? '${item.weightKg!.toStringAsFixed(1)} kg'
+        : '${item.qty}';
+    final unitPrice = item.price;
+    final qtyTxt = isPerKg
+        ? '$qtyLabel x ${_fmtPreview(unitPrice)}/kg'
+        : '$qtyLabel x ${_fmtPreview(unitPrice)}';
+    final discSuffix = item.hasDiscount
+        ? '( -${_fmtPreview(item.discountTotal)} ) '
+        : '';
+    final subtotalTxt = isPerKg
+        ? _fmtPreview((item.price * item.weightKg!).ceil())
+        : _fmtPreview(item.qty * item.price);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(item.name, style: itemsStyle),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(qtyTxt, style: smallStyle),
+              Text('$discSuffix$subtotalTxt', style: smallStyle),
+            ],
+          ),
+          if (item.note != null && item.note!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                '  > ${item.note}',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Format angka "Rp1.234" ringkas (sama dengan teks print).
+  static String _fmtPreview(int v) {
+    final s = v.toString();
+    final buf = StringBuffer('Rp');
+    for (int i = 0; i < s.length; i++) {
+      buf.write(s[i]);
+      final remaining = s.length - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) buf.write('.');
+    }
+    return buf.toString();
+  }
+
+  Widget _dashedPreviewLine() => SizedBox(
+    height: 2,
+    child: CustomPaint(painter: _DashPainterPreview()),
+  );
 
   /// Render PNG struk via `renderReceiptPng` — SATU-SATUNYA sumber untuk
   /// preview, print (bit-image), share, dan PDF.
@@ -646,9 +881,11 @@ class ReceiptSheet extends ConsumerWidget {
         orderType: orderType,
         tableName: tableName,
         itemNotes: items.map((i) => i.note).toList(),
-        headerSizePx: s.fontHeader.clamp(receiptMinPx, receiptMaxPx),
-        itemsSizePx: s.fontItems.clamp(receiptMinPx, receiptMaxPx),
-        footerSizePx: s.fontFooter.clamp(receiptMinPx, receiptMaxPx),
+        // v2.2.25 hybrid: header persen 1-100 (image), rincian/footer mode
+        // Kecil(×1)/Besar(×2) → ukuran share/PDF mengikuti mode yang dipilih.
+        headerPercent: s.fontHeader.clamp(1, 100),
+        itemsSizePx: s.fontItems >= 1 ? 24 : 12,
+        footerSizePx: s.fontFooter >= 1 ? 24 : 12,
         logoWidthPercent: s.logoPercent.clamp(1, 100),
       );
     }
@@ -682,9 +919,9 @@ class ReceiptSheet extends ConsumerWidget {
       invoice: s.showInvoice ? 'INV-001' : '',
       dateStr: s.showDate ? '25 Jul 2026  14:30 WIB' : '',
       paperWidth: paperWidth,
-      headerSizePx: s.fontHeader.clamp(receiptMinPx, receiptMaxPx),
-      itemsSizePx: s.fontItems.clamp(receiptMinPx, receiptMaxPx),
-      footerSizePx: s.fontFooter.clamp(receiptMinPx, receiptMaxPx),
+      headerPercent: s.fontHeader.clamp(1, 100),
+      itemsSizePx: s.fontItems >= 1 ? 24 : 12,
+      footerSizePx: s.fontFooter >= 1 ? 24 : 12,
       logoWidthPercent: s.logoPercent.clamp(1, 100),
     );
   }
@@ -987,7 +1224,8 @@ class _ReceiptSettings {
   final String header;
   final String footer;
   final String? logoPath;
-  // Font struk (mirror SecureStore): jenis 'standar'/'kompak' + ukuran pixel.
+  // Font struk (mirror SecureStore): header persen 1-100 (image), rincian &
+  // footer mode 0=Kecil(×1) / 1=Besar(×2).
   final String fontType;
   final int fontHeader;
   final int fontItems;
@@ -1006,11 +1244,36 @@ class _ReceiptSettings {
     this.footer = '',
     this.logoPath,
     this.fontType = 'standar',
-    this.fontHeader = receiptHeaderDefaultPx,
-    this.fontItems = receiptItemsDefaultPx,
-    this.fontFooter = receiptFooterDefaultPx,
+    this.fontHeader = receiptHeaderDefaultPercent,
+    this.fontItems = 0,
+    this.fontFooter = 0,
     this.logoPercent = receiptLogoDefaultPercent,
     this.paperWidth = '58',
   });
+}
+
+/// Garis putus-putus tipis di preview struk (meniru hasil print).
+class _DashPainterPreview extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    final dashW = 5.0;
+    final gapW = 2.5;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset((x + dashW).clamp(0, size.width), 0),
+        paint,
+      );
+      x += dashW + gapW;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 

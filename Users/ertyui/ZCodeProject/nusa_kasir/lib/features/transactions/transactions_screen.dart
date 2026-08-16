@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -786,32 +785,231 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
-  /// Preview struk = PNG yang SAMA dengan yang dicetak printer (bit-image).
+  /// Preview struk = widget NYATA (bukan PNG) yang meniru hasil print:
+  /// header + logo sebagai image skala persen (bit-image di printer),
+  /// rincian & footer sebagai teks mode Kecil(×1)/Besar(×2) — persis alur
+  /// print hybrid v2.2.25. Share/unduh tetap PNG full (`_captureReceipt`).
   Widget _buildReceiptPreview(_SharePreviewData data) {
-    final paperW = data.cfg.paperWidth == '80' ? 330 : 250;
-    return FutureBuilder<Uint8List?>(
-      future: renderReceiptPng(data.cfg),
-      builder: (context, snap) {
-        if (snap.hasData && snap.data != null) {
-          return Image.memory(
-            snap.data!,
-            width: paperW.toDouble(),
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-          );
-        }
-        return Container(
-          height: 320,
-          alignment: Alignment.center,
-          child: const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+    final cfg = data.cfg;
+    final paperW = cfg.paperWidth == '80' ? 330.0 : 250.0;
+    final headerScale = cfg.headerPercent.clamp(1, 100) / 100;
+    final logoScale = cfg.logoWidthPercent.clamp(1, 100) / 100;
+    final itemsBig = cfg.itemsSizePx >= 24;
+    final footerBig = cfg.footerSizePx >= 24;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final mono = TextStyle(
+      fontFamily: 'monospace',
+      color: isDark ? NusaConfig.darkTextPrimary : Colors.black,
+      fontSize: 11,
+      height: 1.35,
+    );
+    final monoBold = mono.copyWith(fontWeight: FontWeight.w800);
+    final monoGrey = mono.copyWith(
+      color: isDark ? NusaConfig.darkTextSecondary : Colors.grey.shade600,
+    );
+    final itemsStyle = itemsBig ? mono.copyWith(fontSize: 15) : mono;
+    final smallStyle = itemsBig ? mono.copyWith(fontSize: 11) : monoGrey;
+    final footerStyle = footerBig
+        ? mono.copyWith(fontSize: 13, fontWeight: FontWeight.w700)
+        : mono.copyWith(fontSize: 11, fontWeight: FontWeight.w700);
+
+    final headerText = cfg.header.trim().isNotEmpty
+        ? cfg.header.trim()
+        : (cfg.storeName.isNotEmpty ? cfg.storeName : 'NUSA Kasir');
+    final footerText = cfg.footer.trim().isNotEmpty
+        ? cfg.footer.trim()
+        : 'Terima Kasih!';
+
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Logo (image, skala persen) — sama dengan bit-image print ──
+          if (cfg.showLogo && cfg.logoBytes != null && cfg.logoBytes!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Center(
+                child: Image.memory(
+                  cfg.logoBytes!,
+                  width: paperW * logoScale,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          // ── Header (image, skala persen) ──
+          Center(
+            child: Text(
+              headerText,
+              style: monoBold.copyWith(fontSize: 12 * headerScale),
+              textAlign: TextAlign.center,
+            ),
           ),
-        );
-      },
+          if (cfg.invoice.isNotEmpty)
+            Center(child: Text(cfg.invoice, style: smallStyle)),
+          if (cfg.dateStr.isNotEmpty)
+            Center(child: Text(cfg.dateStr, style: smallStyle)),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          if (cfg.cashierName != null && cfg.cashierName!.isNotEmpty)
+            Text('Kasir: ${cfg.cashierName}', style: smallStyle),
+          if (cfg.customerName != null && cfg.customerName!.isNotEmpty)
+            Text('Pelanggan: ${cfg.customerName}', style: smallStyle),
+          if (cfg.orderType != null && cfg.orderType!.isNotEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  cfg.tableName != null && cfg.tableName!.isNotEmpty
+                      ? '${cfg.orderType} - ${cfg.tableName}'
+                      : cfg.orderType!,
+                  style: monoBold,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          // ── Rincian (teks mode Kecil/Besar — seperti print) ──
+          ...cfg.lines.map(
+            (l) => _previewItem(l, itemsStyle, smallStyle),
+          ),
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL', style: monoBold),
+              Text(_fmtPreview(cfg.total), style: monoBold),
+            ],
+          ),
+          if (cfg.discount > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Diskon', style: smallStyle),
+                  Text('-${_fmtPreview(cfg.discount)}', style: smallStyle),
+                ],
+              ),
+            ),
+          if (cfg.downPayment > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Bayar (${cfg.paymentMethod ?? ''})', style: smallStyle),
+                  Text(_fmtPreview(cfg.downPayment), style: smallStyle),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Sisa Piutang', style: smallStyle),
+                  Text(_fmtPreview(cfg.remainingDue), style: smallStyle),
+                ],
+              ),
+            ),
+          ] else ...[
+            if (cfg.paymentMethod != null && cfg.paymentMethod!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Bayar (${cfg.paymentMethod})', style: smallStyle),
+                    Text(_fmtPreview(cfg.cashGiven ?? cfg.total), style: smallStyle),
+                  ],
+                ),
+              ),
+            if (cfg.cashReturn != null && cfg.cashReturn! > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Kembali', style: smallStyle),
+                    Text(_fmtPreview(cfg.cashReturn!), style: smallStyle),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 6),
+          _dashedPreviewLine(),
+          const SizedBox(height: 8),
+          if (footerText.isNotEmpty)
+            Center(
+              child: Text(
+                footerText,
+                style: footerStyle,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          Center(child: Text(cfg.storeName, style: smallStyle)),
+        ],
+      ),
     );
   }
+
+  Widget _previewItem(
+    ReceiptRenderLine line,
+    TextStyle itemsStyle,
+    TextStyle smallStyle,
+  ) {
+    final qtyTxt = line.isPerKg
+        ? '${line.qtyLabel} x ${_fmtPreview(line.price)}/kg'
+        : '${line.qtyLabel} x ${_fmtPreview(line.price)}';
+    final discSuffix = line.hasDiscount
+        ? '( -${_fmtPreview(line.discountTotal)} ) '
+        : '';
+    final subtotalTxt = line.isPerKg
+        ? _fmtPreview((line.price * line.weightKg!).ceil())
+        : _fmtPreview(line.subtotal);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(line.name, style: itemsStyle),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(qtyTxt, style: smallStyle),
+              Text('$discSuffix$subtotalTxt', style: smallStyle),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Format angka "Rp1.234" ringkas (sama dengan teks print).
+  static String _fmtPreview(int v) {
+    final s = v.toString();
+    final buf = StringBuffer('Rp');
+    for (int i = 0; i < s.length; i++) {
+      buf.write(s[i]);
+      final remaining = s.length - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) buf.write('.');
+    }
+    return buf.toString();
+  }
+
+  Widget _dashedPreviewLine() => SizedBox(
+    height: 2,
+    child: CustomPaint(painter: _DashPainterPreview()),
+  );
 
   Future<void> _showShareSheet(
     Transaction tx,
@@ -873,9 +1071,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         cashReturn: tx.cashReturn,
         customerName: custName,
         paperWidth: paperWidth == '80' ? '80' : '58',
-        headerSizePx: fontHeader.clamp(receiptMinPx, receiptMaxPx),
-        itemsSizePx: fontItems.clamp(receiptMinPx, receiptMaxPx),
-        footerSizePx: fontFooter.clamp(receiptMinPx, receiptMaxPx),
+        // v2.2.25 hybrid: header persen 1-100 (image), rincian/footer mode
+        // Kecil(×1)/Besar(×2) → ukuran share/PDF mengikuti mode yang dipilih.
+        headerPercent: fontHeader.clamp(1, 100),
+        itemsSizePx: fontItems >= 1 ? 24 : 12,
+        footerSizePx: fontFooter >= 1 ? 24 : 12,
         logoWidthPercent: logoPercent.clamp(1, 100),
       ),
     );
@@ -1858,4 +2058,29 @@ List<Map<String, dynamic>> _parseItems(String json) {
 class _SharePreviewData {
   final ReceiptRenderConfig cfg;
   const _SharePreviewData({required this.cfg});
+}
+
+/// Garis putus-putus tipis di preview struk (meniru hasil print).
+class _DashPainterPreview extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    final dashW = 5.0;
+    final gapW = 2.5;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset((x + dashW).clamp(0, size.width), 0),
+        paint,
+      );
+      x += dashW + gapW;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

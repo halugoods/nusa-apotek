@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1742,10 +1741,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         String paper = paperSize;
         Map<String, bool> togs = Map.from(toggles);
         String font = fontType;
-        // Ukuran pixel (12-48, bit-image) — kamus baru v2.2.24+76.
-        int fontH = fontHeader.clamp(receiptMinPx, receiptMaxPx);
-        int fontI = fontItems.clamp(receiptMinPx, receiptMaxPx);
-        int fontF = fontFooter.clamp(receiptMinPx, receiptMaxPx);
+        // Header = PERSEN lebar kertas (1-100, print image); rincian/footer
+        // = mode Kecil(0)/Besar(1) (teks ×1/×2 — dijamin selalu tercetak).
+        int fontH = fontHeader.clamp(1, 100);
+        int fontI = fontItems >= 1 ? 1 : 0;
+        int fontF = fontFooter >= 1 ? 1 : 0;
         // Lebar logo dalam persen lebar kertas (1-100).
         int logoPct = logoPercent;
         // True saat ukuran font digeser — preview berubah tapi belum tersimpan.
@@ -1932,9 +1932,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Ukuran Font per Bagian ──
+                    // ── Ukuran Print per Bagian ──
                     Text(
-                      'Ukuran Font',
+                      'Ukuran Print',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -1945,12 +1945,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Geser untuk mengatur ukuran huruf TAP bagian struk '
-                      '(Header, Rincian, Footer) — bisa berbeda-beda. Ukuran '
-                      '12-48 (piksel): makin besar angkanya makin besar '
-                      'hurufnya. Struk kini dicetak sebagai GAMBAR, jadi '
-                      'ukuran apa pun pasti tercetak — preview selalu sama '
-                      'dengan hasil cetak.',
+                      'Header & logo dicetak sebagai GAMBAR (bit-image) — '
+                      'atur ukurannya dalam PERSEN dari lebar kertas. '
+                      'Rincian & footer dicetak sebagai TEKS biasa (cepat) '
+                      'dengan pilihan Kecil (×1) / Besar (×2) yang pasti '
+                      'tercetak di semua printer.',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -1967,12 +1966,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontH = v;
                         fontDirty = true;
                       }),
-                      min: receiptMinPx,
-                      max: receiptMaxPx,
-                      suffix: 'px',
+                      min: 1,
+                      max: 100,
+                      suffix: '%',
                     ),
                     const SizedBox(height: 14),
-                    _fontSizeRow(
+                    _fontModeRow(
                       'Rincian',
                       fontI,
                       setDark,
@@ -1980,12 +1979,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontI = v;
                         fontDirty = true;
                       }),
-                      min: receiptMinPx,
-                      max: receiptMaxPx,
-                      suffix: 'px',
                     ),
                     const SizedBox(height: 14),
-                    _fontSizeRow(
+                    _fontModeRow(
                       'Footer',
                       fontF,
                       setDark,
@@ -1993,9 +1989,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontF = v;
                         fontDirty = true;
                       }),
-                      min: receiptMinPx,
-                      max: receiptMaxPx,
-                      suffix: 'px',
                     ),
                     const SizedBox(height: 16),
 
@@ -2264,10 +2257,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Preview = GAMBAR yang sama persis dengan yang dicetak
-                    // (renderReceiptPng → bit-image). Ukuran header/rincian/
-                    // footer/logo ikut slider — tidak mungkin beda dengan
-                    // print karena jalurnya satu.
+                    // Preview = WIDGET struk yang meniru persis layout print
+                    // (header & logo image, rincian/footer teks) — perubahan
+                    // slider langsung terlihat.
                     _receiptPreview(
                       isDark: setDark,
                       paper: paper,
@@ -2375,9 +2367,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       final ok = await printer.printTest(
                                         storeName,
                                         paperWidth: paper.replaceAll('mm', ''),
-                                        headerSize: fontH,
-                                        itemsSize: fontI,
-                                        footerSize: fontF,
+                                        headerPercent: fontH,
+                                        itemsMode: fontI,
+                                        footerMode: fontF,
+                                        logo: logoPath != null &&
+                                                logoPath!.isNotEmpty &&
+                                                togs['showLogo'] != false
+                                            ? await File(logoPath!).readAsBytes()
+                                            : null,
+                                        showLogo: togs['showLogo'] != false,
                                       );
                                       if (ctx.mounted) {
                                         if (ok) {
@@ -2466,11 +2464,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               await SecureStore.setReceiptHeader(
                                 headerCtrl.text.trim(),
                               );
-                              // Font struk (bit-image: ukuran pixel 12-48 + logo %).
+                              // Font struk (hybrid: header persen 1-100,
+                              // rincian/footer mode Kecil/Besar 0/1).
                               await SecureStore.setReceiptFontType(font);
-                              await SecureStore.setReceiptFontHeader(fontH);
-                              await SecureStore.setReceiptFontItems(fontI);
-                              await SecureStore.setReceiptFontFooter(fontF);
+                              await SecureStore.setReceiptFontHeader(
+                                fontH.clamp(1, 100),
+                              );
+                              await SecureStore.setReceiptFontItems(
+                                fontI >= 1 ? 1 : 0,
+                              );
+                              await SecureStore.setReceiptFontFooter(
+                                fontF >= 1 ? 1 : 0,
+                              );
                               await SecureStore.setReceiptLogoWidthPercent(
                                 logoPct.clamp(1, 100),
                               );
@@ -2752,9 +2757,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Preview struk = PNG yang SAMA dengan yang dicetak printer (bit-image).
-  /// Data dummy (toko, item, total) dirender lewat `renderReceiptPng` dengan
-  /// pengaturan slider SEKARANG — preview tidak mungkin beda dari print.
+  /// Preview struk = WIDGET yang meniru persis layout print (header & logo
+  /// image → rincian/footer teks). Mengikuti pengaturan slider SEKARANG.
   Widget _receiptPreview({
     required bool isDark,
     required String paper,
@@ -2768,11 +2772,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required int fontF,
     required int logoPct,
   }) {
-    final paperW = paper.contains('80') ? 330 : 250;
+    final paperW = paper.contains('80') ? 330.0 : 250.0;
     final showLogo = togs['showLogo'] == true;
-    final logoFile = showLogo && logoPath != null && logoPath.isNotEmpty
-        ? File(logoPath)
-        : null;
     final header = headerCtrl.text.trim().isNotEmpty
         ? headerCtrl.text.trim()
         : (storeName.isNotEmpty ? storeName : 'NUSA MART');
@@ -2780,10 +2781,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ? footerCtrl.text.trim()
         : '🙏 Terima kasih, ditunggu pesanan selanjutnya!';
 
+    // Header & logo — skala persen dari lebar kertas (seperti print image).
+    final headerScale = fontH.clamp(1, 100) / 100;
+    final logoScale = logoPct.clamp(1, 100) / 100;
+
+    // Rincian/footer — mode Kecil(×1)/Besar(×2).
+    final itemsBig = fontI >= 1;
+    final footerBig = fontF >= 1;
+
+    final mono = TextStyle(
+      fontFamily: 'monospace',
+      color: Colors.black,
+      fontSize: 11,
+      height: 1.35,
+    );
+    final monoBold = mono.copyWith(fontWeight: FontWeight.w800);
+    final monoGrey = mono.copyWith(color: Colors.grey.shade600);
+    final itemsStyle = itemsBig ? mono.copyWith(fontSize: 15) : mono;
+    final smallStyle = itemsBig ? mono.copyWith(fontSize: 11) : monoGrey;
+    final footerStyle = footerBig
+        ? mono.copyWith(fontSize: 13, fontWeight: FontWeight.w700)
+        : mono.copyWith(fontSize: 11, fontWeight: FontWeight.w700);
+
     return Container(
       alignment: Alignment.center,
       child: Container(
-        width: paperW.toDouble(),
+        width: paperW,
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -2794,101 +2818,247 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
         clipBehavior: Clip.antiAlias,
-        child: FutureBuilder<Uint8List?>(
-          future: _renderReceiptPreviewPng(
-            paper: paper,
-            header: header,
-            footer: footer,
-            storeName: storeName,
-            logoFile: logoFile,
-            showCashier: togs['showCashier'] ?? true,
-            showInvoice: togs['showInvoice'] ?? true,
-            showDate: togs['showDate'] ?? true,
-            fontH: fontH,
-            fontI: fontI,
-            fontF: fontF,
-            logoPct: logoPct,
-          ),
-          builder: (context, snap) {
-            if (snap.hasData && snap.data != null) {
-              return Image.memory(
-                snap.data!,
-                width: paperW.toDouble(),
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-              );
-            }
-            return Container(
-              height: 320,
-              alignment: Alignment.center,
-              child: const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Logo (image, skala persen) ──
+            if (showLogo && logoPath != null && logoPath.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Center(
+                  child: Image.file(
+                    File(logoPath),
+                    width: paperW * logoScale,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
-            );
-          },
+            // ── Header (image, skala persen) ──
+            if (header.isNotEmpty)
+              Center(
+                child: Text(
+                  header,
+                  style: monoBold.copyWith(fontSize: 12 * headerScale),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            if (togs['showInvoice'] ?? true)
+              Center(child: Text('INV-001', style: smallStyle)),
+            if (togs['showDate'] ?? true)
+              Center(
+                child: Text(
+                  '25 Jul 2026  14:30 WIB',
+                  style: smallStyle,
+                ),
+              ),
+            const SizedBox(height: 6),
+            _dashedPreviewLine(),
+            const SizedBox(height: 6),
+            if (togs['showCashier'] ?? true)
+              Text('Kasir: Budi', style: smallStyle),
+            const SizedBox(height: 6),
+            _previewItem('Indomie Goreng', 4, 3500, null, itemsStyle, smallStyle),
+            _previewItem('Beras 5kg', 1, 72000, null, itemsStyle, smallStyle),
+            _previewItem(
+              'Minyak Goreng 2L',
+              2,
+              34000,
+              38000,
+              itemsStyle,
+              smallStyle,
+            ),
+            _previewItem('Telur Ayam 10 butir', 1, 28000, null, itemsStyle, smallStyle),
+            _previewItem('Gula Pasir 1kg', 1, 16000, null, itemsStyle, smallStyle),
+            const SizedBox(height: 6),
+            _dashedPreviewLine(),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('TOTAL', style: itemsBig ? monoBold.copyWith(fontSize: 15) : monoBold),
+                Text(
+                  'Rp168.000',
+                  style: itemsBig ? monoBold.copyWith(fontSize: 15) : monoBold,
+                ),
+              ],
+            ),
+            if (true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Diskon', style: smallStyle),
+                    Text('-Rp8.000', style: smallStyle),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Bayar (Tunai)', style: smallStyle),
+                  Text('Rp200.000', style: smallStyle),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Kembali', style: smallStyle),
+                  Text('Rp32.000', style: smallStyle),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            _dashedPreviewLine(),
+            const SizedBox(height: 8),
+            if (footer.isNotEmpty)
+              Center(child: Text(footer, style: footerStyle, textAlign: TextAlign.center)),
+            Center(child: Text(storeName, style: smallStyle)),
+          ],
         ),
       ),
     );
   }
 
-  /// Render PNG preview (data dummy) — satu sumber dengan print.
-  Future<Uint8List?> _renderReceiptPreviewPng({
-    required String paper,
-    required String header,
-    required String footer,
-    required String storeName,
-    required File? logoFile,
-    required bool showCashier,
-    required bool showInvoice,
-    required bool showDate,
-    required int fontH,
-    required int fontI,
-    required int fontF,
-    required int logoPct,
-  }) async {
-    try {
-      final logoBytes = logoFile != null && await logoFile.exists()
-          ? await logoFile.readAsBytes()
-          : null;
-      return await renderReceiptPng(
-        ReceiptRenderConfig(
-          storeName: storeName,
-          header: header,
-          footer: footer,
-          logoBytes: logoBytes,
-          showLogo: logoFile != null,
-          lines: const [
-            ReceiptRenderLine(name: 'Indomie Goreng', qty: 4, price: 3500),
-            ReceiptRenderLine(name: 'Beras 5kg', qty: 1, price: 72000),
-            ReceiptRenderLine(
-              name: 'Minyak Goreng 2L',
-              qty: 2,
-              price: 34000,
-              originalPrice: 38000,
-            ),
-            ReceiptRenderLine(name: 'Telur Ayam 10 butir', qty: 1, price: 28000),
-            ReceiptRenderLine(name: 'Gula Pasir 1kg', qty: 1, price: 16000),
-          ],
-          total: 168000,
-          discount: 8000,
-          paymentMethod: 'Tunai',
-          cashGiven: 200000,
-          cashReturn: 32000,
-          cashierName: showCashier ? 'Budi' : null,
-          invoice: showInvoice ? 'INV-001' : '',
-          dateStr: showDate ? '25 Jul 2026  14:30 WIB' : '',
-          paperWidth: paper.contains('80') ? '80' : '58',
-          headerSizePx: fontH.clamp(receiptMinPx, receiptMaxPx),
-          itemsSizePx: fontI.clamp(receiptMinPx, receiptMaxPx),
-          footerSizePx: fontF.clamp(receiptMinPx, receiptMaxPx),
-          logoWidthPercent: logoPct.clamp(1, 100),
-        ),
-      );
-    } catch (_) {
-      return null;
+  Widget _previewItem(
+    String name,
+    int qty,
+    int price,
+    int? originalPrice,
+    TextStyle itemsStyle,
+    TextStyle smallStyle,
+  ) {
+    final hasDisc = originalPrice != null && originalPrice > price;
+    final discTotal = hasDisc ? (originalPrice - price) * qty : 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(name, style: itemsStyle),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$qty x Rp${_thousands(price)}', style: smallStyle),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasDisc)
+                    Text('( -Rp${_thousands(discTotal)} ) ', style: smallStyle),
+                  Text('Rp${_thousands(qty * price)}', style: itemsStyle),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _thousands(int v) {
+    final s = v.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      buf.write(s[i]);
+      final remaining = s.length - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) buf.write('.');
     }
+    return buf.toString();
+  }
+
+  Widget _dashedPreviewLine() => SizedBox(
+    height: 2,
+    child: CustomPaint(painter: _DashPainterPreview()),
+  );
+
+  /// Toggle mode teks rincian/footer: Kecil (×1) / Besar (×2).
+  Widget _fontModeRow(
+    String label,
+    int current,
+    bool isDark,
+    ValueChanged<int> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? NusaConfig.darkTextPrimary
+                : NusaConfig.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: _modeChip(
+                'Kecil (×1)',
+                current == 0,
+                isDark,
+                () => onChanged(0),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _modeChip(
+                'Besar (×2)',
+                current == 1,
+                isDark,
+                () => onChanged(1),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _modeChip(
+    String label,
+    bool selected,
+    bool isDark,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected
+              ? NusaConfig.primarySoft
+              : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6)),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected
+                ? NusaConfig.activePrimary
+                : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected
+                ? NusaConfig.activePrimary
+                : (isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary),
+          ),
+        ),
+      ),
+    );
   }
 
   // ── About Link ────────────────────────────────────────────
@@ -4042,4 +4212,29 @@ class _ChangelogBody extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+/// Garis putus-putus tipis di preview struk (meniru hasil print).
+class _DashPainterPreview extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    final dashW = 5.0;
+    final gapW = 2.5;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset((x + dashW).clamp(0, size.width), 0),
+        paint,
+      );
+      x += dashW + gapW;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
