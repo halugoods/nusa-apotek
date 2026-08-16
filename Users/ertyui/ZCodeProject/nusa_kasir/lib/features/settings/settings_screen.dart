@@ -1947,9 +1947,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Atur ukuran & jenis huruf TAP bagian struk (Header, '
-                      'Rincian, Footer) — bisa berbeda-beda. Ukuran 1x-8x '
-                      'di-cap ke maksimum yang benar-benar dicetak printer '
-                      'kamu (lihat "Maks Ukuran Printer" di bawah).',
+                      'Rincian, Footer) — bisa berbeda-beda. Pilih ukuran '
+                      'huruf yang benar-benar dicetak: 12 (Kecil), 18 '
+                      '(Normal), 24 (Besar), 36 (Extra Besar). Jumlah '
+                      'karakter per baris otomatis dihitung dari lebar '
+                      'kertas ÷ ukuran huruf — bukan kebalikannya.',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -2020,10 +2022,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Perbesaran terbesar yang benar-benar tercetak di '
+                      'Ukuran huruf terbesar yang benar-benar tercetak di '
                       'printer kamu. Bagian yang diatur lebih besar dari ini '
-                      'otomatis dicetak sebesar cap — jadi tidak ada ukuran '
-                      '"sampah" yang menipu. Temukan lewat Tes Cetak Kalibrasi.',
+                      'otomatis dicetak sebesar batas printer — jadi tidak ada '
+                      'ukuran "sampah" yang menipu. Temukan lewat Tes Cetak '
+                      'Kalibrasi (12/18/24/36).',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -2032,12 +2035,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Pilihan cap: 2x-8x (1x selalu bisa). Nilai tersimpan 1-8.
+                    // Pilihan cap: 2x-4x (1x selalu bisa; >4x non-standar
+                    // sering diabaikan printer murah). Nilai tersimpan 1-4.
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        for (var m = 2; m <= 8; m++)
+                        for (var m = 2; m <= 4; m++)
                           GestureDetector(
                             onTap: () => setSt(() => maxM = m),
                             child: Container(
@@ -2063,7 +2067,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ),
                               child: Text(
-                                '${m}x',
+                                '${magnificationToLiteral(m)}pt',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -2986,7 +2990,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// Baris ukuran font per section struk — 4 pilihan UKURAN LITERAL
-  /// Ukuran per BAGIAN struk: slider halus 1x-8x + pilihan jenis font
+  /// (12/18/24/36 = Kecil/Normal/Besar/Extra Besar) + pilihan jenis font
   /// per bagian (Standar=Font A / Ramping=Font B). [sectionFont] null =
   /// ikuti font global; [globalFont] dipakai untuk label "ikut global".
   Widget _fontSizeRow(
@@ -3027,7 +3031,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${current}x',
+                '${magnificationToLiteral(current.clamp(1, 8))}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -3038,30 +3042,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        // Slider halus 1x-8x — user bisa atur sedetail mungkin.
+        // Pilihan UKURAN LITERAL 12/18/24/36 (bukan perbesaran 1x-8x) —
+        // user memilih "seberapa besar huruf" yang dicetak (lebar kertas ÷
+        // ukuran huruf menentukan jumlah karakter per baris). Nilai tersimpan
+        // tetap perbesaran 1-4 supaya kompatibel dengan printer.
         Row(
           children: [
-            const Text(
-              '1x',
-              style: TextStyle(fontSize: 10, color: Colors.grey),
-            ),
-            Expanded(
-              child: Slider(
-                value: current.clamp(1, 8).toDouble(),
-                min: 1,
-                max: 8,
-                divisions: 7,
-                activeColor: NusaConfig.activePrimary,
-                inactiveColor: isDark
-                    ? NusaConfig.darkDivider
-                    : NusaConfig.dividerColor,
-                onChanged: (v) => onChanged(v.round()),
+            for (final literal in literalSizes)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: literal == literalSizes.last ? 0 : 6,
+                  ),
+                  child: GestureDetector(
+                    onTap: () => onChanged(
+                      literalToMagnification(literal),
+                    ),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: literalToMagnification(literal) == current
+                            ? NusaConfig.activePrimary.withValues(alpha: 0.12)
+                            : (isDark
+                                  ? NusaConfig.darkSurface2
+                                  : NusaConfig.inputFill),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: literalToMagnification(literal) == current
+                              ? NusaConfig.activePrimary
+                              : (isDark
+                                    ? NusaConfig.darkBorder
+                                    : NusaConfig.dividerColor),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$literal',
+                            style: TextStyle(
+                              fontSize: literalToMagnification(literal) ==
+                                      current
+                                  ? 15
+                                  : 13,
+                              fontWeight: FontWeight.w800,
+                              color: literalToMagnification(literal) == current
+                                  ? NusaConfig.activePrimary
+                                  : (isDark
+                                        ? NusaConfig.darkTextPrimary
+                                        : NusaConfig.textPrimary),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            literalSizeLabel(literal),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: literalToMagnification(literal) == current
+                                  ? NusaConfig.activePrimary
+                                  : (isDark
+                                        ? NusaConfig.darkTextTertiary
+                                        : NusaConfig.textTertiary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const Text(
-              '8x',
-              style: TextStyle(fontSize: 10, color: Colors.grey),
-            ),
           ],
         ),
         // Jenis font per bagian: Standar / Ramping / Ikut global.
@@ -3190,7 +3241,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }) {
     final hasDiscount = originalPrice != null && originalPrice > price;
     final f = fontI.clamp(1, maxM);
-    final itemSize = (6.0 + f).toDouble();
+    // Ukuran huruf preview = ukuran LITERAL yang benar-benar dicetak
+    // (12/18/24/36) — match print asli (lebar kertas ÷ ukuran huruf).
+    final itemSize = magnificationToLiteral(f).toDouble();
     final lineSize = itemSize - 1.5;
     final nameColor = const Color(0xFF374151);
     final subtleColor = const Color(0xFF6B7280);

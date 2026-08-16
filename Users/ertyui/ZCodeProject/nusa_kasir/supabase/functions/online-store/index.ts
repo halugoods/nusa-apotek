@@ -109,6 +109,8 @@ async function syncProducts(sb: any, b: any) {
     name: p.name,
     category: p.category || "Lainnya",
     price: p.price,
+    // Harga ASLI sebelum diskon — dipakai web untuk harga coret.
+    original_price: p.original_price ?? null,
     stock: p.stock ?? 0,
     image_url: p.image || "",
     description: p.description || "",

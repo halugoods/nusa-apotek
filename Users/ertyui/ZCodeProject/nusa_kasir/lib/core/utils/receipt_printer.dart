@@ -83,6 +83,10 @@ PosTextSize _posSize(int v) => switch (v.clamp(1, 8)) {
 /// Font B ~1.15× lebih ramping (58mm → 42 @1x; 80mm → 64 @1x).
 const _literalSizes = [12, 18, 24, 36];
 
+/// Ukuran literal yang tersedia — publik supaya UI (Pengaturan Struk)
+/// bisa render 4 pilihan tanpa tahu detail internal.
+const List<int> literalSizes = _literalSizes;
+
 int literalToMagnification(int literal) {
   final idx = _literalSizes.indexOf(literal);
   return idx < 0 ? (literal.clamp(1, 4)) : idx + 1;
@@ -1159,13 +1163,12 @@ class ReceiptPrinter {
     final headerFont = _resolveSectionFont(headerFontType, fontType);
     final itemsFont = _resolveSectionFont(itemsFontType, fontType);
 
-    // Tes cetak SEMUA perbesaran 1x-8x (bukan cuma 4 literal) supaya user
-    // tahu persis mana yang benar-benar dicetak printer-nya — termasuk yang
-    // diabaikan (>2x pada printer murah). Cap yang tersimpan dicetak sebagai
-    // informasi ("maks saat ini: Nx").
+    // Tes cetak UKURAN LITERAL 12/18/24/36 (bukan 1x-8x) — user memilih
+    // "seberapa besar huruf" (lebar kertas ÷ ukuran huruf = karakter/baris).
+    // Cap yang tersimpan dicetak sebagai informasi ("maks saat ini").
     bytes.addAll(
       generator.text(
-        _san('Maks tersimpan: ${maxMag}x (cap saat ini)'),
+        _san('Maks tersimpan: ${magnificationToLiteral(maxMag)}pt (cap)'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
@@ -1185,11 +1188,12 @@ class ReceiptPrinter {
       final baseLineWidth = isWide
           ? (font == PosFontType.fontB ? 64 : 48)
           : (font == PosFontType.fontB ? 42 : 32);
-      for (var mag = 1; mag <= 8; mag++) {
+      for (final literal in literalSizes) {
+        final mag = literalToMagnification(literal);
         final chars = (baseLineWidth ~/ mag).clamp(4, baseLineWidth);
         bytes.addAll(
           generator.text(
-            _san('${mag}x (${chars} kar/baris)'),
+            _san('$literal pt (${chars} kar/baris)'),
             styles: const PosStyles(align: PosAlign.center),
           ),
         );
@@ -1228,6 +1232,12 @@ class ReceiptPrinter {
     bytes.addAll(
       generator.text(
         _san('Bagian yang lebih besar dari cap akan dicetak = cap.'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san('Ukuran = 12/18/24/36 pt — karakter/baris = lebar kertas ÷ ukuran.'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );

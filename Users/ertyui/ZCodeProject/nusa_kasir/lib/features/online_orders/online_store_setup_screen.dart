@@ -14,6 +14,7 @@ import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -437,7 +438,10 @@ class _OnlineStoreSetupScreenState
           'product_id': prod.id,
           'name': prod.name,
           'category': prod.category,
-          'price': prod.sellPrice,
+          // Harga final yang dibayar = setelah diskon standalone.
+          'price': prod.effectivePrice,
+          // Harga ASLI (sebelum diskon) — untuk tampilan coret di web.
+          'original_price': prod.hasDiscount ? prod.sellPrice : null,
           'stock': prod.stock,
           'image': imageUrl ?? '',
           'description': '',

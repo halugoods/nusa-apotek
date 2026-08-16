@@ -72,11 +72,13 @@ class ImageStorageService {
       String reason = msg;
       if (msg.contains('415') || msg.toLowerCase().contains('mime')) {
         reason = 'MIME ditolak (415) — ekstensi file tidak didukung';
-      } else if (msg.contains('403') || msg.toLowerCase().contains('rls') ||
-          msg.toLowerCase().contains('policy')) {
-        reason = 'Izin ditolak (403) — login Google diperlukan';
       } else if (msg.contains('404') || msg.contains('bucket')) {
         reason = 'Bucket/objek tidak ditemukan (404)';
+      } else if (msg.contains('403') || msg.toLowerCase().contains('rls') ||
+          msg.toLowerCase().contains('policy')) {
+        // Upload memakai anon key (app tidak buat sesi Supabase Auth) —
+        // 403 di sini berarti policy bucket, bukan "belum login Google".
+        reason = 'Upload ditolak server (403) — cek koneksi & coba lagi';
       } else if (msg.contains('network') || msg.contains('socket') ||
           msg.contains('timeout') || msg.contains('internet')) {
         reason = 'Jaringan bermasalah';

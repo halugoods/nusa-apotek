@@ -1613,7 +1613,9 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
               ),
               SizedBox(height: 14),
               TextField(
-                autofocus: true,
+                // JANGAN autofocus — keyboard tidak muncul otomatis saat
+                // buka sheet (komplain user: "jangan auto munculin keyboard").
+                // User ketuk kolom cari hanya jika memang ingin mencari.
                 onChanged: (v) => setSheet(() {
                   q = v.toLowerCase();
                   filtered = _suppliers
@@ -1664,31 +1666,71 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                         itemCount: filtered.length,
                         itemBuilder: (_, i) {
                           final s = filtered[i];
+                          final isSelected = _supplier?.id == s.id;
                           return ListTile(
+                            selected: isSelected,
+                            selectedTileColor: NusaConfig.activePrimary
+                                .withValues(alpha: 0.06),
                             leading: CircleAvatar(
                               radius: 18,
-                              backgroundColor: NusaConfig.activePrimary
-                                  .withValues(alpha: 0.1),
-                              child: Text(
-                                s.name.isNotEmpty
-                                    ? s.name[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: NusaConfig.activePrimary,
-                                  fontSize: 14,
-                                ),
-                              ),
+                              backgroundColor: isSelected
+                                  ? NusaConfig.activePrimary
+                                  : NusaConfig.activePrimary.withValues(
+                                      alpha: 0.1,
+                                    ),
+                              child: isSelected
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 18,
+                                      color: Colors.white,
+                                    )
+                                  : Text(
+                                      s.name.isNotEmpty
+                                          ? s.name[0].toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: NusaConfig.activePrimary,
+                                        fontSize: 14,
+                                      ),
+                                    ),
                             ),
                             title: Text(
                               s.name,
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
+                                color: isSelected
+                                    ? NusaConfig.activePrimary
+                                    : null,
                               ),
                             ),
                             subtitle: s.phone != null && s.phone!.isNotEmpty
-                                ? Text(s.phone!, style: TextStyle(fontSize: 12))
+                                ? Text(
+                                    s.phone!,
+                                    style: TextStyle(fontSize: 12),
+                                  )
+                                : null,
+                            trailing: isSelected
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: NusaConfig.activePrimary
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'Dipilih',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                    ),
+                                  )
                                 : null,
                             onTap: () {
                               Navigator.pop(ctx);
@@ -2294,6 +2336,54 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
           ],
         ),
         SizedBox(height: 10),
+        // Status supplier yang DIPILIH — tampil jelas di bawah baris search
+        // supaya user tahu sedang mencatat pembelian untuk supplier mana
+        // (komplain user: "habis pilih ga muncul ket supplier mana yg dipilih").
+        if (_supplier != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: NusaConfig.activePrimary.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.local_shipping_outlined,
+                  size: 16,
+                  color: NusaConfig.activePrimary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Supplier: ${_supplier!.name}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _openSupplierPicker,
+                  child: Text(
+                    'Ganti',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         // Katalog
         Expanded(
           child: _filteredProducts.isEmpty
