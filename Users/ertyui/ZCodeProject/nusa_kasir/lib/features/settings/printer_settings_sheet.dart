@@ -99,7 +99,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
           _kitchenConnectedAddr = kitchenAddr.split('|').last;
         }
       });
-      ReceiptPrinter.setCashDrawer(enabled: drawer);
     }
   }
 
@@ -115,7 +114,6 @@ class _PrinterSettingsSheetState extends State<PrinterSettingsSheet> {
 
   Future<void> _setCashDrawer(bool v) async {
     await SecureStore.setCashDrawerEnabled(v);
-    ReceiptPrinter.setCashDrawer(enabled: v);
     if (mounted) setState(() => _cashDrawerEnabled = v);
   }
 

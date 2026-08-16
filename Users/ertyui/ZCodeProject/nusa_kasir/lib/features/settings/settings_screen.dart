@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,9 +12,9 @@ import 'package:restart_app/restart_app.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
-import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
+import 'package:nusa_kasir/core/utils/receipt_renderer.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -1726,6 +1727,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final fontHeader = await SecureStore.getReceiptFontHeader();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
+    // Lebar logo struk (% lebar kertas).
+    final logoPercent = await SecureStore.getReceiptLogoWidthPercent();
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -1739,9 +1742,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         String paper = paperSize;
         Map<String, bool> togs = Map.from(toggles);
         String font = fontType;
-        int fontH = fontHeader;
-        int fontI = fontItems;
-        int fontF = fontFooter;
+        // Ukuran pixel (12-48, bit-image) — kamus baru v2.2.24+76.
+        int fontH = fontHeader.clamp(receiptMinPx, receiptMaxPx);
+        int fontI = fontItems.clamp(receiptMinPx, receiptMaxPx);
+        int fontF = fontFooter.clamp(receiptMinPx, receiptMaxPx);
+        // Lebar logo dalam persen lebar kertas (1-100).
+        int logoPct = logoPercent;
         // True saat ukuran font digeser — preview berubah tapi belum tersimpan.
         bool fontDirty = false;
         bool testPrinting = false;
@@ -1939,12 +1945,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Atur ukuran huruf TAP bagian struk (Header, Rincian, '
-                      'Footer) — bisa berbeda-beda. Pilih ukuran huruf yang '
-                      'benar-benar dicetak: 12 (Kecil), 15 (Sedang), 18 '
-                      '(Normal), 24 (Besar), 36 (Extra Besar). Semua 5 ukuran '
-                      'dicetak apa adanya — preview selalu sama dengan hasil '
-                      'cetak.',
+                      'Geser untuk mengatur ukuran huruf TAP bagian struk '
+                      '(Header, Rincian, Footer) — bisa berbeda-beda. Ukuran '
+                      '12-48 (piksel): makin besar angkanya makin besar '
+                      'hurufnya. Struk kini dicetak sebagai GAMBAR, jadi '
+                      'ukuran apa pun pasti tercetak — preview selalu sama '
+                      'dengan hasil cetak.',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -1961,6 +1967,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontH = v;
                         fontDirty = true;
                       }),
+                      min: receiptMinPx,
+                      max: receiptMaxPx,
+                      suffix: 'px',
                     ),
                     const SizedBox(height: 14),
                     _fontSizeRow(
@@ -1971,6 +1980,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontI = v;
                         fontDirty = true;
                       }),
+                      min: receiptMinPx,
+                      max: receiptMaxPx,
+                      suffix: 'px',
                     ),
                     const SizedBox(height: 14),
                     _fontSizeRow(
@@ -1981,6 +1993,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontF = v;
                         fontDirty = true;
                       }),
+                      min: receiptMinPx,
+                      max: receiptMaxPx,
+                      suffix: 'px',
                     ),
                     const SizedBox(height: 16),
 
@@ -2098,6 +2113,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                    _fontSizeRow(
+                      'Ukuran Logo',
+                      logoPct,
+                      setDark,
+                      (v) => setSt(() {
+                        logoPct = v;
+                        fontDirty = true;
+                      }),
+                      min: 1,
+                      max: 100,
+                      suffix: '%',
+                      hint: '1-100% dari lebar kertas',
                     ),
                     const SizedBox(height: 20),
 
@@ -2235,293 +2264,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Preview 2 arah: lebar mengikuti ukuran kertas yang dipilih
-                    // (58mm → ramping, 80mm → lebih lebar) — persis print asli.
-                    Container(
-                      alignment: Alignment.center,
-                      child: Container(
-                        width: paper.contains('80') ? 330 : 250,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFD1D5DB)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            // ── Logo ──
-                            if (togs['showLogo'] == true &&
-                                logoPath != null &&
-                                logoPath!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Image.file(
-                                  File(logoPath!),
-                                  height: 44,
-                                  fit: BoxFit.contain,
-                                  cacheWidth: 200,
-                                ),
-                              ),
-
-                            // ── Store header — ukuran ikut fontH (12/15/18/24/36)
-                            // persis print asli (tanpa cap). 15pt (Font B ×2,
-                            // ukuran FIX) → preview 15px apa adanya.
-                            Text(
-                              headerCtrl.text.isNotEmpty
-                                  ? headerCtrl.text
-                                  : (storeName.isNotEmpty
-                                        ? storeName
-                                        : 'NUSA MART'),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: receiptPreviewSize(fontH.clamp(1, 5)),
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            const Text(
-                              'Jl. Merdeka No. 123, Jakarta',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-
-                            // ── Dashed line ──
-                            _dashedLine(false),
-                            const SizedBox(height: 4),
-
-                            // ── Invoice + Kasir ──
-                            if (togs['showInvoice'] == true)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Row(
-                                  children: [
-                                    const Text(
-                                      'INV-001',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF374151),
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      'Kasir: ${togs['showCashier'] == true ? 'Budi' : '—'}',
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        color: Color(0xFF6B7280),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            if (togs['showDate'] == true)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: Row(
-                                  children: [
-                                    const Text(
-                                      '25 Jul 2026  14:30 WIB',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        color: Color(0xFF6B7280),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            _dashedLine(false),
-                            const SizedBox(height: 4),
-
-                            // ── Dummy items ──
-                            _receiptItem(
-                              'Indomie Goreng',
-                              4,
-                              3500,
-                              false,
-                              fontI: fontI,
-                            ),
-                            _receiptItem(
-                              'Beras 5kg',
-                              1,
-                              72000,
-                              false,
-                              fontI: fontI,
-                            ),
-                            // Item dengan diskon → tunjukkan Harga Normal + Diskon
-                            // persis seperti print asli (komplain user).
-                            _receiptItem(
-                              'Minyak Goreng 2L',
-                              2,
-                              34000,
-                              false,
-                              originalPrice: 38000,
-                              fontI: fontI,
-                            ),
-                            _receiptItem(
-                              'Telur Ayam 10 butir',
-                              1,
-                              28000,
-                              false,
-                              fontI: fontI,
-                            ),
-                            _receiptItem(
-                              'Gula Pasir 1kg',
-                              1,
-                              16000,
-                              false,
-                              fontI: fontI,
-                            ),
-                            const SizedBox(height: 2),
-                            _dashedLine(false),
-                            const SizedBox(height: 4),
-
-                            // ── Totals ──
-                            Row(
-                              children: [
-                                const Text(
-                                  'Subtotal',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Text(
-                                  'Rp  168.000',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF374151),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 1),
-                            Row(
-                              children: [
-                                const Text(
-                                  'TOTAL',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF111827),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Text(
-                                  'Rp  168.000',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF111827),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // Total diskon TRANSAKSI — tepat DI BAWAH TOTAL.
-                            // Diskon item sudah tampil per item (lihat Minyak:
-                            // "Diskon: -Rp 8.000") — baris ini hanya diskon
-                            // promo/manual/tier/poin (match print asli).
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                const Text(
-                                  'Diskon',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Text(
-                                  'Rp   -8.000',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFFE63946),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            _dashedLine(true),
-                            const SizedBox(height: 4),
-
-                            // ── Payment info ──
-                            Row(
-                              children: [
-                                const Text(
-                                  'Tunai',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF374151),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Text(
-                                  'Rp  200.000',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF374151),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 1),
-                            Row(
-                              children: [
-                                const Text(
-                                  'Kembalian',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF111827),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Text(
-                                  'Rp   32.000',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF059669),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            _dashedLine(false),
-                            const SizedBox(height: 4),
-
-                            // ── Footer — ukuran ikut fontF (12/15/18/24/36)
-                            // persis print asli (tanpa cap) ──
-                            Text(
-                              footerCtrl.text.isNotEmpty
-                                  ? footerCtrl.text
-                                  : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: receiptPreviewSize(fontF.clamp(1, 5)),
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              '•••',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFFD1D5DB),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    // Preview = GAMBAR yang sama persis dengan yang dicetak
+                    // (renderReceiptPng → bit-image). Ukuran header/rincian/
+                    // footer/logo ikut slider — tidak mungkin beda dengan
+                    // print karena jalurnya satu.
+                    _receiptPreview(
+                      isDark: setDark,
+                      paper: paper,
+                      headerCtrl: headerCtrl,
+                      footerCtrl: footerCtrl,
+                      storeName: storeName,
+                      logoPath: logoPath,
+                      togs: togs,
+                      fontH: fontH,
+                      fontI: fontI,
+                      fontF: fontF,
+                      logoPct: logoPct,
                     ),
                     const SizedBox(height: 20),
 
@@ -2625,7 +2383,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         if (ok) {
                                           TopToast.success(
                                             ctx,
-                                            'Tes kalibrasi dikirim — cek ukuran 12/15/18/24/36 di kertas.',
+                                            'Tes kalibrasi dikirim — cek ukuran di kertas.',
                                           );
                                         } else {
                                           TopToast.error(
@@ -2708,20 +2466,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               await SecureStore.setReceiptHeader(
                                 headerCtrl.text.trim(),
                               );
-                              // Font struk (satu pilihan font global + ukuran
-                              // per bagian; cap & font per-bagian dihapus di
-                              // v2.2.21 — pengaturan sederhana).
+                              // Font struk (bit-image: ukuran pixel 12-48 + logo %).
                               await SecureStore.setReceiptFontType(font);
                               await SecureStore.setReceiptFontHeader(fontH);
                               await SecureStore.setReceiptFontItems(fontI);
                               await SecureStore.setReceiptFontFooter(fontF);
-                              // Hapus nilai lama yang tidak dipakai lagi
-                              // (cap maks printer + font per-bagian) supaya
-                              // device lama tidak menyisakan cap aktif.
-                              await SecureStore.setReceiptMaxMag(null);
-                              await SecureStore.setReceiptFontHeaderType(null);
-                              await SecureStore.setReceiptFontItemsType(null);
-                              await SecureStore.setReceiptFontFooterType(null);
+                              await SecureStore.setReceiptLogoWidthPercent(
+                                logoPct.clamp(1, 100),
+                              );
                               fontDirty = false;
                               // Logo: simpan ke DB + SecureStore; hapus saat di-remove.
                               if (logoPath != null && logoPath!.isNotEmpty) {
@@ -2891,15 +2643,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Baris ukuran font per section struk — 5 pilihan UKURAN LITERAL
-  /// (12/15/18/24/36 = Kecil/Sedang/Normal/Besar/Extra Besar). Nilai tersimpan
-  /// tetap perbesaran 1-5 supaya kompatibel dengan printer ESC/POS.
+  /// Baris slider ukuran (px atau %) per bagian struk — v2.2.24+76:
+  /// ukuran pixel 12-48 (header/rincian/footer) atau persen 1-100 (logo).
   Widget _fontSizeRow(
     String label,
     int current,
     bool isDark,
-    ValueChanged<int> onChanged,
-  ) {
+    ValueChanged<int> onChanged, {
+    int min = receiptMinPx,
+    int max = receiptMaxPx,
+    String suffix = 'px',
+    String? hint,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2923,7 +2678,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${magnificationToLiteral(current.clamp(1, 5))}',
+                '$current$suffix',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -2933,79 +2688,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        // Pilihan UKURAN LITERAL 12/15/18/24/36 (bukan perbesaran 1x-8x) —
-        // user memilih "seberapa besar huruf" yang dicetak (lebar kertas ÷
-        // ukuran huruf menentukan jumlah karakter per baris).
-        Row(
-          children: [
-            for (final literal in literalSizes)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: literal == literalSizes.last ? 0 : 6,
-                  ),
-                  child: GestureDetector(
-                    onTap: () => onChanged(
-                      literalToMagnification(literal),
-                    ),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: literalToMagnification(literal) == current
-                            ? NusaConfig.activePrimary.withValues(alpha: 0.12)
-                            : (isDark
-                                  ? NusaConfig.darkSurface2
-                                  : NusaConfig.inputFill),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: literalToMagnification(literal) == current
-                              ? NusaConfig.activePrimary
-                              : (isDark
-                                    ? NusaConfig.darkBorder
-                                    : NusaConfig.dividerColor),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '$literal',
-                            style: TextStyle(
-                              fontSize: literalToMagnification(literal) ==
-                                      current
-                                  ? 15
-                                  : 13,
-                              fontWeight: FontWeight.w800,
-                              color: literalToMagnification(literal) == current
-                                  ? NusaConfig.activePrimary
-                                  : (isDark
-                                        ? NusaConfig.darkTextPrimary
-                                        : NusaConfig.textPrimary),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            literalSizeLabel(literal),
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                              color: literalToMagnification(literal) == current
-                                  ? NusaConfig.activePrimary
-                                  : (isDark
-                                        ? NusaConfig.darkTextTertiary
-                                        : NusaConfig.textTertiary),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        const SizedBox(height: 2),
+        SliderTheme(
+          data: SliderThemeData(
+            trackHeight: 3,
+            activeTrackColor: NusaConfig.activePrimary,
+            inactiveTrackColor: isDark
+                ? NusaConfig.darkBorder
+                : NusaConfig.dividerColor,
+            thumbColor: NusaConfig.activePrimary,
+            overlayColor: NusaConfig.activePrimary.withValues(alpha: 0.12),
+            valueIndicatorColor: NusaConfig.activePrimary,
+            valueIndicatorTextStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          child: Slider(
+            value: current.clamp(min, max).toDouble(),
+            min: min.toDouble(),
+            max: max.toDouble(),
+            divisions: max - min,
+            label: '$current$suffix',
+            onChanged: (v) => onChanged(v.round()),
+          ),
         ),
+        if (hint != null)
+          Text(
+            hint,
+            style: TextStyle(
+              fontSize: 10,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+          ),
       ],
     );
   }
@@ -3034,86 +2752,143 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Dashed line separator for receipt preview.
-  Widget _dashedLine(bool thick) {
-    return CustomPaint(
-      painter: _DashPainter(thick ? 2.0 : 1.0),
-      size: const Size(double.infinity, 2),
+  /// Preview struk = PNG yang SAMA dengan yang dicetak printer (bit-image).
+  /// Data dummy (toko, item, total) dirender lewat `renderReceiptPng` dengan
+  /// pengaturan slider SEKARANG — preview tidak mungkin beda dari print.
+  Widget _receiptPreview({
+    required bool isDark,
+    required String paper,
+    required TextEditingController headerCtrl,
+    required TextEditingController footerCtrl,
+    required String storeName,
+    required String? logoPath,
+    required Map<String, bool> togs,
+    required int fontH,
+    required int fontI,
+    required int fontF,
+    required int logoPct,
+  }) {
+    final paperW = paper.contains('80') ? 330 : 250;
+    final showLogo = togs['showLogo'] == true;
+    final logoFile = showLogo && logoPath != null && logoPath.isNotEmpty
+        ? File(logoPath)
+        : null;
+    final header = headerCtrl.text.trim().isNotEmpty
+        ? headerCtrl.text.trim()
+        : (storeName.isNotEmpty ? storeName : 'NUSA MART');
+    final footer = footerCtrl.text.trim().isNotEmpty
+        ? footerCtrl.text.trim()
+        : '🙏 Terima kasih, ditunggu pesanan selanjutnya!';
+
+    return Container(
+      alignment: Alignment.center,
+      child: Container(
+        width: paperW.toDouble(),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark
+                ? NusaConfig.darkBorder
+                : const Color(0xFFD1D5DB),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: FutureBuilder<Uint8List?>(
+          future: _renderReceiptPreviewPng(
+            paper: paper,
+            header: header,
+            footer: footer,
+            storeName: storeName,
+            logoFile: logoFile,
+            showCashier: togs['showCashier'] ?? true,
+            showInvoice: togs['showInvoice'] ?? true,
+            showDate: togs['showDate'] ?? true,
+            fontH: fontH,
+            fontI: fontI,
+            fontF: fontF,
+            logoPct: logoPct,
+          ),
+          builder: (context, snap) {
+            if (snap.hasData && snap.data != null) {
+              return Image.memory(
+                snap.data!,
+                width: paperW.toDouble(),
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+              );
+            }
+            return Container(
+              height: 320,
+              alignment: Alignment.center,
+              child: const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
-  /// Single receipt item row for preview — persis seperti print:
-  /// baris 1 nama item, baris 2 "qty x HARGA ASLI ... subtotal KOTOR",
-  /// baris 3 "Diskon: -Rp X" (potongan × qty) — format baru yang logis
-  /// (subtotal NETTO = sudah dipotong diskon + diskon dalam kurung).
-  /// Ukuran huruf = ukuran LITERAL 12/15/18/24/36 yang benar-benar dicetak
-  /// (tanpa cap — preview = print).
-  Widget _receiptItem(
-    String name,
-    int qty,
-    int price,
-    bool isDark, {
-    int? originalPrice,
-    int fontI = 1,
-  }) {
-    final hasDiscount = originalPrice != null && originalPrice > price;
-    final f = fontI.clamp(1, 5);
-    // Ukuran huruf preview = ukuran LITERAL yang benar-benar dicetak
-    // (12/15/18/24/36) — match print asli (lebar kertas ÷ ukuran huruf).
-    // 15pt dicetak Font B ×2 (ukuran FIX) → preview 15px apa adanya.
-    final itemSize = receiptPreviewSize(f);
-    final lineSize = itemSize - 1.5;
-    final nameColor = const Color(0xFF374151);
-    final subtleColor = const Color(0xFF6B7280);
-    // Harga per unit = harga FINAL (sudah dipotong diskon item) — konsisten
-    // dengan print asli.
-    final unitPrice = price;
-    final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
-    // Subtotal NETTO (qty × harga final) — sudah berkurang diskon.
-    final netSubtotal = qty * price;
-    // Diskon tampil dalam kurung "( -Rp X )" supaya customer notice.
-    final discTotal = hasDiscount ? (originalPrice - price) * qty : 0;
-    final discSuffix = hasDiscount ? '( -${formatRupiah(discTotal)} )' : '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            name,
-            // Nama pakai lebar penuh (wrap, bukan ellipsis) — persis print.
-            style: TextStyle(fontSize: itemSize, color: nameColor, height: 1.3),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                qtyPriceTxt,
-                style: TextStyle(fontSize: lineSize, color: subtleColor),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (hasDiscount)
-                    Text(
-                      discSuffix,
-                      style: TextStyle(fontSize: lineSize, color: subtleColor),
-                    ),
-                  Text(
-                    formatRupiah(netSubtotal),
-                    style: TextStyle(
-                      fontSize: itemSize,
-                      fontWeight: FontWeight.w600,
-                      color: nameColor,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+  /// Render PNG preview (data dummy) — satu sumber dengan print.
+  Future<Uint8List?> _renderReceiptPreviewPng({
+    required String paper,
+    required String header,
+    required String footer,
+    required String storeName,
+    required File? logoFile,
+    required bool showCashier,
+    required bool showInvoice,
+    required bool showDate,
+    required int fontH,
+    required int fontI,
+    required int fontF,
+    required int logoPct,
+  }) async {
+    try {
+      final logoBytes = logoFile != null && await logoFile.exists()
+          ? await logoFile.readAsBytes()
+          : null;
+      return await renderReceiptPng(
+        ReceiptRenderConfig(
+          storeName: storeName,
+          header: header,
+          footer: footer,
+          logoBytes: logoBytes,
+          showLogo: logoFile != null,
+          lines: const [
+            ReceiptRenderLine(name: 'Indomie Goreng', qty: 4, price: 3500),
+            ReceiptRenderLine(name: 'Beras 5kg', qty: 1, price: 72000),
+            ReceiptRenderLine(
+              name: 'Minyak Goreng 2L',
+              qty: 2,
+              price: 34000,
+              originalPrice: 38000,
+            ),
+            ReceiptRenderLine(name: 'Telur Ayam 10 butir', qty: 1, price: 28000),
+            ReceiptRenderLine(name: 'Gula Pasir 1kg', qty: 1, price: 16000),
+          ],
+          total: 168000,
+          discount: 8000,
+          paymentMethod: 'Tunai',
+          cashGiven: 200000,
+          cashReturn: 32000,
+          cashierName: showCashier ? 'Budi' : null,
+          invoice: showInvoice ? 'INV-001' : '',
+          dateStr: showDate ? '25 Jul 2026  14:30 WIB' : '',
+          paperWidth: paper.contains('80') ? '80' : '58',
+          headerSizePx: fontH.clamp(receiptMinPx, receiptMaxPx),
+          itemsSizePx: fontI.clamp(receiptMinPx, receiptMaxPx),
+          footerSizePx: fontF.clamp(receiptMinPx, receiptMaxPx),
+          logoWidthPercent: logoPct.clamp(1, 100),
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── About Link ────────────────────────────────────────────
@@ -4267,33 +4042,4 @@ class _ChangelogBody extends StatelessWidget {
       }).toList(),
     );
   }
-}
-
-// ── Custom dash painter for receipt preview ──
-class _DashPainter extends CustomPainter {
-  final double strokeWidth;
-  _DashPainter(this.strokeWidth);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFD1D5DB)
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-    const dashWidth = 4.0;
-    const dashGap = 3.0;
-    double startX = 0;
-    while (startX < size.width) {
-      canvas.drawLine(
-        Offset(startX, 1),
-        Offset((startX + dashWidth).clamp(0, size.width), 1),
-        paint,
-      );
-      startX += dashWidth + dashGap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashPainter oldDelegate) =>
-      strokeWidth != oldDelegate.strokeWidth;
 }

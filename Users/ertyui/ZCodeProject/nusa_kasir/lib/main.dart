@@ -12,7 +12,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
-import 'package:nusa_kasir/core/utils/receipt_printer.dart';
+import 'package:nusa_kasir/core/utils/receipt_renderer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
@@ -270,6 +270,22 @@ void main() async {
       await _receiveAtLaunch();
     } catch (_) {}
 
+    // Reset pengaturan struk ke v2 (bit-image, ukuran pixel) SEKALI saat
+    // upgrade ke v2.2.24+76 — nilai lama (perbesaran ESC/POS 1-5) tidak
+    // kompatibel dengan kamus pixel 12-48 baru, jadi dibersihkan ke default
+    // (Header 24, Rincian 12, Footer 12, Logo 60%, Font Standar).
+    try {
+      if (!await SecureStore.getReceiptV2ResetDone()) {
+        await SecureStore.setReceiptFontType('standar');
+        await SecureStore.setReceiptFontHeader(receiptHeaderDefaultPx);
+        await SecureStore.setReceiptFontItems(receiptItemsDefaultPx);
+        await SecureStore.setReceiptFontFooter(receiptFooterDefaultPx);
+        await SecureStore.setReceiptLogoWidthPercent(receiptLogoDefaultPercent);
+        await SecureStore.setReceiptV2ResetDone();
+        debugPrint('[Receipt] pengaturan struk di-reset ke v2 (bit-image)');
+      }
+    } catch (_) {}
+
     // Apply pending device-migration backup BEFORE opening the database.
     try {
       await _applyPendingRestore();
@@ -294,13 +310,9 @@ void main() async {
         NusaConfig.applyTheme(preset);
       }
     } catch (_) {}
-    // Restore cash drawer auto-open flag so the setting survives app restarts
-    // (ReceiptPrinter._cashDrawerEnabled is static and otherwise only set when
-    // the printer settings sheet is opened).
-    try {
-      final drawer = await SecureStore.getCashDrawerEnabled();
-      ReceiptPrinter.setCashDrawer(enabled: drawer);
-    } catch (_) {}
+    // Cash drawer flag dibaca langsung dari SecureStore saat print
+    // (ReceiptPrinter.printReceipt → SecureStore.getCashDrawerEnabled()),
+    // jadi tidak perlu di-restore ke static field lagi.
 
     // Hapus APK update sisa (auto-cleanup) — user gaptek lupa menghapus,
     // memori penyimpanan penuh. File tidak bisa dihapus saat installer masih

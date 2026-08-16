@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nusa_kasir/core/constants/app_constants.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/utils/receipt_renderer.dart';
 
 /// DO NOT wipe the entire keystore on PlatformException.
 /// A single key failure (e.g. after OS update) should NOT delete
@@ -211,101 +212,67 @@ class SecureStore {
   static Future<String?> getReceiptHeader() =>
       SecureStore.read(key: 'nusa_receipt_header_text');
 
-  // -- Receipt font settings (universal ESC/POS: Standar=Font A, Kompak=Font B) --
-  // Jenis font GLOBAL: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
-  // Dipakai sebagai default semua section; per-section bisa override lewat
-  // getReceiptFontHeaderType/ItemsType/FooterType.
+  // -- Receipt font settings (v2.2.24+76: bit-image, ukuran px 12-48 slider) --
+  // SEMUA struk dicetak sebagai gambar (bit-image) — ukuran di SecureStore
+  // adalah PIXEL literal 12..48 (slider step 1), bukan perbesaran ESC/POS.
+  // 'standar' = Font A monospace | 'kompak' = Font B monospace (kerampingan).
   static Future<void> setReceiptFontType(String v) =>
       SecureStore.write(key: 'nusa_receipt_font_type', value: v);
   static Future<String> getReceiptFontType() async =>
       (await SecureStore.read(key: 'nusa_receipt_font_type')) ?? 'standar';
 
-  // Jenis font PER SECTION (opsional override — kosong = ikuti global).
-  // Memenuhi permintaan user: pilihan jenis font per bagian struk
-  // (header/rincian/footer bisa beda-beda).
-  static Future<void> setReceiptFontHeaderType(String? v) async {
-    if (v == null) {
-      await SecureStore.delete(key: 'nusa_receipt_font_header_type');
-    } else {
-      await SecureStore.write(
-        key: 'nusa_receipt_font_header_type',
-        value: v,
-      );
-    }
-  }
-
-  static Future<String?> getReceiptFontHeaderType() async =>
-      await SecureStore.read(key: 'nusa_receipt_font_header_type');
-
-  static Future<void> setReceiptFontItemsType(String? v) async {
-    if (v == null) {
-      await SecureStore.delete(key: 'nusa_receipt_font_items_type');
-    } else {
-      await SecureStore.write(
-        key: 'nusa_receipt_font_items_type',
-        value: v,
-      );
-    }
-  }
-
-  static Future<String?> getReceiptFontItemsType() async =>
-      await SecureStore.read(key: 'nusa_receipt_font_items_type');
-
-  static Future<void> setReceiptFontFooterType(String? v) async {
-    if (v == null) {
-      await SecureStore.delete(key: 'nusa_receipt_font_footer_type');
-    } else {
-      await SecureStore.write(
-        key: 'nusa_receipt_font_footer_type',
-        value: v,
-      );
-    }
-  }
-
-  static Future<String?> getReceiptFontFooterType() async =>
-      await SecureStore.read(key: 'nusa_receipt_font_footer_type');
-
-  // Maks perbesaran yang BENAR-BENAR dicetak printer user (hasil Tes Cetak
-  // Kalibrasi). Printer murah sering abaikan >2x — cap ini memastikan ukuran
-  // yang dipilih user tidak menipu (wrap dihitung untuk ukuran yang dicetak).
-  // null/0 = belum dikalibrasi → default 4.
-  static Future<void> setReceiptMaxMag(int? v) async {
-    if (v == null) {
-      await SecureStore.delete(key: 'nusa_receipt_max_mag');
-    } else {
-      await SecureStore.write(key: 'nusa_receipt_max_mag', value: v.toString());
-    }
-  }
-
-  static Future<int> getReceiptMaxMag() async =>
-      int.tryParse(
-        await SecureStore.read(key: 'nusa_receipt_max_mag') ?? '',
-      ) ??
-      4;
-
-  // Ukuran per section (ESC/POS perbesaran 1x-8x, slider fleksibel):
-  // header: default 2. items: default 1. footer: default 1.
+  /// Ukuran pixel header struk (12-48). Default 24.
   static Future<void> setReceiptFontHeader(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_header', value: v.toString());
   static Future<int> getReceiptFontHeader() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_header') ?? '',
       ) ??
-      2;
+      receiptHeaderDefaultPx;
+
+  /// Ukuran pixel rincian item (12-48). Default 12.
   static Future<void> setReceiptFontItems(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
   static Future<int> getReceiptFontItems() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_items') ?? '',
       ) ??
-      1;
+      receiptItemsDefaultPx;
+
+  /// Ukuran pixel footer struk (12-48). Default 12.
   static Future<void> setReceiptFontFooter(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_footer', value: v.toString());
   static Future<int> getReceiptFontFooter() async =>
       int.tryParse(
         await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '',
       ) ??
-      1;
+      receiptFooterDefaultPx;
+
+  /// Lebar logo struk dalam PERSEN lebar kertas (1..100). Default 60.
+  static Future<void> setReceiptLogoWidthPercent(int v) =>
+      SecureStore.write(key: 'nusa_receipt_logo_width', value: v.toString());
+  static Future<int> getReceiptLogoWidthPercent() async =>
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_receipt_logo_width') ?? '',
+      ) ??
+      receiptLogoDefaultPercent;
+
+  /// Flag "reset pengaturan struk ke v2 (bit-image)" — dijalankan SEKALI
+  /// saat upgrade ke v2.2.24+76, membersihkan nilai lama (perbesaran 1-5)
+  /// yang tidak kompatibel dengan kamus pixel baru.
+  static Future<bool> getReceiptV2ResetDone() async =>
+      (await SecureStore.read(key: 'nusa_receipt_v2_reset_done')) == '1';
+  static Future<void> setReceiptV2ResetDone() =>
+      SecureStore.write(key: 'nusa_receipt_v2_reset_done', value: '1');
+
+  /// PIN cash drawer (2 atau 5).
+  static Future<void> setCashDrawerPin(int v) =>
+      SecureStore.write(key: 'nusa_cash_drawer_pin', value: v.toString());
+  static Future<int> getCashDrawerPin() async =>
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_cash_drawer_pin') ?? '',
+      ) ??
+      2;
 
   // -- Printer logo path --
   static Future<void> setPrinterLogoPath(String? v) async {
