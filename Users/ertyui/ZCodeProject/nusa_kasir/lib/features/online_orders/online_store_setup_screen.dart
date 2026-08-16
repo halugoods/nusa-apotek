@@ -39,6 +39,8 @@ class _OnlineStoreSetupScreenState
   // Produk yang gagal upload gambarnya (nama) — ditampilkan sebagai banner
   // peringatan, bukan cuma toast yang gampang terlewat.
   List<String> _imgFailedNames = [];
+  // Alasan kegagalan per produk (nama → alasan) — tampil detail di banner.
+  final Map<String, String> _imgFailReasons = {};
   WebViewController? _webViewCtrl;
   // Wizard 2 langkah: 1 = setup alamat toko, 2 = detail & simpan.
   int _step = 1;
@@ -359,8 +361,10 @@ class _OnlineStoreSetupScreenState
             final file = File(prod.imagePath!);
             if (await file.exists()) {
               final filename = p.basename(prod.imagePath!);
-              // Try upload with retry
+              // Try upload with retry — pakai detail supaya ALASAN kegagalan
+              // terlihat (MIME 415 / RLS 403 / jaringan), bukan senyap.
               bool uploaded = false;
+              String failReason = 'upload gagal';
               for (int attempt = 0; attempt < 3; attempt++) {
                 try {
                   if (attempt > 0) {
@@ -370,9 +374,15 @@ class _OnlineStoreSetupScreenState
                     await Future.delayed(Duration(seconds: attempt));
                   }
                   final svc = ImageStorageService(client, uid);
-                  uploaded = await svc.uploadImage('products', prod.imagePath!);
+                  final r = await svc.uploadImageDetailed(
+                    'products',
+                    prod.imagePath!,
+                  );
+                  uploaded = r.ok;
+                  failReason = r.message;
                   if (uploaded) break;
                 } catch (e) {
+                  failReason = '$e';
                   debugPrint(
                     '[OnlineStoreSetup] Upload attempt $attempt failed: $e',
                   );
@@ -392,8 +402,9 @@ class _OnlineStoreSetupScreenState
               } else {
                 imgFailed++;
                 _imgFailedNames.add(prod.name);
+                _imgFailReasons[prod.name] = failReason;
                 debugPrint(
-                  '[OnlineStoreSetup] ⚠ All upload attempts failed for ${prod.name}',
+                  '[OnlineStoreSetup] ⚠ Upload gagal ${prod.name}: $failReason',
                 );
               }
             } else {
@@ -402,15 +413,20 @@ class _OnlineStoreSetupScreenState
               );
               imgFailed++;
               _imgFailedNames.add(prod.name);
+              _imgFailReasons[prod.name] = 'file gambar tidak ada di HP';
             }
           } catch (e) {
             imgFailed++;
             _imgFailedNames.add(prod.name);
+            _imgFailReasons[prod.name] = '$e';
             debugPrint(
               '[OnlineStoreSetup] ⚠ Image skipped for ${prod.name}: $e',
             );
           }
         } else if (prod.imagePath != null && uid == null) {
+          imgFailed++;
+          _imgFailedNames.add(prod.name);
+          _imgFailReasons[prod.name] = 'belum login Google (tidak bisa upload)';
           debugPrint('[OnlineStoreSetup] ⚠ No user ID — cannot upload images');
         }
 
@@ -464,13 +480,15 @@ class _OnlineStoreSetupScreenState
             '${imgSuccess > 0 ? " ($imgSuccess gambar)" : ""}'
             '${imgFailed > 0 ? " — $imgFailed gambar gagal" : ""}';
         if (imgFailed > 0 && _imgFailedNames.isNotEmpty) {
-          // Nama produk yang gagal — dipakai banner peringatan di bawah.
+          // Nama produk yang gagal + ALASAN — dipakai banner peringatan.
+          final reason = _imgFailReasons[_imgFailedNames.first] ?? '';
           setState(() {});
           TopToast.info(
             context,
             '${_imgFailedNames.length} produk gagal upload gambar: '
             '${_imgFailedNames.take(3).join(', ')}'
-            '${_imgFailedNames.length > 3 ? ', dll.' : ''}',
+            '${_imgFailedNames.length > 3 ? ', dll.' : ''}'
+            '${reason.isNotEmpty ? ' — $reason' : ''}',
           );
         }
         TopToast.success(context, msg);
@@ -1573,7 +1591,7 @@ class _OnlineStoreSetupScreenState
                         Text(
                           '${_imgFailedNames.take(3).join(', ')}'
                           '${_imgFailedNames.length > 3 ? ', dll.' : ''} — '
-                          'periksa koneksi & coba Sinkronkan lagi. '
+                          '${_imgFailReasons[_imgFailedNames.first] ?? 'periksa koneksi & coba Sinkronkan lagi'}. '
                           'Produk tetap tampil tanpa foto.',
                           style: TextStyle(fontSize: 11.5, color: subColor),
                         ),

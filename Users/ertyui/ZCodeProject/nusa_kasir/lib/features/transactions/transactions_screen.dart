@@ -843,13 +843,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       fontWeight: FontWeight.bold,
       color: textColor,
     );
-    // "Anda hemat" — total potongan dari diskon per item (match print).
-    final totalItemDiscount = rawItems.fold<int>(0, (s, it) {
-      final o = (it['originalPrice'] as num?)?.toInt();
-      final p = (it['price'] as num).toInt();
-      final hasDisc = o != null && o > p;
-      return s + (hasDisc ? o - p : 0);
-    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -881,13 +874,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final name = '${it['name']}';
           final qty = (it['qty'] as num).toInt();
           final price = (it['price'] as num).toInt();
-          final subtotal = qty * price;
           final orig = (it['originalPrice'] as num?)?.toInt();
           final hasDisc = orig != null && orig > price;
-          // qty x harga asli + (potongan) — hemat 2 baris (match print).
-          final qtyPriceTxt = hasDisc
-              ? '$qty x ${formatRupiah(price)} (-${formatRupiah(orig - price)})'
-              : '$qty x ${formatRupiah(price)}';
+          // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
+          final unitPrice = orig ?? price;
+          final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
           return Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Column(
@@ -898,9 +889,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(qtyPriceTxt, style: monoGrey),
-                    Text(formatRupiah(subtotal), style: mono),
+                    Text(formatRupiah(qty * unitPrice), style: mono),
                   ],
                 ),
+                // Diskon item per produk — baris sendiri, tidak dobel hitung.
+                if (hasDisc)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('  Diskon', style: monoGrey),
+                      Text(
+                        '-${formatRupiah((orig - price) * qty)}',
+                        style: monoGrey,
+                      ),
+                    ],
+                  ),
               ],
             ),
           );
@@ -918,19 +921,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             ],
           ),
         ),
-        // "Anda hemat" — total potongan diskon item (match print).
-        if (totalItemDiscount > 0)
-          Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Anda hemat', style: monoGrey),
-                Text(formatRupiah(totalItemDiscount), style: monoGrey),
-              ],
-            ),
-          ),
         // Total diskon — tepat DI BAWAH TOTAL (komplain user).
+        // Diskon item sudah tampil per item di atas; baris ini hanya diskon
+        // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
         if (tx.discount > 0)
           Padding(
             padding: EdgeInsets.only(bottom: 3),

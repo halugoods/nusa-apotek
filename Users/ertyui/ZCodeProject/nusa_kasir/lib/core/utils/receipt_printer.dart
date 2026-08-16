@@ -30,6 +30,13 @@ class ReceiptLine {
   int get subtotal => qty * price;
   bool get hasDiscount => originalPrice != null && originalPrice! > price;
   int get discountNominal => hasDiscount ? originalPrice! - price : 0;
+
+  /// Subtotal KOTOR (sebelum diskon item) — dipakai struk supaya harga yang
+  /// dicetak adalah harga ASLI, bukan harga yang sudah dipotong diskon.
+  int get grossSubtotal => qty * (originalPrice ?? price);
+
+  /// Potongan diskon item TOTAL untuk semua qty (per unit × qty).
+  int get discountTotal => hasDiscount ? discountNominal * qty : 0;
 }
 
 /// Sanitize text for thermal printer (strip non-ASCII characters).
@@ -110,6 +117,25 @@ List<String> _wrap(String text, int maxChars) {
   }
   if (remaining.isNotEmpty) lines.add(remaining);
   return lines;
+}
+
+/// Resolve jenis font ESC/POS per section.
+///
+/// User bisa pilih jenis font PER BAGIAN (header/rincian/footer masing-masing
+/// Standar=Font A atau Ramping=Font B). [sectionType] adalah override opsional
+/// per section; null → ikuti [globalType] ('standar'/'kompak').
+PosFontType _resolveSectionFont(String? sectionType, String globalType) {
+  final t = sectionType ?? globalType;
+  return t == 'kompak' ? PosFontType.fontB : PosFontType.fontA;
+}
+
+/// Cap perbesaran ke maksimum yang benar-benar dicetak printer user.
+/// [maxMag] hasil Tes Cetak Kalibrasi (SecureStore.getReceiptMaxMag);
+/// default 4 (batas standar ESC/POS yang dijamin printer termal).
+int _capMag(int mag, int maxMag) {
+  final m = mag.clamp(1, 8);
+  final cap = maxMag.clamp(1, 8);
+  return m > cap ? cap : m;
 }
 
 /// A discovered Bluetooth thermal printer.
@@ -294,8 +320,20 @@ class ReceiptPrinter {
     final headerSize = await SecureStore.getReceiptFontHeader();
     final itemsSize = await SecureStore.getReceiptFontItems();
     final footerSize = await SecureStore.getReceiptFontFooter();
+    // Jenis font PER SECTION (override opsional; null = ikuti global).
+    final headerFontType = await SecureStore.getReceiptFontHeaderType();
+    final itemsFontType = await SecureStore.getReceiptFontItemsType();
+    final footerFontType = await SecureStore.getReceiptFontFooterType();
+    // Maks perbesaran yang benar-benar dicetak printer user (Tes Cetak).
+    final maxMag = await SecureStore.getReceiptMaxMag();
     final useFontB = fontType == 'kompak';
+    // Font global dipakai untuk baris non-section (invoice, kasir, payment,
+    // "Terima Kasih!") — section utama pakai resolve per-section.
     final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
+    final headerFont = _resolveSectionFont(headerFontType, fontType);
+    final itemsFont = _resolveSectionFont(itemsFontType, fontType);
+    final footerFont = _resolveSectionFont(footerFontType, fontType);
+    final useItemsFontB = itemsFont == PosFontType.fontB;
 
     // Header struk custom (Teks Header di Pengaturan Struk). Kosong →
     // fallback ke nama toko — SAMA persis perilaku preview di settings.
@@ -365,12 +403,12 @@ class ReceiptPrinter {
     // → ukuran "diam" padahal wrap sudah hancur). Wrap DETERMINISTIK:
     // chars/baris = lebar kertas ~/ perbesaran — persis lebar yang benar-
     // benar dicetak (tidak ada auto-fit yang bikin ukuran "stuck").
-    final headerMag = headerSize.clamp(1, 4);
+    final headerMag = _capMag(headerSize, maxMag);
     final isWideHeader = paperWidth == '80';
-    final baseLineWidth = isWideHeader
-        ? (useFontB ? 64 : 48)
-        : (useFontB ? 42 : 32);
-    final headerLineChars = (baseLineWidth ~/ headerMag).clamp(4, 40);
+    final headerBaseLineWidth = isWideHeader
+        ? (headerFont == PosFontType.fontB ? 64 : 48)
+        : (headerFont == PosFontType.fontB ? 42 : 32);
+    final headerLineChars = (headerBaseLineWidth ~/ headerMag).clamp(4, 40);
     final headerParts = _wrap(headerText, headerLineChars);
     final headerHeight = _posSize(headerMag);
     for (final part in headerParts) {
@@ -382,7 +420,7 @@ class ReceiptPrinter {
             bold: true,
             height: headerHeight,
             width: headerHeight,
-            fontType: itemFont,
+            fontType: headerFont,
           ),
         ),
       );
@@ -451,22 +489,23 @@ class ReceiptPrinter {
     // Line items — manual text formatting for precise wrapping.
     // generator.row()+PosColumn internally clips text; generator.text() doesn't.
     //
-    // Jenis font menentukan lebar baris:
+    // Jenis font per section menentukan lebar baris:
     //   Standar (Font A): 58mm → 32 char, 80mm → 48 char  (universal)
     //   Kompak  (Font B): 58mm → 42 char, 80mm → 64 char  (ramping)
     // Default = Standar: printer clone murah (VSC dkk) merender Font B
     // kosong/garbled, sehingga rincian hilang. Standar selalu muncul.
     final itemBaseLineWidth = isWide
-        ? (useFontB ? 64 : 48)
-        : (useFontB ? 42 : 32);
-    // Ukuran rincian: nilai literal 12/18/24/36 → perbesaran 1x-4x (maks 4x;
-    // 5x-8x diabaikan printer murah). Baris teks dipecah: 2x → ~16 char di
-    // 58mm, 3x → ~10 char, 4x → 8 char — DETERMINISTIK (lebar ~/ perbesaran).
-    final itemMag = itemsSize.clamp(1, 4);
+        ? (useItemsFontB ? 64 : 48)
+        : (useItemsFontB ? 42 : 32);
+    // Ukuran rincian: slider halus 1x-8x → perbesaran, DI-CAP ke maksimum
+    // yang benar-benar dicetak printer user (Tes Cetak Kalibrasi). Tanpa cap,
+    // printer murah mengabaikan >2x → ukuran "diam" padahal wrap sudah dihitung
+    // untuk perbesaran besar (penyebab "Halu Goo\nds").
+    final itemMag = _capMag(itemsSize, maxMag);
     final itemBig = itemMag > 1;
     final itemStyles = PosStyles(
       align: PosAlign.left,
-      fontType: itemFont,
+      fontType: itemsFont,
       height: _posSize(itemMag),
       width: _posSize(itemMag),
     );
@@ -474,8 +513,8 @@ class ReceiptPrinter {
     final itemLineWidth = itemBig
         ? (itemBaseLineWidth ~/ itemMag)
         : itemBaseLineWidth;
-    final qtyPriceWidth = useFontB ? 14 : 12; // "2xRp10.000" max
-    final subWidth = useFontB ? 11 : 10; // "Rp20.000" max
+    final qtyPriceWidth = useItemsFontB ? 14 : 12; // "2xRp10.000" max
+    final subWidth = useItemsFontB ? 11 : 10; // "Rp20.000" max
     // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──
     // Sebelumnya nama di-squeeze ke sisa setelah qty×harga + subtotal
     // (58mm Font A → hanya 8 karakter → "enter2 kebawah" dengan ~15 char).
@@ -486,11 +525,21 @@ class ReceiptPrinter {
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       final nameParts = _wrap(line.name, nameWidth);
+      // Harga per unit = harga ASLI (sebelum diskon item). Diskon item dicetak
+      // sebagai baris terpisah per item ("Diskon: -Rp X") — TIDAK dicampur
+      // dengan harga yang sudah dipotong (komplain user: harga + (-diskon) +
+      // subtotal diskon = tidak masuk akal).
+      final unitPrice = line.originalPrice ?? line.price;
       final qtyPrice = _fit(
-        '${line.qty}x${formatRupiah(line.price)}',
+        '${line.qty}x${formatRupiah(unitPrice)}',
         qtyPriceWidth,
       );
-      final subtotal = _fit(formatRupiah(line.subtotal), subWidth);
+      // Subtotal yang ditampilkan = KOTOR (qty × harga asli) — konsisten
+      // dengan harga unit asli; potongan item tampil di baris "Diskon".
+      final subtotal = _fit(
+        formatRupiah(line.grossSubtotal),
+        subWidth,
+      );
 
       // Baris 1: nama item (wrap). Nama sendiri — tidak digabung dengan qty.
       for (final part in nameParts) {
@@ -498,16 +547,9 @@ class ReceiptPrinter {
       }
 
       if (itemBig) {
-        // Rincian "Besar" (2x): qty x harga baris sendiri (KIRI), subtotal
-        // baris sendiri menempel KANAN — sejajar dengan nominal TOTAL.
-        // Diskon per item ditulis inline di qty x harga: ( -Rp potongan ).
-        final qpDisc = line.hasDiscount
-            ? _fit(
-                '${line.qty}x${formatRupiah(line.price)} (-${formatRupiah(line.discountNominal)})',
-                itemLineWidth - 2,
-              )
-            : qtyPrice;
-        bytes.addAll(generator.text(_san(qpDisc), styles: itemStyles));
+        // Rincian "Besar" (2x): qty x harga asli baris sendiri (KIRI),
+        // subtotal KOTOR baris sendiri menempel KANAN (sejajar TOTAL).
+        bytes.addAll(generator.text(_san(qtyPrice), styles: itemStyles));
         bytes.addAll(
           generator.text(
             _san(subtotal.padLeft(itemLineWidth)),
@@ -515,21 +557,23 @@ class ReceiptPrinter {
           ),
         );
       } else {
-        // Rincian "Kecil" (default): satu baris = qty x harga di KIRI,
-        // subtotal di KANAN (menempel tepi kanan = sejajar kolom TOTAL).
-        // Diskon per item menyatu di qty x harga: "4 x Rp2.000 (-Rp1.000)"
-        // — hemat 2 baris struk dibanding format "Harga Normal/Diskon".
-        final qpDisc = line.hasDiscount
-            ? _fit(
-                '${line.qty}x${formatRupiah(line.price)} (-${formatRupiah(line.discountNominal)})',
-                qtyPriceWidth + 12,
-              )
-            : qtyPrice;
-        final gap = itemLineWidth - qpDisc.length - subtotal.length;
+        // Rincian "Kecil" (default): satu baris = qty x harga asli di KIRI,
+        // subtotal KOTOR di KANAN (menempel tepi kanan = sejajar TOTAL).
+        final gap = itemLineWidth - qtyPrice.length - subtotal.length;
         final line2 = gap >= 3
-            ? '$qpDisc${' ' * (gap - 2)}  $subtotal'
-            : '$qpDisc  $subtotal';
+            ? '$qtyPrice${' ' * (gap - 2)}  $subtotal'
+            : '$qtyPrice  $subtotal';
         bytes.addAll(generator.text(_san(line2), styles: itemStyles));
+      }
+
+      // Diskon item per produk — baris sendiri, jelas & tidak dobel hitung.
+      // Nominal = potongan per unit × qty (jumlah sebenarnya yang dihemat).
+      if (line.hasDiscount) {
+        final discLine = _fit(
+          '  Diskon: -${formatRupiah(line.discountTotal)}',
+          itemLineWidth,
+        );
+        bytes.addAll(generator.text(_san(discLine), styles: itemStyles));
       }
 
       // Item notes
@@ -574,32 +618,10 @@ class ReceiptPrinter {
       ]),
     );
 
-    // "Anda hemat" — total potongan dari semua diskon per item (1 baris,
-    // ringkas & profesional). Tepat di bawah TOTAL, sebelum Diskon transaksi.
-    final totalItemDiscount = lines.fold<int>(
-      0,
-      (s, l) => s + (l.hasDiscount ? l.discountNominal : 0),
-    );
-    if (totalItemDiscount > 0) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Anda hemat',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit(formatRupiah(totalItemDiscount), isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-    }
-
     // Total diskon — baris sendiri TEPAT DI BAWAH TOTAL (komplain user:
-    // "total diskon di total bawah"). TOTAL sudah setelah diskon; baris ini
-    // menegaskan nominal potongan transaksi (promo/manual/tier/poin).
+    // "total diskon di total bawah"). Diskon item sudah dicetak per item
+    // ("Diskon: -Rp X" di bawah tiap item) — baris ini hanya diskon
+    // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
     if (discount > 0) {
       bytes.addAll(
         generator.row([
@@ -683,11 +705,14 @@ class ReceiptPrinter {
 
     bytes.addAll(generator.hr());
 
-    // Footer — wrap long text. Ukuran literal 12/18/24/36 → 1x-4x (maks 4x).
+    // Footer — wrap long text. Slider halus 1x-8x → perbesaran DI-CAP ke maks
+    // yang benar-benar dicetak printer user (Tes Cetak Kalibrasi).
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
-      final footerMag = footerSize.clamp(1, 4);
-      final footerBase = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
+      final footerMag = _capMag(footerSize, maxMag);
+      final footerBase = isWide
+          ? (footerFont == PosFontType.fontB ? 64 : 48)
+          : (footerFont == PosFontType.fontB ? 42 : 32);
       final footerLineChars = (footerBase ~/ footerMag).clamp(4, 40);
       final footerParts = _wrap(footerText, footerLineChars);
       for (final part in footerParts) {
@@ -696,7 +721,7 @@ class ReceiptPrinter {
             _san(part),
             styles: PosStyles(
               align: PosAlign.center,
-              fontType: itemFont,
+              fontType: footerFont,
               height: _posSize(footerMag),
               width: _posSize(footerMag),
             ),
@@ -1118,55 +1143,83 @@ class ReceiptPrinter {
     );
     bytes.addAll(generator.hr());
 
-    // Header "Halu Goods" di 4 ukuran literal → perbesaran 1x/2x/3x/4x.
-    // Wrap deterministik: chars/baris = lebar kertas ~/ perbesaran, persis
-    // yang dilakukan struk asli — jadi ukuran di kertas = ukuran di struk.
+    // Jenis font global + per-section + maks perbesaran yang tersimpan.
     final fontType = await SecureStore.getReceiptFontType();
-    final useFontB = fontType == 'kompak';
-    final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
-    final baseLineWidth = isWide ? (useFontB ? 64 : 48) : (useFontB ? 42 : 32);
-    const labelSizes = [
-      'Kecil (12)',
-      'Normal (18)',
-      'Besar (24)',
-      'Extra Besar (36)',
-    ];
-    for (var i = 0; i < 4; i++) {
-      final mag = i + 1;
-      final chars = (baseLineWidth ~/ mag).clamp(4, baseLineWidth);
-      bytes.addAll(
-        generator.text(
-          _san('${labelSizes[i]} — ${mag}x'),
-          styles: const PosStyles(align: PosAlign.center),
-        ),
-      );
-      final parts = _wrap(storeName, chars);
-      for (final part in parts) {
-        bytes.addAll(
-          generator.text(
-            _san(part),
-            styles: PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: _posSize(mag),
-              width: _posSize(mag),
-              fontType: itemFont,
-            ),
-          ),
-        );
-      }
-      bytes.addAll(generator.feed(1));
-    }
-    bytes.addAll(generator.hr());
+    final headerFontType = await SecureStore.getReceiptFontHeaderType();
+    final itemsFontType = await SecureStore.getReceiptFontItemsType();
+    final maxMag = await SecureStore.getReceiptMaxMag();
+    final headerFont = _resolveSectionFont(headerFontType, fontType);
+    final itemsFont = _resolveSectionFont(itemsFontType, fontType);
+
+    // Tes cetak SEMUA perbesaran 1x-8x (bukan cuma 4 literal) supaya user
+    // tahu persis mana yang benar-benar dicetak printer-nya — termasuk yang
+    // diabaikan (>2x pada printer murah). Cap yang tersimpan dicetak sebagai
+    // informasi ("maks saat ini: Nx").
     bytes.addAll(
       generator.text(
-        _san('Pilih ukuran terbesar yang tercetak BENAR.'),
+        _san('Maks tersimpan: ${maxMag}x (cap saat ini)'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+
+    for (final fontInfo in [
+      ('Standar (Font A)', headerFont),
+      ('Ramping (Font B)', itemsFont),
+    ]) {
+      final label = fontInfo.$1;
+      final font = fontInfo.$2;
+      bytes.addAll(
+        generator.text(
+          _san('─ $label ─'),
+          styles: const PosStyles(align: PosAlign.center, bold: true),
+        ),
+      );
+      final baseLineWidth = isWide
+          ? (font == PosFontType.fontB ? 64 : 48)
+          : (font == PosFontType.fontB ? 42 : 32);
+      for (var mag = 1; mag <= 8; mag++) {
+        final chars = (baseLineWidth ~/ mag).clamp(4, baseLineWidth);
+        bytes.addAll(
+          generator.text(
+            _san('${mag}x (${chars} kar/baris)'),
+            styles: const PosStyles(align: PosAlign.center),
+          ),
+        );
+        final parts = _wrap(storeName, chars);
+        for (final part in parts) {
+          bytes.addAll(
+            generator.text(
+              _san(part),
+              styles: PosStyles(
+                align: PosAlign.center,
+                bold: true,
+                height: _posSize(mag),
+                width: _posSize(mag),
+                fontType: font,
+              ),
+            ),
+          );
+        }
+        bytes.addAll(generator.feed(1));
+      }
+      bytes.addAll(generator.hr());
+    }
+
+    bytes.addAll(
+      generator.text(
+        _san('Pilih ukuran terbesar yang tercetak BENAR,'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
     bytes.addAll(
       generator.text(
-        _san('24 & 36 tampak sama dengan 12/18? Printer hanya dukung 1x-2x.'),
+        _san('lalu set "Maks Ukuran Printer" di pengaturan.'),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        _san('Bagian yang lebih besar dari cap akan dicetak = cap.'),
         styles: const PosStyles(align: PosAlign.center),
       ),
     );

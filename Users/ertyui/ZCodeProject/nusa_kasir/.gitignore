@@ -53,3 +53,6 @@ nusa_key.private
 # APK builds (too large for GitHub)
 *.apk
 nusa_builds/
+
+# Supabase CLI temp state (nested working copy)
+supabase/supabase/

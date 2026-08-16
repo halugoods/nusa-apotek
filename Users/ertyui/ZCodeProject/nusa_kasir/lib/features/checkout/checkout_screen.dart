@@ -61,7 +61,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   List<int> denoms = [];
   // ── Uang Pas + template nominal custom (K8) ──
   List<int> _customDenoms = [];
-  bool _customDenomsLoaded = false;
   int? _cashGiven;
   String? _qrisString;
   String? _qrisImagePath;
@@ -272,7 +271,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         _bankAccount = bankAccount;
         _bankHolder = bankHolder;
         _customDenoms = customs;
-        _customDenomsLoaded = true;
       });
   }
 
@@ -308,7 +306,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ? NusaConfig.darkTextTertiary
         : NusaConfig.textTertiary;
     final surface = isDark ? NusaConfig.darkSurface : Colors.white;
-    final borderC = isDark ? NusaConfig.darkBorder : Color(0xFFE2E8F0);
 
     await showModalBottomSheet(
       context: context,
@@ -561,17 +558,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ],
         ),
         SizedBox(height: 8),
-        // Uang Pas + kelola nominal custom
+        // Uang Pas + kelola nominal custom — kompak seperti chip nominal lain
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: _denomChip(
-                isDark,
-                _total,
-                _applyExactCash,
-                label: 'Uang Pas',
-                accent: NusaConfig.activePrimary,
-              ),
+            _denomChip(
+              isDark,
+              _total,
+              _applyExactCash,
+              label: 'Uang Pas',
+              accent: NusaConfig.activePrimary,
             ),
             SizedBox(width: 6),
             IconButton(

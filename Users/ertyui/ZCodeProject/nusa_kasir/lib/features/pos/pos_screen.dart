@@ -21,7 +21,7 @@ import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
-import 'package:nusa_kasir/shared/widgets/continuous_barcode_scanner.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
   final int? sessionId;
@@ -52,7 +52,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   String? _routeCustomerPhone;
 
   List<Product>? _allProducts;
-  bool _firstBuild = true;
   List<String> _allCats = [];
 
   List<String> get _chips => ['Semua', ..._allCats];
@@ -227,23 +226,130 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   // ── Barcode scanner ──
 
-  /// Scanner barcode KONTINU — layar penuh, tidak menutup setelah 1 scan.
-  /// Tiap scan resolve → _addToCart (guard stok & per-kg tetap berjalan);
-  /// scanner tetap terbuka untuk scan berikutnya.
+  /// Scanner barcode KAMERA — modal popup (UI asli, konsisten dengan
+  /// products_screen): buka → scan SATU barcode → tutup → tambah ke keranjang.
+  /// Scan kontinu hanya berlaku untuk scanner EKSTERNAL (HID/keyboard):
+  /// ketik barcode di kolom cari + Enter, langsung masuk keranjang.
   Future<void> _scanBarcode(BuildContext context) async {
-    final repo = ProductRepository(ref.read(databaseProvider));
-    await pushContinuousScanner(
-      context,
-      title: 'Pindai Barcode',
-      subtitle: 'Scan berulang — produk otomatis masuk keranjang',
-      resolver: (raw) async {
-        final product = await repo.byBarcode(raw);
-        if (product == null) return null;
-        if (!mounted) return product.name;
-        _addToCart(product);
-        return product.name;
-      },
+    String? scannedCode;
+    // Include the full common barcode family + QR. Restricting formats avoids
+    // the "no codes found" timeout some cheap scanners hit with the default
+    // all-format detector.
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
     );
+    String? errorMsg;
+    if (!mounted) return;
+
+    // Modal popup — consistent UI with products_screen barcode scanner.
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Text('Pindai Barcode'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(ctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    // Camera permission denied / no camera: show guidance
+                    // (barcode manual diatur via Form Produk).
+                    debugPrint('[POS] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      setSt(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode manual diatur via Form Produk.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scannedCode == null || !context.mounted) return;
+
+    final product = await ProductRepository(
+      ref.read(databaseProvider),
+    ).byBarcode(scannedCode!);
+    if (product != null) {
+      _addToCart(product);
+    } else if (context.mounted) {
+      TopToast.error(context, 'Produk tidak ditemukan');
+    }
   }
 
   Future<void> _closeKasir() async {

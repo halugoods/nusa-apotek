@@ -38,6 +38,14 @@ class _ReceiptItem {
   bool get hasDiscount => originalPrice != null && originalPrice! > price;
   int get discountNominal => hasDiscount ? originalPrice! - price : 0;
   int get subtotal => isPerKg ? (price * weightKg!).ceil() : qty * price;
+
+  /// Subtotal KOTOR (sebelum diskon item) — struk menampilkan harga ASLI,
+  /// bukan harga yang sudah dipotong diskon.
+  int get grossSubtotal =>
+      isPerKg ? (originalPrice ?? price) * weightKg!.ceil() : qty * (originalPrice ?? price);
+
+  /// Potongan diskon item total (per unit × qty) — angka hemat yang benar.
+  int get discountTotal => hasDiscount ? discountNominal * qty : 0;
 }
 
 /// Thermal-style receipt dialog — matches GAS receipt modal design.
@@ -522,6 +530,11 @@ class ReceiptSheet extends ConsumerWidget {
     final fontHeader = await SecureStore.getReceiptFontHeader();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
+    // Jenis font per section + cap maks printer.
+    final fontHeaderType = await SecureStore.getReceiptFontHeaderType();
+    final fontItemsType = await SecureStore.getReceiptFontItemsType();
+    final fontFooterType = await SecureStore.getReceiptFontFooterType();
+    final maxMag = await SecureStore.getReceiptMaxMag();
     // Ukuran kertas — preview mengikuti (58/80mm, komplain user).
     final paperWidth = await SecureStore.getPaperSize();
     return _ReceiptSettings(
@@ -537,6 +550,10 @@ class ReceiptSheet extends ConsumerWidget {
       fontHeader: fontHeader,
       fontItems: fontItems,
       fontFooter: fontFooter,
+      fontHeaderType: fontHeaderType,
+      fontItemsType: fontItemsType,
+      fontFooterType: fontFooterType,
+      maxMag: maxMag,
       paperWidth: paperWidth,
     );
   }
@@ -554,14 +571,14 @@ class ReceiptSheet extends ConsumerWidget {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // "Anda hemat" — total potongan dari diskon per item (match print).
-    final totalItemDiscount = items.fold<int>(
-      0,
-      (it, e) => it + (e.hasDiscount ? e.discountNominal : 0),
-    );
     // Ukuran font per section mengikuti pengaturan struk (slider 1-8, sama
     // dengan print). Items dijadikan basis: 1 → 11pt, 8 → 18pt.
-    final itemFontSize = 10.0 + s.fontItems.clamp(1, 8);
+    // Ukuran di-cap ke maksimum printer (maxMag) — preview = print asli.
+    final cap = s.maxMag.clamp(1, 8);
+    final itemMagP = s.fontItems.clamp(1, cap);
+    final headerMagP = s.fontHeader.clamp(1, cap);
+    final footerMagP = s.fontFooter.clamp(1, cap);
+    final itemFontSize = 10.0 + itemMagP;
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -584,7 +601,7 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 10.0 + s.fontHeader.clamp(1, 8),
+      fontSize: 10.0 + headerMagP,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -597,7 +614,7 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 10.0 + s.fontFooter.clamp(1, 8),
+      fontSize: 10.0 + footerMagP,
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -715,20 +732,9 @@ class ReceiptSheet extends ConsumerWidget {
           ),
         ),
 
-        // ── "Anda hemat" — total potongan diskon item (match print) ──
-        if (totalItemDiscount > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Anda hemat', style: monoGrey),
-                Text(formatRupiah(totalItemDiscount), style: monoGrey),
-              ],
-            ),
-          ),
-
         // ── Total diskon — tepat DI BAWAH TOTAL (komplain user) ──
+        // Diskon item sudah tampil per item di atas; baris ini hanya diskon
+        // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
         if (discount > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
@@ -814,13 +820,14 @@ class ReceiptSheet extends ConsumerWidget {
     final qtyDisplay = item.isPerKg
         ? '${item.weightKg!.toStringAsFixed(1)} kg'
         : '${item.qty}';
-    // qty x harga asli + (potongan) — hemat 2 baris dibanding format
-    // "Harga Normal:... / Diskon: -..." (konsisten dgn hasil print).
-    final qtyPriceTxt = item.hasDiscount
-        ? '$qtyDisplay x ${formatRupiah(item.price)} (-${formatRupiah(item.discountNominal)})'
-        : item.isPerKg
-        ? '$qtyDisplay x ${formatRupiah(item.price)}/kg'
-        : '$qtyDisplay x ${formatRupiah(item.price)}';
+    // Harga per unit = harga ASLI (sebelum diskon item). Diskon item tampil
+    // sebagai baris terpisah "Diskon: -Rp X" per item — tidak dicampur dengan
+    // harga yang sudah dipotong (komplain user: harga diskon + (-diskon) +
+    // subtotal diskon = tidak masuk akal).
+    final unitPrice = item.originalPrice ?? item.price;
+    final qtyPriceTxt = item.isPerKg
+        ? '$qtyDisplay x ${formatRupiah(unitPrice)}/kg'
+        : '$qtyDisplay x ${formatRupiah(unitPrice)}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(
@@ -831,9 +838,18 @@ class ReceiptSheet extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(qtyPriceTxt, style: monoGrey),
-              Text(formatRupiah(item.subtotal), style: mono),
+              Text(formatRupiah(item.grossSubtotal), style: mono),
             ],
           ),
+          // Diskon item per produk — baris sendiri, jelas & tidak dobel hitung.
+          if (item.hasDiscount)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('  Diskon', style: monoGrey),
+                Text('-${formatRupiah(item.discountTotal)}', style: monoGrey),
+              ],
+            ),
           if (item.note != null && item.note!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
@@ -1125,11 +1141,14 @@ class ReceiptSheet extends ConsumerWidget {
     sb.writeln('━━━━━━━━━━━━━━━━━');
     for (final item in items) {
       sb.writeln(item.name);
-      sb.writeln(
-        '  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}',
-      );
+      // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
+      final unitPrice = item.originalPrice ?? item.price;
+      final subTxt = item.isPerKg
+          ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}'
+          : '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}';
+      sb.writeln(subTxt);
       if (item.hasDiscount) {
-        sb.writeln('  Diskon: -${formatRupiah(item.discountNominal)}');
+        sb.writeln('  Diskon: -${formatRupiah(item.discountTotal)}');
       }
       if (item.note != null && item.note!.isNotEmpty) {
         sb.writeln('  ↳ ${item.note}');
@@ -1188,11 +1207,13 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('─' * 32);
       for (final item in items) {
         sb.writeln(item.name);
+        // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
+        final unitPrice = item.originalPrice ?? item.price;
         sb.writeln(
-          '  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.subtotal)}',
+          '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}',
         );
         if (item.hasDiscount) {
-          sb.writeln('  Diskon: -${formatRupiah(item.discountNominal)}');
+          sb.writeln('  Diskon: -${formatRupiah(item.discountTotal)}');
         }
         if (item.note != null && item.note!.isNotEmpty) {
           sb.writeln('  \u21B3 ${item.note}');
@@ -1247,6 +1268,11 @@ class _ReceiptSettings {
   final int fontHeader;
   final int fontItems;
   final int fontFooter;
+  // Jenis font per section (null = ikuti global) + cap maks printer.
+  final String? fontHeaderType;
+  final String? fontItemsType;
+  final String? fontFooterType;
+  final int maxMag;
   // Ukuran kertas '58'/'80' — preview ikut (komplain user: preview 2 arah).
   final String paperWidth;
 
@@ -1263,6 +1289,10 @@ class _ReceiptSettings {
     this.fontHeader = 2,
     this.fontItems = 1,
     this.fontFooter = 1,
+    this.fontHeaderType,
+    this.fontItemsType,
+    this.fontFooterType,
+    this.maxMag = 4,
     this.paperWidth = '58',
   });
 }

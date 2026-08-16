@@ -212,11 +212,76 @@ class SecureStore {
       SecureStore.read(key: 'nusa_receipt_header_text');
 
   // -- Receipt font settings (universal ESC/POS: Standar=Font A, Kompak=Font B) --
-  // Jenis font: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
+  // Jenis font GLOBAL: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
+  // Dipakai sebagai default semua section; per-section bisa override lewat
+  // getReceiptFontHeaderType/ItemsType/FooterType.
   static Future<void> setReceiptFontType(String v) =>
       SecureStore.write(key: 'nusa_receipt_font_type', value: v);
   static Future<String> getReceiptFontType() async =>
       (await SecureStore.read(key: 'nusa_receipt_font_type')) ?? 'standar';
+
+  // Jenis font PER SECTION (opsional override — kosong = ikuti global).
+  // Memenuhi permintaan user: pilihan jenis font per bagian struk
+  // (header/rincian/footer bisa beda-beda).
+  static Future<void> setReceiptFontHeaderType(String? v) async {
+    if (v == null) {
+      await SecureStore.delete(key: 'nusa_receipt_font_header_type');
+    } else {
+      await SecureStore.write(
+        key: 'nusa_receipt_font_header_type',
+        value: v,
+      );
+    }
+  }
+
+  static Future<String?> getReceiptFontHeaderType() async =>
+      await SecureStore.read(key: 'nusa_receipt_font_header_type');
+
+  static Future<void> setReceiptFontItemsType(String? v) async {
+    if (v == null) {
+      await SecureStore.delete(key: 'nusa_receipt_font_items_type');
+    } else {
+      await SecureStore.write(
+        key: 'nusa_receipt_font_items_type',
+        value: v,
+      );
+    }
+  }
+
+  static Future<String?> getReceiptFontItemsType() async =>
+      await SecureStore.read(key: 'nusa_receipt_font_items_type');
+
+  static Future<void> setReceiptFontFooterType(String? v) async {
+    if (v == null) {
+      await SecureStore.delete(key: 'nusa_receipt_font_footer_type');
+    } else {
+      await SecureStore.write(
+        key: 'nusa_receipt_font_footer_type',
+        value: v,
+      );
+    }
+  }
+
+  static Future<String?> getReceiptFontFooterType() async =>
+      await SecureStore.read(key: 'nusa_receipt_font_footer_type');
+
+  // Maks perbesaran yang BENAR-BENAR dicetak printer user (hasil Tes Cetak
+  // Kalibrasi). Printer murah sering abaikan >2x — cap ini memastikan ukuran
+  // yang dipilih user tidak menipu (wrap dihitung untuk ukuran yang dicetak).
+  // null/0 = belum dikalibrasi → default 4.
+  static Future<void> setReceiptMaxMag(int? v) async {
+    if (v == null) {
+      await SecureStore.delete(key: 'nusa_receipt_max_mag');
+    } else {
+      await SecureStore.write(key: 'nusa_receipt_max_mag', value: v.toString());
+    }
+  }
+
+  static Future<int> getReceiptMaxMag() async =>
+      int.tryParse(
+        await SecureStore.read(key: 'nusa_receipt_max_mag') ?? '',
+      ) ??
+      4;
 
   // Ukuran per section (ESC/POS perbesaran 1x-8x, slider fleksibel):
   // header: default 2. items: default 1. footer: default 1.

@@ -32,25 +32,67 @@ class ImageStorageService {
   /// Upload a local file to Supabase Storage.
   /// Returns true on success. Does NOT throw — errors are logged.
   Future<bool> uploadImage(String category, String localPath) async {
+    final r = await uploadImageDetailed(category, localPath);
+    return r.ok;
+  }
+
+  /// Upload dengan detail hasil — `ok=false` disertai [message] alasan
+  /// (mis. "file tidak ada", "MIME ditolak 415", "RLS 403", "jaringan").
+  /// Dipakai sinkronisasi toko online untuk menampilkan ALASAN kegagalan
+  /// upload gambar (bukan sekadar "gagal").
+  Future<({bool ok, String message})> uploadImageDetailed(
+    String category,
+    String localPath,
+  ) async {
     try {
       final file = File(localPath);
-      if (!await file.exists()) return false;
+      if (!await file.exists()) {
+        return (ok: false, message: 'file tidak ada: $localPath');
+      }
       final filename = p.basename(localPath);
       final remotePath = _remotePath(category, filename);
       final bytes = await file.readAsBytes();
-      await _client.storage
-          .from('nusa-images')
-          .uploadBinary(
+      final ext = p.extension(filename).toLowerCase();
+      // Pastikan contentType eksplisit — bucket nusa-images cuma menerima
+      // jpeg/png/webp/gif; storage_client menebak MIME dari ekstensi path,
+      // tapi eksplisit lebih andal (hindari 415 invalid_mime_type).
+      final contentType = _mimeFor(ext);
+      await _client.storage.from('nusa-images').uploadBinary(
             remotePath,
             bytes,
-            fileOptions: const FileOptions(upsert: true),
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: contentType,
+            ),
           );
-      return true;
+      return (ok: true, message: '');
     } catch (e) {
       debugPrint('[ImageStorage] Upload failed ($category): $e');
-      return false;
+      final msg = '$e';
+      String reason = msg;
+      if (msg.contains('415') || msg.toLowerCase().contains('mime')) {
+        reason = 'MIME ditolak (415) — ekstensi file tidak didukung';
+      } else if (msg.contains('403') || msg.toLowerCase().contains('rls') ||
+          msg.toLowerCase().contains('policy')) {
+        reason = 'Izin ditolak (403) — login Google diperlukan';
+      } else if (msg.contains('404') || msg.contains('bucket')) {
+        reason = 'Bucket/objek tidak ditemukan (404)';
+      } else if (msg.contains('network') || msg.contains('socket') ||
+          msg.contains('timeout') || msg.contains('internet')) {
+        reason = 'Jaringan bermasalah';
+      }
+      return (ok: false, message: reason);
     }
   }
+
+  /// MIME dari ekstensi file (fallback tebakan aman).
+  String _mimeFor(String ext) => switch (ext) {
+        '.jpg' || '.jpeg' => 'image/jpeg',
+        '.png' => 'image/png',
+        '.webp' => 'image/webp',
+        '.gif' => 'image/gif',
+        _ => 'application/octet-stream',
+      };
 
   /// Download an image from Supabase to local cache.
   /// Saves to root of app dir with the original filename.

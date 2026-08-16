@@ -20,7 +20,8 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/purchase_repository.dart';
 import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
-import 'package:nusa_kasir/shared/widgets/continuous_barcode_scanner.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -351,7 +352,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
             child: Row(
               children: [
                 Icon(
-                  Icons.local_shipping_outlined,
+                  Icons.handshake_outlined,
                   size: 16,
                   color: isDark
                       ? NusaConfig.darkTextTertiary
@@ -1245,7 +1246,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      Icons.local_shipping_outlined,
+                      Icons.handshake_outlined,
                       color: NusaConfig.activePrimary,
                       size: 19,
                     ),
@@ -1358,23 +1359,121 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   }
 
   // ── scan barcode → langsung masuk keranjang (restok: TIDAK guard stok) ──
-  /// Scanner barcode KONTINU — layar penuh, tidak menutup setelah 1 scan.
-  /// Tiap scan resolve → _addProductToCart (auto masuk keranjang, qty naik);
-  /// scanner tetap terbuka untuk scan berikutnya.
+  /// Scanner barcode KAMERA — modal popup (UI asli, konsisten dengan
+  /// products_screen): buka → scan SATU barcode → tutup → masuk keranjang.
+  /// Scan kontinu hanya berlaku untuk scanner EKSTERNAL (HID/keyboard):
+  /// ketik barcode di kolom cari + Enter, langsung masuk keranjang.
   Future<void> _scanBarcode() async {
-    final repo = ProductRepository(widget.db);
-    await pushContinuousScanner(
-      context,
-      title: 'Pindai Barcode',
-      subtitle: 'Scan berulang — produk otomatis masuk keranjang pembelian',
-      resolver: (raw) async {
-        final p = await repo.byBarcode(raw);
-        if (p == null) return null;
-        if (!mounted) return p.name;
-        _addProductToCart(p);
-        return p.name;
-      },
+    String? scannedCode;
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
     );
+    String? errorMsg;
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Text('Pindai Barcode'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(ctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Pembelian] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      setSt(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode manual diatur via Form Produk.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scannedCode == null || !mounted) return;
+    final p = await ProductRepository(widget.db).byBarcode(scannedCode!);
+    if (p != null) {
+      _addProductToCart(p);
+      TopToast.success(context, '${p.name} masuk keranjang');
+    } else if (mounted) {
+      TopToast.error(context, 'Produk tidak ditemukan');
+    }
   }
 
   // ── C3: Tambah Produk → form produk (sheet); kembali dengan produk di keranjang ──
@@ -1717,10 +1816,13 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
             color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          // Konten scrollable → keyboard tidak pernah memotong kolom
+          // Biaya Tambahan / Catatan (tetap responsif di layar kecil).
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Center(
                 child: Container(
                   width: 40,
@@ -1792,7 +1894,8 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                   ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1912,7 +2015,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                         ),
                       )
                     : Icon(
-                        Icons.local_shipping_outlined,
+                        Icons.handshake_outlined,
                         color: NusaConfig.activePrimary,
                         size: 20,
                       ),
@@ -2157,31 +2260,9 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _QtyBtn(icon: Icons.remove, onTap: null),
-                          SizedBox(width: 6),
-                          Container(
-                            width: 56,
-                            alignment: Alignment.center,
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              color: NusaConfig.activePrimary.withValues(
-                                alpha: 0.10,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '0',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: NusaConfig.activePrimary,
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 6),
-                          _QtyBtn(
-                            icon: Icons.add,
+                          NusaAddButton(
                             onTap: () => _addProductToCart(p),
+                            compact: true,
                           ),
                         ],
                       ),
@@ -2441,7 +2522,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       ),
                     )
                   : Icon(
-                      Icons.local_shipping_outlined,
+                      Icons.handshake_outlined,
                       size: 16,
                       color: NusaConfig.activePrimary,
                     ),
@@ -3234,17 +3315,9 @@ class _PurchaseProductCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    GestureDetector(
+                    NusaAddButton(
                       onTap: onToggleExpand,
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.add_circle_outline_rounded,
-                          size: 28,
-                          color: NusaConfig.activePrimary,
-                        ),
-                      ),
+                      compact: true,
                     ),
                   ],
                 ),
