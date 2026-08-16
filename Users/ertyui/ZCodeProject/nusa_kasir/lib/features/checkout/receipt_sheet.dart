@@ -562,15 +562,16 @@ class ReceiptSheet extends ConsumerWidget {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section = ukuran LITERAL 12/18/24/36 yang benar-benar
-    // dicetak (tanpa cap — preview = print, 4 ukuran selalu berbeda).
-    final itemMagP = s.fontItems.clamp(1, 4);
-    final headerMagP = s.fontHeader.clamp(1, 4);
-    final footerMagP = s.fontFooter.clamp(1, 4);
+    // Ukuran font per section = ukuran LITERAL 12/15/18/24/36 yang benar-benar
+    // dicetak (tanpa cap — preview = print, 5 ukuran selalu berbeda).
     // Preview memakai ukuran literal yang sama dengan print (perbesaran × 12pt
-    // = 12/18/24/36) — bukan angka acak. Tingkat ramping Font B → 0.75×.
-    final fontScale = s.fontType == 'kompak' ? 0.75 : 1.0;
-    final itemFontSize = magnificationToLiteral(itemMagP) * fontScale;
+    // = 12/15/18/24/36) — bukan angka acak. Tingkat ramping Font B → 0.75×.
+    // 15pt dicetak Font B ×2 (ukuran FIX 34 dot, tidak tergantung font global)
+    // → preview 15px apa adanya via receiptPreviewSize.
+    final itemFontSize = receiptPreviewSize(
+      s.fontItems.clamp(1, 5),
+      kompak: s.fontType == 'kompak',
+    );
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -586,14 +587,21 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoBig = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(itemMagP) * 1.05,
+      fontSize: receiptPreviewSize(
+            s.fontItems.clamp(1, 5),
+            kompak: s.fontType == 'kompak',
+          ) *
+          1.05,
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(headerMagP) * fontScale,
+      fontSize: receiptPreviewSize(
+        s.fontHeader.clamp(1, 5),
+        kompak: s.fontType == 'kompak',
+      ),
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -606,7 +614,10 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(footerMagP) * fontScale,
+      fontSize: receiptPreviewSize(
+        s.fontFooter.clamp(1, 5),
+        kompak: s.fontType == 'kompak',
+      ),
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -812,14 +823,16 @@ class ReceiptSheet extends ConsumerWidget {
     final qtyDisplay = item.isPerKg
         ? '${item.weightKg!.toStringAsFixed(1)} kg'
         : '${item.qty}';
-    // Harga per unit = harga ASLI (sebelum diskon item). Diskon item tampil
-    // sebagai baris terpisah "Diskon: -Rp X" per item — tidak dicampur dengan
-    // harga yang sudah dipotong (komplain user: harga diskon + (-diskon) +
-    // subtotal diskon = tidak masuk akal).
-    final unitPrice = item.originalPrice ?? item.price;
+    // Harga per unit = harga FINAL (sudah dipotong diskon item) — subtotal
+    // NETTO di kanan (qty × harga final), diskon dalam kurung supaya
+    // customer notice potongannya. Konsisten dengan print asli.
+    final unitPrice = item.price;
     final qtyPriceTxt = item.isPerKg
         ? '$qtyDisplay x ${formatRupiah(unitPrice)}/kg'
         : '$qtyDisplay x ${formatRupiah(unitPrice)}';
+    final discSuffix = item.hasDiscount
+        ? '( -${formatRupiah(item.discountTotal)} )'
+        : '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(
@@ -830,18 +843,16 @@ class ReceiptSheet extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(qtyPriceTxt, style: monoGrey),
-              Text(formatRupiah(item.grossSubtotal), style: mono),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (item.hasDiscount)
+                    Text(discSuffix, style: monoGrey),
+                  Text(formatRupiah(item.subtotal), style: mono),
+                ],
+              ),
             ],
           ),
-          // Diskon item per produk — baris sendiri, jelas & tidak dobel hitung.
-          if (item.hasDiscount)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('  Diskon', style: monoGrey),
-                Text('-${formatRupiah(item.discountTotal)}', style: monoGrey),
-              ],
-            ),
           if (item.note != null && item.note!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
@@ -1133,14 +1144,14 @@ class ReceiptSheet extends ConsumerWidget {
     sb.writeln('━━━━━━━━━━━━━━━━━');
     for (final item in items) {
       sb.writeln(item.name);
-      // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
-      final unitPrice = item.originalPrice ?? item.price;
+      // Harga FINAL per unit; subtotal NETTO (sudah dipotong diskon item).
+      final unitPrice = item.price;
       final subTxt = item.isPerKg
-          ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}'
-          : '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}';
+          ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}'
+          : '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}';
       sb.writeln(subTxt);
       if (item.hasDiscount) {
-        sb.writeln('  Diskon: -${formatRupiah(item.discountTotal)}');
+        sb.writeln('  ( -${formatRupiah(item.discountTotal)} )');
       }
       if (item.note != null && item.note!.isNotEmpty) {
         sb.writeln('  ↳ ${item.note}');
@@ -1199,13 +1210,13 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('─' * 32);
       for (final item in items) {
         sb.writeln(item.name);
-        // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
-        final unitPrice = item.originalPrice ?? item.price;
+        // Harga FINAL per unit; subtotal NETTO (sudah dipotong diskon item).
+        final unitPrice = item.price;
         sb.writeln(
-          '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.grossSubtotal)}',
+          '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}',
         );
         if (item.hasDiscount) {
-          sb.writeln('  Diskon: -${formatRupiah(item.discountTotal)}');
+          sb.writeln('  ( -${formatRupiah(item.discountTotal)} )');
         }
         if (item.note != null && item.note!.isNotEmpty) {
           sb.writeln('  \u21B3 ${item.note}');

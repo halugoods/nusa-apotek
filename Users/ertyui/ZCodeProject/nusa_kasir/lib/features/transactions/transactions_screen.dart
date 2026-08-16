@@ -808,10 +808,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section = ukuran LITERAL 12/18/24/36 yang benar-benar
-    // dicetak (tanpa cap — preview = print, 4 ukuran selalu berbeda).
-    final itemFontSize = magnificationToLiteral(fontItems.clamp(1, 4)) *
-        1.0; // ukuran literal (pt)
+    // Ukuran font per section = ukuran LITERAL 12/15/18/24/36 yang benar-benar
+    // dicetak (tanpa cap — preview = print, 5 ukuran selalu berbeda).
+    // 15pt dicetak Font B ×2 (ukuran FIX 34 dot) → preview 15px apa adanya.
+    final itemFontSize = receiptPreviewSize(fontItems.clamp(1, 5));
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -820,14 +820,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoBig = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(fontItems.clamp(1, 4)) * 1.05,
+      fontSize: receiptPreviewSize(fontItems.clamp(1, 5)) * 1.05,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(fontHeader.clamp(1, 4)) * 1.0,
+      fontSize: receiptPreviewSize(fontHeader.clamp(1, 5)),
       height: 1.3,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -840,7 +840,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: magnificationToLiteral(fontFooter.clamp(1, 4)) * 1.0,
+      fontSize: receiptPreviewSize(fontFooter.clamp(1, 5)),
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -878,9 +878,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final price = (it['price'] as num).toInt();
           final orig = (it['originalPrice'] as num?)?.toInt();
           final hasDisc = orig != null && orig > price;
-          // Harga ASLI per unit; subtotal KOTOR (sebelum diskon item).
-          final unitPrice = orig ?? price;
+          // Harga FINAL per unit; subtotal NETTO (sudah dipotong diskon item).
+          final unitPrice = price;
+          final discTotal = hasDisc ? (orig - price) * qty : 0;
           final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
+          final discSuffix = hasDisc ? '( -${formatRupiah(discTotal)} )' : '';
           return Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Column(
@@ -891,21 +893,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(qtyPriceTxt, style: monoGrey),
-                    Text(formatRupiah(qty * unitPrice), style: mono),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasDisc)
+                          Text(discSuffix, style: monoGrey),
+                        Text(formatRupiah(qty * unitPrice), style: mono),
+                      ],
+                    ),
                   ],
                 ),
-                // Diskon item per produk — baris sendiri, tidak dobel hitung.
-                if (hasDisc)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('  Diskon', style: monoGrey),
-                      Text(
-                        '-${formatRupiah((orig - price) * qty)}',
-                        style: monoGrey,
-                      ),
-                    ],
-                  ),
               ],
             ),
           );

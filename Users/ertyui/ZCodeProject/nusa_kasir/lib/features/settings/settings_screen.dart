@@ -1937,9 +1937,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     Text(
                       'Atur ukuran huruf TAP bagian struk (Header, Rincian, '
                       'Footer) — bisa berbeda-beda. Pilih ukuran huruf yang '
-                      'benar-benar dicetak: 12 (Kecil), 18 (Normal), 24 '
-                      '(Besar), 36 (Extra Besar). Semua 4 ukuran dicetak apa '
-                      'adanya — preview selalu sama dengan hasil cetak.',
+                      'benar-benar dicetak: 12 (Kecil), 15 (Sedang), 18 '
+                      '(Normal), 24 (Besar), 36 (Extra Besar). Semua 5 ukuran '
+                      'dicetak apa adanya — preview selalu sama dengan hasil '
+                      'cetak.',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -2259,8 +2260,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ),
 
-                            // ── Store header — ukuran ikut fontH (12/18/24/36)
-                            // persis print asli (tanpa cap) ──
+                            // ── Store header — ukuran ikut fontH (12/15/18/24/36)
+                            // persis print asli (tanpa cap). 15pt (Font B ×2,
+                            // ukuran FIX) → preview 15px apa adanya.
                             Text(
                               headerCtrl.text.isNotEmpty
                                   ? headerCtrl.text
@@ -2269,9 +2271,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         : 'NUSA MART'),
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: magnificationToLiteral(
-                                  fontH.clamp(1, 4),
-                                ).toDouble(),
+                                fontSize: receiptPreviewSize(fontH.clamp(1, 5)),
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF111827),
                               ),
@@ -2493,7 +2493,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             _dashedLine(false),
                             const SizedBox(height: 4),
 
-                            // ── Footer — ukuran ikut fontF (12/18/24/36)
+                            // ── Footer — ukuran ikut fontF (12/15/18/24/36)
                             // persis print asli (tanpa cap) ──
                             Text(
                               footerCtrl.text.isNotEmpty
@@ -2501,9 +2501,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   : '🙏 Terima kasih, ditunggu pesanan selanjutnya!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: magnificationToLiteral(
-                                  fontF.clamp(1, 4),
-                                ).toDouble(),
+                                fontSize: receiptPreviewSize(fontF.clamp(1, 5)),
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF6B7280),
                               ),
@@ -2623,7 +2621,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         if (ok) {
                                           TopToast.success(
                                             ctx,
-                                            'Tes kalibrasi dikirim — cek ukuran 12/18/24/36 di kertas.',
+                                            'Tes kalibrasi dikirim — cek ukuran 12/15/18/24/36 di kertas.',
                                           );
                                         } else {
                                           TopToast.error(
@@ -2889,9 +2887,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Baris ukuran font per section struk — 4 pilihan UKURAN LITERAL
-  /// (12/18/24/36 = Kecil/Normal/Besar/Extra Besar). Nilai tersimpan tetap
-  /// perbesaran 1-4 supaya kompatibel dengan printer ESC/POS.
+  /// Baris ukuran font per section struk — 5 pilihan UKURAN LITERAL
+  /// (12/15/18/24/36 = Kecil/Sedang/Normal/Besar/Extra Besar). Nilai tersimpan
+  /// tetap perbesaran 1-5 supaya kompatibel dengan printer ESC/POS.
   Widget _fontSizeRow(
     String label,
     int current,
@@ -2921,7 +2919,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${magnificationToLiteral(current.clamp(1, 4))}',
+                '${magnificationToLiteral(current.clamp(1, 5))}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -2932,7 +2930,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        // Pilihan UKURAN LITERAL 12/18/24/36 (bukan perbesaran 1x-8x) —
+        // Pilihan UKURAN LITERAL 12/15/18/24/36 (bukan perbesaran 1x-8x) —
         // user memilih "seberapa besar huruf" yang dicetak (lebar kertas ÷
         // ukuran huruf menentukan jumlah karakter per baris).
         Row(
@@ -3043,8 +3041,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// Single receipt item row for preview — persis seperti print:
   /// baris 1 nama item, baris 2 "qty x HARGA ASLI ... subtotal KOTOR",
   /// baris 3 "Diskon: -Rp X" (potongan × qty) — format baru yang logis
-  /// (harga asli + diskon terpisah, TIDAK dobel hitung).
-  /// Ukuran huruf = ukuran LITERAL 12/18/24/36 yang benar-benar dicetak
+  /// (subtotal NETTO = sudah dipotong diskon + diskon dalam kurung).
+  /// Ukuran huruf = ukuran LITERAL 12/15/18/24/36 yang benar-benar dicetak
   /// (tanpa cap — preview = print).
   Widget _receiptItem(
     String name,
@@ -3055,17 +3053,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     int fontI = 1,
   }) {
     final hasDiscount = originalPrice != null && originalPrice > price;
-    final f = fontI.clamp(1, 4);
+    final f = fontI.clamp(1, 5);
     // Ukuran huruf preview = ukuran LITERAL yang benar-benar dicetak
-    // (12/18/24/36) — match print asli (lebar kertas ÷ ukuran huruf).
-    final itemSize = magnificationToLiteral(f).toDouble();
+    // (12/15/18/24/36) — match print asli (lebar kertas ÷ ukuran huruf).
+    // 15pt dicetak Font B ×2 (ukuran FIX) → preview 15px apa adanya.
+    final itemSize = receiptPreviewSize(f);
     final lineSize = itemSize - 1.5;
     final nameColor = const Color(0xFF374151);
     final subtleColor = const Color(0xFF6B7280);
-    // Harga per unit = harga ASLI (sebelum diskon item).
-    final unitPrice = originalPrice ?? price;
+    // Harga per unit = harga FINAL (sudah dipotong diskon item) — konsisten
+    // dengan print asli.
+    final unitPrice = price;
     final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
+    // Subtotal NETTO (qty × harga final) — sudah berkurang diskon.
+    final netSubtotal = qty * price;
+    // Diskon tampil dalam kurung "( -Rp X )" supaya customer notice.
     final discTotal = hasDiscount ? (originalPrice - price) * qty : 0;
+    final discSuffix = hasDiscount ? '( -${formatRupiah(discTotal)} )' : '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Column(
@@ -3083,31 +3087,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 qtyPriceTxt,
                 style: TextStyle(fontSize: lineSize, color: subtleColor),
               ),
-              Text(
-                formatRupiah(qty * unitPrice),
-                style: TextStyle(
-                  fontSize: itemSize,
-                  fontWeight: FontWeight.w600,
-                  color: nameColor,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasDiscount)
+                    Text(
+                      discSuffix,
+                      style: TextStyle(fontSize: lineSize, color: subtleColor),
+                    ),
+                  Text(
+                    formatRupiah(netSubtotal),
+                    style: TextStyle(
+                      fontSize: itemSize,
+                      fontWeight: FontWeight.w600,
+                      color: nameColor,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          // Diskon item per produk — baris sendiri, tidak dobel hitung.
-          if (hasDiscount)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '  Diskon',
-                  style: TextStyle(fontSize: lineSize, color: subtleColor),
-                ),
-                Text(
-                  '-${formatRupiah(discTotal)}',
-                  style: TextStyle(fontSize: lineSize, color: subtleColor),
-                ),
-              ],
-            ),
         ],
       ),
     );
