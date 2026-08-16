@@ -6,6 +6,7 @@
 /// - **Produk**: stok masuk + harga modal terbaru (seperti biasa).
 /// - **Bahan** (non-produk, mis. plastik): hanya dicatat riwayatnya + riwayat
 ///   harga beli per supplier (tab "Riwayat Harga") — tanpa menyentuh stok.
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -276,7 +277,8 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                                     ),
                                     SizedBox(height: 2),
                                     Text(
-                                      '${it.qty} × ${formatRupiah(it.buyPrice)}',
+                                      '${it.qty} × ${formatRupiah(it.buyPrice)}'
+                                      ' = ${formatRupiah(it.total)}',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: isDark
@@ -303,6 +305,10 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                       },
                     ),
             ),
+            if (o.extraCostsJson != null && o.extraCostsJson!.isNotEmpty) ...[
+              SizedBox(height: 8),
+              ..._extraCostRows(o),
+            ],
             SizedBox(height: 12),
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -338,6 +344,55 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
         ),
       ),
     );
+  }
+
+  // Baris biaya tambahan (ongkir/packing) dari extraCostsJson header.
+  List<Widget> _extraCostRows(PurchaseOrder o) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
+    final costs = _parseExtraCosts(o);
+    if (costs.isEmpty) return const [];
+    return [
+      for (final c in costs)
+        Padding(
+          padding: EdgeInsets.only(bottom: 4),
+          child: Row(
+            children: [
+              Icon(Icons.local_shipping_outlined, size: 14, color: textSec),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  c.name,
+                  style: TextStyle(fontSize: 13, color: textSec),
+                ),
+              ),
+              Text(
+                formatRupiah(c.amount),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textSec,
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  List<PurchaseExtraCost> _parseExtraCosts(PurchaseOrder o) {
+    try {
+      final raw = o.extraCostsJson;
+      if (raw == null || raw.isEmpty) return const [];
+      final list = (jsonDecode(raw) as List)
+          .map((e) => PurchaseExtraCost.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return list;
+    } catch (_) {
+      return const [];
+    }
   }
 
   @override
@@ -2460,6 +2515,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
               inCart: idx >= 0,
               qtyField: idx >= 0 ? _qtyTextField(_productItems[idx].$2) : null,
               hasCustomPrice: _customPrices.containsKey(p.id),
+              effectivePrice: idx >= 0 ? _priceOf(_productItems[idx]) : null,
               onToggleExpand: () => _toggleProductExpanded(p),
               onChangeQty: (delta) => _changeCartQty(p, delta),
               onEditPrice: () => _openPriceSheet(p),
@@ -3371,6 +3427,7 @@ class _PurchaseProductCard extends StatelessWidget {
   final int qtyInCart;
   final bool inCart;
   final bool hasCustomPrice;
+  final int? effectivePrice; // harga beli efektif di keranjang (custom/aktual)
   final Widget? qtyField;
   final VoidCallback onToggleExpand;
   final ValueChanged<int> onChangeQty;
@@ -3381,6 +3438,7 @@ class _PurchaseProductCard extends StatelessWidget {
     required this.qtyInCart,
     required this.inCart,
     required this.hasCustomPrice,
+    this.effectivePrice,
     this.qtyField,
     required this.onToggleExpand,
     required this.onChangeQty,
@@ -3489,7 +3547,7 @@ class _PurchaseProductCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      formatRupiah(product.buyPrice),
+                      formatRupiah(effectivePrice ?? product.buyPrice),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,

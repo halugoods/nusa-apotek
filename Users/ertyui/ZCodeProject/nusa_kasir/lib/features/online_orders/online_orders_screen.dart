@@ -35,6 +35,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
   RealtimeChannel? _channel;
   final List<String> _tabs = [
     'Semua',
+    'Verifikasi',
     'Baru',
     'Disiapkan',
     'Siap Diambil',
@@ -154,7 +155,24 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     final buttons = <Widget>[];
     final status = order.status;
 
-    if (status == 'Online Baru') {
+    if (status == 'Menunggu Verifikasi Pembeli') {
+      // Pembeli pakai non-tunai (QRIS/transfer) → belum kirim bukti.
+      buttons.add(
+        _actionBtn(
+          'Terima & Proses',
+          NusaConfig.accentGold,
+          () => _transition(order, 'Online Baru'),
+        ),
+      );
+      buttons.add(SizedBox(height: 6));
+      buttons.add(
+        _actionBtn(
+          'Tolak / Batal',
+          NusaConfig.activePrimary,
+          () => _transition(order, 'Dibatalkan'),
+        ),
+      );
+    } else if (status == 'Online Baru') {
       buttons.add(
         _actionBtn(
           'Terima & Siapkan',
@@ -488,6 +506,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
   Color _statusColor(String status, bool isDark) {
     switch (status) {
+      case 'Menunggu Verifikasi Pembeli':
+        return Color(0xFFF59E0B); // amber — menunggu bukti bayar
       case 'Online Baru':
         return NusaConfig.accentGold;
       case 'Disiapkan':
@@ -524,7 +544,12 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
         .where((o) => o.createdAt.isAfter(todayStart))
         .length;
     final pendingCount = _allOrders
-        .where((o) => o.status == 'Online Baru' || o.status == 'Disiapkan')
+        .where(
+          (o) =>
+              o.status == 'Menunggu Verifikasi Pembeli' ||
+              o.status == 'Online Baru' ||
+              o.status == 'Disiapkan',
+        )
         .length;
     final doneCount = _allOrders.where((o) => o.status == 'Lunas').length;
 
@@ -696,7 +721,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
   Widget _badgeFor(String tab, bool isDark) {
     int count = 0;
-    if (tab == 'Baru')
+    if (tab == 'Verifikasi')
+      count = _allOrders
+          .where((o) => o.status == 'Menunggu Verifikasi Pembeli')
+          .length;
+    else if (tab == 'Baru')
       count = _allOrders.where((o) => o.status == 'Online Baru').length;
     else if (tab == 'Disiapkan')
       count = _allOrders.where((o) => o.status == 'Disiapkan').length;
@@ -712,7 +741,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: tab == 'Baru'
+        color: (tab == 'Verifikasi' || tab == 'Baru')
             ? NusaConfig.activePrimary.withValues(alpha: 0.12)
             : NusaConfig.textTertiary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
@@ -722,7 +751,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,
-          color: tab == 'Baru'
+          color: (tab == 'Verifikasi' || tab == 'Baru')
               ? NusaConfig.activePrimary
               : isDark
               ? NusaConfig.darkTextSecondary

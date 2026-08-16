@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:restart_app/restart_app.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
@@ -803,9 +804,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         );
-        // Restart the app to apply restored DB
+        // Restore from cloud stages the DB to .pending — applied by
+        // main() _applyPendingRestore() BEFORE the DB opens. Without a real
+        // restart the restored data (incl. PIN) never becomes visible, so
+        // actually restart the app instead of just navigating home.
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) GoRouter.of(context).go('/home');
+          if (mounted) Restart.restartApp();
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

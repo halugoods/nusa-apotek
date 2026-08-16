@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -34,6 +35,33 @@ class OnlineOrderService {
   final SupabaseClient supabase;
 
   OnlineOrderService(this.supabase);
+
+  /// Normalisasi nomor WA ke format 08xx (GAS pattern):
+  /// strip karakter non-digit, lalu 62→0, lalu 8→08.
+  static String normalizePhoneTo08(String raw) {
+    var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('62')) digits = '0${digits.substring(2)}';
+    if (digits.startsWith('8')) digits = '0$digits';
+    return digits;
+  }
+
+  /// 08xx → 628xx untuk link wa.me.
+  static String formatWA(String phone08) {
+    final d = phone08.replaceAll(RegExp(r'[^0-9]'), '');
+    return d.startsWith('0') ? '62${d.substring(1)}' : d;
+  }
+
+  /// Parse JSON string yang optional → fallback bila kosong/rusak.
+  static List<Map<String, dynamic>> parseList(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final v = jsonDecode(raw);
+      if (v is List) return v.cast<Map<String, dynamic>>();
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
 
   /// Get the store_id (derived from activation key for uniqueness)
   Future<String?> get storeId async {
@@ -91,6 +119,11 @@ class OnlineOrderService {
     String? primaryColor,
     String? darkColor,
     String? softColor,
+    String? orderTypes,
+    int? deliveryFee,
+    String? pickupOptions,
+    String? paymentMethods,
+    String? memberSettings,
   }) async {
     final sid = await storeId;
     if (sid == null) {
@@ -118,6 +151,11 @@ class OnlineOrderService {
         'address': address ?? '',
         'open_hours': openHours ?? '08:00 - 21:00',
         'is_active': isActive,
+        if (orderTypes != null) 'order_types': orderTypes,
+        if (deliveryFee != null) 'delivery_fee': deliveryFee,
+        if (pickupOptions != null) 'pickup_options': pickupOptions,
+        if (paymentMethods != null) 'payment_methods': paymentMethods,
+        if (memberSettings != null) 'member_settings': memberSettings,
       });
       debugPrint('[OnlineOrderService] upsertStore: status=${res.status}');
       return (ok: res.status < 400, error: OnlineStoreError.unknown);
@@ -226,6 +264,112 @@ class OnlineOrderService {
       return res.status < 400;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Upload cabang Aktif (status == 'Aktif') + WA per cabang ke tabel
+  /// `branches` (replace-all per store). Web memakai ini untuk dropdown
+  /// cabang + WA tujuan order.
+  Future<bool> syncBranches(List<Map<String, dynamic>> branches) async {
+    final sid = await storeId;
+    if (sid == null) return false;
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'sync_branches',
+        'store_id': sid,
+        'branches': branches,
+      });
+      return res.status < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Upload kupon/promo (quota/periode/minSpend/limitPerUser) ke tabel
+  /// `promos` (replace-all per store). Web memvalidasi saat checkout.
+  Future<bool> syncPromos(List<Map<String, dynamic>> promos) async {
+    final sid = await storeId;
+    if (sid == null) return false;
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'sync_promos',
+        'store_id': sid,
+        'promos': promos,
+      });
+      return res.status < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Read-back kupon untuk CRUD di app (hanya milik store ini).
+  Future<List<Map<String, dynamic>>> getPromos() async {
+    final sid = await storeId;
+    if (sid == null) return [];
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'get_promos',
+        'store_id': sid,
+      });
+      if (res.status >= 400) return [];
+      final data = res.data as Map<String, dynamic>;
+      return (data['promos'] as List).cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Submit order dari storefront → edge function. Kembalikan
+  /// (ok, errorMessage). errorMessage berisi pesan spesifik (mis. promo
+  /// tidak valid) saat ok == false.
+  Future<({bool ok, String errorMessage})> submitOrder(
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'submit_order',
+        ...payload,
+      });
+      if (res.status < 400) return (ok: true, errorMessage: '');
+      final data = res.data is Map ? res.data as Map : {};
+      final msg = data['error'] as String? ?? 'Gagal mengirim pesanan';
+      return (ok: false, errorMessage: msg);
+    } catch (e) {
+      return (ok: false, errorMessage: 'Gagal mengirim pesanan: $e');
+    }
+  }
+
+  /// Tukar poin member (validasi saldo di edge). Kembalikan
+  /// (ok, errorMessage, pointsLeft).
+  Future<({bool ok, String errorMessage, int pointsLeft})> redeemPoints({
+    required String phone,
+    required int points,
+  }) async {
+    final sid = await storeId;
+    if (sid == null) return (ok: false, errorMessage: 'Toko belum aktif', pointsLeft: 0);
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'redeem_points',
+        'store_id': sid,
+        'phone': phone,
+        'points': points,
+      });
+      if (res.status < 400) {
+        final data = res.data is Map ? res.data as Map : {};
+        return (
+          ok: true,
+          errorMessage: '',
+          pointsLeft: (data['points_left'] as num?)?.toInt() ?? 0,
+        );
+      }
+      final data = res.data is Map ? res.data as Map : {};
+      return (
+        ok: false,
+        errorMessage: data['error'] as String? ?? 'Tukar poin gagal',
+        pointsLeft: 0,
+      );
+    } catch (e) {
+      return (ok: false, errorMessage: 'Tukar poin gagal: $e', pointsLeft: 0);
     }
   }
 

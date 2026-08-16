@@ -24,6 +24,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:restart_app/restart_app.dart';
 
 /// Activation & auth screen with 4 branches:
 ///
@@ -240,13 +241,22 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
     if (confirmed != true || !mounted) return false;
 
-    // User confirmed — download and restore directly (no restart)
+    // User confirmed — download and stage restore for next launch.
+    // NOTE: restoreDirect() hanya menulis DB ke nusa_kasir.sqlite.pending;
+    // swap ke DB asli terjadi di main() _applyPendingRestore() SAAT APP START
+    // BERIKUTNYA (menimpa sqlite live saat koneksi drift terbuka = korupsi).
+    // Kalau langsung context.go('/login'), LoginScreen membaca DB lama yang
+    // masih kosong → PIN selalu "salah" sampai app dibuka ulang. Jadi RESTART
+    // aplikasi beneran supaya pending swap jalan dulu.
     final ok = await repo.restoreDirect();
     if (ok && mounted) {
-      TopToast.success(context, 'Data berhasil dipulihkan!');
-      // Go to login so user can enter PIN with the restored data
-      context.go('/login');
-      return true;
+      TopToast.success(context, 'Data berhasil dipulihkan — aplikasi dibuka ulang');
+      // Small delay so the toast is visible before the process restarts.
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (mounted) {
+        Restart.restartApp();
+        return true;
+      }
     }
     if (mounted) {
       TopToast.error(context, 'Gagal memulihkan data dari cloud');

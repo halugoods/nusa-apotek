@@ -91,6 +91,10 @@ class PurchaseRepository {
     var orderId = 0;
     await db.transaction(() async {
       // ── 0. Alokasi biaya tambahan → per unit → HPP ──
+      // Biaya (packing/ongkir/stiker) dibagi rata ke TOTAL QTY seluruh item,
+      // lalu ditambahkan ke harga modal tiap unit. Sisa pembagian (karena
+      // integer) dibebankan ke item TERAKHIR supaya Σ total item ==
+      // subtotal + biaya tambahan PERSIS (tidak pernah selisih rupiah).
       final validCosts = extraCosts.where((c) => c.amount > 0).toList();
       final totalExtra = validCosts.fold<int>(0, (s, c) => s + c.amount);
       final totalQty = items.fold<int>(
@@ -98,8 +102,10 @@ class PurchaseRepository {
         (s, i) => s + (i.qty > 0 ? i.qty : 0),
       );
       final costPerUnit = (totalExtra > 0 && totalQty > 0)
-          ? (totalExtra / totalQty).round()
+          ? totalExtra ~/ totalQty
           : 0;
+      final remainder =
+          (totalExtra > 0 && totalQty > 0) ? totalExtra % totalQty : 0;
 
       // ── 1. Header ──
       final subtotal = items.fold<int>(
@@ -126,10 +132,20 @@ class PurchaseRepository {
           );
 
       // ── 2. Item + stok/harga modal (produk) atau riwayat bahan ──
-      for (final item in items) {
+      // Indeks item valid TERAKHIR — sisa pembagian (remainder) dibebankan ke
+      // item itu supaya Σ total item == subtotal + biaya tambahan PERSIS.
+      var lastValidIndex = -1;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].qty > 0) lastValidIndex = i;
+      }
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
         if (item.qty <= 0) continue;
         // HPP presisi: harga beli + bagian biaya tambahan (packing/ongkir dll).
         final unitPrice = item.buyPrice + costPerUnit;
+        final isLastItem = i == lastValidIndex;
+        final carry = (isLastItem && remainder > 0) ? remainder : 0;
+        final itemTotal = (item.qty * unitPrice) + carry;
         await db
             .into(db.purchaseOrderItems)
             .insert(
@@ -139,7 +155,7 @@ class PurchaseRepository {
                 productName: item.name,
                 qty: item.qty,
                 buyPrice: unitPrice,
-                total: item.qty * unitPrice,
+                total: itemTotal,
                 isMaterial: Value(item.isMaterial),
               ),
             );
