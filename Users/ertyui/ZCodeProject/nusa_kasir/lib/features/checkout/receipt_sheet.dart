@@ -530,11 +530,6 @@ class ReceiptSheet extends ConsumerWidget {
     final fontHeader = await SecureStore.getReceiptFontHeader();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
-    // Jenis font per section + cap maks printer.
-    final fontHeaderType = await SecureStore.getReceiptFontHeaderType();
-    final fontItemsType = await SecureStore.getReceiptFontItemsType();
-    final fontFooterType = await SecureStore.getReceiptFontFooterType();
-    final maxMag = await SecureStore.getReceiptMaxMag();
     // Ukuran kertas — preview mengikuti (58/80mm, komplain user).
     final paperWidth = await SecureStore.getPaperSize();
     return _ReceiptSettings(
@@ -550,10 +545,6 @@ class ReceiptSheet extends ConsumerWidget {
       fontHeader: fontHeader,
       fontItems: fontItems,
       fontFooter: fontFooter,
-      fontHeaderType: fontHeaderType,
-      fontItemsType: fontItemsType,
-      fontFooterType: fontFooterType,
-      maxMag: maxMag,
       paperWidth: paperWidth,
     );
   }
@@ -571,14 +562,15 @@ class ReceiptSheet extends ConsumerWidget {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section mengikuti pengaturan struk (slider 1-8, sama
-    // dengan print). Items dijadikan basis: 1 → 11pt, 8 → 18pt.
-    // Ukuran di-cap ke maksimum printer (maxMag) — preview = print asli.
-    final cap = s.maxMag.clamp(1, 8);
-    final itemMagP = s.fontItems.clamp(1, cap);
-    final headerMagP = s.fontHeader.clamp(1, cap);
-    final footerMagP = s.fontFooter.clamp(1, cap);
-    final itemFontSize = 10.0 + itemMagP;
+    // Ukuran font per section = ukuran LITERAL 12/18/24/36 yang benar-benar
+    // dicetak (tanpa cap — preview = print, 4 ukuran selalu berbeda).
+    final itemMagP = s.fontItems.clamp(1, 4);
+    final headerMagP = s.fontHeader.clamp(1, 4);
+    final footerMagP = s.fontFooter.clamp(1, 4);
+    // Preview memakai ukuran literal yang sama dengan print (perbesaran × 12pt
+    // = 12/18/24/36) — bukan angka acak. Tingkat ramping Font B → 0.75×.
+    final fontScale = s.fontType == 'kompak' ? 0.75 : 1.0;
+    final itemFontSize = magnificationToLiteral(itemMagP) * fontScale;
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -594,14 +586,14 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoBig = TextStyle(
       fontFamily: 'monospace',
-      fontSize: itemFontSize + 2,
+      fontSize: magnificationToLiteral(itemMagP) * 1.05,
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 10.0 + headerMagP,
+      fontSize: magnificationToLiteral(headerMagP) * fontScale,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -614,7 +606,7 @@ class ReceiptSheet extends ConsumerWidget {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 10.0 + footerMagP,
+      fontSize: magnificationToLiteral(footerMagP) * fontScale,
       height: 1.5,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -1268,11 +1260,6 @@ class _ReceiptSettings {
   final int fontHeader;
   final int fontItems;
   final int fontFooter;
-  // Jenis font per section (null = ikuti global) + cap maks printer.
-  final String? fontHeaderType;
-  final String? fontItemsType;
-  final String? fontFooterType;
-  final int maxMag;
   // Ukuran kertas '58'/'80' — preview ikut (komplain user: preview 2 arah).
   final String paperWidth;
 
@@ -1289,10 +1276,6 @@ class _ReceiptSettings {
     this.fontHeader = 2,
     this.fontItems = 1,
     this.fontFooter = 1,
-    this.fontHeaderType,
-    this.fontItemsType,
-    this.fontFooterType,
-    this.maxMag = 4,
     this.paperWidth = '58',
   });
 }

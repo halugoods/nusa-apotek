@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
@@ -807,9 +808,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section mengikuti pengaturan struk (slider 1-8, sama
-    // dengan print). Items dijadikan basis: 1 → 10pt, 8 → 17pt.
-    final itemFontSize = 9.0 + fontItems.clamp(1, 8);
+    // Ukuran font per section = ukuran LITERAL 12/18/24/36 yang benar-benar
+    // dicetak (tanpa cap — preview = print, 4 ukuran selalu berbeda).
+    final itemFontSize = magnificationToLiteral(fontItems.clamp(1, 4)) *
+        1.0; // ukuran literal (pt)
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -818,14 +820,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoBig = TextStyle(
       fontFamily: 'monospace',
-      fontSize: itemFontSize + 2,
+      fontSize: magnificationToLiteral(fontItems.clamp(1, 4)) * 1.05,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
     final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 9.0 + fontHeader.clamp(1, 8),
+      fontSize: magnificationToLiteral(fontHeader.clamp(1, 4)) * 1.0,
       height: 1.3,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -838,7 +840,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 9.0 + fontFooter.clamp(1, 8),
+      fontSize: magnificationToLiteral(fontFooter.clamp(1, 4)) * 1.0,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
