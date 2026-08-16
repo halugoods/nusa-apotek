@@ -68,15 +68,19 @@ PosTextSize _posSize(int v) => switch (v.clamp(1, 8)) {
   _ => PosTextSize.size8,
 };
 
-/// Ukuran font struk LITERAL → perbesaran ESC/POS.
+/// Ukuran font struk → perbesaran ESC/POS + lebar karakter nyata per baris.
 ///
-/// Printer termal murah hanya menjamin perbesaran 1x-4x (GS !); 5x-8x
-/// non-standar → diabaikan printer → "ukurannya gak berubah" padahal wrap
-/// sudah dihitung untuk 8x (8 karakter/baris) — penyebab "Halu Goo\nds".
-/// Karena itu maks 4x (max 4x = 36pt di preview, label Extra Besar).
+/// Prinsip: printer termal mencetak Font A ~12pt @1x, ~24pt @2x (height ×2
+/// juga melebar ×2). Jadi ukuran huruf sebenarnya = LITERAL pt, dan lebar
+/// baris = LEBAR KERTAS (mm) ÷ lebar karakter, BUKAN lebar karakter dibagi
+/// perbesaran. Karakter per baris dihitung dari ukuran huruf yang
+/// benar-benar dicetak — bukan kebalikannya (ini yang bikin wrap salah &
+/// "Halu Goo\nds").
 ///
-/// Stored values tetap int (1-4) → default lama (header=2, rincian=1,
-/// footer=1) TIDAK berubah, tanpa migrasi.
+/// Karakter per baris per lebar kertas (Font A, ASC, ~12pt):
+///   - 58mm → 32 char @1x, 16 @2x, 8 @4x, 6 @6x, 4 @8x
+///   - 80mm → 48 char @1x, 24 @2x, 12 @4x, 8 @6x, 6 @8x
+/// Font B ~1.15× lebih ramping (58mm → 42 @1x; 80mm → 64 @1x).
 const _literalSizes = [12, 18, 24, 36];
 
 int literalToMagnification(int literal) {
@@ -405,6 +409,8 @@ class ReceiptPrinter {
     // benar dicetak (tidak ada auto-fit yang bikin ukuran "stuck").
     final headerMag = _capMag(headerSize, maxMag);
     final isWideHeader = paperWidth == '80';
+    // Lebar header = LEBAR KERTAS ÷ perbesaran: 58mm → 32/N, 80mm → 48/N
+    // (Font B ramping: 42/N & 64/N). Ukuran huruf = perbesaran × 12pt literal.
     final headerBaseLineWidth = isWideHeader
         ? (headerFont == PosFontType.fontB ? 64 : 48)
         : (headerFont == PosFontType.fontB ? 42 : 32);
@@ -509,7 +515,8 @@ class ReceiptPrinter {
       height: _posSize(itemMag),
       width: _posSize(itemMag),
     );
-    // Lebar teks rincian saat >1x: lebar baris normal dibagi perbesaran.
+    // Lebar rincian = LEBAR KERTAS ÷ perbesaran (bukan "lebar ÷ N karakter"):
+    // ukuran huruf nyata = perbesaran × 12pt, jadi karakter/baris = base/N.
     final itemLineWidth = itemBig
         ? (itemBaseLineWidth ~/ itemMag)
         : itemBaseLineWidth;
@@ -713,6 +720,7 @@ class ReceiptPrinter {
       final footerBase = isWide
           ? (footerFont == PosFontType.fontB ? 64 : 48)
           : (footerFont == PosFontType.fontB ? 42 : 32);
+      // Lebar footer = LEBAR KERTAS ÷ perbesaran (ukuran huruf × 12pt literal).
       final footerLineChars = (footerBase ~/ footerMag).clamp(4, 40);
       final footerParts = _wrap(footerText, footerLineChars);
       for (final part in footerParts) {

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
@@ -337,7 +338,9 @@ class _OnlineStoreSetupScreenState
       final products = await ProductRepository(db).getProducts();
       final online = products.where((p) => p.isOnline).toList();
       final client = Supabase.instance.client;
-      final uid = client.auth.currentUser?.id;
+      // Login Google dipakai GoogleAuthService (google_sign_in) → ID tersimpan
+      // di SecureStore, BUKAN Supabase Auth session (currentUser selalu null).
+      final uid = await GoogleAuthService.getStoredUserId();
       final storeId = await OnlineOrderService(client).storeId;
       if (storeId == null) {
         if (mounted) setState(() => _saving = false);
@@ -509,7 +512,8 @@ class _OnlineStoreSetupScreenState
 
       // Cloud upload
       try {
-        final uid = Supabase.instance.client.auth.currentUser?.id;
+        // Logo toko — ID Google dari SecureStore (bukan Supabase currentUser).
+        final uid = await GoogleAuthService.getStoredUserId();
         if (uid != null) {
           ImageStorageService(
             Supabase.instance.client,

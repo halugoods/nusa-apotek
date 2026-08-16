@@ -352,7 +352,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
             child: Row(
               children: [
                 Icon(
-                  Icons.handshake_outlined,
+                  Icons.local_shipping_outlined,
                   size: 16,
                   color: isDark
                       ? NusaConfig.darkTextTertiary
@@ -452,6 +452,353 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
             label: Text('Catat Pembelian'),
             onPressed: _openForm,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet Biaya & Catatan — StatefulWidget mandiri.
+///
+/// State biaya tambahan (controller list) & catatan dipegang DI SINI, bukan
+/// widget induk. Tombol '+' & X memanggil setState LOCAL → merespons instan
+/// tanpa rebuild layar belakang (sebelumnya pakai setState induk → '+' dan X
+/// seolah "tidak responsif" sampai sheet dibuka ulang). Hasil dikirim balik
+/// via Navigator.pop dengan record (costs, note).
+class _CostsNoteSheet extends StatefulWidget {
+  final bool isDark;
+  final List<(TextEditingController, TextEditingController)> initialCosts;
+  final TextEditingController initialNote;
+  const _CostsNoteSheet({
+    required this.isDark,
+    required this.initialCosts,
+    required this.initialNote,
+  });
+
+  @override
+  State<_CostsNoteSheet> createState() => _CostsNoteSheetState();
+}
+
+class _CostsNoteSheetState extends State<_CostsNoteSheet> {
+  late final List<(TextEditingController, TextEditingController)> _costs;
+  late final TextEditingController _noteC;
+
+  @override
+  void initState() {
+    super.initState();
+    _costs = widget.initialCosts;
+    _noteC = widget.initialNote;
+  }
+
+  @override
+  void dispose() {
+    // Dismiss tanpa Selesai → buang controller sementara (milik sheet).
+    if (!_committed) {
+      for (final (n, a) in _costs) {
+        n.dispose();
+        a.dispose();
+      }
+      _noteC.dispose();
+    }
+    super.dispose();
+  }
+
+  bool _committed = false;
+
+  void _commit() {
+    _committed = true;
+    Navigator.pop(
+      context,
+      (costs: _costs, note: _noteC.text.trim()),
+    );
+  }
+
+  int get _extraTotal => _costs.fold<int>(
+        0,
+        (s, e) => s + (int.tryParse(e.$2.text) ?? 0),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final textPri = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final textTer = isDark
+        ? NusaConfig.darkTextTertiary
+        : NusaConfig.textTertiary;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 10, 20, 20),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        // Konten scrollable → keyboard tidak pernah memotong kolom
+        // Biaya Tambahan / Catatan (tetap responsif di layar kecil).
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? NusaConfig.darkDivider
+                        : NusaConfig.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long_outlined,
+                      size: 20,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Biaya & Catatan',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: textPri,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, size: 20, color: textTer),
+                  ),
+                ],
+              ),
+              SizedBox(height: 12),
+              _ExtraCostsSection(
+                isDark: isDark,
+                costs: _costs,
+                extraTotal: _extraTotal,
+                onAdd: () => setState(
+                  () => _costs.add((
+                    TextEditingController(),
+                    TextEditingController(),
+                  )),
+                ),
+                onRemove: (i) => setState(() {
+                  _costs[i].$1.dispose();
+                  _costs[i].$2.dispose();
+                  _costs.removeAt(i);
+                }),
+                onChanged: () => setState(() {}),
+              ),
+              SizedBox(height: 12),
+              NusaInput(
+                'Catatan (opsional)',
+                controller: _noteC,
+                hint: 'Cth: Restok mingguan',
+              ),
+              SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _commit,
+                icon: Icon(Icons.check, size: 18),
+                label: Text(
+                  'Selesai',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modul Biaya Tambahan (packing/ongkir/stiker) — stateless.
+///
+/// State (controller list) dipegang PEMANGGIL — _CostsNoteSheet & panel
+/// kanan punya instance sendiri. '+'/X cukup memanggil callback → pemanggil
+/// yang setState (di scope lokal), jadi tombol merespons instan.
+class _ExtraCostsSection extends StatelessWidget {
+  final bool isDark;
+  final List<(TextEditingController, TextEditingController)> costs;
+  final int extraTotal;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onRemove;
+  final VoidCallback onChanged;
+  const _ExtraCostsSection({
+    required this.isDark,
+    required this.costs,
+    required this.extraTotal,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textPri = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final textTer = isDark
+        ? NusaConfig.darkTextTertiary
+        : NusaConfig.textTertiary;
+    return Container(
+      padding: EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Biaya Tambahan',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textPri,
+                ),
+              ),
+              if (extraTotal > 0)
+                Padding(
+                  padding: EdgeInsets.only(left: 6),
+                  child: Text(
+                    formatRupiah(extraTotal),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                ),
+              const Spacer(),
+              // "+" kecil — tambah baris biaya
+              GestureDetector(
+                onTap: onAdd,
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.add,
+                    size: 16,
+                    color: NusaConfig.activePrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (costs.isEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text(
+                'Packing, ongkir, stiker dll',
+                style: TextStyle(fontSize: 11, color: textTer),
+              ),
+            )
+          else
+            ...List.generate(costs.length, (i) {
+              final (nameC, amountC) = costs[i];
+              return Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: nameC,
+                        onChanged: (_) => onChanged(),
+                        style: TextStyle(fontSize: 13, color: textPri),
+                        decoration: InputDecoration(
+                          hintText: 'cth: Ongkir',
+                          hintStyle: TextStyle(fontSize: 12, color: textTer),
+                          isDense: true,
+                          filled: true,
+                          fillColor: isDark
+                              ? NusaConfig.darkInputFill
+                              : NusaConfig.inputFill,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: amountC,
+                        keyboardType: TextInputType.number,
+                        onChanged: (_) => onChanged(),
+                        style: TextStyle(fontSize: 13, color: textPri),
+                        decoration: InputDecoration(
+                          hintText: 'Rp 0',
+                          hintStyle: TextStyle(fontSize: 12, color: textTer),
+                          prefixText: 'Rp ',
+                          prefixStyle: TextStyle(fontSize: 11, color: textTer),
+                          isDense: true,
+                          filled: true,
+                          fillColor: isDark
+                              ? NusaConfig.darkInputFill
+                              : NusaConfig.inputFill,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, size: 16, color: textTer),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onRemove(i),
+                    ),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -1246,7 +1593,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      Icons.handshake_outlined,
+                      Icons.local_shipping_outlined,
                       color: NusaConfig.activePrimary,
                       size: 19,
                     ),
@@ -1796,132 +2143,63 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   }
 
   // ── Sheet Biaya & Catatan (HP) — biaya tambahan + catatan pembelian ──
+  // Dijadikan StatefulWidget (_CostsNoteSheet) supaya tombol '+' & X
+  // merespons INSTAN — sebelumnya sheet pakai setState widget induk yang
+  // rebuild berlebihan & tabrakan dengan keyboard (komplain user: "+" tidak
+  // muncul, X tidak hilang sampai buka ulang). State biaya/catatan dipakai
+  // bersama dengan _extraCosts & _noteC induk (copy saat buka, commit saat
+  // Selesai/tutup) — jadi hasil tetap tersimpan seperti sebelumnya.
   Future<void> _openCostsNoteSheet() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPri = isDark
-        ? NusaConfig.darkTextPrimary
-        : NusaConfig.textPrimary;
-    final textTer = isDark
-        ? NusaConfig.darkTextTertiary
-        : NusaConfig.textTertiary;
-    await showModalBottomSheet(
+    final costs = List<(TextEditingController, TextEditingController)>.generate(
+      _extraCosts.length,
+      (i) => (
+        TextEditingController(text: _extraCosts[i].$1.text),
+        TextEditingController(text: _extraCosts[i].$2.text),
+      ),
+    );
+    final note = TextEditingController(text: _noteC.text);
+    final result = await showModalBottomSheet<({List<(TextEditingController,
+                TextEditingController)> costs, String note})?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(20, 10, 20, 20),
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          // Konten scrollable → keyboard tidak pernah memotong kolom
-          // Biaya Tambahan / Catatan (tetap responsif di layar kecil).
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? NusaConfig.darkDivider
-                        : NusaConfig.dividerColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.receipt_long_outlined,
-                      size: 20,
-                      color: NusaConfig.activePrimary,
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Biaya & Catatan',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: textPri,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    icon: Icon(Icons.close, size: 20, color: textTer),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12),
-              _buildExtraCosts(isDark),
-              SizedBox(height: 12),
-              NusaInput(
-                'Catatan (opsional)',
-                controller: _noteC,
-                hint: 'Cth: Restok mingguan',
-              ),
-              SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.pop(ctx),
-                icon: Icon(Icons.check, size: 18),
-                label: Text(
-                  'Selesai',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: NusaConfig.activePrimary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              ],
-            ),
-          ),
-        ),
+      builder: (ctx) => _CostsNoteSheet(
+        isDark: isDark,
+        initialCosts: costs,
+        initialNote: note,
       ),
     );
+    if (result != null) {
+      // Commit hasil ke induk — dispose controller lama, pakai yang baru.
+      for (final (n, a) in _extraCosts) {
+        n.dispose();
+        a.dispose();
+      }
+      _extraCosts
+        ..clear()
+        ..addAll(result.costs);
+      _noteC.text = result.note;
+      if (mounted) setState(() {});
+    } else {
+      // Dismiss — buang controller sementara.
+      for (final (n, a) in costs) {
+        n.dispose();
+        a.dispose();
+      }
+      note.dispose();
+    }
   }
 
+  // ── Sheet Biaya & Catatan — StatefulWidget mandiri ──
+  // State biaya/catatan dipegang di sini (bukan widget induk), jadi '+' & X
+  // merespons instan tanpa rebuild induk. Hasil dikirim balik saat Selesai.
   Widget _buildHeader(bool isDark) {
     final textPri = isDark
         ? NusaConfig.darkTextPrimary
         : NusaConfig.textPrimary;
     return Row(
       children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            Icons.shopping_cart_checkout_outlined,
-            color: NusaConfig.activePrimary,
-            size: 20,
-          ),
-        ),
-        SizedBox(width: 12),
         Expanded(
           child: Text(
             'Catat Pembelian',
@@ -2003,22 +2281,14 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                         : NusaConfig.inputBorder,
                   ),
                 ),
-                child: _supplier != null
-                    ? Text(
-                        _supplier!.name.isNotEmpty
-                            ? _supplier!.name[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: NusaConfig.activePrimary,
-                        ),
-                      )
-                    : Icon(
-                        Icons.handshake_outlined,
-                        color: NusaConfig.activePrimary,
-                        size: 20,
-                      ),
+                child: Icon(
+                  // Selalu ikon supplier (truk) — bukan inisial supplier.
+                  // Inisial bikin tombol terbaca "profil" padahal ini tombol
+                  // Pilih Supplier (komplain user).
+                  Icons.local_shipping_outlined,
+                  color: NusaConfig.activePrimary,
+                  size: 20,
+                ),
               ),
             ),
           ],
@@ -2358,7 +2628,23 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
           ),
           SizedBox(height: 8),
           // C5: Modul biaya tambahan (packing/ongkir/stiker)
-          _buildExtraCosts(isDark),
+          _buildExtraCosts(
+            isDark,
+            costs: _extraCosts,
+            extraTotal: _extraTotal,
+            onAdd: () => setState(
+              () => _extraCosts.add((
+                TextEditingController(),
+                TextEditingController(),
+              )),
+            ),
+            onRemove: (i) => setState(() {
+              _extraCosts[i].$1.dispose();
+              _extraCosts[i].$2.dispose();
+              _extraCosts.removeAt(i);
+            }),
+            onChanged: () => setState(() {}),
+          ),
           SizedBox(height: 8),
           // Catatan
           NusaInput(
@@ -2522,7 +2808,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       ),
                     )
                   : Icon(
-                      Icons.handshake_outlined,
+                      Icons.local_shipping_outlined,
                       size: 16,
                       color: NusaConfig.activePrimary,
                     ),
@@ -2547,158 +2833,24 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
     );
   }
 
-  // ── C5: Modul biaya tambahan (packing/ongkir/stiker) — minimalis ──
-  Widget _buildExtraCosts(bool isDark) {
-    final textPri = isDark
-        ? NusaConfig.darkTextPrimary
-        : NusaConfig.textPrimary;
-    final textTer = isDark
-        ? NusaConfig.darkTextTertiary
-        : NusaConfig.textTertiary;
-    return Container(
-      padding: EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Biaya Tambahan',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: textPri,
-                ),
-              ),
-              if (_extraTotal > 0)
-                Padding(
-                  padding: EdgeInsets.only(left: 6),
-                  child: Text(
-                    formatRupiah(_extraTotal),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: NusaConfig.activePrimary,
-                    ),
-                  ),
-                ),
-              Spacer(),
-              // "+" kecil — tambah baris biaya
-              GestureDetector(
-                onTap: () => setState(
-                  () => _extraCosts.add((
-                    TextEditingController(),
-                    TextEditingController(),
-                  )),
-                ),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: NusaConfig.activePrimary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.add,
-                    size: 16,
-                    color: NusaConfig.activePrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_extraCosts.isEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Text(
-                'Packing, ongkir, stiker dll',
-                style: TextStyle(fontSize: 11, color: textTer),
-              ),
-            )
-          else
-            ...List.generate(_extraCosts.length, (i) {
-              final (nameC, amountC) = _extraCosts[i];
-              return Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: TextField(
-                        controller: nameC,
-                        onChanged: (_) => setState(() {}),
-                        style: TextStyle(fontSize: 13, color: textPri),
-                        decoration: InputDecoration(
-                          hintText: 'cth: Ongkir',
-                          hintStyle: TextStyle(fontSize: 12, color: textTer),
-                          isDense: true,
-                          filled: true,
-                          fillColor: isDark
-                              ? NusaConfig.darkInputFill
-                              : NusaConfig.inputFill,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: amountC,
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => setState(() {}),
-                        style: TextStyle(fontSize: 13, color: textPri),
-                        decoration: InputDecoration(
-                          hintText: 'Rp 0',
-                          hintStyle: TextStyle(fontSize: 12, color: textTer),
-                          prefixText: 'Rp ',
-                          prefixStyle: TextStyle(fontSize: 11, color: textTer),
-                          isDense: true,
-                          filled: true,
-                          fillColor: isDark
-                              ? NusaConfig.darkInputFill
-                              : NusaConfig.inputFill,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close, size: 16, color: textTer),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        nameC.dispose();
-                        amountC.dispose();
-                        setState(() => _extraCosts.removeAt(i));
-                      },
-                    ),
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
+  // ── C5: Modul biaya tambahan (packing/ongkir/stiker) — delegasi ke
+  // _ExtraCostsSection (top-level stateless). State (controller list)
+  // dipegang PEMANGGIL — sheet & panel kanan punya instance sendiri.
+  Widget _buildExtraCosts(
+    bool isDark, {
+    required List<(TextEditingController, TextEditingController)> costs,
+    required int extraTotal,
+    required VoidCallback onAdd,
+    required ValueChanged<int> onRemove,
+    required VoidCallback onChanged,
+  }) {
+    return _ExtraCostsSection(
+      isDark: isDark,
+      costs: costs,
+      extraTotal: extraTotal,
+      onAdd: onAdd,
+      onRemove: onRemove,
+      onChanged: onChanged,
     );
   }
 
