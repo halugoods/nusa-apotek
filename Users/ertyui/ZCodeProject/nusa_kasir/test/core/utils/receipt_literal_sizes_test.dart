@@ -1,121 +1,57 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nusa_kasir/core/utils/receipt_renderer.dart';
+import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 
 void main() {
-  group('ukuran struk v3 (hybrid: header image persen, teks Kecil/Besar)', () {
-    test('default header persen + logo persen', () {
-      expect(receiptHeaderDefaultPercent, 100);
-      expect(receiptLogoDefaultPercent, 60);
-      expect(receiptPercentMin, 1);
-      expect(receiptPercentMax, 100);
+  group('ukuran struk v2.2.23 (teks ESC/POS literal 12-36pt)', () {
+    test('5 ukuran literal tersedia', () {
+      expect(literalSizes, [12, 15, 18, 24, 36]);
     });
 
-    test('clamp header persen ke 1..100', () {
-      expect(0.clamp(receiptPercentMin, receiptPercentMax), 1);
-      expect(100.clamp(receiptPercentMin, receiptPercentMax), 100);
-      expect(150.clamp(receiptPercentMin, receiptPercentMax), 100);
+    test('literal → magnification = indeks + 1', () {
+      expect(literalToMagnification(12), 1);
+      expect(literalToMagnification(15), 2);
+      expect(literalToMagnification(18), 3);
+      expect(literalToMagnification(24), 4);
+      expect(literalToMagnification(36), 5);
     });
 
-    test('clamp logo persen ke 1..100', () {
-      expect(0.clamp(1, 100), 1);
-      expect(60.clamp(1, 100), 60);
-      expect(150.clamp(1, 100), 100);
+    test('magnification → literal', () {
+      expect(magnificationToLiteral(1), 12);
+      expect(magnificationToLiteral(2), 15);
+      expect(magnificationToLiteral(3), 18);
+      expect(magnificationToLiteral(4), 24);
+      expect(magnificationToLiteral(5), 36);
+      // clamp keluar rentang
+      expect(magnificationToLiteral(0), 12);
+      expect(magnificationToLiteral(9), 36);
     });
 
-    test('ReceiptRenderLine subtotal & diskon (qty)', () {
-      const line = ReceiptRenderLine(
-        name: 'A',
-        qty: 3,
-        price: 5000,
-        originalPrice: 6000,
-      );
-      expect(line.subtotal, 15000);
-      expect(line.hasDiscount, isTrue);
-      expect(line.discountTotal, 3000); // (6000-5000) × 3
-      expect(line.qtyLabel, '3');
+    test('literalSpec: 15pt = Font B ×2, sisanya Font A ×1-×4', () {
+      expect(literalSpec(12), (1, false));
+      expect(literalSpec(15), (2, true));
+      expect(literalSpec(18), (3, false));
+      expect(literalSpec(24), (4, false));
+      expect(literalSpec(36), (5, false));
     });
 
-    test('ReceiptRenderLine per-kg subtotal & diskon', () {
-      const line = ReceiptRenderLine(
-        name: 'B',
-        qty: 1,
-        price: 10000,
-        originalPrice: 12000,
-        isPerKg: true,
-        weightKg: 2.5,
-      );
-      expect(line.subtotal, 25000); // ceil(10000 × 2.5)
-      expect(line.discountTotal, 6000); // (12000-10000) × ceil(2.5) = 3
-      expect(line.qtyLabel, '2.5');
+    test('receiptPreviewSize: 15pt tetap 15 (tidak dikali kompak)', () {
+      expect(receiptPreviewSize(12), 12.0);
+      expect(receiptPreviewSize(15), 15.0);
+      expect(receiptPreviewSize(18), 18.0);
+      expect(receiptPreviewSize(24), 24.0);
+      expect(receiptPreviewSize(36), 36.0);
+      // kompak (Font B) mengrampingkan 12/18/24/36, tapi 15pt tidak
+      expect(receiptPreviewSize(12, kompak: true), 9.0);
+      expect(receiptPreviewSize(15, kompak: true), 15.0);
+      expect(receiptPreviewSize(24, kompak: true), 18.0);
     });
 
-    test('ReceiptRenderConfig default & paper width (v3)', () {
-      const cfg = ReceiptRenderConfig(
-        storeName: 'Toko',
-        lines: [],
-        total: 0,
-      );
-      expect(cfg.paperWidthPx, 384); // 58mm
-      expect(cfg.headerPercent, receiptHeaderDefaultPercent);
-      expect(cfg.itemsSizePx, 12); // mode Kecil ×1
-      expect(cfg.footerSizePx, 12);
-      expect(cfg.logoWidthPercent, receiptLogoDefaultPercent);
-
-      const cfg80 = ReceiptRenderConfig(
-        storeName: 'Toko',
-        lines: [],
-        total: 0,
-        paperWidth: '80',
-      );
-      expect(cfg80.paperWidthPx, 576); // 80mm
-    });
-
-    test('mode Kecil(×1)/Besar(×2) → ukuran share/PDF', () {
-      // Kecil: itemsSizePx 12, footerSizePx 12 (Font A ×1)
-      // Besar: itemsSizePx 24, footerSizePx 24 (Font B ×2 — dijamin tercetak)
-      expect(0 >= 1 ? 24 : 12, 12);
-      expect(1 >= 1 ? 24 : 12, 24);
-    });
-
-    test('renderReceiptHeaderPng menghasilkan PNG (bit-image)', () async {
-      final png = await renderReceiptHeaderPng(
-        const ReceiptRenderConfig(
-          storeName: 'Toko',
-          lines: [],
-          total: 0,
-          header: 'TOKO NUSA',
-          headerPercent: 100,
-          logoWidthPercent: 60,
-        ),
-      );
-      // PNG magic bytes: 89 50 4E 47
-      expect(png.length, greaterThan(8));
-      expect(png[0], 0x89);
-      expect(png[1], 0x50);
-      expect(png[2], 0x4E);
-      expect(png[3], 0x47);
-    });
-
-    test('renderReceiptPng tetap penuh (share/PDF)', () async {
-      final png = await renderReceiptPng(
-        const ReceiptRenderConfig(
-          storeName: 'Toko',
-          lines: [
-            ReceiptRenderLine(name: 'Indomie', qty: 2, price: 3500),
-          ],
-          total: 7000,
-          header: 'TOKO NUSA',
-          footer: 'Terima kasih!',
-          headerPercent: 100,
-          itemsSizePx: 12,
-          footerSizePx: 12,
-        ),
-      );
-      expect(png.length, greaterThan(8));
-      expect(png[0], 0x89);
-      expect(png[1], 0x50);
-      expect(png[2], 0x4E);
-      expect(png[3], 0x47);
+    test('label ukuran literal', () {
+      expect(literalSizeLabel(12), 'Kecil');
+      expect(literalSizeLabel(15), 'Sedang');
+      expect(literalSizeLabel(18), 'Normal');
+      expect(literalSizeLabel(24), 'Besar');
+      expect(literalSizeLabel(36), 'Extra Besar');
     });
   });
 }
