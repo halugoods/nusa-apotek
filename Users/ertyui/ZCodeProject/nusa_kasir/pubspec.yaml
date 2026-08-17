@@ -63,8 +63,15 @@ dev_dependencies:
 # NOTE: esc_pos_bluetooth pins rxdart ^0.26.0 while supabase_flutter >=2.5.0
 # requires rxdart >=0.27.5 <0.29.0. No single rxdart version satisfies both,
 # so we force a compatible version to keep both packages.
+#
+# flutter_bluetooth_basic 0.1.7 (dari esc_pos_bluetooth) memakai jcenter() yang
+# sudah DIHAPUS di Gradle 9 → build gagal "Could not find method jcenter()".
+# Package di-vendor ke packages/flutter_bluetooth_basic dengan build.gradle
+# patched (google + mavenCentral, AGP 8.9.1, compileSdk 36).
 dependency_overrides:
   rxdart: 0.27.5
+  flutter_bluetooth_basic:
+    path: packages/flutter_bluetooth_basic
 
 flutter:
   uses-material-design: true
