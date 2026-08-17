@@ -2096,6 +2096,43 @@ class _OnlineStoreSetupScreenState
                     ),
                   ),
                 ),
+                // Edit teks jam ambil
+                GestureDetector(
+                  onTap: () => _editPickupOption(i, isDark),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? NusaConfig.darkSurface
+                          : NusaConfig.inputFill,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 16,
+                      color: subColor,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 6),
+                // Hapus jam ambil
+                GestureDetector(
+                  onTap: () => _deletePickupOption(i),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.delete_outline,
+                      size: 16,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                ),
                 Switch(
                   value: _pickupOptions[i]['is_active'] != false,
                   activeColor: Color(0xFF8B5CF6),
@@ -2110,7 +2147,122 @@ class _OnlineStoreSetupScreenState
               ],
             ),
           ),
+        // ── + Tambah Jam Ambil (teks bebas) ──
+        GestureDetector(
+          onTap: () => _addPickupOption(isDark),
+          child: Container(
+            margin: EdgeInsets.only(top: 4),
+            padding: EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Color(0xFF8B5CF6).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add, size: 18, color: Color(0xFF8B5CF6)),
+                SizedBox(width: 6),
+                Text(
+                  'Tambah Jam',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF8B5CF6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          'Teks bebas — mis. "Segera", "30 Menit", "14:00"',
+          style: TextStyle(fontSize: 11, color: subColor),
+        ),
       ],
+    );
+  }
+
+  // ── CRUD Jam Ambil (teks bebas) ─────────────────────────────────
+
+  Future<void> _addPickupOption(bool isDark) async {
+    final value = await _pickupOptionDialog(isDark, '', 'Tambah Jam Ambil');
+    if (value == null || value.trim().isEmpty) return;
+    setState(() {
+      _pickupOptions.add({'time': value.trim(), 'is_active': true});
+      _storeCfgDirty = true;
+    });
+  }
+
+  Future<void> _editPickupOption(int index, bool isDark) async {
+    final current = '${_pickupOptions[index]['time']}';
+    final value = await _pickupOptionDialog(isDark, current, 'Edit Jam Ambil');
+    if (value == null || value.trim().isEmpty) return;
+    setState(() {
+      _pickupOptions[index]['time'] = value.trim();
+      _storeCfgDirty = true;
+    });
+  }
+
+  Future<void> _deletePickupOption(int index) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Jam Ambil?'),
+        content: Text('"${_pickupOptions[index]['time']}" akan dihapus dari website.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus', style: TextStyle(color: Color(0xFFDC2626))),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _pickupOptions.removeAt(index);
+      _storeCfgDirty = true;
+    });
+  }
+
+  Future<String?> _pickupOptionDialog(
+    bool isDark,
+    String initial,
+    String title,
+  ) {
+    final ctrl = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(
+            color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Mis. Segera / 30 Menit / 14:00',
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2640,6 +2792,12 @@ class _OnlineStoreSetupScreenState
     final refType = _memberSettings['referralRewardType'] as String? ?? 'persen';
     final refValue =
         (_memberSettings['referralRewardValue'] as num?)?.toInt() ?? 5;
+    final goldMin = (_memberSettings['goldMin'] as num?)?.toInt() ?? 1000;
+    final platinumMin =
+        (_memberSettings['platinumMin'] as num?)?.toInt() ?? 5000;
+    final goldPercent = (_memberSettings['goldPercent'] as num?)?.toInt() ?? 2;
+    final platinumPercent =
+        (_memberSettings['platinumPercent'] as num?)?.toInt() ?? 5;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2687,6 +2845,79 @@ class _OnlineStoreSetupScreenState
           onChanged: (v) {
             setState(() {
               _memberSettings['minRedeem'] = v;
+              _storeCfgDirty = true;
+            });
+          },
+        ),
+        SizedBox(height: 16),
+        Text(
+          'Tier Member (diskon otomatis)',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: textColor,
+          ),
+        ),
+        SizedBox(height: 8),
+        _cfgNumberField(
+          isDark,
+          textColor,
+          subColor,
+          borderC,
+          label: 'Gold — min poin',
+          hint: 'Cth: 1000',
+          initial: goldMin,
+          onChanged: (v) {
+            setState(() {
+              _memberSettings['goldMin'] = v;
+              _storeCfgDirty = true;
+            });
+          },
+        ),
+        SizedBox(height: 12),
+        _cfgNumberField(
+          isDark,
+          textColor,
+          subColor,
+          borderC,
+          label: 'Gold — diskon (%)',
+          hint: 'Cth: 2',
+          initial: goldPercent,
+          onChanged: (v) {
+            setState(() {
+              _memberSettings['goldPercent'] = v;
+              _storeCfgDirty = true;
+            });
+          },
+        ),
+        SizedBox(height: 12),
+        _cfgNumberField(
+          isDark,
+          textColor,
+          subColor,
+          borderC,
+          label: 'Platinum — min poin',
+          hint: 'Cth: 5000',
+          initial: platinumMin,
+          onChanged: (v) {
+            setState(() {
+              _memberSettings['platinumMin'] = v;
+              _storeCfgDirty = true;
+            });
+          },
+        ),
+        SizedBox(height: 12),
+        _cfgNumberField(
+          isDark,
+          textColor,
+          subColor,
+          borderC,
+          label: 'Platinum — diskon (%)',
+          hint: 'Cth: 5',
+          initial: platinumPercent,
+          onChanged: (v) {
+            setState(() {
+              _memberSettings['platinumPercent'] = v;
               _storeCfgDirty = true;
             });
           },

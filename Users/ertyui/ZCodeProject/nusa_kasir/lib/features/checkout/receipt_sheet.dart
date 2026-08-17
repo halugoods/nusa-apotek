@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,6 +10,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
@@ -527,7 +529,8 @@ class ReceiptSheet extends ConsumerWidget {
         await SecureStore.getPrinterLogoPath();
     // Font struk (SecureStore — single source untuk printing).
     final fontType = await SecureStore.getReceiptFontType();
-    final fontHeader = await SecureStore.getReceiptFontHeader();
+    // Header = IMAGE (ukuran px 12–48); rincian & footer = ×1/×2.
+    final headerPx = await SecureStore.getReceiptHeaderPx();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
     // Ukuran kertas — preview mengikuti (58/80mm, komplain user).
@@ -542,7 +545,7 @@ class ReceiptSheet extends ConsumerWidget {
       footer: footer,
       logoPath: logoPath,
       fontType: fontType,
-      fontHeader: fontHeader,
+      headerPx: headerPx,
       fontItems: fontItems,
       fontFooter: fontFooter,
       paperWidth: paperWidth,
@@ -562,14 +565,12 @@ class ReceiptSheet extends ConsumerWidget {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section = ukuran LITERAL 12/15/18/24/36 yang benar-benar
-    // dicetak (tanpa cap — preview = print, 5 ukuran selalu berbeda).
-    // Preview memakai ukuran literal yang sama dengan print (perbesaran × 12pt
-    // = 12/15/18/24/36) — bukan angka acak. Tingkat ramping Font B → 0.75×.
-    // 15pt dicetak Font B ×2 (ukuran FIX 34 dot, tidak tergantung font global)
-    // → preview 15px apa adanya via receiptPreviewSize.
+    // Ukuran font per section (gaya v2.2.11):
+    //  - RINCIAN & FOOTER: 2 pilihan ×1 Kecil / ×2 Besar (ESC/POS).
+    //  - HEADER: dirender sebagai GAMBAR (Image.memory dari renderer yang
+    //    sama dengan print) — ukuran huruf = headerPx (12–48px).
     final itemFontSize = receiptPreviewSize(
-      s.fontItems.clamp(1, 5),
+      s.fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
       kompak: s.fontType == 'kompak',
     );
     final mono = TextStyle(
@@ -588,21 +589,11 @@ class ReceiptSheet extends ConsumerWidget {
     final monoBig = TextStyle(
       fontFamily: 'monospace',
       fontSize: receiptPreviewSize(
-            s.fontItems.clamp(1, 5),
+            s.fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
             kompak: s.fontType == 'kompak',
           ) *
           1.05,
       height: 1.5,
-      fontWeight: FontWeight.bold,
-      color: textColor,
-    );
-    final monoHeader = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(
-        s.fontHeader.clamp(1, 5),
-        kompak: s.fontType == 'kompak',
-      ),
-      height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
     );
@@ -615,7 +606,7 @@ class ReceiptSheet extends ConsumerWidget {
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
       fontSize: receiptPreviewSize(
-        s.fontFooter.clamp(1, 5),
+        s.fontFooter.clamp(receiptItemsMinMag, receiptItemsMaxMag),
         kompak: s.fontType == 'kompak',
       ),
       height: 1.5,
@@ -640,48 +631,41 @@ class ReceiptSheet extends ConsumerWidget {
           SizedBox(height: 4),
         ],
 
-        // ── Store header ──
-        Center(
-          child: Text(
-            storeName,
-            style: monoHeader,
-            textAlign: TextAlign.center,
+        // ── Store header — dirender sebagai GAMBAR (renderer SAMA dengan
+        // print → preview selalu match). Ukuran huruf = headerPx (12–48px).
+        FutureBuilder<Uint8List>(
+          future: renderReceiptHeaderPng(
+            paperWidth: s.paperWidth,
+            storeName: storeName,
+            customHeader: s.header,
+            invoice: invoice ?? '',
+            dateStr: dateStr ?? '',
+            cashierName: cashierName,
+            customerName: customerName,
+            orderType: orderType,
+            tableName: tableName,
+            headerPx: s.headerPx,
           ),
+          builder: (context, snap) {
+            if (!snap.hasData) return const SizedBox(height: 8);
+            return Center(
+              child: Image.memory(
+                snap.data!,
+                filterQuality: FilterQuality.none,
+                // Preview mengikuti lebar kertas — JANGAN gepeng (tinggi
+                // proporsional dari renderer, min-height lega).
+                width: s.paperWidth == '80' ? 300 : 230,
+                fit: BoxFit.fitWidth,
+              ),
+            );
+          },
         ),
-
-        // Custom header text
-        if (s.header.isNotEmpty) ...[
-          SizedBox(height: 2),
-          Center(
-            child: Text(s.header, style: monoGrey, textAlign: TextAlign.center),
-          ),
-        ],
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
         SizedBox(height: 6),
 
-        // ── Transaction info ──
-        if (s.showInvoice && invoice != null)
-          _monoRow('ID  : ', invoice!, mono, mono),
-        if (s.showDate && dateStr != null)
-          _monoRow('Tgl : ', dateStr!, mono, mono),
-        if (s.showCashier && cashierName != null && cashierName!.isNotEmpty)
-          _monoRow('Kasir:', cashierName!, mono, mono),
-        if (customerName != null && customerName!.isNotEmpty)
-          _monoRow('Pel  : ', customerName!, mono, mono),
-        if (orderType != null && orderType!.isNotEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(
-                tableName != null && tableName!.isNotEmpty
-                    ? '$orderType — $tableName'
-                    : orderType!,
-                style: monoBold,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+        // Order type / table sudah termasuk dalam header IMAGE (renderer).
+        // Blok di bawah hanya nomor khusus LND/BKG yang tidak ada di gambar.
         if (laundryOrderId != null)
           Center(
             child: Padding(
@@ -823,10 +807,10 @@ class ReceiptSheet extends ConsumerWidget {
     final qtyDisplay = item.isPerKg
         ? '${item.weightKg!.toStringAsFixed(1)} kg'
         : '${item.qty}';
-    // Harga per unit = harga FINAL (sudah dipotong diskon item) — subtotal
-    // NETTO di kanan (qty × harga final), diskon dalam kurung supaya
-    // customer notice potongannya. Konsisten dengan print asli.
-    final unitPrice = item.price;
+    // Harga per unit = harga ASLI SEBELUM diskon (originalPrice) — diskon
+    // tampil dalam kurung "( -Rp X )" supaya customer notice potongannya,
+    // subtotal di kanan = NETTO (qty × harga FINAL). Konsisten dengan print.
+    final unitPrice = item.originalPrice ?? item.price;
     final qtyPriceTxt = item.isPerKg
         ? '$qtyDisplay x ${formatRupiah(unitPrice)}/kg'
         : '$qtyDisplay x ${formatRupiah(unitPrice)}';
@@ -866,26 +850,6 @@ class ReceiptSheet extends ConsumerWidget {
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _monoRow(
-    String label,
-    String value,
-    TextStyle monoL,
-    TextStyle monoV,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Row(
-        children: [
-          Text(label, style: monoL),
-          const Spacer(),
-          Flexible(
-            child: Text(value, style: monoV, textAlign: TextAlign.right),
-          ),
         ],
       ),
     );
@@ -1144,8 +1108,9 @@ class ReceiptSheet extends ConsumerWidget {
     sb.writeln('━━━━━━━━━━━━━━━━━');
     for (final item in items) {
       sb.writeln(item.name);
-      // Harga FINAL per unit; subtotal NETTO (sudah dipotong diskon item).
-      final unitPrice = item.price;
+      // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
+      // (sudah dipotong diskon item), diskon dalam kurung.
+      final unitPrice = item.originalPrice ?? item.price;
       final subTxt = item.isPerKg
           ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}'
           : '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}';
@@ -1210,8 +1175,9 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('─' * 32);
       for (final item in items) {
         sb.writeln(item.name);
-        // Harga FINAL per unit; subtotal NETTO (sudah dipotong diskon item).
-        final unitPrice = item.price;
+        // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
+        // (sudah dipotong diskon item), diskon dalam kurung.
+        final unitPrice = item.originalPrice ?? item.price;
         sb.writeln(
           '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}',
         );
@@ -1266,9 +1232,10 @@ class _ReceiptSettings {
   final String header;
   final String footer;
   final String? logoPath;
-  // Font struk (mirror SecureStore): jenis 'standar'/'kompak' + ukuran per section.
+  // Font struk (mirror SecureStore): jenis 'standar'/'kompak' + ukuran.
+  // Header = px image (12–48); rincian & footer = ×1/×2.
   final String fontType;
-  final int fontHeader;
+  final int headerPx;
   final int fontItems;
   final int fontFooter;
   // Ukuran kertas '58'/'80' — preview ikut (komplain user: preview 2 arah).
@@ -1284,7 +1251,7 @@ class _ReceiptSettings {
     this.footer = '',
     this.logoPath,
     this.fontType = 'standar',
-    this.fontHeader = 2,
+    this.headerPx = 24,
     this.fontItems = 1,
     this.fontFooter = 1,
     this.paperWidth = '58',
