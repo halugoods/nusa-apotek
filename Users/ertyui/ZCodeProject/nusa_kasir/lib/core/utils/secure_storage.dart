@@ -229,8 +229,17 @@ class SecureStore {
       ) ??
       24;
 
+  // Ketebalan HEADER image: 'thin' (w300) | 'medium' (w500) | 'bold' (w700).
+  // Default 'medium' — kompromi tegas tapi tidak dominan di atas kertas.
+  static Future<void> setReceiptHeaderWeight(String v) =>
+      SecureStore.write(key: 'nusa_receipt_header_weight', value: v);
+  static Future<String> getReceiptHeaderWeight() async =>
+      (await SecureStore.read(key: 'nusa_receipt_header_weight')) ?? 'medium';
+
   // Ukuran RINCIAN & FOOTER (ESC/POS perbesaran 1x/2x — gaya v2.2.11):
   // 1 = Kecil (×1), 2 = Besar (×2). Header memakai nusa_receipt_header_px.
+  // NOTE v2.2.27: rincian & footer SELALU ×1 — key dibaca untuk kompatibilitas
+  // backward (nilai lama tetap tersimpan), tapi printer tidak lagi memakainya.
   static Future<void> setReceiptFontItems(int v) =>
       SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
   static Future<int> getReceiptFontItems() async =>

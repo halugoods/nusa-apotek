@@ -1726,6 +1726,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Font struk (SecureStore — single source untuk printing).
     final fontType = await SecureStore.getReceiptFontType();
     final headerPx = await SecureStore.getReceiptHeaderPx();
+    final headerWeight = await SecureStore.getReceiptHeaderWeight();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
     if (!mounted) return;
@@ -1742,6 +1743,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Map<String, bool> togs = Map.from(toggles);
         String font = fontType;
         int fontHPx = headerPx;
+        String fontHW = headerWeight;
         int fontI = fontItems;
         int fontF = fontFooter;
         // True saat ukuran font digeser — preview berubah tapi belum tersimpan.
@@ -1942,8 +1944,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Header dicetak sebagai GAMBAR (persis logo) — atur '
-                      'tinggi hurufnya 12–48 piksel. Rincian & Footer '
-                      'memakai 2 pilihan: Kecil (×1) / Besar (×2).',
+                      'tinggi huruf 12–48 piksel + ketebalan. Rincian & '
+                      'Footer selalu ukuran Kecil (×1).',
                       style: TextStyle(
                         fontSize: 12,
                         color: setDark
@@ -2015,26 +2017,106 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _fontSizeRow(
-                      'Rincian',
-                      2,
-                      fontI,
-                      setDark,
-                      (v) => setSt(() {
-                        fontI = v;
-                        fontDirty = true;
-                      }),
+
+                    // Header — KETEBALAN thin/medium/bold (v2.2.27).
+                    Text(
+                      'Ketebalan Header',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        for (final w in const [
+                          ('thin', 'Tipis'),
+                          ('medium', 'Sedang'),
+                          ('bold', 'Tebal'),
+                        ]) ...[
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setSt(() {
+                                fontHW = w.$1;
+                                fontDirty = true;
+                              }),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: fontHW == w.$1
+                                      ? NusaConfig.primarySoft
+                                      : (setDark
+                                            ? NusaConfig.darkSurface2
+                                            : const Color(0xFFF3F4F6)),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: fontHW == w.$1
+                                        ? NusaConfig.activePrimary
+                                        : (setDark
+                                              ? NusaConfig.darkBorder
+                                              : NusaConfig.dividerColor),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    w.$2,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: fontHW == w.$1
+                                          ? NusaConfig.activePrimary
+                                          : (setDark
+                                                ? NusaConfig.darkTextSecondary
+                                                : NusaConfig.textSecondary),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 14),
-                    _fontSizeRow(
-                      'Footer',
-                      2,
-                      fontF,
-                      setDark,
-                      (v) => setSt(() {
-                        fontF = v;
-                        fontDirty = true;
-                      }),
+
+                    // Rincian & Footer SELALU ukuran Kecil (×1) — v2.2.27.
+                    // Tidak ada lagi pilihan Besar; baris kecil = cepat cetak.
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Rincian & Footer',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.primarySoft,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Kecil (×1)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 
@@ -2321,6 +2403,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             // ── Header — IMAGE (renderer SAMA dengan print) ──
                             // Preview memakai renderReceiptHeaderPng persis
                             // seperti printer → preview SELALU match print.
+                            // HANYA nama toko/header custom di gambar;
+                            // invoice/tgl/kasir = teks biasa di bawah.
                             SizedBox(
                               width: double.infinity,
                               child: FutureBuilder<Uint8List>(
@@ -2330,12 +2414,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       ? storeName
                                       : 'NUSA MART',
                                   customHeader: headerCtrl.text,
-                                  invoice: 'INV-001',
-                                  dateStr: '25 Jul 2026  14:30 WIB',
-                                  cashierName: togs['showCashier'] == true
-                                      ? 'Budi'
-                                      : null,
                                   headerPx: fontHPx,
+                                  headerWeight: fontHW,
                                 ),
                                 builder: (ctx, snap) {
                                   final png = snap.data;
@@ -2363,6 +2443,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 },
                               ),
                             ),
+                            const SizedBox(height: 4),
+
+                            // ── Info struk — teks biasa (BUKAN image) ──
+                            const Text(
+                              'INV-001',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                            const Text(
+                              '25 Jul 2026  14:30 WIB',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFF374151),
+                              ),
+                            ),
                             const SizedBox(height: 6),
 
                             // ── Dashed line ──
@@ -2375,7 +2475,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               4,
                               3500,
                               false,
-                              fontI: fontI,
+                              fontI: 1,
                               kompak: font == 'kompak',
                             ),
                             _receiptItem(
@@ -2383,7 +2483,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               1,
                               72000,
                               false,
-                              fontI: fontI,
+                              fontI: 1,
                               kompak: font == 'kompak',
                             ),
                             // Item dengan diskon → tunjukkan Harga Normal + Diskon
@@ -2394,7 +2494,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               34000,
                               false,
                               originalPrice: 38000,
-                              fontI: fontI,
+                              fontI: 1,
                               kompak: font == 'kompak',
                             ),
                             _receiptItem(
@@ -2402,7 +2502,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               1,
                               28000,
                               false,
-                              fontI: fontI,
+                              fontI: 1,
                               kompak: font == 'kompak',
                             ),
                             _receiptItem(
@@ -2410,7 +2510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               1,
                               16000,
                               false,
-                              fontI: fontI,
+                              fontI: 1,
                               kompak: font == 'kompak',
                             ),
                             const SizedBox(height: 2),
@@ -2483,6 +2583,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ],
                             ),
+                            // "Anda Hemat" — diskon item (Minyak -Rp 8.000) +
+                            // diskon transaksi — persis print asli (v2.2.27).
+                            const SizedBox(height: 1),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Anda Hemat',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF059669),
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  '-Rp 16.000',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF059669),
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             _dashedLine(true),
                             const SizedBox(height: 4),
@@ -2533,8 +2657,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             _dashedLine(false),
                             const SizedBox(height: 4),
 
-                            // ── Footer — ukuran ikut fontF (×1 Kecil / ×2 Besar)
-                            // persis print asli ──
+                            // ── Footer — SELALU ukuran Kecil (×1) v2.2.27,
+                            // persis print asli (tidak ada lagi ×2) ──
                             Text(
                               footerCtrl.text.isNotEmpty
                                   ? footerCtrl.text
@@ -2542,10 +2666,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: receiptPreviewSize(
-                                  fontF.clamp(
-                                    receiptItemsMinMag,
-                                    receiptItemsMaxMag,
-                                  ),
+                                  1,
                                   kompak: font == 'kompak',
                                 ),
                                 fontWeight: FontWeight.w600,
@@ -2748,10 +2869,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 headerCtrl.text.trim(),
                               );
                               // Font struk (satu pilihan font global + ukuran
-                              // per bagian). Header = pixel image (12-48px);
-                              // rincian & footer = ×1/×2 (gaya v2.2.11).
+                              // per bagian). Header = pixel image (12-48px +
+                              // ketebalan thin/medium/bold); rincian & footer
+                              // selalu ×1 (kecil) sejak v2.2.27.
                               await SecureStore.setReceiptFontType(font);
                               await SecureStore.setReceiptHeaderPx(fontHPx);
+                              await SecureStore.setReceiptHeaderWeight(fontHW);
                               await SecureStore.setReceiptFontItems(fontI);
                               await SecureStore.setReceiptFontFooter(fontF);
                               fontDirty = false;
@@ -2920,83 +3043,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  /// Baris ukuran font RINCIAN/FOOTER — 2 pilihan perbesaran ESC/POS:
-  /// 1 = Kecil (×1), 2 = Besar (×2) — gaya v2.2.11.
-  Widget _fontSizeRow(
-    String label,
-    int levels,
-    int current,
-    bool isDark,
-    ValueChanged<int> onChanged,
-  ) {
-    final options = [(1, 'Kecil'), (2, 'Besar')];
-    return Row(
-      children: [
-        SizedBox(
-          width: 88,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? NusaConfig.darkTextPrimary
-                  : NusaConfig.textPrimary,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Row(
-            children: options.map((o) {
-              final (val, name) = o;
-              final sel = current == val;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => onChanged(val),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: sel
-                            ? NusaConfig.primarySoft
-                            : (isDark
-                                  ? NusaConfig.darkSurface2
-                                  : const Color(0xFFF3F4F6)),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: sel
-                              ? NusaConfig.activePrimary
-                              : (isDark
-                                    ? NusaConfig.darkBorder
-                                    : NusaConfig.dividerColor),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: sel
-                                ? NusaConfig.activePrimary
-                                : (isDark
-                                      ? NusaConfig.darkTextSecondary
-                                      : NusaConfig.textSecondary),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 

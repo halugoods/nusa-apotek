@@ -529,8 +529,10 @@ class ReceiptSheet extends ConsumerWidget {
         await SecureStore.getPrinterLogoPath();
     // Font struk (SecureStore — single source untuk printing).
     final fontType = await SecureStore.getReceiptFontType();
-    // Header = IMAGE (ukuran px 12–48); rincian & footer = ×1/×2.
+    // Header = IMAGE (ukuran px 12–48 + ketebalan thin/medium/bold);
+    // rincian & footer SELALU ×1 (kecil) sejak v2.2.27.
     final headerPx = await SecureStore.getReceiptHeaderPx();
+    final headerWeight = await SecureStore.getReceiptHeaderWeight();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
     // Ukuran kertas — preview mengikuti (58/80mm, komplain user).
@@ -546,6 +548,7 @@ class ReceiptSheet extends ConsumerWidget {
       logoPath: logoPath,
       fontType: fontType,
       headerPx: headerPx,
+      headerWeight: headerWeight,
       fontItems: fontItems,
       fontFooter: fontFooter,
       paperWidth: paperWidth,
@@ -565,12 +568,12 @@ class ReceiptSheet extends ConsumerWidget {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section (gaya v2.2.11):
-    //  - RINCIAN & FOOTER: 2 pilihan ×1 Kecil / ×2 Besar (ESC/POS).
+    // Ukuran font per section (gaya v2.2.27):
+    //  - RINCIAN & FOOTER: SELALU ×1 (Kecil) — pilihan Besar dihapus.
     //  - HEADER: dirender sebagai GAMBAR (Image.memory dari renderer yang
     //    sama dengan print) — ukuran huruf = headerPx (12–48px).
     final itemFontSize = receiptPreviewSize(
-      s.fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
+      1,
       kompak: s.fontType == 'kompak',
     );
     final mono = TextStyle(
@@ -589,7 +592,7 @@ class ReceiptSheet extends ConsumerWidget {
     final monoBig = TextStyle(
       fontFamily: 'monospace',
       fontSize: receiptPreviewSize(
-            s.fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
+            1,
             kompak: s.fontType == 'kompak',
           ) *
           1.05,
@@ -603,16 +606,16 @@ class ReceiptSheet extends ConsumerWidget {
       height: 1.5,
       color: subtleColor,
     );
-    final monoFooter = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(
-        s.fontFooter.clamp(receiptItemsMinMag, receiptItemsMaxMag),
-        kompak: s.fontType == 'kompak',
-      ),
-      height: 1.5,
-      fontWeight: FontWeight.bold,
-      color: textColor,
+    // Rincian & footer SELALU ukuran kecil (×1) — v2.2.27.
+    final monoFooter = mono;
+
+    // "Anda Hemat" = diskon item (per item) + diskon transaksi — total yang
+    // benar-benar dihemat pembeli di struk ini.
+    final _itemDiscTotal = items.fold<int>(
+      0,
+      (acc, it) => acc + it.discountTotal,
     );
+    final _andaHemat = _itemDiscTotal + discount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -633,18 +636,15 @@ class ReceiptSheet extends ConsumerWidget {
 
         // ── Store header — dirender sebagai GAMBAR (renderer SAMA dengan
         // print → preview selalu match). Ukuran huruf = headerPx (12–48px).
+        // HANYA nama toko/header custom di gambar; invoice/tgl/kasir/
+        // pelanggan = teks biasa di bawah (konsisten dengan print).
         FutureBuilder<Uint8List>(
           future: renderReceiptHeaderPng(
             paperWidth: s.paperWidth,
             storeName: storeName,
             customHeader: s.header,
-            invoice: invoice ?? '',
-            dateStr: dateStr ?? '',
-            cashierName: cashierName,
-            customerName: customerName,
-            orderType: orderType,
-            tableName: tableName,
             headerPx: s.headerPx,
+            headerWeight: s.headerWeight,
           ),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox(height: 8);
@@ -660,6 +660,47 @@ class ReceiptSheet extends ConsumerWidget {
             );
           },
         ),
+
+        // ── Info struk — teks ESC/POS biasa (BUKAN image) ──
+        // Invoice, tanggal, kasir, pelanggan, tipe pesanan dicetak sebagai
+        // teks supaya print cepat & huruf normal (v2.2.27).
+        if (s.showInvoice && invoice != null && invoice!.isNotEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(invoice!, style: monoBold, textAlign: TextAlign.center),
+            ),
+          ),
+        if (s.showDate && dateStr != null && dateStr!.isNotEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(dateStr!, style: mono, textAlign: TextAlign.center),
+            ),
+          ),
+        if (s.showCashier && cashierName != null && cashierName!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text('Kasir: $cashierName', style: monoGrey),
+          ),
+        if (customerName != null && customerName!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text('Pelanggan: $customerName', style: monoGrey),
+          ),
+        if (orderType != null && orderType!.isNotEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                tableName != null && tableName!.isNotEmpty
+                    ? '$orderType - $tableName'
+                    : orderType!,
+                style: monoBold,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         SizedBox(height: 6),
         _dashedLine(isDark: isDark),
         SizedBox(height: 6),
@@ -720,6 +761,18 @@ class ReceiptSheet extends ConsumerWidget {
         ),
 
         // ── Total diskon — tepat DI BAWAH TOTAL (komplain user) ──
+        if (_andaHemat > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Anda Hemat', style: monoGrey),
+                Text('-${formatRupiah(_andaHemat)}', style: monoGrey),
+              ],
+            ),
+          ),
+
         // Diskon item sudah tampil per item di atas; baris ini hanya diskon
         // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
         if (discount > 0)
@@ -1108,16 +1161,16 @@ class ReceiptSheet extends ConsumerWidget {
     sb.writeln('━━━━━━━━━━━━━━━━━');
     for (final item in items) {
       sb.writeln(item.name);
-      // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
-      // (sudah dipotong diskon item), diskon dalam kurung.
+      // Urutan (v2.2.27): qty × harga ASLI, lalu diskon (kurung), lalu
+      // subtotal NETTO — sama persis dengan struk cetak & preview.
       final unitPrice = item.originalPrice ?? item.price;
+      final discTxt = item.hasDiscount
+          ? ' ( -${formatRupiah(item.discountTotal)} )'
+          : '';
       final subTxt = item.isPerKg
-          ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}'
-          : '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}';
+          ? '  ${item.weightKg!.toStringAsFixed(1)} kg x ${formatRupiah(unitPrice)}  $discTxt ${formatRupiah(item.subtotal)}'
+          : '  ${item.qty} x ${formatRupiah(unitPrice)}  $discTxt ${formatRupiah(item.subtotal)}';
       sb.writeln(subTxt);
-      if (item.hasDiscount) {
-        sb.writeln('  ( -${formatRupiah(item.discountTotal)} )');
-      }
       if (item.note != null && item.note!.isNotEmpty) {
         sb.writeln('  ↳ ${item.note}');
       }
@@ -1128,6 +1181,15 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('Tukar Poin  : -${formatRupiah(pointsUsed)}');
     if (pointsEarned > 0) sb.writeln('Poin Didapat: +$pointsEarned poin');
     sb.writeln('*TOTAL       : ${formatRupiah(total)}*');
+    // "Anda Hemat" — total diskon (item + transaksi) supaya pembeli notice.
+    final _shareItemDisc = items.fold<int>(
+      0,
+      (acc, it) => acc + it.discountTotal,
+    );
+    final _shareHemat = _shareItemDisc + discount;
+    if (_shareHemat > 0) {
+      sb.writeln('Anda Hemat  : -${formatRupiah(_shareHemat)}');
+    }
     if (downPayment > 0) {
       sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(downPayment)}');
       sb.writeln('Sisa Piutang: ${formatRupiah(remainingDue)}');
@@ -1175,15 +1237,15 @@ class ReceiptSheet extends ConsumerWidget {
       sb.writeln('─' * 32);
       for (final item in items) {
         sb.writeln(item.name);
-        // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
-        // (sudah dipotong diskon item), diskon dalam kurung.
+        // Urutan (v2.2.27): qty × harga ASLI, lalu diskon (kurung), lalu
+        // subtotal NETTO — sama persis dengan struk cetak & preview.
         final unitPrice = item.originalPrice ?? item.price;
+        final discTxt = item.hasDiscount
+            ? ' ( -${formatRupiah(item.discountTotal)} )'
+            : '';
         sb.writeln(
-          '  ${item.qty} x ${formatRupiah(unitPrice)}  = ${formatRupiah(item.subtotal)}',
+          '  ${item.qty} x ${formatRupiah(unitPrice)}  $discTxt ${formatRupiah(item.subtotal)}',
         );
-        if (item.hasDiscount) {
-          sb.writeln('  ( -${formatRupiah(item.discountTotal)} )');
-        }
         if (item.note != null && item.note!.isNotEmpty) {
           sb.writeln('  \u21B3 ${item.note}');
         }
@@ -1194,6 +1256,15 @@ class ReceiptSheet extends ConsumerWidget {
         sb.writeln('Tukar Poin  : -${formatRupiah(pointsUsed)}');
       if (pointsEarned > 0) sb.writeln('Poin Didapat: +$pointsEarned poin');
       sb.writeln('TOTAL       : ${formatRupiah(total)}');
+      // "Anda Hemat" — total diskon (item + transaksi).
+      final _pdfItemDisc = items.fold<int>(
+        0,
+        (acc, it) => acc + it.discountTotal,
+      );
+      final _pdfHemat = _pdfItemDisc + discount;
+      if (_pdfHemat > 0) {
+        sb.writeln('Anda Hemat  : -${formatRupiah(_pdfHemat)}');
+      }
       if (downPayment > 0) {
         sb.writeln('Bayar ($paymentMethod) : ${formatRupiah(downPayment)}');
         sb.writeln('Sisa Piutang: ${formatRupiah(remainingDue)}');
@@ -1233,9 +1304,11 @@ class _ReceiptSettings {
   final String footer;
   final String? logoPath;
   // Font struk (mirror SecureStore): jenis 'standar'/'kompak' + ukuran.
-  // Header = px image (12–48); rincian & footer = ×1/×2.
+  // Header = px image (12–48) + ketebalan thin/medium/bold; rincian &
+  // footer SELALU ×1 (kecil) sejak v2.2.27.
   final String fontType;
   final int headerPx;
+  final String headerWeight;
   final int fontItems;
   final int fontFooter;
   // Ukuran kertas '58'/'80' — preview ikut (komplain user: preview 2 arah).
@@ -1252,6 +1325,7 @@ class _ReceiptSettings {
     this.logoPath,
     this.fontType = 'standar',
     this.headerPx = 24,
+    this.headerWeight = 'medium',
     this.fontItems = 1,
     this.fontFooter = 1,
     this.paperWidth = '58',

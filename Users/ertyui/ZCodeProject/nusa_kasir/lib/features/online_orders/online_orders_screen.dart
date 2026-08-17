@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -33,10 +35,13 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
   bool _loading = true;
   late TabController _tabController;
   RealtimeChannel? _channel;
+  // Label tab = status AKTUAL di DB (satu sumber). Sebelumnya 'Verifikasi'/
+  // 'Baru' tidak cocok dengan status asli ("Menunggu Verifikasi Pembeli"/
+  // "Online Baru") sehingga filter dua tab itu TIDAK berfungsi (v2.2.27).
   final List<String> _tabs = [
     'Semua',
-    'Verifikasi',
-    'Baru',
+    'Menunggu Verifikasi Pembeli',
+    'Online Baru',
     'Disiapkan',
     'Siap Diambil',
     'Lunas',
@@ -86,6 +91,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
   void _filter() {
     setState(() => _loading = true);
     final idx = _tabController.index;
+    // Tab label = status aktual → filter langsung cocok tanpa mapping.
     final status = idx == 0 ? null : _tabs[idx];
     var filtered = _allOrders;
     if (status != null) {
@@ -127,7 +133,11 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
               value: storeId,
             ),
             callback: (payload) {
-              if (mounted) _load();
+              // ORDER BARU MASUK — simpan ke DB lokal SEKARANG (bukan nunggu
+              // polling 2 menit stok_alert_worker) + notif realtime. Ini
+              // akar "notif delay" — sebelumnya callback hanya _load() dari
+              // DB lokal yang belum berisi order baru.
+              _handleRealtimeInsert(payload.newRecord);
             },
           )
           .onPostgresChanges(
@@ -148,6 +158,57 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
       // ignore: avoid_print
       print('[OnlineOrders] Gagal subscribe Supabase realtime: $e');
     }
+  }
+
+  /// Order baru dari realtime — tulis ke DB lokal (anti-duplikat by invoice)
+  /// lalu refresh list + toast/sound notif. Kalau gagal parse, tetap refresh
+  /// (kemungkinan order lama masuk dari polling).
+  Future<void> _handleRealtimeInsert(Map<String, dynamic> rec) async {
+    final db = ref.read(databaseProvider);
+    final invoice = rec['invoice'] as String? ?? '';
+    try {
+      // Payload realtime bisa punya keys lowercase — petakan ke kolom lokal.
+      final existing = invoice.isNotEmpty
+          ? await (db.select(db.onlineOrders)
+                ..where((t) => t.invoice.equals(invoice)))
+              .getSingleOrNull()
+          : null;
+      if (existing == null) {
+        await db.into(db.onlineOrders).insert(
+          OnlineOrdersCompanion.insert(
+            invoice: invoice,
+            customerName: rec['customer_name'] as String? ?? '',
+            customerPhone: rec['customer_phone'] as String? ?? '',
+            items: jsonEncode(rec['items']),
+            total: (rec['total'] as num?)?.toInt() ?? 0,
+            subtotal: Value((rec['subtotal'] as num?)?.toInt() ?? 0),
+            discount: Value((rec['discount'] as num?)?.toInt() ?? 0),
+            handlingFee: Value((rec['handling_fee'] as num?)?.toInt() ?? 0),
+            paymentMethod:
+                Value(rec['payment_method'] as String? ?? 'Tunai'),
+            pickupTime: Value(rec['pickup_time'] as String?),
+            branch: Value(rec['branch'] as String? ?? 'Pusat'),
+            notes: Value(rec['notes'] as String?),
+            status: Value(rec['status'] as String? ?? 'Online Baru'),
+          ),
+        );
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[OnlineOrders] Gagal simpan order realtime $invoice: $e');
+    }
+    if (!mounted) return;
+    _load();
+    // Notif visual realtime: toast di atas layar + bunyi notif sistem.
+    // (Jika sedang di layar ini, kasir langsung lihat order baru.)
+    final cust = rec['customer_name'] as String? ?? '';
+    TopToast.show(
+      context,
+      '🛒 Pesanan baru${cust.isNotEmpty ? ' dari $cust' : ''} masuk!',
+      type: ToastType.info,
+      duration: const Duration(seconds: 4),
+    );
+    HapticFeedback.mediumImpact();
   }
 
   /// State machine transition buttons
@@ -721,27 +782,17 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
   Widget _badgeFor(String tab, bool isDark) {
     int count = 0;
-    if (tab == 'Verifikasi')
-      count = _allOrders
-          .where((o) => o.status == 'Menunggu Verifikasi Pembeli')
-          .length;
-    else if (tab == 'Baru')
-      count = _allOrders.where((o) => o.status == 'Online Baru').length;
-    else if (tab == 'Disiapkan')
-      count = _allOrders.where((o) => o.status == 'Disiapkan').length;
-    else if (tab == 'Siap Diambil')
-      count = _allOrders.where((o) => o.status == 'Siap Diambil').length;
-    else if (tab == 'Lunas')
-      count = _allOrders.where((o) => o.status == 'Lunas').length;
-    else if (tab == 'Direfund')
-      count = _allOrders.where((o) => o.status == 'Direfund').length;
+    // Tab label = status aktual → hitung langsung (v2.2.27).
+    if (tab != 'Semua') {
+      count = _allOrders.where((o) => o.status == tab).length;
+    }
 
     if (count == 0) return SizedBox.shrink();
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: (tab == 'Verifikasi' || tab == 'Baru')
+        color: (tab == 'Menunggu Verifikasi Pembeli' || tab == 'Online Baru')
             ? NusaConfig.activePrimary.withValues(alpha: 0.12)
             : NusaConfig.textTertiary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
@@ -751,7 +802,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,
-          color: (tab == 'Verifikasi' || tab == 'Baru')
+          color: (tab == 'Menunggu Verifikasi Pembeli' || tab == 'Online Baru')
               ? NusaConfig.activePrimary
               : isDark
               ? NusaConfig.darkTextSecondary

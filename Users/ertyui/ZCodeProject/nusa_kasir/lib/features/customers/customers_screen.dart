@@ -46,7 +46,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   bool _loading = true;
   String _levelFilter = 'Semua';
 
-  static const _levelOptions = ['Semua', 'Regular', 'Gold', 'Platinum'];
+  // Level member SAMA dengan web toko online: Silver/Gold/Platinum.
+  // (Sebelumnya app tampil 'Regular' untuk Silver — beda nama, membingungkan.)
+  static const _levelOptions = ['Semua', 'Silver', 'Gold', 'Platinum'];
 
   @override
   void initState() {
@@ -80,8 +82,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 (c.phone?.toLowerCase().contains(q) ?? false))
             .toList();
     if (_levelFilter != 'Semua') {
-      final levelKey = _levelFilter == 'Regular' ? 'Silver' : _levelFilter;
-      filtered = filtered.where((c) => c.level == levelKey).toList();
+      filtered = filtered.where((c) => c.level == _levelFilter).toList();
     }
     if (mounted) {
       setState(() {
@@ -514,7 +515,7 @@ class _CustomerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final c = customer;
-    final levelDisplay = c.level == 'Silver' ? 'Regular' : c.level;
+    final levelDisplay = c.level;
     final Color levelColor;
     switch (c.level) {
       case 'Platinum':
@@ -650,7 +651,7 @@ class _CustomerDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final c = customer;
-    final levelDisplay = c.level == 'Silver' ? 'Regular' : c.level;
+    final levelDisplay = c.level;
     final Color levelColor;
     switch (c.level) {
       case 'Platinum':

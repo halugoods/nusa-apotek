@@ -801,6 +801,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     bool isDark = false,
     String storeName = 'NUSA Kasir',
     int headerPx = 24,
+    String headerWeight = 'medium',
     int fontItems = 1,
     int fontFooter = 1,
   }) {
@@ -810,11 +811,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final subtleColor = isDark
         ? NusaConfig.darkTextSecondary
         : NusaConfig.textSecondary;
-    // Ukuran font per section (gaya v2.2.11): rincian & footer ×1/×2;
-    // header dirender sebagai GAMBAR (renderer SAMA dengan print).
-    final itemFontSize = receiptPreviewSize(
-      fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
+    // "Anda Hemat" = diskon item (per item) + diskon transaksi (v2.2.27).
+    final _txItemDisc = rawItems.fold<int>(
+      0,
+      (acc, it) {
+        final qty = (it['qty'] as num?)?.toInt() ?? 0;
+        final price = (it['price'] as num?)?.toInt() ?? 0;
+        final orig = (it['originalPrice'] as num?)?.toInt();
+        if (orig == null || orig <= price) return acc;
+        return acc + (orig - price) * qty;
+      },
     );
+    final _txHemat = _txItemDisc + tx.discount;
+    // Ukuran font per section (v2.2.27): rincian & footer SELALU ×1 (kecil);
+    // header dirender sebagai GAMBAR (renderer SAMA dengan print).
+    final itemFontSize = receiptPreviewSize(1);
     final mono = TextStyle(
       fontFamily: 'monospace',
       fontSize: itemFontSize,
@@ -823,10 +834,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoBig = TextStyle(
       fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(
-        fontItems.clamp(receiptItemsMinMag, receiptItemsMaxMag),
-      ) *
-          1.05,
+      fontSize: receiptPreviewSize(1) * 1.05,
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -839,9 +847,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     final monoFooter = TextStyle(
       fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(
-        fontFooter.clamp(receiptItemsMinMag, receiptItemsMaxMag),
-      ),
+      fontSize: receiptPreviewSize(1),
       height: 1.4,
       fontWeight: FontWeight.bold,
       color: textColor,
@@ -852,14 +858,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         // ── Store header — GAMBAR (renderer sama dengan print) ──
+        // HANYA nama toko/header custom; invoice/tgl/kasir = teks di bawah.
         FutureBuilder<Uint8List>(
           future: renderReceiptHeaderPng(
             paperWidth: '58',
             storeName: storeName,
-            invoice: tx.invoice,
-            dateStr: dateStr,
-            cashierName: tx.cashierName,
             headerPx: headerPx,
+            headerWeight: headerWeight,
           ),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox(height: 8);
@@ -891,7 +896,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final orig = (it['originalPrice'] as num?)?.toInt();
           final hasDisc = orig != null && orig > price;
           // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
-          // (sudah dipotong diskon item), diskon dalam kurung.
+          // (qty × harga final — sudah dipotong diskon), konsisten print.
           final unitPrice = orig ?? price;
           final discTotal = hasDisc ? (orig - price) * qty : 0;
           final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
@@ -911,7 +916,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       children: [
                         if (hasDisc)
                           Text(discSuffix, style: monoGrey),
-                        Text(formatRupiah(qty * unitPrice), style: mono),
+                        Text(formatRupiah(qty * price), style: mono),
                       ],
                     ),
                   ],
@@ -944,6 +949,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               children: [
                 Text('Diskon', style: monoGrey),
                 Text('-${formatRupiah(tx.discount)}', style: monoGrey),
+              ],
+            ),
+          ),
+        // "Anda Hemat" — diskon item (per item) + diskon transaksi,
+        // persis print asli (v2.2.27).
+        if (_txHemat > 0)
+          Padding(
+            padding: EdgeInsets.only(bottom: 3),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Anda Hemat', style: monoGrey),
+                Text('-${formatRupiah(_txHemat)}', style: monoGrey),
               ],
             ),
           ),
@@ -1017,6 +1035,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final db = ref.read(databaseProvider);
     final storeName = (await SettingsRepository(db).getStoreName()).trim();
     final headerPx = await SecureStore.getReceiptHeaderPx();
+    final headerWeight = await SecureStore.getReceiptHeaderWeight();
     final fontItems = await SecureStore.getReceiptFontItems();
     final fontFooter = await SecureStore.getReceiptFontFooter();
     // Ukuran kertas — preview mengikuti 58/80mm (komplain user).
@@ -1091,6 +1110,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           ? storeName
                           : 'NUSA Kasir',
                       headerPx: headerPx,
+                      headerWeight: headerWeight,
                       fontItems: fontItems,
                       fontFooter: fontFooter,
                     ),

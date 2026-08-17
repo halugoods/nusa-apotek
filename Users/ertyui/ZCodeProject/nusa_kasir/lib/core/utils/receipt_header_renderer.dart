@@ -13,27 +13,25 @@ const int receiptHeaderDefaultPx = 24;
 int receiptPaperWidthPx(String paperWidth) =>
     paperWidth == '80' ? 576 : 384;
 
-/// Render HANYA bagian atas struk (logo + header) menjadi PNG hitam-putih —
-/// dipakai PRINT bit-image (ESC *) dan PREVIEW (Image.memory), jadi preview
-/// SELALU sama persis dengan yang tercetak (satu renderer).
+/// Render HANYA bagian atas struk (nama toko / header custom) menjadi PNG
+/// hitam-putih — dipakai PRINT bit-image (ESC *) dan PREVIEW (Image.memory),
+/// jadi preview SELALU sama persis dengan yang tercetak (satu renderer).
 ///
 /// Logo dicetak bit-image terpisah (ESC * + reset) oleh ReceiptPrinter —
-/// fungsi ini hanya menggambar nama toko / header custom + info header
-/// (invoice, tanggal, kasir, pelanggan, tipe pesanan) sebagai satu gambar.
+/// fungsi ini hanya menggambar nama toko / header custom sebagai satu gambar.
 ///
-/// Ukuran huruf header = [headerPx] (12–48px, default 24). Semua baris info
-/// memakai ukuran yang lebih kecil (12px) supaya tetap muat satu baris.
+/// Ukuran huruf header = [headerPx] (12–48px, default 24). Ketebalan =
+/// [headerWeight]: 'thin' (w300) | 'medium' (w500) | 'bold' (w700).
+///
+/// Invoice/tanggal/kasir/pelanggan TIDAK dirender di sini — sejak v2.2.27
+/// info tersebut dicetak sebagai teks ESC/POS biasa (cepat, huruf normal),
+/// image hanya nama toko/header.
 Future<Uint8List> renderReceiptHeaderPng({
   required String paperWidth,
   required String storeName,
   String customHeader = '',
-  String invoice = '',
-  String dateStr = '',
-  String? cashierName,
-  String? customerName,
-  String? orderType,
-  String? tableName,
   int headerPx = receiptHeaderDefaultPx,
+  String headerWeight = 'medium',
 }) async {
   final paperW = receiptPaperWidthPx(paperWidth).toDouble();
   final padH = paperW * 0.05;
@@ -74,47 +72,21 @@ Future<Uint8List> renderReceiptHeaderPng({
     return t.height;
   }
 
-  // ── Header (nama toko / header custom) — ukuran dari slider 12–48px ──
+  // ── Header (nama toko / header custom) — ukuran slider 12–48px ──
+  // Ketebalan mengikuti setting thin/medium/bold (default medium).
   final headerText = (customHeader.isNotEmpty ? customHeader : storeName).trim();
   if (headerText.isNotEmpty) {
     final hSize = headerPx.clamp(receiptHeaderMinPx, receiptHeaderMaxPx).toDouble();
-    final t = tp(headerText, hSize, w: FontWeight.w800, maxW: maxTextW);
+    final weight = switch (headerWeight) {
+      'thin' => FontWeight.w300,
+      'bold' => FontWeight.w700,
+      _ => FontWeight.w500,
+    };
+    final t = tp(headerText, hSize, w: weight, maxW: maxTextW);
     y += draw(t, (paperW - t.width) / 2, y);
   }
 
-  // ── Info header (invoice, tanggal, kasir, pelanggan, tipe) — kecil ──
-  const infoSize = 12.0;
-  double gap = 1.0;
-  if (invoice.isNotEmpty) {
-    final t = tp(invoice, infoSize, maxW: maxTextW);
-    y += draw(t, (paperW - t.width) / 2, y);
-    gap = 1.0;
-  }
-  if (dateStr.isNotEmpty) {
-    final t = tp(dateStr, infoSize, maxW: maxTextW);
-    y += draw(t, (paperW - t.width) / 2, y);
-    gap = 1.0;
-  }
-  if (cashierName != null && cashierName.isNotEmpty) {
-    final t = tp('Kasir: $cashierName', infoSize, align: TextAlign.left, maxW: maxTextW);
-    y += draw(t, padH, y);
-    gap = 1.0;
-  }
-  if (customerName != null && customerName.isNotEmpty) {
-    final t = tp('Pelanggan: $customerName', infoSize, align: TextAlign.left, maxW: maxTextW);
-    y += draw(t, padH, y);
-    gap = 1.0;
-  }
-  if (orderType != null && orderType.isNotEmpty) {
-    final label = tableName != null && tableName.isNotEmpty
-        ? '$orderType - $tableName'
-        : orderType;
-    final t = tp(label, infoSize, w: FontWeight.w700, maxW: maxTextW);
-    y += draw(t, (paperW - t.width) / 2, y);
-    gap = 1.0;
-  }
-
-  y += gap + 6;
+  y += 6;
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(paperW.round(), y.ceil().clamp(24, 6000));

@@ -302,8 +302,10 @@ class ReceiptPrinter {
     // memakai ukuran PIXEL image (nusa_receipt_header_px, 12–48px).
     final fontType = await SecureStore.getReceiptFontType();
     final headerPx = await SecureStore.getReceiptHeaderPx();
-    final itemsSize = await SecureStore.getReceiptFontItems();
-    final footerSize = await SecureStore.getReceiptFontFooter();
+    final headerWeight = await SecureStore.getReceiptHeaderWeight();
+    // Rincian & footer SELALU ukuran kecil (×1) — user minta satu ukuran saja
+    // (v2.2.27+): "rincian sm footer gausah di kasih 2 ukuran deh 1 ukuran aja
+    // pke yg kecil". Key lama (fontItems/fontFooter) tidak lagi dibaca.
     // Jenis font satu untuk seluruh struk (global) — pilihan per bagian
     // dihapus di v2.2.21 supaya pengaturan sederhana (1 pilihan font saja).
     final useFontB = fontType == 'kompak';
@@ -373,23 +375,18 @@ class ReceiptPrinter {
       } catch (_) {}
     }
 
-    // ── HEADER — dirender sebagai IMAGE (bit-image ESC *) ──
-    // Satu renderer dipakai print & preview → preview selalu match print.
-    // Ukuran huruf header = slider 12–48px (nusa_receipt_header_px).
-    // Gambar berisi: nama toko/header custom + invoice + tanggal + kasir +
-    // pelanggan + tipe pesanan (semua baris header jadi satu bitmap).
+    // ── HEADER — nama toko / header custom sebagai IMAGE (bit-image ESC *) ──
+    // HANYA nama toko/header custom yang dirender image (besar, sesuai slider
+    // 12–48px). Invoice, tanggal, kasir, pelanggan, tipe pesanan TIDAK ikut
+    // image — dicetak sebagai teks ESC/POS biasa (cepat, tidak perbesar
+    // waktu print, ukuran huruf normal). Preview memakai renderer sama.
     try {
       final headerPng = await renderReceiptHeaderPng(
         paperWidth: paperWidth,
         storeName: storeName,
         customHeader: customHeader ?? '',
-        invoice: invoice,
-        dateStr: dateStr,
-        cashierName: cashierName,
-        customerName: customerName,
-        orderType: orderType,
-        tableName: tableName,
         headerPx: headerPx,
+        headerWeight: headerWeight,
       );
       final headerImage = img.decodeImage(headerPng);
       if (headerImage != null) {
@@ -415,7 +412,40 @@ class ReceiptPrinter {
       );
     }
 
+    // ── INFO HEADER — teks ESC/POS (bukan image): invoice, tanggal, kasir ──
+    // User: "invoice tgl kasir jgn image ya" — dipindah dari header image ke
+    // teks supaya print cepat & huruf normal (tidak ikut slider besar).
     final isWide = paperWidth == '80';
+    final infoLineWidth = isWide ? (useItemsFontB ? 64 : 48) : (useItemsFontB ? 42 : 32);
+    void infoText(String t, {bool bold = false, PosAlign align = PosAlign.center}) {
+      if (t.trim().isEmpty) return;
+      for (final part in _wrap(t, infoLineWidth)) {
+        bytes.addAll(
+          generator.text(
+            _san(part),
+            styles: PosStyles(
+              align: align,
+              bold: bold,
+              fontType: itemFont,
+            ),
+          ),
+        );
+      }
+    }
+    if (invoice.isNotEmpty) infoText(invoice, bold: true);
+    if (dateStr.isNotEmpty) infoText(dateStr);
+    if (cashierName != null && cashierName.isNotEmpty) {
+      infoText('Kasir: $cashierName', align: PosAlign.left);
+    }
+    if (customerName != null && customerName.isNotEmpty) {
+      infoText('Pelanggan: $customerName', align: PosAlign.left);
+    }
+    if (orderType != null && orderType.isNotEmpty) {
+      final label = tableName != null && tableName.isNotEmpty
+          ? '$orderType - $tableName'
+          : orderType;
+      infoText(label, bold: true);
+    }
 
     // Line items — manual text formatting for precise wrapping.
     // generator.row()+PosColumn internally clips text; generator.text() doesn't.
@@ -428,17 +458,16 @@ class ReceiptPrinter {
     final itemBaseLineWidth = isWide
         ? (useItemsFontB ? 64 : 48)
         : (useItemsFontB ? 42 : 32);
-    // Ukuran rincian: 1 = Kecil (×1), 2 = Besar (×2) — gaya v2.2.11.
-    final itemBig = itemsSize > 1;
-    final itemMag = itemBig ? 2 : 1;
+    // Ukuran rincian SELALU Kecil (×1) — pilihan Besar dihapus v2.2.27.
+    final itemMag = 1;
     final itemStyles = PosStyles(
       align: PosAlign.left,
       fontType: itemFont,
       height: _posSize(itemMag),
       width: _posSize(itemMag),
     );
-    // Lebar rincian: rincian 2x → setengah lebar baris normal (sejajar TOTAL).
-    final itemLineWidth = itemBig ? (itemBaseLineWidth ~/ 2) : itemBaseLineWidth;
+    // Lebar rincian: rincian selalu ×1 → lebar penuh baris.
+    final itemLineWidth = itemBaseLineWidth;
     final qtyPriceWidth = useItemsFontB ? 14 : 12; // "2xRp10.000" max
     final subWidth = useItemsFontB ? 11 : 10; // "Rp20.000" max
     // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──
@@ -472,32 +501,21 @@ class ReceiptPrinter {
         bytes.addAll(generator.text(_san(part), styles: itemStyles));
       }
 
-      // Diskon item per produk — kurung "( -Rp X )" setelah subtotal supaya
-      // customer notice potongannya. Nominal = potongan per unit × qty.
+      // Diskon item per produk — kurung "( -Rp X )" setelah harga asli,
+      // SEBELUM subtotal: urutan = qty × harga ASLI lalu diskon (kurung)
+      // lalu subtotal NETTO. User minta urutan ini biar notice potongannya.
       final discSuffix = line.hasDiscount
           ? '( -${formatRupiah(line.discountTotal)} )'
           : '';
 
-      if (itemBig) {
-        // Rincian "Besar" (2x): qty x harga asli baris sendiri (KIRI),
-        // subtotal NETTO + diskon (kurung) menempel KANAN (sejajar TOTAL).
-        bytes.addAll(generator.text(_san(qtyPrice), styles: itemStyles));
-        bytes.addAll(
-          generator.text(
-            _san('$subtotal $discSuffix'.trimRight().padLeft(itemLineWidth)),
-            styles: itemStyles,
-          ),
-        );
-      } else {
-        // Rincian "Kecil" (default): satu baris = qty x harga asli di KIRI,
-        // subtotal NETTO + diskon (kurung) di KANAN (menempel tepi kanan).
-        final totalRight = '$subtotal $discSuffix'.trimRight();
-        final gap = itemLineWidth - qtyPrice.length - totalRight.length;
-        final line2 = gap >= 3
-            ? '$qtyPrice${' ' * (gap - 2)}  $totalRight'
-            : '$qtyPrice  $totalRight';
-        bytes.addAll(generator.text(_san(line2), styles: itemStyles));
-      }
+      // Rincian SELALU ukuran kecil (×1) — satu baris = qty x harga asli di
+      // KIRI, lalu diskon (kurung), lalu subtotal NETTO di KANAN (v2.2.27).
+      final totalRight = '$discSuffix $subtotal'.trim();
+      final gap = itemLineWidth - qtyPrice.length - totalRight.length;
+      final line2 = gap >= 3
+          ? '$qtyPrice${' ' * (gap - 2)}  $totalRight'
+          : '$qtyPrice  $totalRight';
+      bytes.addAll(generator.text(_san(line2), styles: itemStyles));
 
       // Item notes
       if (itemNotes != null &&
@@ -512,11 +530,7 @@ class ReceiptPrinter {
     }
     bytes.addAll(generator.hr());
 
-    // Total. Beri jarak ekstra jika rincian besar — baris TOTAL 2x bisa
-    // nempel dengan baris rincian terakhir.
-    if (itemBig) {
-      bytes.addAll(generator.feed(1));
-    }
+    // Total. Rincian selalu ×1 — tidak perlu jarak ekstra.
     bytes.addAll(
       generator.row([
         PosColumn(
@@ -540,6 +554,37 @@ class ReceiptPrinter {
         ),
       ]),
     );
+
+    // ── ANDA HEMAT — total diskon (item + transaksi) tepat di bawah TOTAL ──
+    // User: "di total itu bawahnya harus ada anda hemat brp diskonnya jd biar
+    // di notice sm pembeli". Hitung total potongan item (originalPrice vs
+    // price × qty) + diskon transaksi, cetak bold supaya menonjol.
+    final itemDiscTotal = lines.fold<int>(
+      0,
+      (acc, l) =>
+          acc + (l.hasDiscount ? (l.originalPrice! - l.price) * l.qty : 0),
+    );
+    final andaHemat = itemDiscTotal + discount;
+    if (andaHemat > 0) {
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: 'Anda Hemat',
+            width: isWide ? 8 : 6,
+            styles: PosStyles(bold: true, fontType: itemFont),
+          ),
+          PosColumn(
+            text: _fit('-${formatRupiah(andaHemat)}', isWide ? 16 : 11),
+            width: isWide ? 8 : 6,
+            styles: PosStyles(
+              bold: true,
+              align: PosAlign.right,
+              fontType: itemFont,
+            ),
+          ),
+        ]),
+      );
+    }
 
     // Total diskon — baris sendiri TEPAT DI BAWAH TOTAL (komplain user:
     // "total diskon di total bawah"). Diskon item sudah dicetak per item
@@ -628,10 +673,10 @@ class ReceiptPrinter {
 
     bytes.addAll(generator.hr());
 
-    // Footer — wrap long text. Ukuran: 1 = Kecil (×1), 2 = Besar (×2).
+    // Footer — wrap long text. Ukuran SELALU Kecil (×1) — v2.2.27.
     final footerText = footer ?? _footerText;
     if (footerText.isNotEmpty) {
-      final footerMag = footerSize > 1 ? 2 : 1;
+      final footerMag = 1;
       final footerBase = isWide
           ? (useItemsFontB ? 64 : 48)
           : (useItemsFontB ? 42 : 32);
