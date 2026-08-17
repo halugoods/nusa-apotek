@@ -36,7 +36,9 @@ void main() {
     test('summary Total/Bayar/Kembalian sejajar (renderer output)', () {
       final text = renderText(config: config, data: data, storeName: 'NUSA MART');
       expect(text, contains('Total'));
-      expect(text, contains('Bayar (Tunai)'));
+      // v2.2.30: label bayar ringkas "Bayar: Tunai" (metode penuh tidak
+      // terpotong di kolom 58mm)
+      expect(text, contains('Bayar: Tunai'));
       expect(text, contains('120.000'));
       expect(text, contains('Kembali'));
       expect(text, contains('7.700'));
@@ -72,6 +74,56 @@ void main() {
       // Item & summary TETAP ada
       expect(text, contains('Dimsum Original'));
       expect(text, contains('Total'));
+    });
+
+    test('v2.2.30: sub-header (alamat) dirender di bawah header', () {
+      final cfg = config.copyWith(subHeader: 'Jl. Merdeka No. 1, Jakarta');
+      final text = renderText(config: cfg, data: data, storeName: 'NUSA MART');
+      expect(text, contains('Jl. Merdeka No. 1, Jakarta'));
+      // Sub-header kosong → tidak ada baris
+      final text2 = renderText(
+        config: config.copyWith(subHeader: ''),
+        data: data,
+        storeName: 'NUSA MART',
+      );
+      expect(text2, isNot(contains('Jl. Merdeka No. 1, Jakarta')));
+    });
+
+    test('v2.2.30: footer = isi USER saja (hardcode Terima Kasih + nama toko dihapus)', () {
+      final cfg = config.copyWith(footer: 'Terima kasih, ditunggu pesanan selanjutnya!');
+      final text = renderText(config: cfg, data: data, storeName: 'NUSA MART');
+      expect(text, contains('Terima kasih, ditunggu pesanan selanjutnya!'));
+      // Nama toko hanya muncul di HEADER (baris pertama) — TIDAK boleh
+      // diulang di footer (keputusan user: footer = isi user saja)
+      final headerOnly = text.split('\n').first;
+      expect(headerOnly, contains('NUSA MART'));
+      expect(
+        text.split('\n').skip(1).join('\n'),
+        isNot(contains('NUSA MART')),
+      );
+      // Footer kosong → footer benar-benar kosong (tanpa fallback hardcode)
+      final text2 = renderText(
+        config: config.copyWith(footer: ''),
+        data: data,
+        storeName: 'NUSA MART',
+      );
+      expect(text2, isNot(contains('Terima Kasih!')));
+    });
+
+    test('v2.2.30: label bayar ringkas — metode EDC / Kartu TIDAK terpotong', () {
+      final edc = ReceiptData(
+        invoiceNumber: 'INV-002',
+        dateStr: '17/08/2026 15:42',
+        items: [
+          const ReceiptItem(name: 'Dimsum Original', qty: 2, price: 13500),
+        ],
+        total: 27000,
+        paymentMethod: 'EDC / Kartu',
+        cashGiven: 27000,
+      );
+      final text = renderText(config: config, data: edc, storeName: 'NUSA MART');
+      expect(text, contains('Bayar: EDC / Kartu'));
+      expect(text, isNot(contains('Bayar (EDC')));
     });
   });
 }

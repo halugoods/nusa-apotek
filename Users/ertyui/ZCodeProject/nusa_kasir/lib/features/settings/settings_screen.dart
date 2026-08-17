@@ -1716,6 +1716,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final initial = await ReceiptConfig.load(db);
     final storeName = await repo.getStoreName();
     final headerCtrl = TextEditingController(text: initial.header);
+    final subHeaderCtrl = TextEditingController(text: initial.subHeader);
     final footerCtrl = TextEditingController(text: initial.footer);
     if (!mounted) return;
 
@@ -2413,6 +2414,66 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
+                    // ── Sub-header Struk (alamat toko — v2.2.30) ──
+                    Text(
+                      'Sub-header (Alamat)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Baris teks kecil di bawah nama toko — biasanya alamat.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: setDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: setDark
+                            ? NusaConfig.darkInputFill
+                            : NusaConfig.inputFill,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: setDark
+                              ? NusaConfig.darkInputBorder
+                              : NusaConfig.inputBorder,
+                        ),
+                      ),
+                      child: TextField(
+                        controller: subHeaderCtrl,
+                        maxLines: 2,
+                        onChanged: (v) => setSt(() {
+                          draft = draft.copyWith(subHeader: v);
+                          fontDirty = true;
+                        }),
+                        style: TextStyle(
+                          color: setDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Cth: Jl. Merdeka No. 1, Jakarta',
+                          hintStyle: TextStyle(
+                            color: setDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.all(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
                     // ── Footer Struk ──
                     Text(
                       'Footer Struk',
@@ -2744,6 +2805,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               await draft
                                   .copyWith(
                                     header: headerCtrl.text,
+                                    subHeader: subHeaderCtrl.text,
                                     footer: footerCtrl.text,
                                   )
                                   .save(db);

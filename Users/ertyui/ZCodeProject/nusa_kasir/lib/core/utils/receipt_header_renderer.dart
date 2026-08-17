@@ -22,8 +22,10 @@ int receiptPaperWidthPx(String paperWidth) =>
 ///
 /// Ukuran huruf header = [headerPx] (12–48px, default 24). Ketebalan =
 /// [headerWeight]: 'thin' (w300 + letterSpacing 2 — ringan) | 'medium'
-/// (w500) | 'bold' (w700 + letterSpacing 1.5 — tegas). Perbedaan visual
-/// NYATA antar ketebalan (spec M: bukan sekadar 400/500/700).
+/// (w500 + letterSpacing 0.5) | 'bold' (w700 + letterSpacing 1.5 — tegas).
+/// v2.2.30: ketebalan ×2 (dulu w300/w500/w700 polos kurang terlihat di
+/// kertas thermal — sekarang thin dibuat benar-benar tipis dengan w200 +
+/// letterSpacing 2, bold dinaikkan ke w800 — perbedaan visual BERANI).
 ///
 /// Invoice/tanggal/kasir/pelanggan TIDAK dirender di sini — sejak v2.2.27
 /// info tersebut dicetak sebagai teks ESC/POS biasa (cepat, huruf normal),
@@ -85,8 +87,9 @@ Future<Uint8List> renderReceiptHeaderPng({
   if (headerText.isNotEmpty) {
     final hSize = headerPx.clamp(receiptHeaderMinPx, receiptHeaderMaxPx).toDouble();
     final (weight, ls) = switch (headerWeight) {
-      'thin' => (FontWeight.w300, 2.0),
-      'bold' => (FontWeight.w700, 1.5),
+      // v2.2.30: ketebalan ×2 — thin w200 (ringan banget), bold w800 (tegas).
+      'thin' => (FontWeight.w200, 2.0),
+      'bold' => (FontWeight.w800, 1.5),
       _ => (FontWeight.w500, 0.5),
     };
     final t = tp(headerText, hSize, w: weight, ls: ls, c: color, maxW: maxTextW);

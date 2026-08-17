@@ -26,6 +26,10 @@ class ReceiptConfig {
   /// Teks header custom (fallback: nama toko saat kosong).
   final String header;
 
+  /// Sub-header struk — baris teks kecil di bawah header (biasanya alamat
+  /// toko, v2.2.30). Kosong = tidak ditampilkan.
+  final String subHeader;
+
   /// Teks footer struk (bisa multi-baris).
   final String footer;
 
@@ -50,6 +54,7 @@ class ReceiptConfig {
     this.headerPx = 24,
     this.headerWeight = 'medium',
     this.header = '',
+    this.subHeader = '',
     this.footer = '',
     this.logoPath,
     this.logoWidthPercent = 60,
@@ -66,6 +71,7 @@ class ReceiptConfig {
     int? headerPx,
     String? headerWeight,
     String? header,
+    String? subHeader,
     String? footer,
     String? logoPath,
     int? logoWidthPercent,
@@ -81,6 +87,7 @@ class ReceiptConfig {
       headerPx: headerPx ?? this.headerPx,
       headerWeight: headerWeight ?? this.headerWeight,
       header: header ?? this.header,
+      subHeader: subHeader ?? this.subHeader,
       footer: footer ?? this.footer,
       logoPath: logoPath ?? this.logoPath,
       logoWidthPercent: logoWidthPercent ?? this.logoWidthPercent,
@@ -112,6 +119,7 @@ class ReceiptConfig {
       headerPx: await SecureStore.getReceiptHeaderPx(),
       headerWeight: await SecureStore.getReceiptHeaderWeight(),
       header: await repo.getReceiptHeader() ?? '',
+      subHeader: await repo.getReceiptSubHeader() ?? '',
       footer: await repo.getReceiptFooter() ?? '',
       logoPath: logoPath,
       logoWidthPercent: await SecureStore.getReceiptLogoWidthPercent(),
@@ -134,6 +142,7 @@ class ReceiptConfig {
       headerPx: await SecureStore.getReceiptHeaderPx(),
       headerWeight: await SecureStore.getReceiptHeaderWeight(),
       header: await SecureStore.getReceiptHeader() ?? '',
+      subHeader: await SecureStore.getReceiptSubHeader(),
       footer: await SecureStore.getPrinterFooter(),
       logoPath: await SecureStore.getPrinterLogoPath(),
       logoWidthPercent: await SecureStore.getReceiptLogoWidthPercent(),
@@ -150,6 +159,7 @@ class ReceiptConfig {
   Future<void> save(AppDatabase db) async {
     final repo = SettingsRepository(db);
     await repo.setReceiptHeader(header.trim());
+    await repo.setReceiptSubHeader(subHeader.trim());
     await repo.setReceiptFooter(footer.trim());
     await repo.setReceiptPaperSize('${paperWidth}mm');
     await repo.setReceiptToggles({
@@ -162,6 +172,7 @@ class ReceiptConfig {
     await SecureStore.setPaperSize(paperWidth);
     await SecureStore.setPrinterFooter(footer.trim());
     await SecureStore.setReceiptHeader(header.trim());
+    await SecureStore.setReceiptSubHeader(subHeader.trim());
     await SecureStore.setReceiptFontType(fontType);
     await SecureStore.setReceiptHeaderPx(headerPx);
     await SecureStore.setReceiptHeaderWeight(headerWeight);
@@ -191,6 +202,7 @@ class ReceiptConfig {
       headerPx: 24,
       headerWeight: 'medium',
       header: '',
+      subHeader: 'Jl. Merdeka No. 1, Jakarta',
       footer: 'TERIMA KASIH\nSudah berbelanja di NUSA STORE\nSimpan struk ini sebagai bukti transaksi',
       logoWidthPercent: 60,
       logoAlign: 'center',

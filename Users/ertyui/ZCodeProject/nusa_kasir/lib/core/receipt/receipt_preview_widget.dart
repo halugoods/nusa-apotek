@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/receipt/receipt_config.dart';
@@ -189,7 +190,18 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
         );
 
       case ReceiptPartImage(:final png, :final paperPx, :final align):
-        final width = (paperPx * scale).clamp(16.0, contentW);
+        // v2.2.30: lebar preview = min(lebar persen, ukuran NATIVE logo) —
+        // JANGAN upscale logo kecil. Printer thermal hanya bisa DOWNSCALE
+        // (copyResize saat native > paperPx), jadi preview harus sama: logo
+        // kecil dicetak kecil apa adanya, bukan digelembungkan ke 60% kertas.
+        var width = (paperPx * scale).clamp(16.0, contentW);
+        try {
+          final decoded = img.decodeImage(png);
+          if (decoded != null && decoded.width > 0) {
+            final native = (decoded.width * scale).clamp(16.0, contentW);
+            if (native < width) width = native;
+          }
+        } catch (_) {}
         final alignment = switch (align) {
           'left' => Alignment.centerLeft,
           'right' => Alignment.centerRight,

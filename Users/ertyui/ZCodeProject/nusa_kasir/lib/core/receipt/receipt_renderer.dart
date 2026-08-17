@@ -172,6 +172,14 @@ List<ReceiptPart> buildReceiptParts({
   // HANYA nama toko/header custom yang image; invoice/tgl/kasir = teks.
   parts.add(ReceiptPartHeader(config));
 
+  // ── Sub-header (alamat toko, v2.2.30) — teks kecil di bawah header ──
+  if (config.subHeader.trim().isNotEmpty) {
+    for (final line in config.subHeader.split('\n')) {
+      if (line.trim().isEmpty) continue;
+      parts.add(ReceiptPartText(line.trim(), center: true));
+    }
+  }
+
   // ── Info header — teks biasa (BUKAN image, v2.2.27) ──
   if (config.showInvoice && data.invoiceNumber.isNotEmpty) {
     parts.add(ReceiptPartText(data.invoiceNumber, bold: true, center: true));
@@ -182,7 +190,8 @@ List<ReceiptPart> buildReceiptParts({
   if (config.showCashier &&
       data.cashierName != null &&
       data.cashierName!.isNotEmpty) {
-    parts.add(ReceiptPartText('Kasir: ${data.cashierName}'));
+    // v2.2.30: kasir ikut CENTER, sejajar invoice & tanggal (keputusan user).
+    parts.add(ReceiptPartText('Kasir: ${data.cashierName}', center: true));
   }
   if (data.customerName != null && data.customerName!.isNotEmpty) {
     parts.add(ReceiptPartText('Pelanggan: ${data.customerName}'));
@@ -220,15 +229,18 @@ List<ReceiptPart> buildReceiptParts({
   if (totalDisc > 0) {
     parts.add(ReceiptPartRow('Disc.', '(-${receiptNum(totalDisc)})'));
   }
+  // v2.2.30: label bayar ringkas ("Bayar:") supaya nama metode penuh
+  // (EDC / Kartu, Transfer, QRIS) TIDAK terpotong di kolom 58mm — metode
+  // penuh tetap terlihat karena label & nominal satu baris sejajar.
   if (data.downPayment > 0) {
     parts.add(ReceiptPartRow(
-      'Bayar (${data.paymentMethod})',
+      'Bayar: ${data.paymentMethod}',
       receiptNum(data.downPayment),
     ));
     parts.add(ReceiptPartRow('Sisa Piutang', receiptNum(data.remainingDue)));
   } else if (data.paymentMethod.isNotEmpty) {
     parts.add(ReceiptPartRow(
-      'Bayar (${data.paymentMethod})',
+      'Bayar: ${data.paymentMethod}',
       receiptNum(data.cashGiven ?? data.total),
     ));
   }
@@ -238,14 +250,12 @@ List<ReceiptPart> buildReceiptParts({
   parts.add(const ReceiptPartHr());
 
   // ── Footer (spec V: cukup ucapan + info toko, tanpa branding aplikasi) ──
-  final footerText = config.footer.isNotEmpty ? config.footer : 'Terima Kasih!';
+  // v2.2.30: footer = ISI USER SAJA — hardcode "Terima Kasih!" + nama toko
+  // dihapus (keputusan user: footer yang mana isi user).
+  final footerText = config.footer.trim().isNotEmpty ? config.footer : '';
   for (final line in footerText.split('\n')) {
     if (line.trim().isEmpty) continue;
-    parts.add(ReceiptPartText(line, center: true));
-  }
-  parts.add(ReceiptPartText('Terima Kasih!', bold: true, center: true));
-  if (storeName.isNotEmpty) {
-    parts.add(ReceiptPartText(storeName, center: true));
+    parts.add(ReceiptPartText(line.trim(), center: true));
   }
 
   return parts;
@@ -478,6 +488,7 @@ String renderText({
 
   sb.writeln('*${storeName.trim().isEmpty ? 'Struk' : storeName.trim()}*');
   if (config.header.isNotEmpty) sb.writeln(config.header);
+  if (config.subHeader.trim().isNotEmpty) sb.writeln(config.subHeader.trim());
   sb.writeln(div);
   if (config.showInvoice && data.invoiceNumber.isNotEmpty) {
     sb.writeln('ID  : ${data.invoiceNumber}');
@@ -521,11 +532,11 @@ String renderText({
   sb.writeln('*Total      : ${receiptNum(data.total)}*');
   if (totalDisc > 0) sb.writeln('Disc.      : (-${receiptNum(totalDisc)})');
   if (data.downPayment > 0) {
-    sb.writeln('Bayar (${data.paymentMethod}) : ${receiptNum(data.downPayment)}');
+    sb.writeln('Bayar: ${data.paymentMethod} : ${receiptNum(data.downPayment)}');
     sb.writeln('Sisa Piutang: ${receiptNum(data.remainingDue)}');
   } else if (data.paymentMethod.isNotEmpty) {
     sb.writeln(
-      'Bayar (${data.paymentMethod}) : ${receiptNum(data.cashGiven ?? data.total)}',
+      'Bayar: ${data.paymentMethod} : ${receiptNum(data.cashGiven ?? data.total)}',
     );
   }
   if (data.cashReturn != null && data.cashReturn! > 0) {
@@ -533,7 +544,7 @@ String renderText({
   }
   sb.writeln(div);
 
-  final footerText = config.footer.isNotEmpty ? config.footer : 'Terima Kasih!';
+  final footerText = config.footer.trim().isNotEmpty ? config.footer : '';
   sb.writeln(footerText);
   return sb.toString();
 }
@@ -597,6 +608,12 @@ Future<File> renderPdf({
   // bit-image; konten sama).
   widgets.add(centerLine(storeName.trim().isEmpty ? 'Struk' : storeName.trim(), bold: true));
   if (config.header.isNotEmpty) widgets.add(centerLine(config.header));
+  // Sub-header (alamat toko) — v2.2.30
+  if (config.subHeader.trim().isNotEmpty) {
+    for (final line in config.subHeader.split('\n')) {
+      if (line.trim().isNotEmpty) widgets.add(centerLine(line.trim()));
+    }
+  }
 
   // Info
   if (config.showInvoice && data.invoiceNumber.isNotEmpty) {
@@ -659,11 +676,11 @@ Future<File> renderPdf({
   final totalDisc = data.totalDiscount;
   if (totalDisc > 0) widgets.add(textRow('Disc.', '(-${receiptNum(totalDisc)})'));
   if (data.downPayment > 0) {
-    widgets.add(textRow('Bayar (${data.paymentMethod})', receiptNum(data.downPayment)));
+    widgets.add(textRow('Bayar: ${data.paymentMethod}', receiptNum(data.downPayment)));
     widgets.add(textRow('Sisa Piutang', receiptNum(data.remainingDue)));
   } else if (data.paymentMethod.isNotEmpty) {
     widgets.add(textRow(
-      'Bayar (${data.paymentMethod})',
+      'Bayar: ${data.paymentMethod}',
       receiptNum(data.cashGiven ?? data.total),
     ));
   }
@@ -672,12 +689,12 @@ Future<File> renderPdf({
   }
   widgets.add(pw.Divider(color: PdfColors.grey600));
 
-  // Footer
-  final footerText = config.footer.isNotEmpty ? config.footer : 'Terima Kasih!';
+  // Footer — v2.2.30: isi USER SAJA (hardcode Terima Kasih! + nama toko
+  // dihapus, sinkron dengan renderBytes/renderText).
+  final footerText = config.footer.trim().isNotEmpty ? config.footer : '';
   for (final line in footerText.split('\n')) {
-    if (line.trim().isNotEmpty) widgets.add(centerLine(line));
+    if (line.trim().isNotEmpty) widgets.add(centerLine(line.trim()));
   }
-  widgets.add(centerLine('Terima Kasih!', bold: true));
 
   pdf.addPage(
     pw.MultiPage(

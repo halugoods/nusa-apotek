@@ -144,6 +144,16 @@ class SettingsRepository {
         .write(SettingsCompanion(receiptHeader: Value(text)));
   }
 
+  // ── Receipt sub-header (alamat toko — v2.2.30) ──
+  Future<String?> getReceiptSubHeader() async =>
+      (await db.select(db.settings).getSingleOrNull())?.receiptSubHeader;
+
+  Future<void> setReceiptSubHeader(String text) async {
+    await ensureRow();
+    await (db.update(db.settings)..where((t) => t.id.equals(1)))
+        .write(SettingsCompanion(receiptSubHeader: Value(text)));
+  }
+
   Future<String> getReceiptPaperSize() async =>
       (await db.select(db.settings).getSingleOrNull())?.receiptPaperSize ?? '58mm';
 

@@ -53,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 40;
+  int get schemaVersion => 41;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -260,6 +260,11 @@ class AppDatabase extends _$AppDatabase {
         // header pembelian (extraCostsJson) untuk HPP akurat.
         await m.addColumn(products, products.supplierId);
         await m.addColumn(purchaseOrders, purchaseOrders.extraCostsJson);
+      }
+      if (from < 41) {
+        // Sub-header struk (biasanya alamat toko) — baris teks di bawah
+        // header/nama toko, sebelum invoice/tanggal (v2.2.30).
+        await m.addColumn(settings, settings.receiptSubHeader);
       }
     },
   );

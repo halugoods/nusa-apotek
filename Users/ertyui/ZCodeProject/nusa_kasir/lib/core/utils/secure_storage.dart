@@ -211,6 +211,13 @@ class SecureStore {
   static Future<String?> getReceiptHeader() =>
       SecureStore.read(key: 'nusa_receipt_header_text');
 
+  // -- Sub-header struk (alamat toko, v2.2.30) — mirror DB settings untuk
+  // jalur print tanpa DB (ReceiptConfig.loadFromStore) --
+  static Future<void> setReceiptSubHeader(String v) =>
+      SecureStore.write(key: 'nusa_receipt_sub_header', value: v);
+  static Future<String> getReceiptSubHeader() async =>
+      (await SecureStore.read(key: 'nusa_receipt_sub_header')) ?? '';
+
   // -- Receipt font settings (universal ESC/POS: Standar=Font A, Kompak=Font B) --
   // Jenis font GLOBAL: 'standar' (Font A, universal — direkomendasikan) | 'kompak' (Font B).
   static Future<void> setReceiptFontType(String v) =>

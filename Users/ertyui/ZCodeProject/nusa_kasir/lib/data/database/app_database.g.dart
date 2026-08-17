@@ -8984,6 +8984,17 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _receiptSubHeaderMeta = const VerificationMeta(
+    'receiptSubHeader',
+  );
+  @override
+  late final GeneratedColumn<String> receiptSubHeader = GeneratedColumn<String>(
+    'receipt_sub_header',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _receiptPaperSizeMeta = const VerificationMeta(
     'receiptPaperSize',
   );
@@ -9130,6 +9141,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     platinumThreshold,
     qrisImagePath,
     receiptHeader,
+    receiptSubHeader,
     receiptPaperSize,
     pinLength,
     receiptShowLogo,
@@ -9320,6 +9332,15 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('receipt_sub_header')) {
+      context.handle(
+        _receiptSubHeaderMeta,
+        receiptSubHeader.isAcceptableOrUnknown(
+          data['receipt_sub_header']!,
+          _receiptSubHeaderMeta,
+        ),
+      );
+    }
     if (data.containsKey('receipt_paper_size')) {
       context.handle(
         _receiptPaperSizeMeta,
@@ -9495,6 +9516,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.string,
         data['${effectivePrefix}receipt_header'],
       ),
+      receiptSubHeader: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_sub_header'],
+      ),
       receiptPaperSize: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}receipt_paper_size'],
@@ -9563,6 +9588,7 @@ class Setting extends DataClass implements Insertable<Setting> {
   final int platinumThreshold;
   final String? qrisImagePath;
   final String? receiptHeader;
+  final String? receiptSubHeader;
   final String receiptPaperSize;
   final int pinLength;
   final bool receiptShowLogo;
@@ -9595,6 +9621,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     required this.platinumThreshold,
     this.qrisImagePath,
     this.receiptHeader,
+    this.receiptSubHeader,
     required this.receiptPaperSize,
     required this.pinLength,
     required this.receiptShowLogo,
@@ -9655,6 +9682,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     }
     if (!nullToAbsent || receiptHeader != null) {
       map['receipt_header'] = Variable<String>(receiptHeader);
+    }
+    if (!nullToAbsent || receiptSubHeader != null) {
+      map['receipt_sub_header'] = Variable<String>(receiptSubHeader);
     }
     map['receipt_paper_size'] = Variable<String>(receiptPaperSize);
     map['pin_length'] = Variable<int>(pinLength);
@@ -9720,6 +9750,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       receiptHeader: receiptHeader == null && nullToAbsent
           ? const Value.absent()
           : Value(receiptHeader),
+      receiptSubHeader: receiptSubHeader == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receiptSubHeader),
       receiptPaperSize: Value(receiptPaperSize),
       pinLength: Value(pinLength),
       receiptShowLogo: Value(receiptShowLogo),
@@ -9762,6 +9795,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       platinumThreshold: serializer.fromJson<int>(json['platinumThreshold']),
       qrisImagePath: serializer.fromJson<String?>(json['qrisImagePath']),
       receiptHeader: serializer.fromJson<String?>(json['receiptHeader']),
+      receiptSubHeader: serializer.fromJson<String?>(json['receiptSubHeader']),
       receiptPaperSize: serializer.fromJson<String>(json['receiptPaperSize']),
       pinLength: serializer.fromJson<int>(json['pinLength']),
       receiptShowLogo: serializer.fromJson<bool>(json['receiptShowLogo']),
@@ -9803,6 +9837,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       'platinumThreshold': serializer.toJson<int>(platinumThreshold),
       'qrisImagePath': serializer.toJson<String?>(qrisImagePath),
       'receiptHeader': serializer.toJson<String?>(receiptHeader),
+      'receiptSubHeader': serializer.toJson<String?>(receiptSubHeader),
       'receiptPaperSize': serializer.toJson<String>(receiptPaperSize),
       'pinLength': serializer.toJson<int>(pinLength),
       'receiptShowLogo': serializer.toJson<bool>(receiptShowLogo),
@@ -9840,6 +9875,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     int? platinumThreshold,
     Value<String?> qrisImagePath = const Value.absent(),
     Value<String?> receiptHeader = const Value.absent(),
+    Value<String?> receiptSubHeader = const Value.absent(),
     String? receiptPaperSize,
     int? pinLength,
     bool? receiptShowLogo,
@@ -9880,6 +9916,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     receiptHeader: receiptHeader.present
         ? receiptHeader.value
         : this.receiptHeader,
+    receiptSubHeader: receiptSubHeader.present
+        ? receiptSubHeader.value
+        : this.receiptSubHeader,
     receiptPaperSize: receiptPaperSize ?? this.receiptPaperSize,
     pinLength: pinLength ?? this.pinLength,
     receiptShowLogo: receiptShowLogo ?? this.receiptShowLogo,
@@ -9950,6 +9989,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       receiptHeader: data.receiptHeader.present
           ? data.receiptHeader.value
           : this.receiptHeader,
+      receiptSubHeader: data.receiptSubHeader.present
+          ? data.receiptSubHeader.value
+          : this.receiptSubHeader,
       receiptPaperSize: data.receiptPaperSize.present
           ? data.receiptPaperSize.value
           : this.receiptPaperSize,
@@ -10003,6 +10045,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('platinumThreshold: $platinumThreshold, ')
           ..write('qrisImagePath: $qrisImagePath, ')
           ..write('receiptHeader: $receiptHeader, ')
+          ..write('receiptSubHeader: $receiptSubHeader, ')
           ..write('receiptPaperSize: $receiptPaperSize, ')
           ..write('pinLength: $pinLength, ')
           ..write('receiptShowLogo: $receiptShowLogo, ')
@@ -10040,6 +10083,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     platinumThreshold,
     qrisImagePath,
     receiptHeader,
+    receiptSubHeader,
     receiptPaperSize,
     pinLength,
     receiptShowLogo,
@@ -10076,6 +10120,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.platinumThreshold == this.platinumThreshold &&
           other.qrisImagePath == this.qrisImagePath &&
           other.receiptHeader == this.receiptHeader &&
+          other.receiptSubHeader == this.receiptSubHeader &&
           other.receiptPaperSize == this.receiptPaperSize &&
           other.pinLength == this.pinLength &&
           other.receiptShowLogo == this.receiptShowLogo &&
@@ -10110,6 +10155,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<int> platinumThreshold;
   final Value<String?> qrisImagePath;
   final Value<String?> receiptHeader;
+  final Value<String?> receiptSubHeader;
   final Value<String> receiptPaperSize;
   final Value<int> pinLength;
   final Value<bool> receiptShowLogo;
@@ -10142,6 +10188,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.platinumThreshold = const Value.absent(),
     this.qrisImagePath = const Value.absent(),
     this.receiptHeader = const Value.absent(),
+    this.receiptSubHeader = const Value.absent(),
     this.receiptPaperSize = const Value.absent(),
     this.pinLength = const Value.absent(),
     this.receiptShowLogo = const Value.absent(),
@@ -10175,6 +10222,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.platinumThreshold = const Value.absent(),
     this.qrisImagePath = const Value.absent(),
     this.receiptHeader = const Value.absent(),
+    this.receiptSubHeader = const Value.absent(),
     this.receiptPaperSize = const Value.absent(),
     this.pinLength = const Value.absent(),
     this.receiptShowLogo = const Value.absent(),
@@ -10208,6 +10256,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<int>? platinumThreshold,
     Expression<String>? qrisImagePath,
     Expression<String>? receiptHeader,
+    Expression<String>? receiptSubHeader,
     Expression<String>? receiptPaperSize,
     Expression<int>? pinLength,
     Expression<bool>? receiptShowLogo,
@@ -10241,6 +10290,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (platinumThreshold != null) 'platinum_threshold': platinumThreshold,
       if (qrisImagePath != null) 'qris_image_path': qrisImagePath,
       if (receiptHeader != null) 'receipt_header': receiptHeader,
+      if (receiptSubHeader != null) 'receipt_sub_header': receiptSubHeader,
       if (receiptPaperSize != null) 'receipt_paper_size': receiptPaperSize,
       if (pinLength != null) 'pin_length': pinLength,
       if (receiptShowLogo != null) 'receipt_show_logo': receiptShowLogo,
@@ -10281,6 +10331,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<int>? platinumThreshold,
     Value<String?>? qrisImagePath,
     Value<String?>? receiptHeader,
+    Value<String?>? receiptSubHeader,
     Value<String>? receiptPaperSize,
     Value<int>? pinLength,
     Value<bool>? receiptShowLogo,
@@ -10314,6 +10365,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       platinumThreshold: platinumThreshold ?? this.platinumThreshold,
       qrisImagePath: qrisImagePath ?? this.qrisImagePath,
       receiptHeader: receiptHeader ?? this.receiptHeader,
+      receiptSubHeader: receiptSubHeader ?? this.receiptSubHeader,
       receiptPaperSize: receiptPaperSize ?? this.receiptPaperSize,
       pinLength: pinLength ?? this.pinLength,
       receiptShowLogo: receiptShowLogo ?? this.receiptShowLogo,
@@ -10397,6 +10449,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (receiptHeader.present) {
       map['receipt_header'] = Variable<String>(receiptHeader.value);
     }
+    if (receiptSubHeader.present) {
+      map['receipt_sub_header'] = Variable<String>(receiptSubHeader.value);
+    }
     if (receiptPaperSize.present) {
       map['receipt_paper_size'] = Variable<String>(receiptPaperSize.value);
     }
@@ -10456,6 +10511,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('platinumThreshold: $platinumThreshold, ')
           ..write('qrisImagePath: $qrisImagePath, ')
           ..write('receiptHeader: $receiptHeader, ')
+          ..write('receiptSubHeader: $receiptSubHeader, ')
           ..write('receiptPaperSize: $receiptPaperSize, ')
           ..write('pinLength: $pinLength, ')
           ..write('receiptShowLogo: $receiptShowLogo, ')
@@ -26618,6 +26674,7 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<int> platinumThreshold,
       Value<String?> qrisImagePath,
       Value<String?> receiptHeader,
+      Value<String?> receiptSubHeader,
       Value<String> receiptPaperSize,
       Value<int> pinLength,
       Value<bool> receiptShowLogo,
@@ -26652,6 +26709,7 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<int> platinumThreshold,
       Value<String?> qrisImagePath,
       Value<String?> receiptHeader,
+      Value<String?> receiptSubHeader,
       Value<String> receiptPaperSize,
       Value<int> pinLength,
       Value<bool> receiptShowLogo,
@@ -26779,6 +26837,11 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get receiptHeader => $composableBuilder(
     column: $table.receiptHeader,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptSubHeader => $composableBuilder(
+    column: $table.receiptSubHeader,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -26947,6 +27010,11 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get receiptSubHeader => $composableBuilder(
+    column: $table.receiptSubHeader,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get receiptPaperSize => $composableBuilder(
     column: $table.receiptPaperSize,
     builder: (column) => ColumnOrderings(column),
@@ -27102,6 +27170,11 @@ class $$SettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get receiptSubHeader => $composableBuilder(
+    column: $table.receiptSubHeader,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get receiptPaperSize => $composableBuilder(
     column: $table.receiptPaperSize,
     builder: (column) => column,
@@ -27196,6 +27269,7 @@ class $$SettingsTableTableManager
                 Value<int> platinumThreshold = const Value.absent(),
                 Value<String?> qrisImagePath = const Value.absent(),
                 Value<String?> receiptHeader = const Value.absent(),
+                Value<String?> receiptSubHeader = const Value.absent(),
                 Value<String> receiptPaperSize = const Value.absent(),
                 Value<int> pinLength = const Value.absent(),
                 Value<bool> receiptShowLogo = const Value.absent(),
@@ -27228,6 +27302,7 @@ class $$SettingsTableTableManager
                 platinumThreshold: platinumThreshold,
                 qrisImagePath: qrisImagePath,
                 receiptHeader: receiptHeader,
+                receiptSubHeader: receiptSubHeader,
                 receiptPaperSize: receiptPaperSize,
                 pinLength: pinLength,
                 receiptShowLogo: receiptShowLogo,
@@ -27262,6 +27337,7 @@ class $$SettingsTableTableManager
                 Value<int> platinumThreshold = const Value.absent(),
                 Value<String?> qrisImagePath = const Value.absent(),
                 Value<String?> receiptHeader = const Value.absent(),
+                Value<String?> receiptSubHeader = const Value.absent(),
                 Value<String> receiptPaperSize = const Value.absent(),
                 Value<int> pinLength = const Value.absent(),
                 Value<bool> receiptShowLogo = const Value.absent(),
@@ -27294,6 +27370,7 @@ class $$SettingsTableTableManager
                 platinumThreshold: platinumThreshold,
                 qrisImagePath: qrisImagePath,
                 receiptHeader: receiptHeader,
+                receiptSubHeader: receiptSubHeader,
                 receiptPaperSize: receiptPaperSize,
                 pinLength: pinLength,
                 receiptShowLogo: receiptShowLogo,

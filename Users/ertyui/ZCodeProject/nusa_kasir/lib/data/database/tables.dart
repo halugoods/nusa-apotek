@@ -318,6 +318,7 @@ class Settings extends Table {
   TextColumn get qrisImagePath => text().nullable()();
   // ── Receipt advanced ──
   TextColumn get receiptHeader => text().nullable()();
+  TextColumn get receiptSubHeader => text().nullable()();
   TextColumn get receiptPaperSize =>
       text().withDefault(const Constant('58mm'))();
   IntColumn get pinLength => integer().withDefault(const Constant(6))();
