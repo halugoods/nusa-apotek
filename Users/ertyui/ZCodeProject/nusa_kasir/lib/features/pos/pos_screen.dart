@@ -190,10 +190,15 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   /// Enter / scanner submission: exact barcode first, then name match on the
   /// loaded list. On hit → add to cart (respecting kg weight dialog) + clear
-  /// the search box so the next scan starts fresh.
+  /// the search box so the next scan starts fresh. Fokus dikembalikan ke
+  /// kolom cari supaya scan barcode EKSTERNAL (HID) bisa scan beruntun tanpa
+  /// tap ulang (v2.2.29).
   Future<void> _handleSearchSubmit() async {
     final raw = _search.text.trim();
-    if (raw.isEmpty) return;
+    if (raw.isEmpty) {
+      _searchFocus.requestFocus();
+      return;
+    }
     Product? product;
 
     // 1) Exact barcode lookup (HID scanner input)
@@ -216,12 +221,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }
 
     if (product == null) {
+      _search.clear();
       if (mounted) TopToast.error(context, 'Produk tidak ditemukan');
+      // Tetap fokus: scan berikutnya langsung jalan tanpa tap kolom cari.
+      _searchFocus.requestFocus();
       return;
     }
     _addToCart(product);
     _search.clear();
     if (mounted) setState(() {});
+    _searchFocus.requestFocus();
   }
 
   // ── Barcode scanner ──
@@ -340,6 +349,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       ),
     );
     await controller.dispose();
+    // Kembalikan fokus ke kolom cari setelah modal scanner ditutup supaya
+    // scanner EKSTERNAL (HID) bisa lanjut scan beruntun (v2.2.29).
+    _searchFocus.requestFocus();
     if (scannedCode == null || !context.mounted) return;
 
     final product = await ProductRepository(
@@ -428,8 +440,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
+      builder: (ctx) => Padding(        padding: EdgeInsets.fromLTRB(
           20,
           12,
           20,
@@ -532,6 +543,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                         weightKg: w,
                       );
                   Navigator.pop(ctx);
+                  // Kembalikan fokus ke kolom cari — scan berikutnya langsung
+                  // jalan tanpa tap (v2.2.29).
+                  _searchFocus.requestFocus();
                 },
                 child: Text('Tambah ke Keranjang'),
               ),
@@ -796,7 +810,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         // the Enter is a no-op and the scanned code never reaches the cart.
         // Here we resolve the scanned code → exact barcode match → product,
         // falling back to a name match on the already-loaded product list.
-        textInputAction: TextInputAction.done,
+        //
+        // IMPORTANT (v2.2.29): textInputAction KEEP textInputAction.done /
+        // unfocus behavior — pressing Enter would drop focus and the next
+        // scan would go nowhere. textInputAction.newline does NOT unfocus,
+        // so an external HID scanner can scan the SAME barcode repeatedly
+        // without tapping the search bar again (komplain user).
+        textInputAction: TextInputAction.newline,
         onSubmitted: (_) => _handleSearchSubmit(),
       ),
     );

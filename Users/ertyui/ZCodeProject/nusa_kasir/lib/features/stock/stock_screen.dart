@@ -1254,6 +1254,7 @@ class _AdjustSheet extends StatefulWidget {
 
 class _AdjustSheetState extends State<_AdjustSheet> {
   final _searchC = TextEditingController();
+  final _searchFocus = FocusNode();
   final _qtyCs = <int, TextEditingController>{};
   final Set<int> _inCart = {};
   bool _saving = false;
@@ -1276,6 +1277,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
       c.dispose();
     }
     _searchC.dispose();
+    _searchFocus.dispose();
     _scanner?.dispose();
     super.dispose();
   }
@@ -1302,6 +1304,28 @@ class _AdjustSheetState extends State<_AdjustSheet> {
   }
 
   // ── Scan barcode — cari produk, auto masuk keranjang (qty naik) ──
+  /// Enter dari scanner EKSTERNAL (HID): resolve barcode → produk, langsung
+  /// naikkan qty keranjang, fokus TETAP di kolom cari supaya bisa scan
+  /// barcode yang SAMA berulang tanpa tap ulang (v2.2.29).
+  Future<void> _submitScanHid() async {
+    final raw = _searchC.text.trim();
+    if (raw.isEmpty) {
+      _searchFocus.requestFocus();
+      return;
+    }
+    final found = _byBarcode[raw];
+    if (found == null) {
+      _searchC.clear();
+      setState(() {});
+      TopToast.error(context, 'Barcode tidak terdaftar. Cari manual.');
+    } else {
+      _searchC.clear();
+      setState(() => _addToCart(found.id));
+      TopToast.success(context, '${found.name} → keranjang');
+    }
+    _searchFocus.requestFocus();
+  }
+
   Future<void> _scan() async {
     if (_scanner == null) {
       _scanner = MobileScannerController(
@@ -1352,6 +1376,9 @@ class _AdjustSheetState extends State<_AdjustSheet> {
         ),
       ),
     );
+    // Kembalikan fokus ke kolom cari — scan EKSTERNAL lanjut beruntun
+    // tanpa tap ulang (v2.2.29).
+    _searchFocus.requestFocus();
   }
 
   bool _inCartOf(int id) => _inCart.contains(id);
@@ -1497,7 +1524,13 @@ class _AdjustSheetState extends State<_AdjustSheet> {
           // search + scan
           TextField(
             controller: _searchC,
+            focusNode: _searchFocus,
             onChanged: (_) => setState(() {}),
+            // Scan barcode EKSTERNAL (HID): ketik barcode + Enter → langsung
+            // naikkan qty keranjang. Fokus TETAP di kolom cari (newline tidak
+            // unfocus) supaya bisa scan beruntun tanpa tap ulang (v2.2.29).
+            textInputAction: TextInputAction.newline,
+            onSubmitted: (_) => _submitScanHid(),
             style: TextStyle(
               fontSize: 14,
               color: isDark

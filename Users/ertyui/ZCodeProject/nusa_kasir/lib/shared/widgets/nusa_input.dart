@@ -13,6 +13,14 @@ class NusaInput extends StatelessWidget {
   final Widget? suffixIcon;
   final int? maxLines;
 
+  /// Fokus + Enter/scan handler — dipakai kolom cari supaya scanner barcode
+  /// EKSTERNAL (HID) bisa scan beruntun tanpa tap ulang (v2.2.29).
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
+  final ValueChanged<PointerDownEvent>? onTapOutside;
+  final ValueChanged<String>? onChanged;
+
   NusaInput(
     this.label, {
     super.key,
@@ -24,6 +32,11 @@ class NusaInput extends StatelessWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.maxLines,
+    this.focusNode,
+    this.textInputAction,
+    this.onSubmitted,
+    this.onTapOutside,
+    this.onChanged,
   });
 
   @override
@@ -48,9 +61,14 @@ class NusaInput extends StatelessWidget {
         SizedBox(height: 6),
         TextField(
           controller: controller,
+          focusNode: focusNode,
           keyboardType: type,
           obscureText: obscure,
           maxLines: maxLines ?? 1,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted,
+          onTapOutside: onTapOutside,
+          onChanged: onChanged,
           style: monospace
               ? TextStyle(fontFamily: 'monospace', fontSize: 15, color: textColor)
               : TextStyle(fontSize: 15, color: textColor),

@@ -42,6 +42,7 @@ class ProductsScreen extends ConsumerStatefulWidget {
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
   String _statusFilter = 'Semua';
   _SortBy _sortBy = _SortBy.nameAsc;
   List<Product> _products = [];
@@ -62,6 +63,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   void dispose() {
     _search.removeListener(_onSearchChanged);
     _search.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -79,6 +81,27 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   }
 
   void _onSearchChanged() => _load();
+
+  /// Enter dari scanner barcode EKSTERNAL (HID): barcode eksak → buka form
+  /// produk. Fokus TETAP di kolom cari supaya bisa scan beruntun tanpa tap
+  /// ulang (v2.2.29).
+  Future<void> _submitScanHid() async {
+    final raw = _search.text.trim();
+    if (raw.isEmpty) {
+      _searchFocus.requestFocus();
+      return;
+    }
+    final repo = ref.read(productRepoProvider);
+    final product = await repo.byBarcode(raw);
+    if (product != null && mounted) {
+      _search.clear();
+      await _openProductForm(productId: product.id);
+    } else if (mounted) {
+      TopToast.info(context, 'Produk tidak ditemukan. Coba cari manual.');
+    }
+    // Tetap fokus — scan berikutnya langsung jalan.
+    _searchFocus.requestFocus();
+  }
 
   Future<void> _load() async {
     final repo = ref.read(productRepoProvider);
@@ -440,6 +463,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       ),
     );
     await controller.dispose();
+    // Kembalikan fokus ke kolom cari — scan EKSTERNAL lanjut beruntun
+    // tanpa tap ulang (v2.2.29).
+    _searchFocus.requestFocus();
     if (scanned == null || !mounted) return;
 
     final repo = ref.read(productRepoProvider);
@@ -452,6 +478,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       _search.text = scanned!;
       TopToast.info(context, 'Produk tidak ditemukan. Coba cari manual.');
     }
+    _searchFocus.requestFocus();
   }
 
   /// Buka form produk sebagai slide-up sheet (state baru).
@@ -616,6 +643,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               'Cari nama atau barcode...',
               controller: _search,
               hint: 'Cari nama atau barcode...',
+              focusNode: _searchFocus,
+              // Scan barcode EKSTERNAL (HID): Enter tidak unfocus, fokus
+              // tetap di kolom cari → scan beruntun tanpa tap ulang (v2.2.29).
+              textInputAction: TextInputAction.newline,
+              onSubmitted: (_) => _submitScanHid(),
               prefixIcon: Icon(
                 Icons.search,
                 color: isDark

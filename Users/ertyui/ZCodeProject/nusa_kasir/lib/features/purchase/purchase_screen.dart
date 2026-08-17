@@ -1285,6 +1285,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   final List<(TextEditingController, TextEditingController)> _extraCosts = [];
   final _noteC = TextEditingController();
   final _searchC = TextEditingController();
+  final _searchFocus = FocusNode();
   String _q = '';
   String? _error;
 
@@ -1327,6 +1328,7 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   void dispose() {
     _noteC.dispose();
     _searchC.dispose();
+    _searchFocus.dispose();
     for (final (_, qtyC, priceC) in _productItems) {
       qtyC.dispose();
       priceC.dispose();
@@ -1807,6 +1809,30 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
   /// products_screen): buka → scan SATU barcode → tutup → masuk keranjang.
   /// Scan kontinu hanya berlaku untuk scanner EKSTERNAL (HID/keyboard):
   /// ketik barcode di kolom cari + Enter, langsung masuk keranjang.
+  ///
+  /// Handler Enter dari scanner HID: resolve barcode → produk, langsung
+  /// tambah keranjang, lalu kembalikan fokus ke kolom cari supaya bisa scan
+  /// barcode yang SAMA berulang tanpa tap ulang (v2.2.29).
+  Future<void> _submitScanHid() async {
+    final raw = _searchC.text.trim();
+    if (raw.isEmpty) {
+      _searchFocus.requestFocus();
+      return;
+    }
+    final p = await ProductRepository(widget.db).byBarcode(raw);
+    if (p != null) {
+      _addProductToCart(p);
+      _searchC.clear();
+      setState(() => _q = '');
+      TopToast.success(context, '${p.name} masuk keranjang');
+    } else {
+      _searchC.clear();
+      setState(() => _q = '');
+      TopToast.error(context, 'Produk tidak ditemukan');
+    }
+    // Fokus TETAP di kolom cari — scan berikutnya langsung jalan.
+    _searchFocus.requestFocus();
+  }
   Future<void> _scanBarcode() async {
     String? scannedCode;
     final controller = MobileScannerController(
@@ -1910,6 +1936,9 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
       ),
     );
     await controller.dispose();
+    // Kembalikan fokus ke kolom cari — scan EKSTERNAL lanjut beruntun
+    // tanpa tap ulang (v2.2.29).
+    _searchFocus.requestFocus();
     if (scannedCode == null || !mounted) return;
     final p = await ProductRepository(widget.db).byBarcode(scannedCode!);
     if (p != null) {
@@ -2333,6 +2362,11 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       ? NusaConfig.darkTextPrimary
                       : NusaConfig.textPrimary,
                 ),
+                // Scan barcode EKSTERNAL (HID): ketik barcode + Enter →
+                // langsung masuk keranjang, fokus TETAP di kolom cari supaya
+                // bisa scan beruntun tanpa tap ulang (v2.2.29).
+                textInputAction: TextInputAction.newline,
+                onSubmitted: (_) => _submitScanHid(),
                 decoration: InputDecoration(
                   hintText: 'Cari produk atau barcode...',
                   hintStyle: TextStyle(fontSize: 13, color: textTer),

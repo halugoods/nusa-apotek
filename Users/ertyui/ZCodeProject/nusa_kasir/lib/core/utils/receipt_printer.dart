@@ -4,11 +4,12 @@ import 'dart:typed_data';
 
 import 'package:esc_pos_utils/esc_pos_utils.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 
+import 'package:nusa_kasir/core/receipt/receipt_config.dart';
+import 'package:nusa_kasir/core/receipt/receipt_data.dart';
+import 'package:nusa_kasir/core/receipt/receipt_renderer.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
-import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// A single line item on a receipt.
@@ -55,19 +56,6 @@ String _fit(String text, int maxChars) {
   if (s.length <= maxChars) return s;
   return '${s.substring(0, maxChars - 3)}...';
 }
-
-/// ESC/POS perbesaran 1-8 → PosTextSize (class dengan static const, bukan
-/// enum — jadi tidak punya `.values`; mapping manual 1:1).
-PosTextSize _posSize(int v) => switch (v.clamp(1, 8)) {
-  1 => PosTextSize.size1,
-  2 => PosTextSize.size2,
-  3 => PosTextSize.size3,
-  4 => PosTextSize.size4,
-  5 => PosTextSize.size5,
-  6 => PosTextSize.size6,
-  7 => PosTextSize.size7,
-  _ => PosTextSize.size8,
-};
 
 /// Ukuran font RINCIAN & FOOTER struk — mundur ke gaya v2.2.11:
 /// hanya 2 pilihan perbesaran ESC/POS ×1 (Kecil) / ×2 (Besar).
@@ -117,45 +105,13 @@ class PrinterDevice {
   final String address;
 }
 
-/// Cached parameters from the last successful print — enables one-tap reprint.
+/// Cached data dari print terakhir — reprint memakai DATA lama + CONFIG
+/// TERBARU (spec AA: reprint transaksi lama = data lama, template baru).
 class LastPrintParams {
   final String storeName;
-  final List<ReceiptLine> lines;
-  final int total;
-  final String? paymentMethod;
-  final String? cashierName;
-  final String invoice;
-  final String dateStr;
-  final int discount;
-  final int? cashGiven;
-  final int? cashReturn;
-  final int downPayment;
-  final int remainingDue;
-  final String? customerName;
-  final String paperWidth;
-  final String? orderType;
-  final String? tableName;
-  final List<String?>? itemNotes;
+  final ReceiptData data;
 
-  const LastPrintParams({
-    required this.storeName,
-    required this.lines,
-    required this.total,
-    this.paymentMethod,
-    this.cashierName,
-    this.invoice = '',
-    this.dateStr = '',
-    this.discount = 0,
-    this.cashGiven,
-    this.cashReturn,
-    this.downPayment = 0,
-    this.remainingDue = 0,
-    this.customerName,
-    this.paperWidth = '58',
-    this.orderType,
-    this.tableName,
-    this.itemNotes,
-  });
+  const LastPrintParams({required this.storeName, required this.data});
 }
 
 /// Utility for discovering, connecting to and printing receipts on a
@@ -178,7 +134,6 @@ class ReceiptPrinter {
 
   // ── Printer settings (persisted via SecureStore) ──
   static Uint8List? _logoBytes;
-  static String _footerText = '';
   static bool _cashDrawerEnabled = false;
   static int _cashDrawerPin = 2;
 
@@ -200,9 +155,6 @@ class ReceiptPrinter {
       _logoBytes = null;
     }
   }
-
-  /// Set custom footer text.
-  static void setFooter(String text) => _footerText = text;
 
   /// Enable/disable cash drawer auto-open after print.
   static void setCashDrawer({required bool enabled, int pin = 2}) {
@@ -259,6 +211,11 @@ class ReceiptPrinter {
 
   /// Build the ESC/POS bytes for a receipt and send them to the connected
   /// printer. Returns `true` if the print job completed successfully.
+  ///
+  /// v2.2.29: layout SELURUHNYA dari [ReceiptRenderer.renderBytes] — SATU
+  /// renderer yang SAMA dengan preview/PDF/share. Config dibaca dari
+  /// [config] (default: [ReceiptConfig.loadFromStore]) — TIDAK membaca
+  /// SecureStore di dalam lagi.
   Future<bool> printReceipt({
     required String storeName,
     required List<ReceiptLine> lines,
@@ -283,458 +240,64 @@ class ReceiptPrinter {
     String? tableName,
     List<String?>? itemNotes,
     // Lebar logo saat print — PERSEN dari lebar kertas (1-100).
-    // Default 60 = ukuran statis yang sama seperti yang pernah diatur
-    // user (default bawa) — tidak diubah-ubah dari pengaturan struk.
     int logoWidthPercent = 60,
+    ReceiptConfig? config,
   }) async {
     final connected = await BluetoothUtils.isConnected();
     if (!connected) return false;
 
-    final profile = await CapabilityProfile.load();
-    final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
-    final generator = Generator(paperSize, profile);
-
-    // ── Font settings (per section, dari Pengaturan Struk) ──
-    // Jenis font: 'standar' = Font A (universal — DEFAULT; printer clone
-    // murah seperti VSC merender Font B kosong/garbled, jadi Standar dipakai
-    // supaya rincian selalu muncul), 'kompak' = Font B (huruf ramping).
-    // Ukuran rincian & footer: 1 = Kecil (×1), 2 = Besar (×2). Header
-    // memakai ukuran PIXEL image (nusa_receipt_header_px, 12–48px).
-    final fontType = await SecureStore.getReceiptFontType();
-    final headerPx = await SecureStore.getReceiptHeaderPx();
-    final headerWeight = await SecureStore.getReceiptHeaderWeight();
-    // Rincian & footer SELALU ukuran kecil (×1) — user minta satu ukuran saja
-    // (v2.2.27+): "rincian sm footer gausah di kasih 2 ukuran deh 1 ukuran aja
-    // pke yg kecil". Key lama (fontItems/fontFooter) tidak lagi dibaca.
-    // Jenis font satu untuk seluruh struk (global) — pilihan per bagian
-    // dihapus di v2.2.21 supaya pengaturan sederhana (1 pilihan font saja).
-    final useFontB = fontType == 'kompak';
-    // Font global dipakai untuk semua baris struk (rincian, footer,
-    // invoice, kasir, payment, "Terima Kasih!").
-    final itemFont = useFontB ? PosFontType.fontB : PosFontType.fontA;
-    final useItemsFontB = itemFont == PosFontType.fontB;
-
-    // Header struk custom (Teks Header di Pengaturan Struk). Kosong →
-    // fallback ke nama toko — SAMA persis perilaku preview di settings.
-    final customHeader = await SecureStore.getReceiptHeader();
-    final headerText = (customHeader != null && customHeader.trim().isNotEmpty)
-        ? customHeader.trim()
-        : storeName;
-
-    final List<int> bytes = [];
-
-    // ── ESC @ Reset: ensure printer is in a clean state ──
-    // Cheap thermal printers have small buffers (~4 KB). If a previous job
-    // left the printer in bit-image mode (ESC *), all subsequent text is
-    // rendered as garbage pixels until paper runs out. Resetting first
-    // guarantees known-good state regardless of what happened before.
-    bytes.addAll(generator.reset());
-
-    // ── Logo ──
-    // showLogo=false explicitly skips the logo block entirely (no pixels
-    // on paper), while still honoring a configured logo for other receipts.
-    final renderLogo = showLogo ?? true;
-    final logoBytes = logo ?? _logoBytes;
-    if (renderLogo && logoBytes != null) {
-      try {
-        final logoImage = img.decodeImage(logoBytes);
-        if (logoImage != null) {
-          // Lebar logo = PERSEN dari lebar kertas (default 60% — ukuran
-          // statis yang sama seperti yang pernah diatur user).
-          final pct = logoWidthPercent.clamp(1, 100) / 100;
-          final maxWidth = ((paperWidth == '80' ? 320 : 160) * pct).round();
-          // Cap BOTH dimensions: raster height is limited by the printer's
-          // bit-image buffer (~3 bytes/column); a tall logo would otherwise
-          // be cut off or produce garbage. Proportional resize keeps the
-          // aspect ratio.
-          final maxHeight = paperWidth == '80' ? 160 : 96;
-          var resized = logoImage;
-          if (logoImage.width > maxWidth || logoImage.height > maxHeight) {
-            final scale = (maxWidth / logoImage.width).clamp(0.0, 1.0);
-            final hScale = maxHeight / logoImage.height;
-            final s = scale < hScale ? scale : hScale;
-            resized = img.copyResize(
-              logoImage,
-              width: (logoImage.width * s).round(),
-              height: (logoImage.height * s).round(),
-            );
-          }
-          // ESC * bit-image (image()) is far more widely supported than
-          // GS v 0 raster (imageRaster()) on cheap thermal printers — many
-          // Epson/SNBC clones render GS v 0 as garbage. Bit image renders
-          // cleanly and the explicit reset() below exits bit-image mode.
-          bytes.addAll(generator.image(resized, align: PosAlign.center));
-          bytes.addAll(generator.feed(1));
-          // ── CRITICAL: force printer OUT of bit-image mode ──
-          // Cheap printers (&lt;4KB buffer) often lose the auto-reset that
-          // esc_pos_utils appends, staying stuck in bit-image mode. Calling
-          // reset() here sends ESC @ (initialize), which unconditionally
-          // exits bit-image mode before any text.
-          bytes.addAll(generator.reset());
-        }
-      } catch (_) {}
+    final cfg = config ?? await ReceiptConfig.loadFromStore();
+    // Caller dapat override field tertentu (split bill dsb).
+    var cfg2 = cfg;
+    if (paperWidth != '58' && paperWidth != cfg.paperWidth) {
+      cfg2 = cfg2.copyWith(paperWidth: paperWidth);
     }
+    if (footer != null) cfg2 = cfg2.copyWith(footer: footer);
+    if (logoWidthPercent != 60 && logoWidthPercent != cfg.logoWidthPercent) {
+      cfg2 = cfg2.copyWith(logoWidthPercent: logoWidthPercent);
+    }
+    if (showLogo != null) cfg2 = cfg2.copyWith(showLogo: showLogo);
 
-    // ── HEADER — nama toko / header custom sebagai IMAGE (bit-image ESC *) ──
-    // HANYA nama toko/header custom yang dirender image (besar, sesuai slider
-    // 12–48px). Invoice, tanggal, kasir, pelanggan, tipe pesanan TIDAK ikut
-    // image — dicetak sebagai teks ESC/POS biasa (cepat, tidak perbesar
-    // waktu print, ukuran huruf normal). Preview memakai renderer sama.
-    try {
-      final headerPng = await renderReceiptHeaderPng(
-        paperWidth: paperWidth,
-        storeName: storeName,
-        customHeader: customHeader ?? '',
-        headerPx: headerPx,
-        headerWeight: headerWeight,
-      );
-      final headerImage = img.decodeImage(headerPng);
-      if (headerImage != null) {
-        bytes.addAll(generator.image(headerImage, align: PosAlign.center));
-        bytes.addAll(generator.feed(1));
-        // Keluar dari bit-image mode sebelum teks rincian.
-        bytes.addAll(generator.reset());
-      }
-    } catch (_) {
-      // Render header gagal → cetak nama toko sebagai teks biasa supaya
-      // struk tetap jalan.
-      bytes.addAll(
-        generator.text(
-          _san(headerText),
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-            fontType: itemFont,
+    final data = ReceiptData(
+      invoiceNumber: invoice,
+      dateStr: dateStr,
+      cashierName: cashierName,
+      customerName: customerName,
+      orderType: orderType,
+      tableName: tableName,
+      items: [
+        for (var i = 0; i < lines.length; i++)
+          ReceiptItem(
+            name: lines[i].name,
+            qty: lines[i].qty,
+            price: lines[i].price,
+            originalPrice: lines[i].originalPrice,
+            note: (itemNotes != null && i < itemNotes.length)
+                ? itemNotes[i]
+                : null,
           ),
-        ),
-      );
-    }
-
-    // ── INFO HEADER — teks ESC/POS (bukan image): invoice, tanggal, kasir ──
-    // User: "invoice tgl kasir jgn image ya" — dipindah dari header image ke
-    // teks supaya print cepat & huruf normal (tidak ikut slider besar).
-    final isWide = paperWidth == '80';
-    final infoLineWidth = isWide ? (useItemsFontB ? 64 : 48) : (useItemsFontB ? 42 : 32);
-    void infoText(String t, {bool bold = false, PosAlign align = PosAlign.center}) {
-      if (t.trim().isEmpty) return;
-      for (final part in _wrap(t, infoLineWidth)) {
-        bytes.addAll(
-          generator.text(
-            _san(part),
-            styles: PosStyles(
-              align: align,
-              bold: bold,
-              fontType: itemFont,
-            ),
-          ),
-        );
-      }
-    }
-    if (invoice.isNotEmpty) infoText(invoice, bold: true);
-    if (dateStr.isNotEmpty) infoText(dateStr);
-    if (cashierName != null && cashierName.isNotEmpty) {
-      infoText('Kasir: $cashierName', align: PosAlign.left);
-    }
-    if (customerName != null && customerName.isNotEmpty) {
-      infoText('Pelanggan: $customerName', align: PosAlign.left);
-    }
-    if (orderType != null && orderType.isNotEmpty) {
-      final label = tableName != null && tableName.isNotEmpty
-          ? '$orderType - $tableName'
-          : orderType;
-      infoText(label, bold: true);
-    }
-
-    // Line items — manual text formatting for precise wrapping.
-    // generator.row()+PosColumn internally clips text; generator.text() doesn't.
-    //
-    // Jenis font per section menentukan lebar baris:
-    //   Standar (Font A): 58mm → 32 char, 80mm → 48 char  (universal)
-    //   Kompak  (Font B): 58mm → 42 char, 80mm → 64 char  (ramping)
-    // Default = Standar: printer clone murah (VSC dkk) merender Font B
-    // kosong/garbled, sehingga rincian hilang. Standar selalu muncul.
-    final itemBaseLineWidth = isWide
-        ? (useItemsFontB ? 64 : 48)
-        : (useItemsFontB ? 42 : 32);
-    // Ukuran rincian SELALU Kecil (×1) — pilihan Besar dihapus v2.2.27.
-    final itemMag = 1;
-    final itemStyles = PosStyles(
-      align: PosAlign.left,
-      fontType: itemFont,
-      height: _posSize(itemMag),
-      width: _posSize(itemMag),
-    );
-    // Lebar rincian: rincian selalu ×1 → lebar penuh baris.
-    final itemLineWidth = itemBaseLineWidth;
-    final qtyPriceWidth = useItemsFontB ? 14 : 12; // "2xRp10.000" max
-    final subWidth = useItemsFontB ? 11 : 10; // "Rp20.000" max
-    // ── NAMA ITEM PAKAI LEBAR PENUH KERTAS ──
-    // Sebelumnya nama di-squeeze ke sisa setelah qty×harga + subtotal
-    // (58mm Font A → hanya 8 karakter → "enter2 kebawah" dengan ~15 char).
-    // Komplain user: "menu item harus hbisin margin kertas dulu baru enter
-    // kebawah". Baris nama full width; qty×harga + subtotal baris sendiri.
-    final nameWidth = itemLineWidth;
-
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final nameParts = _wrap(line.name, nameWidth);
-      // Harga per unit = harga ASLI SEBELUM diskon (originalPrice) — diskon
-      // ditampilkan sebagai "( -Rp X )" di sampingnya. User minta struk
-      // menunjukkan: qty × harga asli − diskon (kurung) − subtotal NETTO.
-      // (Sebelum v2.2.27 tampil harga FINAL — itu salah.)
-      final unitPrice = line.originalPrice ?? line.price;
-      final qtyPrice = _fit(
-        '${line.qty}x${formatRupiah(unitPrice)}',
-        qtyPriceWidth,
-      );
-      // Subtotal yang ditampilkan = NETTO (qty × harga FINAL) — subtotal
-      // sudah berkurang diskon, konsisten dengan TOTAL.
-      final subtotal = _fit(
-        formatRupiah(line.subtotal),
-        subWidth,
-      );
-
-      // Baris 1: nama item (wrap). Nama sendiri — tidak digabung dengan qty.
-      for (final part in nameParts) {
-        bytes.addAll(generator.text(_san(part), styles: itemStyles));
-      }
-
-      // Diskon item per produk — kurung "( -Rp X )" setelah harga asli,
-      // SEBELUM subtotal: urutan = qty × harga ASLI lalu diskon (kurung)
-      // lalu subtotal NETTO. User minta urutan ini biar notice potongannya.
-      final discSuffix = line.hasDiscount
-          ? '( -${formatRupiah(line.discountTotal)} )'
-          : '';
-
-      // Rincian SELALU ukuran kecil (×1) — satu baris = qty x harga asli di
-      // KIRI, lalu diskon (kurung), lalu subtotal NETTO di KANAN (v2.2.27).
-      final totalRight = '$discSuffix $subtotal'.trim();
-      final gap = itemLineWidth - qtyPrice.length - totalRight.length;
-      final line2 = gap >= 3
-          ? '$qtyPrice${' ' * (gap - 2)}  $totalRight'
-          : '$qtyPrice  $totalRight';
-      bytes.addAll(generator.text(_san(line2), styles: itemStyles));
-
-      // Item notes
-      if (itemNotes != null &&
-          i < itemNotes.length &&
-          itemNotes[i] != null &&
-          itemNotes[i]!.isNotEmpty) {
-        final noteParts = _wrap('  > ${itemNotes[i]!}', itemLineWidth - 2);
-        for (final part in noteParts) {
-          bytes.addAll(generator.text(_san(part), styles: itemStyles));
-        }
-      }
-    }
-    bytes.addAll(generator.hr());
-
-    // Total. Rincian selalu ×1 — tidak perlu jarak ekstra.
-    bytes.addAll(
-      generator.row([
-        PosColumn(
-          text: 'TOTAL',
-          width: isWide ? 8 : 6,
-          styles: PosStyles(
-            bold: true,
-            height: PosTextSize.size2,
-            fontType: itemFont,
-          ),
-        ),
-        PosColumn(
-          text: _fit(formatRupiah(total), isWide ? 16 : 11),
-          width: isWide ? 8 : 6,
-          styles: PosStyles(
-            bold: true,
-            align: PosAlign.right,
-            height: PosTextSize.size2,
-            fontType: itemFont,
-          ),
-        ),
-      ]),
+      ],
+      discount: discount,
+      total: total,
+      cashGiven: cashGiven,
+      cashReturn: cashReturn,
+      downPayment: downPayment,
+      remainingDue: remainingDue,
+      paymentMethod: paymentMethod ?? '',
     );
 
-    // ── ANDA HEMAT — total diskon (item + transaksi) tepat di bawah TOTAL ──
-    // User: "di total itu bawahnya harus ada anda hemat brp diskonnya jd biar
-    // di notice sm pembeli". Hitung total potongan item (originalPrice vs
-    // price × qty) + diskon transaksi, cetak bold supaya menonjol.
-    final itemDiscTotal = lines.fold<int>(
-      0,
-      (acc, l) =>
-          acc + (l.hasDiscount ? (l.originalPrice! - l.price) * l.qty : 0),
+    final bytes = await renderBytes(
+      config: cfg2,
+      data: data,
+      storeName: storeName,
+      logoBytes: logo ?? _logoBytes,
+      openDrawer: openDrawer,
+      drawerPin: _cashDrawerPin,
     );
-    final andaHemat = itemDiscTotal + discount;
-    if (andaHemat > 0) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Anda Hemat',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(bold: true, fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit('-${formatRupiah(andaHemat)}', isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(
-              bold: true,
-              align: PosAlign.right,
-              fontType: itemFont,
-            ),
-          ),
-        ]),
-      );
-    }
 
-    // Total diskon — baris sendiri TEPAT DI BAWAH TOTAL (komplain user:
-    // "total diskon di total bawah"). Diskon item sudah dicetak per item
-    // ("Diskon: -Rp X" di bawah tiap item) — baris ini hanya diskon
-    // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
-    if (discount > 0) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Diskon',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit('-${formatRupiah(discount)}', isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-    }
-
-    // Payment details. When DP is active, show uang muka + sisa piutang
-    // instead of the generic Bayar line (cashGiven holds the DP amount).
-    if (downPayment > 0) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Bayar ($paymentMethod)',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit(formatRupiah(downPayment), isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Sisa Piutang',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit(formatRupiah(remainingDue), isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-    } else if (paymentMethod != null && paymentMethod.isNotEmpty) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Bayar ($paymentMethod)',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit(formatRupiah(cashGiven ?? total), isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-    }
-    if (cashReturn != null && cashReturn > 0 && downPayment <= 0) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: 'Kembali',
-            width: isWide ? 8 : 6,
-            styles: PosStyles(fontType: itemFont),
-          ),
-          PosColumn(
-            text: _fit(formatRupiah(cashReturn), isWide ? 16 : 11),
-            width: isWide ? 8 : 6,
-            styles: PosStyles(align: PosAlign.right, fontType: itemFont),
-          ),
-        ]),
-      );
-    }
-
-    bytes.addAll(generator.hr());
-
-    // Footer — wrap long text. Ukuran SELALU Kecil (×1) — v2.2.27.
-    final footerText = footer ?? _footerText;
-    if (footerText.isNotEmpty) {
-      final footerMag = 1;
-      final footerBase = isWide
-          ? (useItemsFontB ? 64 : 48)
-          : (useItemsFontB ? 42 : 32);
-      // Lebar footer = lebar baris ÷ perbesaran (rincian 2x → setengah).
-      final footerLineChars = (footerBase ~/ footerMag).clamp(4, 40);
-      final footerParts = _wrap(footerText, footerLineChars);
-      for (final part in footerParts) {
-        bytes.addAll(
-          generator.text(
-            _san(part),
-            styles: PosStyles(
-              align: PosAlign.center,
-              fontType: itemFont,
-              height: _posSize(footerMag),
-              width: _posSize(footerMag),
-            ),
-          ),
-        );
-      }
-      // Footer besar butuh jarak sebelum "Terima Kasih!" agar tidak nempel.
-      if (footerMag > 1) {
-        bytes.addAll(generator.feed(1));
-      }
-    }
-    bytes.addAll(
-      generator.text(
-        _san('Terima Kasih!'),
-        styles: PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          fontType: itemFont,
-        ),
-      ),
-    );
-    bytes.addAll(
-      generator.text(
-        _san(storeName),
-        styles: PosStyles(align: PosAlign.center, fontType: itemFont),
-      ),
-    );
-    bytes.addAll(generator.feed(2));
-    // Kembalikan ke Font A — printer clone murah TIDAK mereset Font B sendiri
-    // (mereka abaikan ESC M 1 → state macet). Jaga printer selalu di Font A
-    // agar cetakan berikutnya tidak berubah font.
-    bytes.addAll(
-      generator.text(
-        '',
-        styles: PosStyles(fontType: PosFontType.fontA),
-      ),
-    );
-    bytes.addAll(generator.cut());
-
-    // ── Cash drawer trigger ──
-    // Standard ESC/POS kick command: ESC p m t1 t2  → 1B 70 00 19 19 (pin 2)
-    // or 1B 70 01 19 19 (pin 5). esc_pos_utils' drawer() emits the text form
-    // 1B 70 30 33 30 ('p030') which many cheap Epson-compatible printers
-    // reject — so we send the binary form directly.
-    if (openDrawer || _cashDrawerEnabled) {
+    // Cash drawer — binary ESC p via drawer bytes (jika belum termasuk
+    // di renderBytes karena openDrawer dari state).
+    if (_cashDrawerEnabled && !openDrawer) {
       final ok = await BluetoothUtils.sendBytes(_drawerBytes(_cashDrawerPin));
       if (!ok) {
         debugPrint('[ReceiptPrinter] Cash drawer trigger failed to send');
@@ -745,55 +308,31 @@ class ReceiptPrinter {
     final ok = await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
 
     if (ok) {
-      // Cache for reprint
-      lastPrint = LastPrintParams(
-        storeName: storeName,
-        lines: lines,
-        total: total,
-        paymentMethod: paymentMethod,
-        cashierName: cashierName,
-        invoice: invoice,
-        dateStr: dateStr,
-        discount: discount,
-        cashGiven: cashGiven,
-        cashReturn: cashReturn,
-        downPayment: downPayment,
-        remainingDue: remainingDue,
-        customerName: customerName,
-        paperWidth: paperWidth,
-        orderType: orderType,
-        tableName: tableName,
-        itemNotes: itemNotes,
-      );
+      // Cache untuk reprint — DATA lama + config TERBARU (spec AA).
+      lastPrint = LastPrintParams(storeName: storeName, data: data);
     }
 
     return ok;
   }
 
-  /// Reprint the last receipt.
+  /// Reprint the last receipt — memakai CONFIG TERBARU (spec AA).
   Future<bool> printLastReceipt({bool openDrawer = false}) async {
     final p = lastPrint;
     if (p == null) return false;
-    return printReceipt(
+    final connected = await BluetoothUtils.isConnected();
+    if (!connected) return false;
+    final bytes = await renderBytes(
+      config: await ReceiptConfig.loadFromStore(),
+      data: p.data,
       storeName: p.storeName,
-      lines: p.lines,
-      total: p.total,
-      paymentMethod: p.paymentMethod,
-      cashierName: p.cashierName,
-      invoice: p.invoice,
-      dateStr: p.dateStr,
-      discount: p.discount,
-      cashGiven: p.cashGiven,
-      cashReturn: p.cashReturn,
-      downPayment: p.downPayment,
-      remainingDue: p.remainingDue,
-      customerName: p.customerName,
-      paperWidth: p.paperWidth,
+      logoBytes: _logoBytes,
       openDrawer: openDrawer,
-      orderType: p.orderType,
-      tableName: p.tableName,
-      itemNotes: p.itemNotes,
+      drawerPin: _cashDrawerPin,
     );
+    if (_cashDrawerEnabled && !openDrawer) {
+      await BluetoothUtils.sendBytes(_drawerBytes(_cashDrawerPin));
+    }
+    return BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
   }
 
   /// Print a servis/workshop ticket (bengkel) to the connected thermal
@@ -1082,70 +621,27 @@ class ReceiptPrinter {
     return Uint8List.fromList([0x1B, 0x70, m, 0x19, 0x19]);
   }
 
-  /// Print a simple test receipt (v2.2.11 style — bukan kalibrasi 5 ukuran).
-  /// Kalibrasi dihapus: pilihan ukuran kembali ke 2 (Kecil/Besar) + header
-  /// image slider, jadi tes cukup memastikan printer jalan + kertas benar.
+  /// Print tes struk — memakai renderer YANG SAMA + config SAAT INI +
+  /// data sample (spec W). Output di kertas = persis preview Pengaturan
+  /// Struk (satu renderer; v2.2.29 — sebelumnya layout teks sendiri).
   Future<bool> printTest(
     String storeName, {
     String paperWidth = '58',
+    ReceiptConfig? config,
   }) async {
     final connected = await BluetoothUtils.isConnected();
     if (!connected) return false;
 
-    final profile = await CapabilityProfile.load();
-    final paperSize = paperWidth == '80' ? PaperSize.mm80 : PaperSize.mm58;
-    final generator = Generator(paperSize, profile);
+    final cfg = (config ?? await ReceiptConfig.loadFromStore()).copyWith(
+      paperWidth: paperWidth == '80' ? '80' : '58',
+    );
 
-    final List<int> bytes = [];
-    bytes.addAll(generator.reset());
-    bytes.addAll(
-      generator.text(
-        _san('TEST PRINT'),
-        styles: const PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: PosTextSize.size2,
-          width: PosTextSize.size2,
-        ),
-      ),
+    final bytes = await renderBytes(
+      config: cfg,
+      data: ReceiptData.sample(),
+      storeName: storeName.trim().isEmpty ? 'NUSA Kasir' : storeName.trim(),
+      logoBytes: _logoBytes,
     );
-    bytes.addAll(
-      generator.text(
-        _san(storeName),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
-    bytes.addAll(generator.hr());
-    bytes.addAll(
-      generator.text(
-        _san('Printer thermal berfungsi dengan baik.'),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
-    bytes.addAll(
-      generator.text(
-        _san('Kertas: ${paperWidth}mm'),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
-    final now = DateTime.now();
-    bytes.addAll(
-      generator.text(
-        _san(
-          '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute}',
-        ),
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
-    bytes.addAll(generator.hr());
-    bytes.addAll(
-      generator.text(
-        _san('NUSA Kasir'),
-        styles: const PosStyles(align: PosAlign.center, bold: true),
-      ),
-    );
-    bytes.addAll(generator.feed(2));
-    bytes.addAll(generator.cut());
 
     return await BluetoothUtils.sendBytes(Uint8List.fromList(bytes));
   }

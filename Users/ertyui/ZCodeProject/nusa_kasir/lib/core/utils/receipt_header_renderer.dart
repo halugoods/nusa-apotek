@@ -21,7 +21,9 @@ int receiptPaperWidthPx(String paperWidth) =>
 /// fungsi ini hanya menggambar nama toko / header custom sebagai satu gambar.
 ///
 /// Ukuran huruf header = [headerPx] (12–48px, default 24). Ketebalan =
-/// [headerWeight]: 'thin' (w300) | 'medium' (w500) | 'bold' (w700).
+/// [headerWeight]: 'thin' (w300 + letterSpacing 2 — ringan) | 'medium'
+/// (w500) | 'bold' (w700 + letterSpacing 1.5 — tegas). Perbedaan visual
+/// NYATA antar ketebalan (spec M: bukan sekadar 400/500/700).
 ///
 /// Invoice/tanggal/kasir/pelanggan TIDAK dirender di sini — sejak v2.2.27
 /// info tersebut dicetak sebagai teks ESC/POS biasa (cepat, huruf normal),
@@ -32,6 +34,7 @@ Future<Uint8List> renderReceiptHeaderPng({
   String customHeader = '',
   int headerPx = receiptHeaderDefaultPx,
   String headerWeight = 'medium',
+  Color color = const Color(0xFF000000),
 }) async {
   final paperW = receiptPaperWidthPx(paperWidth).toDouble();
   final padH = paperW * 0.05;
@@ -45,7 +48,8 @@ Future<Uint8List> renderReceiptHeaderPng({
 
   TextPainter tp(String text, double size, {
     FontWeight? w,
-    Color color = const Color(0xFF000000),
+    double? ls,
+    Color c = const Color(0xFF000000),
     TextAlign align = TextAlign.center,
     double? maxW,
   }) {
@@ -56,8 +60,9 @@ Future<Uint8List> renderReceiptHeaderPng({
           fontFamily: 'monospace',
           fontSize: size,
           fontWeight: w,
-          color: color,
+          color: c,
           height: 1.35,
+          letterSpacing: ls,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -74,15 +79,17 @@ Future<Uint8List> renderReceiptHeaderPng({
 
   // ── Header (nama toko / header custom) — ukuran slider 12–48px ──
   // Ketebalan mengikuti setting thin/medium/bold (default medium).
+  // thin = w300 + letterSpacing 2 (huruf ringan renggang), bold = w700 +
+  // letterSpacing 1.5 (huruf tegas tebal) — perbedaan visual BERANI.
   final headerText = (customHeader.isNotEmpty ? customHeader : storeName).trim();
   if (headerText.isNotEmpty) {
     final hSize = headerPx.clamp(receiptHeaderMinPx, receiptHeaderMaxPx).toDouble();
-    final weight = switch (headerWeight) {
-      'thin' => FontWeight.w300,
-      'bold' => FontWeight.w700,
-      _ => FontWeight.w500,
+    final (weight, ls) = switch (headerWeight) {
+      'thin' => (FontWeight.w300, 2.0),
+      'bold' => (FontWeight.w700, 1.5),
+      _ => (FontWeight.w500, 0.5),
     };
-    final t = tp(headerText, hSize, w: weight, maxW: maxTextW);
+    final t = tp(headerText, hSize, w: weight, ls: ls, c: color, maxW: maxTextW);
     y += draw(t, (paperW - t.width) / 2, y);
   }
 

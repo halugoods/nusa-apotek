@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -12,10 +11,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/receipt/receipt_config.dart';
+import 'package:nusa_kasir/core/receipt/receipt_data.dart';
+import 'package:nusa_kasir/core/receipt/receipt_preview_widget.dart';
+import 'package:nusa_kasir/core/receipt/receipt_renderer.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
-import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart';
-import 'package:nusa_kasir/core/utils/receipt_printer.dart';
-import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
@@ -793,6 +793,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
+  /// Preview struk transaksi lama — dari SATU ReceiptPreview (renderer SAMA
+  /// dengan print/settings). Config TERBARU (spec AA: reprint pakai config
+  /// terbaru), data = transaksi lama. Fix v2.2.29: bug paperWidth '58'
+  /// hardcoded + header 230px hilang — sekarang ikut ReceiptConfig.
   Widget _buildReceiptPreview(
     Transaction tx,
     List<Map<String, dynamic>> rawItems,
@@ -800,226 +804,28 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     String? custName, {
     bool isDark = false,
     String storeName = 'NUSA Kasir',
-    int headerPx = 24,
-    String headerWeight = 'medium',
-    int fontItems = 1,
-    int fontFooter = 1,
+    ReceiptConfig? config,
   }) {
-    final textColor = isDark
-        ? NusaConfig.darkTextPrimary
-        : NusaConfig.textPrimary;
-    final subtleColor = isDark
-        ? NusaConfig.darkTextSecondary
-        : NusaConfig.textSecondary;
-    // "Anda Hemat" = diskon item (per item) + diskon transaksi (v2.2.27).
-    final _txItemDisc = rawItems.fold<int>(
-      0,
-      (acc, it) {
-        final qty = (it['qty'] as num?)?.toInt() ?? 0;
-        final price = (it['price'] as num?)?.toInt() ?? 0;
-        final orig = (it['originalPrice'] as num?)?.toInt();
-        if (orig == null || orig <= price) return acc;
-        return acc + (orig - price) * qty;
-      },
+    final data = ReceiptData.fromMaps(
+      rawItems: rawItems,
+      total: tx.total,
+      discount: tx.discount,
+      paymentMethod: tx.paymentMethod,
+      cashGiven: tx.cashGiven,
+      cashReturn: tx.cashReturn,
+      cashierName: tx.cashierName,
+      customerName: custName,
+      invoiceNumber: tx.invoice,
+      dateStr: dateStr,
+      orderType: tx.orderType,
     );
-    final _txHemat = _txItemDisc + tx.discount;
-    // Ukuran font per section (v2.2.27): rincian & footer SELALU ×1 (kecil);
-    // header dirender sebagai GAMBAR (renderer SAMA dengan print).
-    final itemFontSize = receiptPreviewSize(1);
-    final mono = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: itemFontSize,
-      height: 1.4,
-      color: textColor,
-    );
-    final monoBig = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(1) * 1.05,
-      height: 1.4,
-      fontWeight: FontWeight.bold,
-      color: textColor,
-    );
-    final monoGrey = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: itemFontSize,
-      height: 1.4,
-      color: subtleColor,
-    );
-    final monoFooter = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: receiptPreviewSize(1),
-      height: 1.4,
-      fontWeight: FontWeight.bold,
-      color: textColor,
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // ── Store header — GAMBAR (renderer sama dengan print) ──
-        // HANYA nama toko/header custom; invoice/tgl/kasir = teks di bawah.
-        FutureBuilder<Uint8List>(
-          future: renderReceiptHeaderPng(
-            paperWidth: '58',
-            storeName: storeName,
-            headerPx: headerPx,
-            headerWeight: headerWeight,
-          ),
-          builder: (context, snap) {
-            if (!snap.hasData) return const SizedBox(height: 8);
-            return Center(
-              child: Image.memory(
-                snap.data!,
-                filterQuality: FilterQuality.none,
-                width: 230,
-                fit: BoxFit.fitWidth,
-              ),
-            );
-          },
-        ),
-        SizedBox(height: 6),
-        _buildRDash(isDark: isDark),
-        SizedBox(height: 6),
-        _buildRRow('ID  : ', tx.invoice, mono, mono),
-        _buildRRow('Tgl : ', dateStr, mono, mono),
-        if (custName != null) _buildRRow('Pel  : ', custName, mono, mono),
-        if (tx.cashierName != null && tx.cashierName!.isNotEmpty)
-          _buildRRow('Kasir:', tx.cashierName!, mono, mono),
-        SizedBox(height: 6),
-        _buildRDash(isDark: isDark),
-        SizedBox(height: 6),
-        ...rawItems.map((it) {
-          final name = '${it['name']}';
-          final qty = (it['qty'] as num).toInt();
-          final price = (it['price'] as num).toInt();
-          final orig = (it['originalPrice'] as num?)?.toInt();
-          final hasDisc = orig != null && orig > price;
-          // Harga per unit = harga ASLI (sebelum diskon); subtotal NETTO
-          // (qty × harga final — sudah dipotong diskon), konsisten print.
-          final unitPrice = orig ?? price;
-          final discTotal = hasDisc ? (orig - price) * qty : 0;
-          final qtyPriceTxt = '$qty x ${formatRupiah(unitPrice)}';
-          final discSuffix = hasDisc ? '( -${formatRupiah(discTotal)} )' : '';
-          return Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: mono),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(qtyPriceTxt, style: monoGrey),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (hasDisc)
-                          Text(discSuffix, style: monoGrey),
-                        Text(formatRupiah(qty * price), style: mono),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }),
-        SizedBox(height: 6),
-        _buildRDash(isDark: isDark),
-        SizedBox(height: 6),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('TOTAL', style: monoBig),
-              Text(formatRupiah(tx.total), style: monoBig),
-            ],
-          ),
-        ),
-        // Total diskon — tepat DI BAWAH TOTAL (komplain user).
-        // Diskon item sudah tampil per item di atas; baris ini hanya diskon
-        // TRANSAKSI (promo/manual/tier/poin) supaya tidak dobel hitung.
-        if (tx.discount > 0)
-          Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Diskon', style: monoGrey),
-                Text('-${formatRupiah(tx.discount)}', style: monoGrey),
-              ],
-            ),
-          ),
-        // "Anda Hemat" — diskon item (per item) + diskon transaksi,
-        // persis print asli (v2.2.27).
-        if (_txHemat > 0)
-          Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Anda Hemat', style: monoGrey),
-                Text('-${formatRupiah(_txHemat)}', style: monoGrey),
-              ],
-            ),
-          ),
-        Padding(
-          padding: EdgeInsets.only(bottom: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Bayar (${tx.paymentMethod})', style: monoGrey),
-              Text(formatRupiah(tx.cashGiven ?? tx.total), style: monoGrey),
-            ],
-          ),
-        ),
-        if (tx.cashReturn != null && tx.cashReturn! > 0)
-          Padding(
-            padding: EdgeInsets.only(bottom: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Kembali', style: monoGrey),
-                Text(formatRupiah(tx.cashReturn!), style: monoGrey),
-              ],
-            ),
-          ),
-        SizedBox(height: 6),
-        _buildRDash(),
-        SizedBox(height: 8),
-        Center(child: Text('Terima Kasih!', style: monoFooter)),
-      ],
+    return ReceiptPreview(
+      config: config ?? ReceiptConfig.sample(),
+      data: data,
+      storeName: storeName.isNotEmpty ? storeName : 'NUSA Kasir',
+      dark: isDark,
     );
   }
-
-  Widget _buildRDash({bool isDark = false}) => SizedBox(
-    height: 2,
-    child: CustomPaint(
-      painter: _DashPainter2(
-        color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
-      ),
-    ),
-  );
-
-  Widget _buildRRow(
-    String label,
-    String value,
-    TextStyle mono,
-    TextStyle monoGrey,
-  ) => Padding(
-    padding: EdgeInsets.only(bottom: 2),
-    child: Row(
-      children: [
-        Text(label, style: monoGrey),
-        Spacer(),
-        Flexible(
-          child: Text(value, style: mono, textAlign: TextAlign.right),
-        ),
-      ],
-    ),
-  );
 
   Future<void> _showShareSheet(
     Transaction tx,
@@ -1031,15 +837,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         '${tx.date.day.toString().padLeft(2, '0')}/${tx.date.month.toString().padLeft(2, '0')}/${tx.date.year} '
         '${tx.date.hour.toString().padLeft(2, '0')}:${tx.date.minute.toString().padLeft(2, '0')}';
 
-    // Same font settings as printing — preview must match the physical receipt.
+    // Config TERBARU (spec AA) — preview/share/unduh pakai renderer sama.
     final db = ref.read(databaseProvider);
     final storeName = (await SettingsRepository(db).getStoreName()).trim();
-    final headerPx = await SecureStore.getReceiptHeaderPx();
-    final headerWeight = await SecureStore.getReceiptHeaderWeight();
-    final fontItems = await SecureStore.getReceiptFontItems();
-    final fontFooter = await SecureStore.getReceiptFontFooter();
-    // Ukuran kertas — preview mengikuti 58/80mm (komplain user).
-    final paperWidth = await SecureStore.getPaperSize();
+    final config = await ReceiptConfig.load(db);
+    final data = ReceiptData.fromMaps(
+      rawItems: rawItems,
+      total: tx.total,
+      discount: tx.discount,
+      paymentMethod: tx.paymentMethod,
+      cashGiven: tx.cashGiven,
+      cashReturn: tx.cashReturn,
+      cashierName: tx.cashierName,
+      customerName: custName,
+      invoiceNumber: tx.invoice,
+      dateStr: dateStr,
+      orderType: tx.orderType,
+    );
 
     final receiptKey = GlobalKey();
     bool capturing = false;
@@ -1088,8 +902,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 RepaintBoundary(
                   key: receiptKey,
                   child: Container(
-                    // Preview 2 arah: lebar ikut ukuran kertas (58/80mm).
-                    width: paperWidth == '80' ? 330 : 250,
+                    // Lebar ikut ukuran kertas (58/80mm) dari ReceiptConfig
+                    // — ditangani ReceiptPreview (renderer yang sama).
                     padding: EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: shareDark ? NusaConfig.darkSurface2 : Colors.white,
@@ -1109,10 +923,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       storeName: storeName.isNotEmpty
                           ? storeName
                           : 'NUSA Kasir',
-                      headerPx: headerPx,
-                      headerWeight: headerWeight,
-                      fontItems: fontItems,
-                      fontFooter: fontFooter,
+                      config: config,
                     ),
                   ),
                 ),
@@ -1135,22 +946,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             setSt(() => capturing = false);
                             if (file != null && mounted) {
                               Navigator.pop(ctx);
-                              // Kirim via WA — share file image
+                              // Kirim via WA — text dari SATU renderer
+                              // (renderText) supaya isi = preview = print.
                               if (custPhone != null && custPhone.isNotEmpty) {
-                                // Direct WA with text (image not supported via wa.me)
-                                final wabuf = StringBuffer();
-                                wabuf.writeln('*STRUK ${tx.invoice}*');
-                                wabuf.writeln(
-                                  '--------------------------------',
+                                final text = renderText(
+                                  config: config,
+                                  data: data,
+                                  storeName: storeName,
                                 );
-                                wabuf.writeln(
-                                  'Total: ${formatRupiah(tx.total)}',
-                                );
-                                wabuf.writeln('Bayar: ${tx.paymentMethod}');
-                                wabuf.writeln(
-                                  '--------------------------------',
-                                );
-                                wabuf.writeln('Terima kasih!');
                                 final digits = custPhone.replaceAll(
                                   RegExp(r'\D'),
                                   '',
@@ -1161,7 +964,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                     ? digits
                                     : '62$digits';
                                 final waUrl =
-                                    'https://wa.me/$normalized?text=${Uri.encodeComponent(wabuf.toString())}';
+                                    'https://wa.me/$normalized?text=${Uri.encodeComponent(text)}';
                                 launchUrl(Uri.parse(waUrl));
                               } else {
                                 SharePlus.instance.share(
@@ -1213,14 +1016,30 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
+                            // Unduh struk — PDF ASLI dari SATU renderer
+                            // (renderPdf), bukan gambar/teks.
                             setSt(() => capturing = true);
-                            final file = await _captureReceipt(receiptKey, tx);
-                            setSt(() => capturing = false);
-                            if (file != null && mounted) {
+                            try {
+                              final pdfFile = await renderPdf(
+                                config: config,
+                                data: data,
+                                storeName: storeName,
+                                invoice: tx.invoice,
+                              );
+                              setSt(() => capturing = false);
+                              if (!mounted) return;
                               Navigator.pop(ctx);
                               SharePlus.instance.share(
-                                ShareParams(files: [XFile(file.path)]),
+                                ShareParams(
+                                  files: [XFile(pdfFile.path)],
+                                  subject: 'Struk $storeName',
+                                ),
                               );
+                            } catch (_) {
+                              setSt(() => capturing = false);
+                              if (mounted) {
+                                TopToast.error(ctx, 'Gagal membuat PDF struk');
+                              }
                             }
                           },
                           child: Container(
@@ -1248,7 +1067,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Gambar',
+                                  'PDF',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: shareDark
@@ -2029,31 +1848,4 @@ List<Map<String, dynamic>> _parseItems(String json) {
     // ignore malformed items
   }
   return [];
-}
-
-class _DashPainter2 extends CustomPainter {
-  final Color color;
-  _DashPainter2({this.color = const Color(0xFFD1D5DB)});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-    final dashW = 3.0;
-    final gapW = 2.0;
-    double x = 0;
-    while (x < size.width) {
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset((x + dashW).clamp(0, size.width), 0),
-        paint,
-      );
-      x += dashW + gapW;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

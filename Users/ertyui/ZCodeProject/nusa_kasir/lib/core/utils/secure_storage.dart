@@ -236,25 +236,6 @@ class SecureStore {
   static Future<String> getReceiptHeaderWeight() async =>
       (await SecureStore.read(key: 'nusa_receipt_header_weight')) ?? 'medium';
 
-  // Ukuran RINCIAN & FOOTER (ESC/POS perbesaran 1x/2x — gaya v2.2.11):
-  // 1 = Kecil (×1), 2 = Besar (×2). Header memakai nusa_receipt_header_px.
-  // NOTE v2.2.27: rincian & footer SELALU ×1 — key dibaca untuk kompatibilitas
-  // backward (nilai lama tetap tersimpan), tapi printer tidak lagi memakainya.
-  static Future<void> setReceiptFontItems(int v) =>
-      SecureStore.write(key: 'nusa_receipt_font_items', value: v.toString());
-  static Future<int> getReceiptFontItems() async =>
-      int.tryParse(
-        await SecureStore.read(key: 'nusa_receipt_font_items') ?? '',
-      ) ??
-      1;
-  static Future<void> setReceiptFontFooter(int v) =>
-      SecureStore.write(key: 'nusa_receipt_font_footer', value: v.toString());
-  static Future<int> getReceiptFontFooter() async =>
-      int.tryParse(
-        await SecureStore.read(key: 'nusa_receipt_font_footer') ?? '',
-      ) ??
-      1;
-
   // -- Printer logo path --
   static Future<void> setPrinterLogoPath(String? v) async {
     if (v == null) {
@@ -268,8 +249,7 @@ class SecureStore {
       SecureStore.read(key: 'nusa_printer_logo_path');
 
   // -- Lebar logo struk saat PRINT (bit-image) —
-  // PERSEN dari lebar kertas (1-100). Default 60 — ukuran statis yang sama
-  // seperti yang pernah diatur user; tidak diubah dari Pengaturan Struk.
+  // PERSEN dari lebar kertas (1-100). Default 60.
   static Future<void> setReceiptLogoWidthPercent(int v) =>
       SecureStore.write(key: 'nusa_receipt_logo_width', value: v.toString());
   static Future<int> getReceiptLogoWidthPercent() async =>
@@ -277,6 +257,30 @@ class SecureStore {
         await SecureStore.read(key: 'nusa_receipt_logo_width') ?? '',
       ) ??
       60;
+
+  // -- Posisi logo struk: 'left' | 'center' | 'right' (default center) --
+  static Future<void> setReceiptLogoAlign(String v) =>
+      SecureStore.write(key: 'nusa_receipt_logo_align', value: v);
+  static Future<String> getReceiptLogoAlign() async =>
+      (await SecureStore.read(key: 'nusa_receipt_logo_align')) ?? 'center';
+
+  // -- Toggle info di struk (mirror DB settings — dipakai jalur print tanpa DB) --
+  static Future<void> setReceiptShowLogo(bool v) =>
+      SecureStore.write(key: 'nusa_receipt_show_logo', value: v.toString());
+  static Future<bool> getReceiptShowLogo() async =>
+      (await SecureStore.read(key: 'nusa_receipt_show_logo')) != 'false';
+  static Future<void> setReceiptShowCashier(bool v) =>
+      SecureStore.write(key: 'nusa_receipt_show_cashier', value: v.toString());
+  static Future<bool> getReceiptShowCashier() async =>
+      (await SecureStore.read(key: 'nusa_receipt_show_cashier')) != 'false';
+  static Future<void> setReceiptShowInvoice(bool v) =>
+      SecureStore.write(key: 'nusa_receipt_show_invoice', value: v.toString());
+  static Future<bool> getReceiptShowInvoice() async =>
+      (await SecureStore.read(key: 'nusa_receipt_show_invoice')) != 'false';
+  static Future<void> setReceiptShowDate(bool v) =>
+      SecureStore.write(key: 'nusa_receipt_show_date', value: v.toString());
+  static Future<bool> getReceiptShowDate() async =>
+      (await SecureStore.read(key: 'nusa_receipt_show_date')) != 'false';
 
   // -- Kitchen printer (FnB) --
   static const _kitchenPrinterKey = 'nusa_kitchen_printer_address';
