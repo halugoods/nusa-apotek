@@ -61,12 +61,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // perbaikan supaya user tidak stuck di pinpad selamanya.
       debugPrint('[Login] getEmployees error: $e');
       if (mounted) {
-        setState(() => _error = 'Data karyawan gagal dibaca. Coba buka ulang app, atau hapus data app lalu aktivasi ulang.');
+        setState(() => _error = 'Data karyawan gagal dibaca.');
+        _showDbRecoveryDialog();
       }
       _keypadKey.currentState?.clear();
       return;
-    }
-    if (emps.isEmpty) {
+    }    if (emps.isEmpty) {
       // Tidak ada satupun karyawan/owner → user belum pernah setup.
       // Arahkan ke setup supaya bisa buat Owner + PIN baru (bukan stuck di pinpad).
       debugPrint('[Login] No employees found — redirecting to setup');
@@ -91,11 +91,56 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _fingerprintLogin() async {
     final db = ref.read(databaseProvider);
     final repo = AttendanceRepository(db);
-    final emps = await repo.getEmployees();
+    final List<Employee> emps;
+    try {
+      emps = await repo.getEmployees();
+    } catch (e) {
+      debugPrint('[Login] fingerprint getEmployees error: $e');
+      if (mounted) _showDbRecoveryDialog();
+      return;
+    }
+    if (emps.isEmpty) {
+      if (mounted) context.go('/setup');
+      return;
+    }
     final owner = emps.cast<Employee?>().firstWhere(
           (e) => e!.role == 'Owner', orElse: () => null);
     if (owner == null || !mounted) return;
     await _doLogin(owner, remember: _remember);
+  }
+
+  /// DB karyawan gagal dibaca — beri user pilihan, jangan stuck diam-diam.
+  Future<void> _showDbRecoveryDialog() async {
+    if (!mounted) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Data karyawan tidak bisa dibaca'),
+        content: const Text(
+          'Database aplikasi sepertinya bermasalah (mungkin tertimpa data dari varian lain atau rusak).\n\n'
+          'Pilih "Setup Ulang" untuk membuat Owner & PIN baru (data lama bisa dipulihkan dari backup cloud lewat Pengaturan).',
+          style: TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'retry'),
+            child: const Text('Coba Lagi'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'setup'),
+            child: const Text('Setup Ulang'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'setup') {
+      context.go('/setup');
+    } else if (choice == 'retry') {
+      setState(() => _error = null);
+      _keypadKey.currentState?.clear();
+    }
   }
 
   void _clearError() {
