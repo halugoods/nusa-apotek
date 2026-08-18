@@ -18252,6 +18252,39 @@ class $PrintOrdersTable extends PrintOrders
     requiredDuringInsert: false,
     defaultValue: const Constant('A4'),
   );
+  static const VerificationMeta _widthCmMeta = const VerificationMeta(
+    'widthCm',
+  );
+  @override
+  late final GeneratedColumn<int> widthCm = GeneratedColumn<int>(
+    'width_cm',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lengthCmMeta = const VerificationMeta(
+    'lengthCm',
+  );
+  @override
+  late final GeneratedColumn<int> lengthCm = GeneratedColumn<int>(
+    'length_cm',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _estimateReadyMeta = const VerificationMeta(
+    'estimateReady',
+  );
+  @override
+  late final GeneratedColumn<String> estimateReady = GeneratedColumn<String>(
+    'estimate_ready',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _totalMeta = const VerificationMeta('total');
   @override
   late final GeneratedColumn<int> total = GeneratedColumn<int>(
@@ -18302,6 +18335,9 @@ class $PrintOrdersTable extends PrintOrders
     pages,
     copies,
     paperSize,
+    widthCm,
+    lengthCm,
+    estimateReady,
     total,
     status,
     notes,
@@ -18371,6 +18407,27 @@ class $PrintOrdersTable extends PrintOrders
         paperSize.isAcceptableOrUnknown(data['paper_size']!, _paperSizeMeta),
       );
     }
+    if (data.containsKey('width_cm')) {
+      context.handle(
+        _widthCmMeta,
+        widthCm.isAcceptableOrUnknown(data['width_cm']!, _widthCmMeta),
+      );
+    }
+    if (data.containsKey('length_cm')) {
+      context.handle(
+        _lengthCmMeta,
+        lengthCm.isAcceptableOrUnknown(data['length_cm']!, _lengthCmMeta),
+      );
+    }
+    if (data.containsKey('estimate_ready')) {
+      context.handle(
+        _estimateReadyMeta,
+        estimateReady.isAcceptableOrUnknown(
+          data['estimate_ready']!,
+          _estimateReadyMeta,
+        ),
+      );
+    }
     if (data.containsKey('total')) {
       context.handle(
         _totalMeta,
@@ -18432,6 +18489,18 @@ class $PrintOrdersTable extends PrintOrders
         DriftSqlType.string,
         data['${effectivePrefix}paper_size'],
       )!,
+      widthCm: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}width_cm'],
+      ),
+      lengthCm: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}length_cm'],
+      ),
+      estimateReady: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}estimate_ready'],
+      ),
       total: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}total'],
@@ -18465,6 +18534,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
   final int pages;
   final int copies;
   final String paperSize;
+  final int? widthCm;
+  final int? lengthCm;
+  final String? estimateReady;
   final int total;
   final String status;
   final String? notes;
@@ -18477,6 +18549,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     required this.pages,
     required this.copies,
     required this.paperSize,
+    this.widthCm,
+    this.lengthCm,
+    this.estimateReady,
     required this.total,
     required this.status,
     this.notes,
@@ -18494,6 +18569,15 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     map['pages'] = Variable<int>(pages);
     map['copies'] = Variable<int>(copies);
     map['paper_size'] = Variable<String>(paperSize);
+    if (!nullToAbsent || widthCm != null) {
+      map['width_cm'] = Variable<int>(widthCm);
+    }
+    if (!nullToAbsent || lengthCm != null) {
+      map['length_cm'] = Variable<int>(lengthCm);
+    }
+    if (!nullToAbsent || estimateReady != null) {
+      map['estimate_ready'] = Variable<String>(estimateReady);
+    }
     map['total'] = Variable<int>(total);
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || notes != null) {
@@ -18514,6 +18598,15 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       pages: Value(pages),
       copies: Value(copies),
       paperSize: Value(paperSize),
+      widthCm: widthCm == null && nullToAbsent
+          ? const Value.absent()
+          : Value(widthCm),
+      lengthCm: lengthCm == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lengthCm),
+      estimateReady: estimateReady == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimateReady),
       total: Value(total),
       status: Value(status),
       notes: notes == null && nullToAbsent
@@ -18536,6 +18629,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       pages: serializer.fromJson<int>(json['pages']),
       copies: serializer.fromJson<int>(json['copies']),
       paperSize: serializer.fromJson<String>(json['paperSize']),
+      widthCm: serializer.fromJson<int?>(json['widthCm']),
+      lengthCm: serializer.fromJson<int?>(json['lengthCm']),
+      estimateReady: serializer.fromJson<String?>(json['estimateReady']),
       total: serializer.fromJson<int>(json['total']),
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
@@ -18553,6 +18649,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       'pages': serializer.toJson<int>(pages),
       'copies': serializer.toJson<int>(copies),
       'paperSize': serializer.toJson<String>(paperSize),
+      'widthCm': serializer.toJson<int?>(widthCm),
+      'lengthCm': serializer.toJson<int?>(lengthCm),
+      'estimateReady': serializer.toJson<String?>(estimateReady),
       'total': serializer.toJson<int>(total),
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
@@ -18568,6 +18667,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     int? pages,
     int? copies,
     String? paperSize,
+    Value<int?> widthCm = const Value.absent(),
+    Value<int?> lengthCm = const Value.absent(),
+    Value<String?> estimateReady = const Value.absent(),
     int? total,
     String? status,
     Value<String?> notes = const Value.absent(),
@@ -18582,6 +18684,11 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     pages: pages ?? this.pages,
     copies: copies ?? this.copies,
     paperSize: paperSize ?? this.paperSize,
+    widthCm: widthCm.present ? widthCm.value : this.widthCm,
+    lengthCm: lengthCm.present ? lengthCm.value : this.lengthCm,
+    estimateReady: estimateReady.present
+        ? estimateReady.value
+        : this.estimateReady,
     total: total ?? this.total,
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
@@ -18602,6 +18709,11 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       pages: data.pages.present ? data.pages.value : this.pages,
       copies: data.copies.present ? data.copies.value : this.copies,
       paperSize: data.paperSize.present ? data.paperSize.value : this.paperSize,
+      widthCm: data.widthCm.present ? data.widthCm.value : this.widthCm,
+      lengthCm: data.lengthCm.present ? data.lengthCm.value : this.lengthCm,
+      estimateReady: data.estimateReady.present
+          ? data.estimateReady.value
+          : this.estimateReady,
       total: data.total.present ? data.total.value : this.total,
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
@@ -18619,6 +18731,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
           ..write('pages: $pages, ')
           ..write('copies: $copies, ')
           ..write('paperSize: $paperSize, ')
+          ..write('widthCm: $widthCm, ')
+          ..write('lengthCm: $lengthCm, ')
+          ..write('estimateReady: $estimateReady, ')
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
@@ -18636,6 +18751,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     pages,
     copies,
     paperSize,
+    widthCm,
+    lengthCm,
+    estimateReady,
     total,
     status,
     notes,
@@ -18652,6 +18770,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
           other.pages == this.pages &&
           other.copies == this.copies &&
           other.paperSize == this.paperSize &&
+          other.widthCm == this.widthCm &&
+          other.lengthCm == this.lengthCm &&
+          other.estimateReady == this.estimateReady &&
           other.total == this.total &&
           other.status == this.status &&
           other.notes == this.notes &&
@@ -18666,6 +18787,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
   final Value<int> pages;
   final Value<int> copies;
   final Value<String> paperSize;
+  final Value<int?> widthCm;
+  final Value<int?> lengthCm;
+  final Value<String?> estimateReady;
   final Value<int> total;
   final Value<String> status;
   final Value<String?> notes;
@@ -18678,6 +18802,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     this.pages = const Value.absent(),
     this.copies = const Value.absent(),
     this.paperSize = const Value.absent(),
+    this.widthCm = const Value.absent(),
+    this.lengthCm = const Value.absent(),
+    this.estimateReady = const Value.absent(),
     this.total = const Value.absent(),
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
@@ -18691,6 +18818,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     this.pages = const Value.absent(),
     this.copies = const Value.absent(),
     this.paperSize = const Value.absent(),
+    this.widthCm = const Value.absent(),
+    this.lengthCm = const Value.absent(),
+    this.estimateReady = const Value.absent(),
     this.total = const Value.absent(),
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
@@ -18705,6 +18835,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     Expression<int>? pages,
     Expression<int>? copies,
     Expression<String>? paperSize,
+    Expression<int>? widthCm,
+    Expression<int>? lengthCm,
+    Expression<String>? estimateReady,
     Expression<int>? total,
     Expression<String>? status,
     Expression<String>? notes,
@@ -18718,6 +18851,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
       if (pages != null) 'pages': pages,
       if (copies != null) 'copies': copies,
       if (paperSize != null) 'paper_size': paperSize,
+      if (widthCm != null) 'width_cm': widthCm,
+      if (lengthCm != null) 'length_cm': lengthCm,
+      if (estimateReady != null) 'estimate_ready': estimateReady,
       if (total != null) 'total': total,
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
@@ -18733,6 +18869,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     Value<int>? pages,
     Value<int>? copies,
     Value<String>? paperSize,
+    Value<int?>? widthCm,
+    Value<int?>? lengthCm,
+    Value<String?>? estimateReady,
     Value<int>? total,
     Value<String>? status,
     Value<String?>? notes,
@@ -18746,6 +18885,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
       pages: pages ?? this.pages,
       copies: copies ?? this.copies,
       paperSize: paperSize ?? this.paperSize,
+      widthCm: widthCm ?? this.widthCm,
+      lengthCm: lengthCm ?? this.lengthCm,
+      estimateReady: estimateReady ?? this.estimateReady,
       total: total ?? this.total,
       status: status ?? this.status,
       notes: notes ?? this.notes,
@@ -18777,6 +18919,15 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     if (paperSize.present) {
       map['paper_size'] = Variable<String>(paperSize.value);
     }
+    if (widthCm.present) {
+      map['width_cm'] = Variable<int>(widthCm.value);
+    }
+    if (lengthCm.present) {
+      map['length_cm'] = Variable<int>(lengthCm.value);
+    }
+    if (estimateReady.present) {
+      map['estimate_ready'] = Variable<String>(estimateReady.value);
+    }
     if (total.present) {
       map['total'] = Variable<int>(total.value);
     }
@@ -18802,10 +18953,265 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
           ..write('pages: $pages, ')
           ..write('copies: $copies, ')
           ..write('paperSize: $paperSize, ')
+          ..write('widthCm: $widthCm, ')
+          ..write('lengthCm: $lengthCm, ')
+          ..write('estimateReady: $estimateReady, ')
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PrintServiceTypesTable extends PrintServiceTypes
+    with TableInfo<$PrintServiceTypesTable, PrintServiceType> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PrintServiceTypesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _isDefaultMeta = const VerificationMeta(
+    'isDefault',
+  );
+  @override
+  late final GeneratedColumn<bool> isDefault = GeneratedColumn<bool>(
+    'is_default',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_default" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, isDefault];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'print_service_types';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PrintServiceType> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('is_default')) {
+      context.handle(
+        _isDefaultMeta,
+        isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PrintServiceType map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PrintServiceType(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      isDefault: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_default'],
+      )!,
+    );
+  }
+
+  @override
+  $PrintServiceTypesTable createAlias(String alias) {
+    return $PrintServiceTypesTable(attachedDatabase, alias);
+  }
+}
+
+class PrintServiceType extends DataClass
+    implements Insertable<PrintServiceType> {
+  final int id;
+  final String name;
+  final bool isDefault;
+  const PrintServiceType({
+    required this.id,
+    required this.name,
+    required this.isDefault,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['is_default'] = Variable<bool>(isDefault);
+    return map;
+  }
+
+  PrintServiceTypesCompanion toCompanion(bool nullToAbsent) {
+    return PrintServiceTypesCompanion(
+      id: Value(id),
+      name: Value(name),
+      isDefault: Value(isDefault),
+    );
+  }
+
+  factory PrintServiceType.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PrintServiceType(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      isDefault: serializer.fromJson<bool>(json['isDefault']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'isDefault': serializer.toJson<bool>(isDefault),
+    };
+  }
+
+  PrintServiceType copyWith({int? id, String? name, bool? isDefault}) =>
+      PrintServiceType(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        isDefault: isDefault ?? this.isDefault,
+      );
+  PrintServiceType copyWithCompanion(PrintServiceTypesCompanion data) {
+    return PrintServiceType(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PrintServiceType(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('isDefault: $isDefault')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, isDefault);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PrintServiceType &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.isDefault == this.isDefault);
+}
+
+class PrintServiceTypesCompanion extends UpdateCompanion<PrintServiceType> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<bool> isDefault;
+  const PrintServiceTypesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.isDefault = const Value.absent(),
+  });
+  PrintServiceTypesCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.isDefault = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<PrintServiceType> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<bool>? isDefault,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (isDefault != null) 'is_default': isDefault,
+    });
+  }
+
+  PrintServiceTypesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<bool>? isDefault,
+  }) {
+    return PrintServiceTypesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isDefault.present) {
+      map['is_default'] = Variable<bool>(isDefault.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PrintServiceTypesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('isDefault: $isDefault')
           ..write(')'))
         .toString();
   }
@@ -22264,6 +22670,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AppointmentsTable appointments = $AppointmentsTable(this);
   late final $PrescriptionsTable prescriptions = $PrescriptionsTable(this);
   late final $PrintOrdersTable printOrders = $PrintOrdersTable(this);
+  late final $PrintServiceTypesTable printServiceTypes =
+      $PrintServiceTypesTable(this);
   late final $OpenTabsTable openTabs = $OpenTabsTable(this);
   late final $RolesTable roles = $RolesTable(this);
   late final $RefundsTable refunds = $RefundsTable(this);
@@ -22309,6 +22717,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appointments,
     prescriptions,
     printOrders,
+    printServiceTypes,
     openTabs,
     roles,
     refunds,
@@ -31264,6 +31673,9 @@ typedef $$PrintOrdersTableCreateCompanionBuilder =
       Value<int> pages,
       Value<int> copies,
       Value<String> paperSize,
+      Value<int?> widthCm,
+      Value<int?> lengthCm,
+      Value<String?> estimateReady,
       Value<int> total,
       Value<String> status,
       Value<String?> notes,
@@ -31278,6 +31690,9 @@ typedef $$PrintOrdersTableUpdateCompanionBuilder =
       Value<int> pages,
       Value<int> copies,
       Value<String> paperSize,
+      Value<int?> widthCm,
+      Value<int?> lengthCm,
+      Value<String?> estimateReady,
       Value<int> total,
       Value<String> status,
       Value<String?> notes,
@@ -31325,6 +31740,21 @@ class $$PrintOrdersTableFilterComposer
 
   ColumnFilters<String> get paperSize => $composableBuilder(
     column: $table.paperSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get widthCm => $composableBuilder(
+    column: $table.widthCm,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lengthCm => $composableBuilder(
+    column: $table.lengthCm,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get estimateReady => $composableBuilder(
+    column: $table.estimateReady,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -31393,6 +31823,21 @@ class $$PrintOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get widthCm => $composableBuilder(
+    column: $table.widthCm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lengthCm => $composableBuilder(
+    column: $table.lengthCm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get estimateReady => $composableBuilder(
+    column: $table.estimateReady,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get total => $composableBuilder(
     column: $table.total,
     builder: (column) => ColumnOrderings(column),
@@ -31450,6 +31895,17 @@ class $$PrintOrdersTableAnnotationComposer
   GeneratedColumn<String> get paperSize =>
       $composableBuilder(column: $table.paperSize, builder: (column) => column);
 
+  GeneratedColumn<int> get widthCm =>
+      $composableBuilder(column: $table.widthCm, builder: (column) => column);
+
+  GeneratedColumn<int> get lengthCm =>
+      $composableBuilder(column: $table.lengthCm, builder: (column) => column);
+
+  GeneratedColumn<String> get estimateReady => $composableBuilder(
+    column: $table.estimateReady,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get total =>
       $composableBuilder(column: $table.total, builder: (column) => column);
 
@@ -31501,6 +31957,9 @@ class $$PrintOrdersTableTableManager
                 Value<int> pages = const Value.absent(),
                 Value<int> copies = const Value.absent(),
                 Value<String> paperSize = const Value.absent(),
+                Value<int?> widthCm = const Value.absent(),
+                Value<int?> lengthCm = const Value.absent(),
+                Value<String?> estimateReady = const Value.absent(),
                 Value<int> total = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -31513,6 +31972,9 @@ class $$PrintOrdersTableTableManager
                 pages: pages,
                 copies: copies,
                 paperSize: paperSize,
+                widthCm: widthCm,
+                lengthCm: lengthCm,
+                estimateReady: estimateReady,
                 total: total,
                 status: status,
                 notes: notes,
@@ -31527,6 +31989,9 @@ class $$PrintOrdersTableTableManager
                 Value<int> pages = const Value.absent(),
                 Value<int> copies = const Value.absent(),
                 Value<String> paperSize = const Value.absent(),
+                Value<int?> widthCm = const Value.absent(),
+                Value<int?> lengthCm = const Value.absent(),
+                Value<String?> estimateReady = const Value.absent(),
                 Value<int> total = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -31539,6 +32004,9 @@ class $$PrintOrdersTableTableManager
                 pages: pages,
                 copies: copies,
                 paperSize: paperSize,
+                widthCm: widthCm,
+                lengthCm: lengthCm,
+                estimateReady: estimateReady,
                 total: total,
                 status: status,
                 notes: notes,
@@ -31567,6 +32035,175 @@ typedef $$PrintOrdersTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $PrintOrdersTable, PrintOrder>,
       ),
       PrintOrder,
+      PrefetchHooks Function()
+    >;
+typedef $$PrintServiceTypesTableCreateCompanionBuilder =
+    PrintServiceTypesCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<bool> isDefault,
+    });
+typedef $$PrintServiceTypesTableUpdateCompanionBuilder =
+    PrintServiceTypesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<bool> isDefault,
+    });
+
+class $$PrintServiceTypesTableFilterComposer
+    extends Composer<_$AppDatabase, $PrintServiceTypesTable> {
+  $$PrintServiceTypesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PrintServiceTypesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PrintServiceTypesTable> {
+  $$PrintServiceTypesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PrintServiceTypesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PrintServiceTypesTable> {
+  $$PrintServiceTypesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDefault =>
+      $composableBuilder(column: $table.isDefault, builder: (column) => column);
+}
+
+class $$PrintServiceTypesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PrintServiceTypesTable,
+          PrintServiceType,
+          $$PrintServiceTypesTableFilterComposer,
+          $$PrintServiceTypesTableOrderingComposer,
+          $$PrintServiceTypesTableAnnotationComposer,
+          $$PrintServiceTypesTableCreateCompanionBuilder,
+          $$PrintServiceTypesTableUpdateCompanionBuilder,
+          (
+            PrintServiceType,
+            BaseReferences<
+              _$AppDatabase,
+              $PrintServiceTypesTable,
+              PrintServiceType
+            >,
+          ),
+          PrintServiceType,
+          PrefetchHooks Function()
+        > {
+  $$PrintServiceTypesTableTableManager(
+    _$AppDatabase db,
+    $PrintServiceTypesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PrintServiceTypesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PrintServiceTypesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PrintServiceTypesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
+              }) => PrintServiceTypesCompanion(
+                id: id,
+                name: name,
+                isDefault: isDefault,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<bool> isDefault = const Value.absent(),
+              }) => PrintServiceTypesCompanion.insert(
+                id: id,
+                name: name,
+                isDefault: isDefault,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PrintServiceTypesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PrintServiceTypesTable,
+      PrintServiceType,
+      $$PrintServiceTypesTableFilterComposer,
+      $$PrintServiceTypesTableOrderingComposer,
+      $$PrintServiceTypesTableAnnotationComposer,
+      $$PrintServiceTypesTableCreateCompanionBuilder,
+      $$PrintServiceTypesTableUpdateCompanionBuilder,
+      (
+        PrintServiceType,
+        BaseReferences<
+          _$AppDatabase,
+          $PrintServiceTypesTable,
+          PrintServiceType
+        >,
+      ),
+      PrintServiceType,
       PrefetchHooks Function()
     >;
 typedef $$OpenTabsTableCreateCompanionBuilder =
@@ -33392,6 +34029,8 @@ class $AppDatabaseManager {
       $$PrescriptionsTableTableManager(_db, _db.prescriptions);
   $$PrintOrdersTableTableManager get printOrders =>
       $$PrintOrdersTableTableManager(_db, _db.printOrders);
+  $$PrintServiceTypesTableTableManager get printServiceTypes =>
+      $$PrintServiceTypesTableTableManager(_db, _db.printServiceTypes);
   $$OpenTabsTableTableManager get openTabs =>
       $$OpenTabsTableTableManager(_db, _db.openTabs);
   $$RolesTableTableManager get roles =>

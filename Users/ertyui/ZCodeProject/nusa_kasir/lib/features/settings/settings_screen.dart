@@ -133,6 +133,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'print_order': Icons.print_outlined,
   };
 
+  /// Fitur yang masih dalam pengembangan — ditandai badge "Dalam Pengembangan"
+  /// di dashboard & Kelola Fitur. Menu tetap bisa dibuka, hanya dilabeli.
+  static bool _inDevelopment(String id) =>
+      id == 'spreadsheet' || id == 'ai_chat';
+
   @override
   void initState() {
     super.initState();
@@ -1270,6 +1275,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       : NusaConfig.textTertiary),
                           ),
                         ),
+                        subtitle: _inDevelopment(id)
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.construction,
+                                      size: 12,
+                                      color: NusaConfig.warning,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Dalam Pengembangan',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: NusaConfig.warning,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : null,
                         value: enabled,
                         activeColor: NusaConfig.activePrimary,
                         onChanged: (v) {

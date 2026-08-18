@@ -541,11 +541,24 @@ class PrintOrders extends Table {
   IntColumn get pages => integer().withDefault(const Constant(0))();
   IntColumn get copies => integer().withDefault(const Constant(1))();
   TextColumn get paperSize => text().withDefault(const Constant('A4'))();
+  // Dimensi cetak (opsional): P (cm) × L (cm) — banner/spanduk/undangan.
+  IntColumn get widthCm => integer().nullable()();
+  IntColumn get lengthCm => integer().nullable()();
+  // Estimasi selesai (opsional): teks bebas, mis. "2 jam" / "Besok 14:00".
+  TextColumn get estimateReady => text().nullable()();
   IntColumn get total => integer().withDefault(const Constant(0))();
   TextColumn get status => text().withDefault(const Constant('Baru'))();
   // Baru | Diproses | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Fotocopy/Percetakan: jenis layanan (custom, tanpa icon bulat).
+/// isDefault=1 untuk seed bawaan (Fotocopy, Print Warna, dst).
+class PrintServiceTypes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().unique()();
+  BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
 }
 
 /// FnB: Open tabs — saved orders that can be resumed later.

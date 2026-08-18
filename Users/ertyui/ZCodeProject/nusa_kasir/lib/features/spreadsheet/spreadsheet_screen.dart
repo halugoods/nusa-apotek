@@ -416,6 +416,36 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
       SingleChildScrollView(
         padding: EdgeInsets.all(16),
         child: Column(children: [
+          // ── Badge "Dalam Pengembangan" ──
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: NusaConfig.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: NusaConfig.warning.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.construction, size: 18, color: NusaConfig.warning),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Fitur ini masih dalam pengembangan — gunakan seperlunya.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: NusaConfig.warning,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 16),
+
           // ── Status koneksi ──
           NusaCard(Padding(
             padding: EdgeInsets.all(14),

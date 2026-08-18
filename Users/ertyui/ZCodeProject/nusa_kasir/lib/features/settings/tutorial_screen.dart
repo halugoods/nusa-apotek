@@ -196,11 +196,15 @@ class TutorialScreen extends StatelessWidget {
     TutorialItem(
       key: 'print_order',
       icon: Icons.print_rounded,
-      color: Color(0xFF2D3436),
+      color: Color(0xFF8B5CF6),
       title: 'Order Cetak',
       text:
-          'Untuk fotocopy: terima order cetak, hitung biaya per halaman, dan '
-          'update status pengerjaan sampai selesai.',
+          'Untuk percetakan/fotocopy: terima order cetak, pilih jenis layanan '
+          '(bisa custom), isi jumlah lembar, copy, ukuran kertas, dimensi '
+          '(P×L cm) dan estimasi selesai. Update status pengerjaan: Baru → '
+          'Diproses → Selesai → Diambil. Statistik hari ini tampil di '
+          'dashboard, dan order otomatis tercatat saat kasir checkout produk '
+          'percetakan.',
     ),
     TutorialItem(
       key: 'ai_chat',

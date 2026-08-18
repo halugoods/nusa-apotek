@@ -360,6 +360,14 @@ class SecureStore {
     value: v.toString(),
   );
 
+  // ── Fotocopy/Percetakan settings ──
+  static Future<bool> getFotocopyStatsExpanded() async =>
+      (await SecureStore.read(key: 'nusa_fotocopy_stats_expanded')) == 'true';
+  static Future<void> setFotocopyStatsExpanded(bool v) => SecureStore.write(
+    key: 'nusa_fotocopy_stats_expanded',
+    value: v.toString(),
+  );
+
   // ── Image migration flag ──────────────────────────────────────────
   static Future<bool> getImagesMigrated() async =>
       (await SecureStore.read(key: 'nusa_images_migrated')) == 'true';

@@ -40,6 +40,7 @@ part 'app_database.g.dart';
     Appointments,
     Prescriptions,
     PrintOrders,
+    PrintServiceTypes,
     OpenTabs,
     Roles,
     Refunds,
@@ -53,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 41;
+  int get schemaVersion => 42;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -265,6 +266,21 @@ class AppDatabase extends _$AppDatabase {
         // Sub-header struk (biasanya alamat toko) — baris teks di bawah
         // header/nama toko, sebelum invoice/tanggal (v2.2.30).
         await m.addColumn(settings, settings.receiptSubHeader);
+      }
+      if (from < 42) {
+        // Percetakan (fotocopy upgrade): dimensi cetak + estimasi selesai
+        // di order, dan tabel jenis layanan custom (tanpa icon bulat).
+        await m.addColumn(printOrders, printOrders.widthCm);
+        await m.addColumn(printOrders, printOrders.lengthCm);
+        await m.addColumn(printOrders, printOrders.estimateReady);
+        await m.createTable(printServiceTypes);
+        // Seed 6 layanan default — bisa diubah/ditambah user (CRUD).
+        // NOTE: raw SQL wajib pakai nama kolom SQLite (snake_case):
+        // isDefault → is_default.
+        for (final name in ['Fotocopy', 'Print Warna', 'Print B/W', 'Jilid', 'Laminating', 'Scan']) {
+          await customStatement(
+              "INSERT INTO print_service_types (name, is_default) VALUES ('$name', 1)");
+        }
       }
     },
   );

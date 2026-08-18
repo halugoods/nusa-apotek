@@ -97,7 +97,7 @@ class VariantData {
         'Menu Utama': Icons.dinner_dining_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['supplier', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+      hiddenMenus: ['supplier', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
     ),
     // ── Laundry ──
     VariantData(
@@ -129,7 +129,7 @@ class VariantData {
         'Express': Icons.bolt_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['supplier', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+      hiddenMenus: ['supplier', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     ),
     // ── Bengkel ──
     VariantData(
@@ -193,7 +193,7 @@ class VariantData {
         'Styling': Icons.face_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['supplier', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+      hiddenMenus: ['supplier', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     ),
     // ── Apotek ──
     VariantData(
@@ -225,7 +225,7 @@ class VariantData {
         'Alkes': Icons.monitor_heart_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['promo', 'piutang', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
+      hiddenMenus: ['promo', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
     ),
     // ── Fotocopy ──
     VariantData(
@@ -239,25 +239,29 @@ class VariantData {
       dark: Color(0xFF7C3AED),
       soft: Color(0xFFF5F3FF),
       catEmoji: {
-        'Print': '🖨️', 'Fotocopy': '📄', 'Jilid': '📚',
-        'ATK': '✏️', 'Lainnya': '📦',
+        'Print': '🖨️', 'Banner & Spanduk': '🪧', 'Kartu Nama & Undangan': '💌',
+        'Stiker & Label': '🏷️', 'Jilid & Laminating': '📚', 'ATK': '✏️', 'Lainnya': '📦',
       },
       catGradients: {
         'Print': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
-        'Fotocopy': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-        'Jilid': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-        'ATK': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+        'Banner & Spanduk': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+        'Kartu Nama & Undangan': [Color(0xFFFCE7F3), Color(0xFFFBCFE8), Color(0xFFFDF2F8)],
+        'Stiker & Label': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+        'Jilid & Laminating': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+        'ATK': [Color(0xFFEDE9FE), Color(0xFFDDD6FE), Color(0xFFF5F3FF)],
         'Lainnya': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
       },
       catIcons: {
         'Semua': Icons.grid_view_rounded,
         'Print': Icons.print_rounded,
-        'Fotocopy': Icons.copy_all_rounded,
-        'Jilid': Icons.book_rounded,
+        'Banner & Spanduk': Icons.flag_rounded,
+        'Kartu Nama & Undangan': Icons.credit_card_rounded,
+        'Stiker & Label': Icons.label_rounded,
+        'Jilid & Laminating': Icons.book_rounded,
         'ATK': Icons.edit_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+      hiddenMenus: ['cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     ),
     // ── Servis ──
     VariantData(

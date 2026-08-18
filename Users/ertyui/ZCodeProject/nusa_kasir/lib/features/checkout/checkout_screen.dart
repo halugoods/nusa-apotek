@@ -18,6 +18,8 @@ import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
+import 'package:nusa_kasir/data/repositories/print_order_repository.dart';
+import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
@@ -82,6 +84,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   // Lazim di servis/bengkel/salon (biasanya 50%), tapi bisa untuk semua varian.
   bool _dpEnabled = false;
   final _dpCtrl = TextEditingController();
+
+  /// Mode HUTANG: bayar 0 sekarang, SELURUH total dicatat sebagai hutang
+  /// pelanggan (masuk menu Piutang). Berlaku untuk semua metode bayar.
+  bool _creditMode = false;
 
   // FnB params
   String? _orderType;
@@ -178,8 +184,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   int get _downPayment => _dpEnabled ? (int.tryParse(_dpCtrl.text) ?? 0) : 0;
 
   /// Sisa yang belum dibayar (piutang) — hanya saat DP aktif.
-  int get _remainingDue =>
-      _downPayment > 0 ? (_total - _downPayment).clamp(0, _total) : 0;
+  /// Saat mode HUTANG aktif, seluruh total menjadi sisa (piutang penuh).
+  int get _remainingDue {
+    if (_creditMode) return _total;
+    return _downPayment > 0 ? (_total - _downPayment).clamp(0, _total) : 0;
+  }
 
   @override
   void initState() {
@@ -933,7 +942,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     //  - Tunai tanpa DP: jumlah dibayar (cashGiven) harus ≥ total.
     //  - Tunai dengan DP: DP harus > 0 dan < total (sisa dicatat piutang).
     //  - EDC / QRIS / Transfer: lunas dianggap dibayar penuh.
-    if (_paymentMethod == 'Tunai' && _dpEnabled) {
+    //  - HUTANG: bayar 0 sekarang, seluruh total dicatat piutang (wajib pelanggan).
+    if (_creditMode) {
+      if (_selectedCustomer == null) {
+        TopToast.error(context, 'Pilih pelanggan dulu untuk mencatat hutang');
+        return;
+      }
+    } else if (_paymentMethod == 'Tunai' && _dpEnabled) {
       final dp = _downPayment;
       if (dp <= 0) {
         TopToast.error(context, 'Isi nominal uang muka (DP)');
@@ -982,14 +997,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final transactionRepo = ref.read(transactionRepoProvider);
       final session = ref.read(employeeSessionProvider);
       final cashierName = session?.name;
-      final cashGiven = int.tryParse(_cashCtrl.text);
-      final cashReturn = cashGiven != null && cashGiven >= _total
-          ? cashGiven - _total
-          : null;
       // Saat DP aktif, total = harga penuh; yang dibayar di kasir hanya DP.
       // Sisa otomatis dicatat sebagai piutang pelanggan (lihat di bawah).
-      final dp = _paymentMethod == 'Tunai' && _dpEnabled ? _downPayment : 0;
+      // Mode HUTANG: tidak ada pembayaran di kasir, seluruh total jadi piutang.
+      final dp = _creditMode
+          ? 0
+          : (_paymentMethod == 'Tunai' && _dpEnabled ? _downPayment : 0);
       final isDownPayment = dp > 0;
+      // cashGiven=0 saat HUTANG → transaksi tercatat tanpa pembayaran tunai.
+      final cashGiven = _creditMode ? 0 : (int.tryParse(_cashCtrl.text));
+      final cashReturn = _creditMode
+          ? null
+          : (cashGiven != null && cashGiven >= _total
+                ? cashGiven - _total
+                : null);
 
       // Wrap all DB writes (stock, transaction, loyalty, promo) in a single transaction.
       // If any step fails, it all rolls back — no partial state.
@@ -1021,18 +1042,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           sessionId: activeShift?.id,
         );
 
-        // ── DP: catat sisa sebagai piutang pelanggan ──
+        // ── HUTANG / DP: catat sisa sebagai hutang pelanggan (menu Piutang) ──
         // Total transaksi tetap utuh (laporan omzet benar); uang muka tercatat
         // di transaksi (cashGiven = dp), sisa tercatat di Piutang (menu Utang)
         // sampai pelanggan melunasi lewat menu tersebut.
-        if (isDownPayment && _selectedCustomer != null) {
+        // Mode HUTANG penuh: seluruh total dicatat sebagai hutang.
+        if ((isDownPayment || _creditMode) && _selectedCustomer != null) {
           final debtRepo = DebtRepository(db);
+          final due = _total - (_creditMode ? 0 : dp);
+          final desc = _creditMode
+              ? 'Hutang transaksi INV $savedTxId (bayar di belakang)'
+              : 'Sisa bayar transaksi INV $savedTxId (DP ${formatRupiah(dp)})';
           await debtRepo.addDebt(
             customerId: _selectedCustomer!.id,
             customerName: _selectedCustomer!.name,
-            amount: _total - dp,
-            description:
-                'Sisa bayar transaksi INV $savedTxId (DP ${formatRupiah(dp)})',
+            amount: due,
+            description: desc,
           );
         }
 
@@ -1139,6 +1164,41 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         } catch (_) {}
       }
 
+      // ── Fotocopy: auto-create PrintOrder for percetakan categories ──
+      if (NusaConfig.isFotocopyVariant && cart.isNotEmpty) {
+        try {
+          final productRepo = ProductRepository(db);
+          final printServiceTypes =
+              await PrintServiceTypeRepository(db).getAll();
+          String serviceType = printServiceTypes.isNotEmpty
+              ? printServiceTypes.first.name
+              : 'Print';
+          final printItems = <String>[];
+          // Ambil nama kategori percetakan dari config (semua kategori
+          // fotocopy adalah kategori cetak).
+          for (final c in cart) {
+            if (c.isManual) continue;
+            final p = await productRepo.byId(c.productId);
+            if (p != null && p.category != 'Lainnya') {
+              if (printItems.isEmpty) serviceType = p.category;
+              printItems.add('${c.qty}× ${c.name}');
+            }
+          }
+          if (printItems.isNotEmpty) {
+            await PrintOrderRepository(db).add(
+              customerName: _selectedCustomer?.name ?? 'Umum',
+              customerPhone: _selectedCustomer?.phone,
+              serviceType: serviceType,
+              pages: 0,
+              copies: 1,
+              paperSize: 'A4',
+              total: savedTotal,
+              notes: printItems.join(', '),
+            );
+          }
+        } catch (_) {}
+      }
+
       ref.read(cartProvider.notifier).clear();
 
       if (!mounted) return;
@@ -1166,7 +1226,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             cashGiven: cashGiven,
             cashReturn: cashReturn,
             downPayment: isDownPayment ? dp : 0,
-            remainingDue: isDownPayment ? _total - dp : 0,
+            // Struk menampilkan sisa hutang saat DP / mode HUTANG penuh.
+            remainingDue: _creditMode
+                ? savedTotal
+                : (isDownPayment ? savedTotal - dp : 0),
             cashierName: cashierName,
             customerName: _selectedCustomer?.name,
             customerPhone: _selectedCustomer?.phone,
@@ -2121,16 +2184,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
           ),
           SizedBox(height: 14),
-          Row(
-            children: [
-              _payCard('Tunai', Icons.money, isDark),
-              SizedBox(width: 10),
-              _payCard('QRIS', Icons.qr_code_2, isDark),
-              SizedBox(width: 10),
-              _payCard('Transfer', Icons.account_balance, isDark),
-              SizedBox(width: 10),
-              _payCard('EDC / Kartu', Icons.credit_card, isDark),
-            ],
+          // Scrollable horizontal — tetap aman jika metode pembayaran > 4.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _payCard('Tunai', Icons.money, isDark),
+                SizedBox(width: 10),
+                _payCard('QRIS', Icons.qr_code_2, isDark),
+                SizedBox(width: 10),
+                _payCard('Transfer', Icons.account_balance, isDark),
+                SizedBox(width: 10),
+                _payCard('EDC / Kartu', Icons.credit_card, isDark),
+              ],
+            ),
           ),
         ],
       ),
@@ -2139,50 +2206,50 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   Widget _payCard(String method, IconData icon, bool isDark) {
     final active = _paymentMethod == method;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _paymentMethod = method),
-        child: AnimatedContainer(
-          duration: Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: () => setState(() => _paymentMethod = method),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        // Lebar tetap 108 — tidak lagi Expanded supaya bisa discroll horizontal.
+        width: 108,
+        padding: EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: active
+              ? NusaConfig.activeSoft
+              : (isDark ? NusaConfig.darkSurface2 : Color(0xFFF9FAFB)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
             color: active
-                ? NusaConfig.activeSoft
-                : (isDark ? NusaConfig.darkSurface2 : Color(0xFFF9FAFB)),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
+                ? NusaConfig.activePrimary
+                : NusaConfig.dividerColor,
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 28,
               color: active
                   ? NusaConfig.activePrimary
-                  : NusaConfig.dividerColor,
-              width: active ? 2 : 1,
+                  : isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
             ),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 28,
+            SizedBox(height: 6),
+            Text(
+              method,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
                 color: active
                     ? NusaConfig.activePrimary
                     : isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
               ),
-              SizedBox(height: 6),
-              Text(
-                method,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: active
-                      ? NusaConfig.activePrimary
-                      : isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2274,6 +2341,47 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           SizedBox(height: 10),
           // Quick-action denomination chips + Uang Pas + custom nominal
           _buildDenomChips(isDark),
+          // Tombol cepat HUTANG: bayar belakangan, seluruh total jadi piutang.
+          SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _creditMode
+                  ? null
+                  : () => setState(() {
+                        _creditMode = true;
+                        _dpEnabled = false;
+                        _dpCtrl.clear();
+                      }),
+              icon: Icon(
+                _creditMode ? Icons.check_circle : Icons.bookmark_add_outlined,
+                size: 18,
+              ),
+              label: Text(
+                _creditMode
+                    ? 'HUTANG — total jadi hutang pelanggan'
+                    : 'Bayar dengan Hutang (catat di Piutang)',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _creditMode
+                    ? NusaConfig.success
+                    : NusaConfig.warning,
+                backgroundColor: _creditMode
+                    ? NusaConfig.success.withValues(alpha: 0.1)
+                    : NusaConfig.warning.withValues(alpha: 0.08),
+                side: BorderSide(
+                  color: _creditMode
+                      ? NusaConfig.success.withValues(alpha: 0.7)
+                      : NusaConfig.warning.withValues(alpha: 0.5),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
           if (_kembalian != null) ...[
             SizedBox(height: 12),
             Container(
@@ -2316,7 +2424,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
-  /// Bagian DP (uang muka) — bayar sebagian sekarang, sisanya piutang.
+  /// Bagian Uang Muka (DP) + HUTANG — bayar sebagian / bayar belakangan.
+  /// Sisa atau seluruh total dicatat sebagai piutang (menu Utang).
   /// Tersedia untuk semua varian (lazim di servis/bengkel/salon).
   Widget _buildDpSection(bool isDark) {
     return Column(
@@ -2340,7 +2449,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Bayar sebagian sekarang, sisa dicatat piutang',
+                    'Bayar sebagian sekarang, sisa dicatat hutang',
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark
@@ -2354,10 +2463,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             Switch(
               value: _dpEnabled,
               activeThumbColor: NusaConfig.activePrimary,
-              onChanged: (v) => setState(() {
-                _dpEnabled = v;
-                if (!v) _dpCtrl.clear();
-              }),
+              onChanged: _creditMode
+                  ? null
+                  : (v) => setState(() {
+                        _dpEnabled = v;
+                        if (!v) _dpCtrl.clear();
+                      }),
             ),
           ],
         ),
@@ -2456,6 +2567,93 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 SizedBox(height: 6),
                 Text(
                   'Pelanggan wajib dipilih — sisa otomatis dicatat di menu Utang.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : const Color(0xFF854D0E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        // ── Mode HUTANG: bayar belakangan (seluruh total jadi hutang) ──
+        SizedBox(height: 6),
+        Container(
+          padding: EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _creditMode
+                ? (isDark ? NusaConfig.darkSurface2 : Color(0xFFFEF3C7))
+                : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _creditMode
+                  ? Color(0xFFF59E0B).withValues(alpha: 0.6)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hutang (bayar belakangan)',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Bayar 0 sekarang — seluruh total dicatat hutang',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _creditMode,
+                activeThumbColor: NusaConfig.activePrimary,
+                onChanged: (v) => setState(() {
+                  _creditMode = v;
+                  if (v) {
+                    _dpEnabled = false;
+                    _dpCtrl.clear();
+                  }
+                }),
+              ),
+            ],
+          ),
+        ),
+        if (_creditMode) ...[
+          SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _dpRow('Dibayar sekarang', formatRupiah(0), isDark),
+                SizedBox(height: 4),
+                _dpRow('Total jadi hutang', formatRupiah(_total), isDark),
+                SizedBox(height: 6),
+                Text(
+                  'Pelanggan wajib dipilih — otomatis masuk menu Utang.',
                   style: TextStyle(
                     fontSize: 11,
                     color: isDark

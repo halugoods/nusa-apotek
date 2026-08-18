@@ -5,7 +5,19 @@ class PrintOrderRepository {
   final AppDatabase db;
   PrintOrderRepository(this.db);
 
-  Future<int> add({required String customerName, String? customerPhone, required String serviceType, int pages = 0, int copies = 1, String paperSize = 'A4', int total = 0, String? notes}) =>
+  Future<int> add({
+    required String customerName,
+    String? customerPhone,
+    required String serviceType,
+    int pages = 0,
+    int copies = 1,
+    String paperSize = 'A4',
+    int? widthCm,
+    int? lengthCm,
+    String? estimateReady,
+    int total = 0,
+    String? notes,
+  }) =>
       db.into(db.printOrders).insert(PrintOrdersCompanion.insert(
             customerName: customerName,
             customerPhone: Value(customerPhone),
@@ -13,6 +25,9 @@ class PrintOrderRepository {
             pages: Value(pages),
             copies: Value(copies),
             paperSize: Value(paperSize),
+            widthCm: Value(widthCm),
+            lengthCm: Value(lengthCm),
+            estimateReady: Value(estimateReady),
             total: Value(total),
             notes: Value(notes),
           ));
@@ -35,6 +50,38 @@ class PrintOrderRepository {
       (db.update(db.printOrders)..where((t) => t.id.equals(id)))
           .write(PrintOrdersCompanion(status: Value(status)));
 
+  /// Update penuh (form edit) — semua field kecuali id/createdAt.
+  Future<void> update(
+    int id, {
+    required String customerName,
+    String? customerPhone,
+    required String serviceType,
+    int pages = 0,
+    int copies = 1,
+    String paperSize = 'A4',
+    int? widthCm,
+    int? lengthCm,
+    String? estimateReady,
+    int total = 0,
+    String? notes,
+    String? status,
+  }) =>
+      (db.update(db.printOrders)..where((t) => t.id.equals(id)))
+          .write(PrintOrdersCompanion(
+            customerName: Value(customerName),
+            customerPhone: Value(customerPhone),
+            serviceType: Value(serviceType),
+            pages: Value(pages),
+            copies: Value(copies),
+            paperSize: Value(paperSize),
+            widthCm: Value(widthCm),
+            lengthCm: Value(lengthCm),
+            estimateReady: Value(estimateReady),
+            total: Value(total),
+            notes: Value(notes),
+            status: status != null ? Value(status) : const Value.absent(),
+          ));
+
   Future<int> countByStatus(String status) async {
     final rows = await (db.select(db.printOrders)
           ..where((t) => t.status.equals(status)))
@@ -45,6 +92,17 @@ class PrintOrderRepository {
   Future<int> countPending() async {
     final rows = await (db.select(db.printOrders)
           ..where((t) => t.status.equals('Diambil').not()))
+        .get();
+    return rows.length;
+  }
+
+  /// Jumlah order yang dibuat pada hari tertentu (untuk stats dashboard).
+  Future<int> countByDate(DateTime day) async {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final rows = await (db.select(db.printOrders)
+          ..where((t) => t.createdAt.isBiggerOrEqualValue(start) &
+              t.createdAt.isSmallerThanValue(end)))
         .get();
     return rows.length;
   }

@@ -108,31 +108,23 @@ Deno.serve(async (req: Request) => {
 
     // ─── CHECK action (no key provided) ──────────────────────────
     if (!key) {
-      // Variant rename migration: nusa-servicehp → nusa-servis (v1.6.9)
-      const prodAliases = prod === "nusa-servis"
-        ? [prod, "nusa-servicehp"]
-        : [prod];
+      // One license covers ALL NUSA variants. Look up any license owned by
+      // this Google account regardless of product — a Kelontong key must also
+      // unlock the FnB / Laundry / Fotocopy / etc. app on the same account.
+      // (Previously filtered by product, which stranded users who bought a
+      // license for one variant but opened another.)
+      const { data: owned } = await supabase
+        .from("licenses")
+        .select("id, key, serial, status, google_user_id, expires_at, product")
+        .eq("google_user_id", verifiedGoogleId)
+        .order("created_at", { ascending: false })
+        .limit(5);
 
-      let license = null;
-      for (const alias of prodAliases) {
-        const { data } = await supabase
-          .from("licenses")
-          .select("id, key, serial, status, google_user_id, expires_at")
-          .eq("google_user_id", verifiedGoogleId)
-          .eq("product", alias)
-          .maybeSingle();
-        if (data) {
-          license = data;
-          // Migrate old product name to new one
-          if (alias !== prod) {
-            await supabase
-              .from("licenses")
-              .update({ product: prod })
-              .eq("id", data.id);
-          }
-          break;
-        }
-      }
+      // Prefer the newest non-blocked license; keep blocked ones so we can
+      // report a meaningful message instead of silently "no license".
+      let license = owned?.find(
+        (l) => !["Cancelled", "Suspended", "Expired"].includes(l.status),
+      ) ?? owned?.[0] ?? null;
 
       if (!license) {
         return json({ has_license: false }, 200);
@@ -214,17 +206,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!lic) return json({ error: "not_found" }, 404);
-    // Variant rename migration: nusa-servicehp → nusa-servis (v1.6.9)
-    if (lic.product !== prod &&
-        !(prod === "nusa-servis" && lic.product === "nusa-servicehp")) {
-      return json(
-        {
-          error: "wrong_product",
-          message: `Key ini untuk ${lic.product}, bukan ${prod}`,
-        },
-        403,
-      );
-    }
     if (lic.status === "Cancelled")
       return json(
         { error: "cancelled", message: "Key ini sudah dibatalkan" },
@@ -242,6 +223,17 @@ Deno.serve(async (req: Request) => {
         { error: "already_activated", message: "Key ini sudah diaktivasi" },
         409,
       );
+    }
+
+    // One license covers ALL NUSA variants. A key is valid for every variant
+    // (signature is variant-agnostic), so we no longer reject product mismatch.
+    // When activated from another variant, migrate the license product so the
+    // CHECK action (which is no longer product-filtered) stays consistent.
+    if (lic.product !== prod) {
+      await supabase
+        .from("licenses")
+        .update({ product: prod })
+        .eq("id", lic.id);
     }
 
     // 3. Check can_activate
@@ -265,7 +257,6 @@ Deno.serve(async (req: Request) => {
     if (!lic.google_user_id) {
       updates.google_user_id = verifiedGoogleId;
     }
-    // Fill owner_email from Google account if still empty (for dashboard tracking)
     if (!lic.owner_email && ownerEmail) {
       updates.owner_email = ownerEmail;
     }

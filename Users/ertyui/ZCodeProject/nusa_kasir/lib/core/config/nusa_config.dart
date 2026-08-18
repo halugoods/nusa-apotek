@@ -9,8 +9,8 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 		static String _productId = "nusa-kelontong";
 		static String _appSubtitle = "Aplikasi Kasir untuk Toko Kelontong";
-  static const String appVersion = "2.2.31";
-  static const int appBuildNumber = 83;
+  static const String appVersion = "2.2.32";
+  static const int appBuildNumber = 84;
 		static String _githubRepo = "halugoods/nusa-kelontong";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
 		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Kelontong";
@@ -367,12 +367,12 @@ abstract class NusaConfig {
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
   static const Map<String, List<String>> variantHiddenMenus = {
     'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'fnb': ['supplier', 'piutang', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'laundry': ['supplier', 'piutang', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+    'fnb': ['supplier', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'laundry': ['supplier', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     'bengkel': ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
-    'salon': ['supplier', 'cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
-    'apotek': ['promo', 'piutang', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
-    'fotocopy': ['cabang', 'piutang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+    'salon': ['supplier', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'apotek': ['promo', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
+    'fotocopy': ['cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     'servis': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
   };
 

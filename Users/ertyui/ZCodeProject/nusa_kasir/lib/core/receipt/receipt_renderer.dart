@@ -238,6 +238,13 @@ List<ReceiptPart> buildReceiptParts({
       receiptNum(data.downPayment),
     ));
     parts.add(ReceiptPartRow('Sisa Piutang', receiptNum(data.remainingDue)));
+  } else if (data.remainingDue > 0 && data.cashGiven == 0) {
+    // Mode HUTANG penuh: bayar 0, seluruh total jadi hutang.
+    parts.add(ReceiptPartRow(
+      'Bayar: ${data.paymentMethod}',
+      receiptNum(0),
+    ));
+    parts.add(ReceiptPartRow('Hutang', receiptNum(data.remainingDue)));
   } else if (data.paymentMethod.isNotEmpty) {
     parts.add(ReceiptPartRow(
       'Bayar: ${data.paymentMethod}',
@@ -547,6 +554,9 @@ String renderText({
   if (data.downPayment > 0) {
     sb.writeln('Bayar: ${data.paymentMethod} : ${receiptNum(data.downPayment)}');
     sb.writeln('Sisa Piutang: ${receiptNum(data.remainingDue)}');
+  } else if (data.remainingDue > 0 && data.cashGiven == 0) {
+    sb.writeln('Bayar: ${data.paymentMethod} : ${receiptNum(0)}');
+    sb.writeln('Hutang: ${receiptNum(data.remainingDue)}');
   } else if (data.paymentMethod.isNotEmpty) {
     sb.writeln(
       'Bayar: ${data.paymentMethod} : ${receiptNum(data.cashGiven ?? data.total)}',
@@ -691,6 +701,9 @@ Future<File> renderPdf({
   if (data.downPayment > 0) {
     widgets.add(textRow('Bayar: ${data.paymentMethod}', receiptNum(data.downPayment)));
     widgets.add(textRow('Sisa Piutang', receiptNum(data.remainingDue)));
+  } else if (data.remainingDue > 0 && data.cashGiven == 0) {
+    widgets.add(textRow('Bayar: ${data.paymentMethod}', receiptNum(0)));
+    widgets.add(textRow('Hutang', receiptNum(data.remainingDue)));
   } else if (data.paymentMethod.isNotEmpty) {
     widgets.add(textRow(
       'Bayar: ${data.paymentMethod}',
