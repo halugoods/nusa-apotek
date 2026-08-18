@@ -179,6 +179,25 @@ Future<void> _receiveAtLaunch() async {
       return;
     }
 
+    // ── PENTING: jangan pernah menimpa DB lokal yang sudah punya data ──
+    // AutoSync di varian lain bisa menganggap backup kelontong (path
+    // uid/nusa-kelontong) "lebih baru" dan men-download-nya ke varian ini.
+    // Padahal path backup per-varian berbeda — yang bocor adalah saat UID
+    // anon vs Google tidak konsisten, atau saat varian ini baru diinstall
+    // dan lastSeen kosong → restore dari path sendiri yang KOSONG = DB
+    // kosong (tidak ada owner/PIN) → "PIN salah" terus. Guard: kalau lokal
+    // sudah punya karyawan, jangan sentuh DB dari cloud.
+    try {
+      final probe = AppDatabase();
+      final empCount =
+          await probe.select(probe.employees).get().then((r) => r.length);
+      await probe.close();
+      if (empCount > 0) return;
+    } catch (_) {
+      // DB lokal tidak bisa dibaca — jangan restore, biarkan login jalan.
+      return;
+    }
+
     // No local pending changes → adopt cloud backup.
     final ok = await repo.restoreFromCloud().timeout(
       const Duration(seconds: 15),
@@ -323,8 +342,21 @@ void main() async {
         if (session != null && !session.isExpired) {
           initialLocation = '/home';
         } else {
-          // Already activated — skip activation screen, go straight to PIN login.
-          initialLocation = '/login';
+          // Already activated. Jika DB belum punya owner/karyawan sama sekali
+          // (mis. backup varian lain menimpa, atau setup gagal), langsung ke
+          // /setup supaya user bisa buat Owner + PIN — bukan terjebak di pinpad.
+          String? anyEmployee;
+          try {
+            final probe = AppDatabase();
+            final rows = await probe.select(probe.employees).get();
+            await probe.close();
+            anyEmployee = rows.isEmpty ? null : 'x';
+          } catch (_) {
+            anyEmployee = null;
+          }
+          initialLocation = (anyEmployee == null)
+              ? '/setup'
+              : '/login';
         }
       }
     } catch (_) {

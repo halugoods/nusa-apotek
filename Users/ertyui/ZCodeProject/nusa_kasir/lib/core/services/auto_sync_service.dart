@@ -116,6 +116,21 @@ class AutoSyncService {
       //     The local DB is the loser only when cloud is strictly newer.
       //     Save a snapshot of the local file first (zero data loss).
       if (cloudTime.isAfter(_lastLocalChange!)) {
+        // ── PENTING: jangan timpa DB lokal yang sudah punya karyawan ──
+        // Backup cloud bisa milik varian lain (UID anon vs Google tidak
+        // konsisten) → menimpa DB varian ini menghilangkan owner/PIN →
+        // "PIN salah" selamanya. Jika lokal sudah punya data, jangan restore.
+        try {
+          final empCount =
+              await db.select(db.employees).get().then((r) => r.length);
+          if (empCount > 0) {
+            await SecureStore.setLastCloudSeen(cloudTime);
+            return;
+          }
+        } catch (_) {
+          await SecureStore.setLastCloudSeen(cloudTime);
+          return;
+        }
         await _snapshotLoser();
         // Replace local with cloud winner.
         final ok = await repo.restoreDirect();

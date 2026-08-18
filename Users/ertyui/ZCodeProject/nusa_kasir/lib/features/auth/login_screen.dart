@@ -53,7 +53,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _verifyPin(String pin) async {
     final db = ref.read(databaseProvider);
     final repo = AttendanceRepository(db);
-    final emps = await repo.getEmployees();
+    final List<Employee> emps;
+    try {
+      emps = await repo.getEmployees();
+    } catch (e) {
+      // DB rusak / query gagal — jangan bilang "PIN salah", tunjukkan jalur
+      // perbaikan supaya user tidak stuck di pinpad selamanya.
+      debugPrint('[Login] getEmployees error: $e');
+      if (mounted) {
+        setState(() => _error = 'Data karyawan gagal dibaca. Coba buka ulang app, atau hapus data app lalu aktivasi ulang.');
+      }
+      _keypadKey.currentState?.clear();
+      return;
+    }
+    if (emps.isEmpty) {
+      // Tidak ada satupun karyawan/owner → user belum pernah setup.
+      // Arahkan ke setup supaya bisa buat Owner + PIN baru (bukan stuck di pinpad).
+      debugPrint('[Login] No employees found — redirecting to setup');
+      if (mounted) context.go('/setup');
+      return;
+    }
     final emp = emps.cast<Employee?>().firstWhere(
           (e) => e!.pin == pin, orElse: () => null);
     if (emp == null) {
