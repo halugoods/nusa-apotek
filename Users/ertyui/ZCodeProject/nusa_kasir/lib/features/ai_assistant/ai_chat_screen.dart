@@ -530,28 +530,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   Widget _buildChatArea(bool isDark) {
     return Column(
       children: [
-        // ── Badge "Dalam Pengembangan" ──
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          color: NusaConfig.warning.withValues(alpha: 0.1),
-          child: Row(
-            children: [
-              Icon(Icons.construction, size: 14, color: NusaConfig.warning),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Fitur ini masih dalam pengembangan',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: NusaConfig.warning,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         // Status bar
         Container(
           width: double.infinity,

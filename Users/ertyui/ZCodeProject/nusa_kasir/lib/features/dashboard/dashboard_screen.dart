@@ -1984,8 +1984,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 badgeColor: id == 'stok'
                                     ? NusaConfig.warning
                                     : null,
-                                inDevelopment:
-                                    id == 'spreadsheet' || id == 'ai_chat',
                               );
                             }).toList(),
                           );
@@ -2037,9 +2035,6 @@ class _MenuItem extends StatelessWidget {
   final int? badgeCount;
   final Color? badgeColor;
 
-  /// True untuk menu berlabel "Dalam Pengembangan" (spreadsheet & AI Chat).
-  final bool inDevelopment;
-
   const _MenuItem({
     required this.label,
     required this.icon,
@@ -2047,7 +2042,6 @@ class _MenuItem extends StatelessWidget {
     this.onTap,
     this.badgeCount,
     this.badgeColor,
-    this.inDevelopment = false,
   });
 
   @override
@@ -2139,38 +2133,6 @@ class _MenuItem extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          // Badge "Dalam Pengembangan" (spreadsheet & AI Chat)
-          if (inDevelopment)
-            Container(
-              margin: const EdgeInsets.only(top: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: NusaConfig.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: NusaConfig.warning.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.construction,
-                    size: 10,
-                    color: NusaConfig.warning,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    'Dalam Pengembangan',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: NusaConfig.warning,
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
