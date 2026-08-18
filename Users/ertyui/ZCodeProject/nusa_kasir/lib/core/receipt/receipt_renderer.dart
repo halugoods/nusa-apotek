@@ -435,11 +435,24 @@ Future<List<int>> renderBytes({
           }
         }
       case ReceiptPartRow(:final label, :final amount, :final bold):
+        // v2.2.31: lebar kolom DINAMIS + label TIDAK di-truncate. Sebelumnya
+        // fitReceipt(label, 11) @58mm memotong "Bayar: Tunai" (12 char)
+        // menjadi "Bayar: Tuna" — teks hilang diam-diam. Sekarang label
+        // dikirim utuh; esc_pos_utils.row() otomatis membungkus ke baris
+        // berikutnya bila melebihi kolom, jadi tidak ada yang hilang.
+        // Metode terpanjang: "EDC / Kartu" (19 char) tetap tampil penuh.
+        final labelRaw = sanReceipt(label);
+        final amountRaw = sanReceipt(amount);
+        // Nominal butuh ~6 unit kolom @58/@80 (angka 7 digit + pemisah),
+        // label ambil sisa — minimal 4 unit biar total kolom = 12.
+        final amountW = 6;
+        final labelW = (12 - amountW).clamp(4, 8);
+        final amountChars = (amountRaw.length + 1).clamp(6, isWide ? 16 : 11);
         bytes.addAll(
           generator.row([
             PosColumn(
-              text: fitReceipt(label, isWide ? 16 : 11),
-              width: isWide ? 8 : 6,
+              text: labelRaw,
+              width: labelW,
               styles: PosStyles(
                 bold: bold,
                 align: PosAlign.left,
@@ -447,8 +460,8 @@ Future<List<int>> renderBytes({
               ),
             ),
             PosColumn(
-              text: fitReceipt(amount, isWide ? 16 : 11),
-              width: isWide ? 8 : 6,
+              text: fitReceipt(amountRaw, amountChars),
+              width: 12 - labelW,
               styles: PosStyles(
                 bold: bold,
                 align: PosAlign.right,

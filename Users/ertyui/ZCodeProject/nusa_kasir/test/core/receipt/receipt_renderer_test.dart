@@ -4,6 +4,10 @@ import 'package:nusa_kasir/core/receipt/receipt_data.dart';
 import 'package:nusa_kasir/core/receipt/receipt_renderer.dart';
 
 void main() {
+  // renderBytes memakai CapabilityProfile.load() → butuh rootBundle
+  // (asset bundle Flutter) biar test unit bisa jalan.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('renderText — SATU renderer (preview = print = share)', () {
     final config = ReceiptConfig.sample();
     final data = ReceiptData.sample();
@@ -124,6 +128,73 @@ void main() {
       final text = renderText(config: config, data: edc, storeName: 'NUSA MART');
       expect(text, contains('Bayar: EDC / Kartu'));
       expect(text, isNot(contains('Bayar (EDC')));
+    });
+  });
+
+  group('renderBytes — jalur CETAK (v2.2.31 fix)', () {
+    ReceiptData withMethod(String method) => ReceiptData(
+          invoiceNumber: 'INV-20260817-0001',
+          dateStr: '17/08/2026  15:42',
+          cashierName: 'Halu',
+          items: const [
+            ReceiptItem(name: 'Dimsum Original', qty: 2, price: 13500),
+            ReceiptItem(name: 'Es Teh Manis', qty: 2, price: 5000),
+          ],
+          total: 37000,
+          cashGiven: 37000,
+          paymentMethod: method,
+        );
+
+    test('label bayar utuh dikirim ke parts (TIDAK di-truncate)', () {
+      for (final method in const ['Tunai', 'QRIS', 'Transfer', 'EDC / Kartu']) {
+        final cfg = ReceiptConfig.sample().copyWith(paperWidth: '58');
+        final d = withMethod(method);
+        final parts = buildReceiptParts(config: cfg, data: d, storeName: 'NUSA MART');
+        final bayar = parts
+            .whereType<ReceiptPartRow>()
+            .where((p) => p.label.startsWith('Bayar:'))
+            .firstOrNull;
+        expect(bayar, isNotNull, reason: 'metode $method harus punya baris Bayar');
+        expect(
+          bayar!.label,
+          'Bayar: $method',
+          reason: 'label Bayar TIDAK boleh di-truncate (bug v2.2.30: fitReceipt 11 char)',
+        );
+      }
+    });
+
+    test('renderBytes tidak melempar untuk semua metode bayar (kolom valid)', () async {
+      for (final method in const ['Tunai', 'QRIS', 'Transfer', 'EDC / Kartu']) {
+        final cfg = ReceiptConfig.sample().copyWith(paperWidth: '58');
+        final d = withMethod(method);
+        final bytes = await renderBytes(config: cfg, data: d, storeName: 'NUSA MART');
+        expect(bytes, isNotEmpty);
+      }
+    });
+
+    test('renderBytes label bayar TIDAK mengandung truncation (…)' , () async {
+      // v2.2.31: bug v2.2.30 = fitReceipt(label, 11) menghasilkan
+      // "Bayar: Tuna..." di bytes cetak. Sekarang label tidak di-truncate
+      // sama sekali — ellipsis "…"/"..." tidak boleh muncul pada baris label.
+      for (final method in const ['Tunai', 'QRIS', 'Transfer', 'EDC / Kartu']) {
+        final cfg = ReceiptConfig.sample().copyWith(paperWidth: '58');
+        final d = withMethod(method);
+        final bytes = await renderBytes(config: cfg, data: d, storeName: 'NUSA MART');
+        // Semua char label (ASCII) harus ada di bytes — boleh terpecah antar
+        // baris (wrap), TAPI tidak boleh diganti "…" / "..." (truncation).
+        final label = 'Bayar: $method';
+        final labelUnits = label.codeUnits;
+        var idx = 0;
+        for (final b in bytes) {
+          if (idx < labelUnits.length && b == labelUnits[idx]) idx++;
+        }
+        expect(
+          idx,
+          labelUnits.length,
+          reason: 'metode $method: karakter label $label harus semuanya ada '
+              'di bytes cetak (tidak boleh di-truncate jadi "..." — bug v2.2.30)',
+        );
+      }
     });
   });
 }
