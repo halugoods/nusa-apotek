@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:nusa_kasir/core/dev/variant_data.dart';
 
@@ -14,6 +17,29 @@ abstract class NusaConfig {
 		static String _applicationId = "com.nusa.kelontong";
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
+
+  /// Running on Android emulator? (10.0.2.2 maps to host loopback.)
+  static bool get isEmulator =>
+      !kIsWeb && Platform.isAndroid && (Platform.environment['ANDROID_EMULATOR'] ?? '').isEmpty;
+
+  /// IP LAN PC (untuk Nusa CS server di port 8790). Fallback: localhost.
+  static Future<String> lanIp() async {
+    if (kIsWeb) return 'localhost';
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final i in interfaces) {
+        for (final a in i.addresses) {
+          if (a.type == InternetAddressType.IPv4 &&
+              !a.isLoopback &&
+              a.address.startsWith('192.168.')) {
+            return a.address;
+          }
+        }
+      }
+    } catch (_) {}
+    return 'localhost';
+  }
+
 
   // ── Dev mode flag — compile-time constant, tree-shaken in production ──
   static const bool isDevBuild = bool.fromEnvironment('NUSA_DEV', defaultValue: false);

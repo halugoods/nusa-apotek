@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/ai_service.dart';
+import 'package:nusa_kasir/core/services/nusa_cs_service.dart';
 import 'package:nusa_kasir/core/agent/agent_tools.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -63,7 +63,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     _loadSessions();
     _messages.add(ChatMessage(
       role: 'assistant',
-      content: 'Halo! Saya AI Assistant NUSA Kasir. Saya punya akses ke data toko kamu — tanya soal stok, penjualan, promo, atau laporan. Ada yang bisa saya bantu?',
+      content: 'Halo! Saya Nusa, CS dari NUSA Kasir 👋 Saya bisa bantu jawab soal fitur, harga, atau cara pakai aplikasi. Ada yang bisa saya bantu?',
     ));
   }
 
@@ -252,9 +252,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
     try {
       final db = ref.read(databaseProvider);
-      final svc = AiService(Supabase.instance.client);
       final tools = AgentToolRegistry.forVariant();
-      final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
       // Sliding window: send only last 6 visible messages to avoid token bloat.
       // Groq free tier = ~6K tokens/min. Each full-message pass adds 3-5 messages
@@ -264,13 +262,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
       final recent = visible.length > 6 ? visible.sublist(visible.length - 6) : visible;
 
       for (int round = 0; round < 2; round++) {
-        var res = AiResponse(reply: 'Maaf, AI Assistant sedang sibuk (error 429). Coba lagi nanti ya.');
+        var res = AiResponse(reply: 'Maaf, Nusa sedang sibuk (error 429). Coba lagi nanti ya.');
         // Retry once with backoff on 429
         for (int attempt = 0; attempt < 2; attempt++) {
-          res = await svc.chat(
+          res = await NusaCsServer.chat(
             messages: recent,
-            storeName: _storeName,
-            tools: round == 0 ? toolDefs : null,
+            variant: NusaConfig.productId,
           );
           // 429 comes back as text reply with "sedang sibuk". If we got tool calls,
           // it's a real response — proceed immediately.
@@ -409,7 +406,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
               child: Icon(Icons.auto_awesome_rounded, size: 16, color: NusaConfig.activePrimary),
             ),
             const SizedBox(width: 8),
-            const Text('AI Assistant', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const Text('Nusa', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           ],
         ),
         leading: IconButton(
