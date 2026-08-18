@@ -194,8 +194,8 @@ Future<void> _receiveAtLaunch() async {
       await probe.close();
       if (empCount > 0) return;
     } catch (_) {
-      // DB lokal tidak bisa dibaca — jangan restore, biarkan login jalan.
-      return;
+      // DB lokal tidak bisa dibaca (rusak) — data lokal sudah hilang, jadi
+      // JANGAN bail: tetap restore dari cloud supaya data user pulih.
     }
 
     // No local pending changes → adopt cloud backup.

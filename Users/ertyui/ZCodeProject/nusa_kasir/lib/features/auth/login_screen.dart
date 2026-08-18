@@ -10,6 +10,7 @@ import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/shared/widgets/restore_backup_flow.dart';
 
 /// Full-screen PIN login — card-with-depth style (v1.7.17 design).
 /// Shows the keypad with FP icon; fingerprint does NOT auto-skip the pinpad.
@@ -57,20 +58,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       emps = await repo.getEmployees();
     } catch (e) {
-      // DB rusak / query gagal — jangan bilang "PIN salah", tunjukkan jalur
-      // perbaikan supaya user tidak stuck di pinpad selamanya.
+      // DB rusak / query gagal — jangan bilang "PIN salah", jangan stuck.
+      // Coba pulihkan data dari cloud DULU; kalau tidak ada backup, setup
+      // baru jadi pilihan terakhir.
       debugPrint('[Login] getEmployees error: $e');
       if (mounted) {
-        setState(() => _error = 'Data karyawan gagal dibaca.');
-        _showDbRecoveryDialog();
+        setState(() => _error = 'Data karyawan gagal dibaca. Mencoba memulihkan dari cloud...');
+        _keypadKey.currentState?.clear();
+        await _tryRestoreOrSetup();
       }
-      _keypadKey.currentState?.clear();
       return;
-    }    if (emps.isEmpty) {
-      // Tidak ada satupun karyawan/owner → user belum pernah setup.
-      // Arahkan ke setup supaya bisa buat Owner + PIN baru (bukan stuck di pinpad).
-      debugPrint('[Login] No employees found — redirecting to setup');
-      if (mounted) context.go('/setup');
+    }
+    if (emps.isEmpty) {
+      // Tidak ada karyawan/owner → kemungkinan besar varian ini belum pernah
+      // dipakai. User punya data di cloud (akun Google) → TANYAKAN restore,
+      // bukan langsung suruh setup dari nol.
+      debugPrint('[Login] No employees found — trying cloud restore first');
+      final restored = await RestoreBackupFlow.runIfNeeded(ref, context);
+      if (restored) return; // app restart
+      if (mounted && context.mounted) context.go('/setup');
       return;
     }
     final emp = emps.cast<Employee?>().firstWhere(
@@ -96,11 +102,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       emps = await repo.getEmployees();
     } catch (e) {
       debugPrint('[Login] fingerprint getEmployees error: $e');
-      if (mounted) _showDbRecoveryDialog();
+      if (mounted) await _tryRestoreOrSetup();
       return;
     }
     if (emps.isEmpty) {
-      if (mounted) context.go('/setup');
+      final restored = await RestoreBackupFlow.runIfNeeded(ref, context);
+      if (restored) return; // app restart
+      if (mounted && context.mounted) context.go('/setup');
       return;
     }
     final owner = emps.cast<Employee?>().firstWhere(
@@ -109,38 +117,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     await _doLogin(owner, remember: _remember);
   }
 
-  /// DB karyawan gagal dibaca — beri user pilihan, jangan stuck diam-diam.
-  Future<void> _showDbRecoveryDialog() async {
-    if (!mounted) return;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Data karyawan tidak bisa dibaca'),
-        content: const Text(
-          'Database aplikasi sepertinya bermasalah (mungkin tertimpa data dari varian lain atau rusak).\n\n'
-          'Pilih "Setup Ulang" untuk membuat Owner & PIN baru (data lama bisa dipulihkan dari backup cloud lewat Pengaturan).',
-          style: TextStyle(fontSize: 14, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'retry'),
-            child: const Text('Coba Lagi'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'setup'),
-            child: const Text('Setup Ulang'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (choice == 'setup') {
-      context.go('/setup');
-    } else if (choice == 'retry') {
-      setState(() => _error = null);
-      _keypadKey.currentState?.clear();
-    }
+  /// DB karyawan tidak terbaca / kosong: pulihkan dari cloud dulu.
+  /// Setup hanya dijalankan kalau memang TIDAK ADA backup cloud.
+  Future<void> _tryRestoreOrSetup() async {
+    final restored = await RestoreBackupFlow.runIfNeeded(ref, context);
+    if (restored) return; // app restart
+    if (!mounted || !context.mounted) return;
+    // Tidak ada backup cloud — baru saatnya setup dari nol.
+    context.go('/setup');
   }
 
   void _clearError() {

@@ -14,6 +14,7 @@ import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/shared/widgets/restore_backup_flow.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
@@ -1054,13 +1055,45 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       },
                       onComplete: (pin) async {
                         setState(() => _pinLoading = true);
-                        final db = ref.read(databaseProvider);
-                        final repo = AttendanceRepository(db);
-                        final emps = await repo.getEmployees();
-                        final emp = emps.cast<Employee?>().firstWhere(
-                              (e) => e!.pin == pin,
-                              orElse: () => null,
-                            );
+                        try {
+                          final db = ref.read(databaseProvider);
+                          final repo = AttendanceRepository(db);
+                          final List<Employee> emps;
+                          try {
+                            emps = await repo.getEmployees();
+                          } catch (e) {
+                            // DB rusak → jangan diam (6 dot penuh tanpa getar).
+                            // Coba pulihkan data dari cloud dulu.
+                            debugPrint('[Activation] getEmployees error: $e');
+                            if (!mounted) return;
+                            setState(() {
+                              _pinLoading = false;
+                              _pinError = null;
+                            });
+                            _keypadKey.currentState?.clear();
+                            final restored =
+                                await RestoreBackupFlow.runIfNeeded(ref, context);
+                            if (!restored && mounted) context.go('/setup');
+                            return;
+                          }
+                          if (emps.isEmpty) {
+                            // Varian baru / DB kosong: tawarkan restore cloud,
+                            // setup hanya kalau memang tidak ada backup.
+                            if (!mounted) return;
+                            setState(() {
+                              _pinLoading = false;
+                              _pinError = null;
+                            });
+                            _keypadKey.currentState?.clear();
+                            final restored =
+                                await RestoreBackupFlow.runIfNeeded(ref, context);
+                            if (!restored && mounted) context.go('/setup');
+                            return;
+                          }
+                          final emp = emps.cast<Employee?>().firstWhere(
+                                (e) => e!.pin == pin,
+                                orElse: () => null,
+                              );
                         if (emp != null) {
                           if (mounted) setState(() => _pinLoading = false);
                           // Create session
@@ -1091,6 +1124,20 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                             });
                             _keypadKey.currentState?.clear();
                           }
+                        }
+                        } catch (e) {
+                          // Safety net — jangan pernah biarkan pinpad diam di
+                          // 6 dot penuh tanpa umpan balik apa pun.
+                          debugPrint('[Activation] onComplete error: $e');
+                          if (!mounted) return;
+                          setState(() {
+                            _pinLoading = false;
+                            _pinError = null;
+                          });
+                          _keypadKey.currentState?.clear();
+                          final restored =
+                              await RestoreBackupFlow.runIfNeeded(ref, context);
+                          if (!restored && mounted) context.go('/setup');
                         }
                       },
                     ),
@@ -1127,7 +1174,26 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     try {
       final db = ref.read(databaseProvider);
       final repo = AttendanceRepository(db);
-      final emps = await repo.getEmployees();
+      final List<Employee> emps;
+      try {
+        emps = await repo.getEmployees();
+      } catch (e) {
+        debugPrint('[Activation] fingerprint getEmployees error: $e');
+        if (mounted) {
+          final restored =
+              await RestoreBackupFlow.runIfNeeded(ref, context);
+          if (!restored && mounted) context.go('/setup');
+        }
+        return;
+      }
+      if (emps.isEmpty) {
+        if (mounted) {
+          final restored =
+              await RestoreBackupFlow.runIfNeeded(ref, context);
+          if (!restored && mounted) context.go('/setup');
+        }
+        return;
+      }
       final owner = emps.cast<Employee?>().firstWhere(
             (e) => e!.role == 'Owner',
             orElse: () => null,

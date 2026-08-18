@@ -104,6 +104,7 @@ class ActivationRepository {
     if (client == null) return false;
     final uid = await _googleUserId();
     if (uid == null) return false;
+    await _ensureAnonAuth();
     try {
       final productPath = '$uid/${NusaConfig.productId}';
       final res = await client!.storage
@@ -120,6 +121,7 @@ class ActivationRepository {
     if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
+    await _ensureAnonAuth();
     try {
       final productPath = '$uid/${NusaConfig.productId}';
       final res = await client!.storage
@@ -257,6 +259,7 @@ class ActivationRepository {
     if (client == null) return false;
     final uid = await _googleUserId();
     if (uid == null) return false;
+    await _ensureAnonAuth();
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
@@ -320,6 +323,7 @@ class ActivationRepository {
     if (client == null) return false;
     final uid = await _googleUserId();
     if (uid == null) return false;
+    await _ensureAnonAuth();
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
@@ -349,6 +353,7 @@ class ActivationRepository {
     try {
       final uid = await _googleUserId();
       if (uid == null) return false;
+      await _ensureAnonAuth();
 
       // Check if cloud backup exists and get its timestamp
       final cp = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
