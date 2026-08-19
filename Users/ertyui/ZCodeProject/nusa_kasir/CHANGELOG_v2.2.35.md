@@ -75,6 +75,9 @@ Rilis untuk **8 varian** (kelontong, fnb, laundry, bengkel, salon, apotek, fotoc
 ### 14. Fix — Kasir tidak pernah loading abadi
 - `_preloadProducts` di POS: try/catch penuh — kalau DB rusak/kosong, tampilkan list kosong (bukan spinner abadi) + produk tetap bisa di-scan via barcode.
 
+### 15. Fix — build number sinkron (anti-loop "Update tersedia")
+- `appBuildNumber` di `nusa_config.dart` disinkronkan **87** = pubspec. Sebelumnya 86 → release 87 di GitHub selalu dianggap lebih baru → dialog "Update tersedia" muncul terus walau sudah versi terbaru.
+
 ## CATATAN
 - Database otomatis dimigrasi ke skema **v44** (kolom DP/cicilan/debt + field form print + `branch_id` di setoran piutang) — tanpa kehilangan data.
 - 47/47 test pass · `flutter analyze` 0 error.

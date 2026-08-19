@@ -54,6 +54,9 @@ nusa_key.private
 *.apk
 nusa_builds/
 
+# Build script backup files (restored after each variant build)
+*.orig
+
 # Supabase CLI temp state (nested working copy)
 supabase/supabase/
 .freebuff/
