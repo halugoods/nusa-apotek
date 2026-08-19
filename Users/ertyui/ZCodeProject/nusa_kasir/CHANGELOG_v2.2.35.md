@@ -65,6 +65,16 @@ Rilis untuk **8 varian** (kelontong, fnb, laundry, bengkel, salon, apotek, fotoc
 - `BranchRepository.getAll()` dipindah **sebelum** buka modal sheet (hapus FutureBuilder dari modal — sumber blank pasca date picker).
 - `initializeDateFormatting('id')` di `main.dart` + guard `context.mounted` setelah await.
 
+### 12. Fix KRITIS — restore cloud real-time (setelah "Data Ditemukan" langsung bisa PIN)
+- **Sebelumnya**: setelah restore "Data Ditemukan" → restart, masih nunggu beberapa saat / hapus data + login ulang baru masuk home. Penyebab: `main()` memanggil auto-sync (`_receiveAtLaunch`) **sebelum** menerapkan `.pending` restore — probe DB lama membuka koneksi + menyisakan WAL, lalu auto-sync **menimpa `.pending` yang sama** → DB hasil restore korup → PIN tidak terbaca.
+- **Sekarang**: `.pending` restore di-swap **PALING AWAL** di `main()` (sebelum apa pun menyentuh DB), dan auto-sync **skip** kalau masih ada `.pending` terjadwal. Setelah "Data Ditemukan" → restart → **langsung bisa masuk PIN**.
+
+### 13. Menu Supplier di SEMUA varian
+- `supplier` dihapus dari hidden menus **fnb, laundry, salon** (sebelumnya hanya kelontong/bengkel/apotek/fotocopy/servis yang punya) — konsisten di `nusa_config.dart`, `variant_data.dart`, dan `_build_all.py`.
+
+### 14. Fix — Kasir tidak pernah loading abadi
+- `_preloadProducts` di POS: try/catch penuh — kalau DB rusak/kosong, tampilkan list kosong (bukan spinner abadi) + produk tetap bisa di-scan via barcode.
+
 ## CATATAN
 - Database otomatis dimigrasi ke skema **v44** (kolom DP/cicilan/debt + field form print + `branch_id` di setoran piutang) — tanpa kehilangan data.
 - 47/47 test pass · `flutter analyze` 0 error.
