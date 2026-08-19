@@ -56,7 +56,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 43;
+  int get schemaVersion => 44;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -598,6 +598,14 @@ class AppDatabase extends _$AppDatabase {
                 "INSERT INTO estimate_options (label) VALUES ('$label')");
           }
         }
+      }
+      if (from < 44) {
+        // v2.2.35: cabang pada setoran piutang (laporan uang masuk per cabang)
+        // + config field form Order Cetak per layanan + nilai field kustom.
+        await _addColumnIfMissing(m, 'debt_payments', 'branch_id', 'INTEGER');
+        await _addColumnIfMissing(
+            m, 'print_service_types', 'fields_json', 'TEXT');
+        await _addColumnIfMissing(m, 'print_orders', 'custom_fields_json', 'TEXT');
       }
     },
   );

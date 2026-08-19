@@ -11,6 +11,10 @@ class AppNotification {
   final String body;
   final DateTime createdAt;
   final bool read;
+  // v2.2.35: route app yang dibuka saat notif diketuk (tool-calling).
+  // 'update' → dialog update; 'online' → /pesanan_online; 'stock' → /stok;
+  // 'attendance' → /presensi. null = tidak ada aksi.
+  final String? route;
 
   const AppNotification({
     required this.id,
@@ -19,6 +23,7 @@ class AppNotification {
     required this.body,
     required this.createdAt,
     this.read = false,
+    this.route,
   });
 
   Map<String, dynamic> toJson() => {
@@ -28,6 +33,7 @@ class AppNotification {
     'body': body,
     'createdAt': createdAt.toIso8601String(),
     'read': read,
+    'route': route,
   };
 
   AppNotification copyWith({bool? read}) => AppNotification(
@@ -37,6 +43,7 @@ class AppNotification {
     body: body,
     createdAt: createdAt,
     read: read ?? this.read,
+    route: route,
   );
 
   factory AppNotification.fromJson(Map<String, dynamic> m) => AppNotification(
@@ -46,6 +53,7 @@ class AppNotification {
     body: '${m['body'] ?? ''}',
     createdAt: DateTime.tryParse('${m['createdAt']}') ?? DateTime.now(),
     read: m['read'] == true,
+    route: m['route'] == null ? null : '${m['route']}',
   );
 }
 
@@ -110,6 +118,7 @@ class NotificationService {
     required String title,
     required String body,
     bool showAlert = false,
+    String? route,
   }) async {
     final existing = await getCenter();
     final now = DateTime.now();
@@ -122,6 +131,7 @@ class NotificationService {
         title: title,
         body: body,
         createdAt: now,
+        route: route,
       ),
     );
     if (list.length > _maxStored) list.removeRange(_maxStored, list.length);

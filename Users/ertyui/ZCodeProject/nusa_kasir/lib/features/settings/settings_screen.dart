@@ -1803,7 +1803,192 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Ukuran Kertas ──
+                    // ── Preview LIVE — dari SATU renderer (bukan mockup) ──
+                    // v2.2.35: PREVIEW DI ATAS — user lihat hasil langsung
+                    // sambil menggeser slider Header & Ukuran Logo.
+                    Text(
+                      'Preview',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Preview = hasil cetak asli. Data contoh, ganti '
+                      'pengaturan untuk melihat perubahannya langsung.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: setDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Preview 2 arah: lebar mengikuti ukuran kertas yang
+                    // dipilih (58mm → ramping, 80mm → lebih lebar) — persis
+                    // print asli. Boleh scroll vertikal (spec I).
+                    Container(
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: setDark
+                              ? NusaConfig.darkSurface2
+                              : const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ReceiptPreview(
+                          config: draft,
+                          data: sample,
+                          storeName: storeName.isNotEmpty
+                              ? storeName
+                              : 'NUSA MART',
+                          dark: setDark,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Header — SLIDER 12–48px (image bit-image, preview = print).
+                    Text(
+                      'Header (px)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          '${receiptHeaderMinPx}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: setDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: draft.headerPx
+                                .clamp(receiptHeaderMinPx, receiptHeaderMaxPx)
+                                .toDouble(),
+                            min: receiptHeaderMinPx.toDouble(),
+                            max: receiptHeaderMaxPx.toDouble(),
+                            divisions:
+                                receiptHeaderMaxPx - receiptHeaderMinPx,
+                            activeColor: NusaConfig.activePrimary,
+                            inactiveColor: setDark
+                                ? NusaConfig.darkBorder
+                                : NusaConfig.dividerColor,
+                            label: '${draft.headerPx} px',
+                            onChanged: (v) => setSt(() {
+                              draft = draft.copyWith(headerPx: v.round());
+                              fontDirty = true;
+                            }),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.primarySoft,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${draft.headerPx} px',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    
+                    const SizedBox(height: 14),
+
+// ── Ukuran Logo (slider 1–100%) ──
+                    Text(
+                      'Ukuran Logo',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: setDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          '1%',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: setDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: draft.logoWidthPercent
+                                .clamp(1, 100)
+                                .toDouble(),
+                            min: 1,
+                            max: 100,
+                            divisions: 99,
+                            activeColor: NusaConfig.activePrimary,
+                            inactiveColor: setDark
+                                ? NusaConfig.darkBorder
+                                : NusaConfig.dividerColor,
+                            label: '${draft.logoWidthPercent}%',
+                            onChanged: (v) => setSt(() {
+                              draft = draft.copyWith(
+                                logoWidthPercent: v.round(),
+                              );
+                              fontDirty = true;
+                            }),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.primarySoft,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${draft.logoWidthPercent}%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    
+                    const SizedBox(height: 20),
+
+// ── Ukuran Kertas ──
                     Text(
                       'Ukuran Kertas',
                       style: TextStyle(
@@ -1952,70 +2137,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Header — SLIDER 12–48px (image bit-image, preview = print).
-                    Text(
-                      'Header (px)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: setDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          '${receiptHeaderMinPx}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: setDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                        Expanded(
-                          child: Slider(
-                            value: draft.headerPx
-                                .clamp(receiptHeaderMinPx, receiptHeaderMaxPx)
-                                .toDouble(),
-                            min: receiptHeaderMinPx.toDouble(),
-                            max: receiptHeaderMaxPx.toDouble(),
-                            divisions:
-                                receiptHeaderMaxPx - receiptHeaderMinPx,
-                            activeColor: NusaConfig.activePrimary,
-                            inactiveColor: setDark
-                                ? NusaConfig.darkBorder
-                                : NusaConfig.dividerColor,
-                            label: '${draft.headerPx} px',
-                            onChanged: (v) => setSt(() {
-                              draft = draft.copyWith(headerPx: v.round());
-                              fontDirty = true;
-                            }),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.primarySoft,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${draft.headerPx} px',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: NusaConfig.activePrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
 
                     // Header — KETEBALAN thin/medium/bold (v2.2.27).
                     Text(
@@ -2245,71 +2366,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-
-                    // ── Ukuran Logo (slider 1–100%) ──
-                    Text(
-                      'Ukuran Logo',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: setDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          '1%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: setDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                        Expanded(
-                          child: Slider(
-                            value: draft.logoWidthPercent
-                                .clamp(1, 100)
-                                .toDouble(),
-                            min: 1,
-                            max: 100,
-                            divisions: 99,
-                            activeColor: NusaConfig.activePrimary,
-                            inactiveColor: setDark
-                                ? NusaConfig.darkBorder
-                                : NusaConfig.dividerColor,
-                            label: '${draft.logoWidthPercent}%',
-                            onChanged: (v) => setSt(() {
-                              draft = draft.copyWith(
-                                logoWidthPercent: v.round(),
-                              );
-                              fontDirty = true;
-                            }),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.primarySoft,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${draft.logoWidthPercent}%',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: NusaConfig.activePrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
 
                     // ── Posisi Logo (kiri/tengah/kanan) ──
                     Text(
@@ -2591,54 +2647,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         draft = draft.copyWith(showDate: v);
                         fontDirty = true;
                       }),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // ── Preview LIVE — dari SATU renderer (bukan mockup) ──
-                    Text(
-                      'Preview',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: setDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Preview = hasil cetak asli. Data contoh, ganti '
-                      'pengaturan untuk melihat perubahannya langsung.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: setDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Preview 2 arah: lebar mengikuti ukuran kertas yang
-                    // dipilih (58mm → ramping, 80mm → lebih lebar) — persis
-                    // print asli. Boleh scroll vertikal (spec I).
-                    Container(
-                      alignment: Alignment.center,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: setDark
-                              ? NusaConfig.darkSurface2
-                              : const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ReceiptPreview(
-                          config: draft,
-                          data: sample,
-                          storeName: storeName.isNotEmpty
-                              ? storeName
-                              : 'NUSA MART',
-                          dark: setDark,
-                        ),
-                      ),
                     ),
                     const SizedBox(height: 20),
 

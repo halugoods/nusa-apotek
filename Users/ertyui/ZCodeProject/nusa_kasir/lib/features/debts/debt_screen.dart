@@ -726,6 +726,19 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
         : 0;
     final defaultAmount = isInstallment ? perMonth : debt.remainingAmount;
 
+    // State cicilan & jatuh tempo (bisa diubah dari sheet ini — v2.2.35).
+    int? editInstallmentMonths = debt.installmentMonths;
+    bool editInstallmentEnabled = isInstallment ||
+        (debt.installmentMonths != null && debt.installmentMonths! > 0);
+    DateTime? editDueDate = debt.dueDate;
+    List<InstallmentOption> installmentOptions = const [];
+    // Load opsi cicilan untuk dropdown (best-effort).
+    try {
+      installmentOptions =
+          await InstallmentOptionRepository(ref.read(databaseProvider))
+              .getAll();
+    } catch (_) {}
+
     final amountCtrl = TextEditingController(text: '$defaultAmount');
     String method = 'Tunai';
     final notesCtrl = TextEditingController();
@@ -813,8 +826,10 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  'Cicilan ${debt.installmentMonths}× · '
-                                  '${formatRupiah(perMonth)}/bulan',
+                                  // Status cicilan: berapa dari N yang sudah
+                                  // dibayar (1/6 … 6/6). Per bulan dihitung
+                                  // dari total cicilan tetap (bukan sisa).
+                                  _installmentProgress(debt),
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
@@ -912,6 +927,216 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
                               : formatRupiah(debt.remainingAmount)),
                       SizedBox(height: 12),
 
+                      // ── Atur Cicilan (toggle) + Jatuh Tempo (v2.2.35) ──
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? NusaConfig.darkSurface2
+                              : const Color(0xFFFEFCE8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFF59E0B)
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Cicilan',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: isDark
+                                              ? NusaConfig.darkTextPrimary
+                                              : NusaConfig.textPrimary,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Sisa dibagi rata per bulan',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark
+                                              ? NusaConfig.darkTextTertiary
+                                              : NusaConfig.textTertiary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Transform.scale(
+                                  scale: 0.85,
+                                  child: Switch(
+                                    value: editInstallmentEnabled,
+                                    activeThumbColor:
+                                        NusaConfig.activePrimary,
+                                    onChanged: (v) => setSt(() {
+                                      editInstallmentEnabled = v;
+                                      if (v &&
+                                          editInstallmentMonths == null) {
+                                        editInstallmentMonths =
+                                            installmentOptions.isNotEmpty
+                                                ? installmentOptions
+                                                    .first
+                                                    .months
+                                                : 1;
+                                      }
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (editInstallmentEnabled) ...[
+                              SizedBox(height: 6),
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? NusaConfig.darkSurface2
+                                      : const Color(0xFFF9FAFB),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? NusaConfig.darkBorder
+                                        : NusaConfig.borderColor,
+                                  ),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<int>(
+                                    value: editInstallmentMonths,
+                                    isExpanded: true,
+                                    hint: const Text('Pilih lama cicilan'),
+                                    items: installmentOptions
+                                        .map((o) => DropdownMenuItem(
+                                              value: o.months,
+                                              child: Text(
+                                                o.label?.isNotEmpty == true
+                                                    ? o.label!
+                                                    : '${o.months}× bulanan',
+                                                style: const TextStyle(
+                                                    fontSize: 14),
+                                              ),
+                                            ))
+                                        .toList(),
+                                    onChanged: (v) => setSt(() =>
+                                        editInstallmentMonths = v),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            SizedBox(height: 10),
+                            // Jatuh tempo date picker
+                            GestureDetector(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  useRootNavigator: true,
+                                  initialDate: editDueDate ??
+                                      DateTime.now()
+                                          .add(const Duration(days: 7)),
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime.now()
+                                      .add(const Duration(days: 365 * 5)),
+                                  helpText: 'Jatuh Tempo Piutang',
+                                  cancelText: 'BATAL',
+                                  confirmText: 'PILIH',
+                                );
+                                if (picked != null) {
+                                  setSt(() => editDueDate = picked);
+                                }
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? NusaConfig.darkInputFill
+                                      : NusaConfig.inputFill,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? NusaConfig.darkInputBorder
+                                        : NusaConfig.inputBorder,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.event_outlined,
+                                      size: 18,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Jatuh Tempo',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? NusaConfig
+                                                      .darkTextSecondary
+                                                  : NusaConfig.textSecondary,
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            editDueDate != null
+                                                ? '${editDueDate!.day}/${editDueDate!.month}/${editDueDate!.year}'
+                                                : 'Pilih tanggal (opsional)',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: isDark
+                                                  ? NusaConfig
+                                                      .darkTextPrimary
+                                                  : NusaConfig.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (editDueDate != null)
+                                      GestureDetector(
+                                        onTap: () => setSt(
+                                            () => editDueDate = null),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 18,
+                                          color: isDark
+                                              ? NusaConfig
+                                                  .darkTextTertiary
+                                              : NusaConfig.textTertiary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16),
+
                       // Method dropdown
                       Text(
                         'Metode',
@@ -980,14 +1205,27 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
                               ctx, 'Jumlah melebihi sisa piutang');
                           return;
                         }
-                        await DebtRepository(ref.read(databaseProvider))
-                            .addPayment(
+                        final debtRepo = DebtRepository(
+                            ref.read(databaseProvider));
+                        // Simpan pengaturan cicilan/jatuh tempo bila berubah.
+                        final newMonths = editInstallmentEnabled
+                            ? (editInstallmentMonths ?? 1)
+                            : null;
+                        if (newMonths != debt.installmentMonths) {
+                          await debtRepo.setInstallmentMonths(
+                              debt.id, newMonths);
+                        }
+                        if (editDueDate != debt.dueDate) {
+                          await debtRepo.setDueDate(debt.id, editDueDate);
+                        }
+                        await debtRepo.addPayment(
                           debtId: debt.id,
                           amount: amt,
                           method: method,
                           notes: notesCtrl.text.trim().isEmpty
                               ? null
                               : notesCtrl.text.trim(),
+                          branchId: ref.read(activeBranchProvider)?.id,
                         );
                         if (mounted) {
                           Navigator.pop(ctx);
@@ -1300,6 +1538,18 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
     );
   }
 
+  /// Status cicilan "dibayar/total" untuk debt ber-cicilan.
+  /// Per bulan dihitung dari total cicilan tetap (amount ÷ months), bukan
+  /// dari sisa yang menyusut — sehingga 1/6, 2/6 … 6/6 naik konsisten.
+  String _installmentProgress(CustomerDebt d) {
+    final months = d.installmentMonths ?? 0;
+    if (months <= 0 || d.amount <= 0) return '${d.installmentMonths}×';
+    final perMonth = (d.amount / months).ceil();
+    final paidCount = ((d.amount - d.remainingAmount) / perMonth).ceil();
+    final shown = paidCount.clamp(1, months);
+    return '$shown/$months';
+  }
+
   Widget _buildList(List<CustomerDebt> debts, bool isDark,
       {bool showDueBadge = false}) {
     if (debts.isEmpty) {
@@ -1465,7 +1715,9 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
                         SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            'Cicilan ${d.installmentMonths}× · '
+                            // Status cicilan: cicilan ke-berapa dari N yang
+                            // sedang berjalan (1/6 … 6/6).
+                            'Cicilan ${_installmentProgress(d)} · '
                             '${formatRupiah((d.remainingAmount / d.installmentMonths!).ceil())}/bulan',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

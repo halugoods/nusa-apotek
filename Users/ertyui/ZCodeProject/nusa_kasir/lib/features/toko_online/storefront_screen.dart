@@ -18,6 +18,7 @@ import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:drift/drift.dart' hide Column;
 
 /// Customer-facing online store screen.
@@ -158,7 +159,7 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
   Future<void> _shareStore() async {
     final name = _storeName ?? 'NUSA Toko';
     final text = _storePhone != null
-        ? '🛒 $name — Pesan online langsung via WhatsApp: wa.me/$_storePhone'
+        ? '🛒 $name — Pesan online langsung via WhatsApp: ${waLink(_storePhone!).toString()}'
         : '🛒 $name — Coba pesan lewat aplikasi NUSA Kasir';
     await SharePlus.instance.share(ShareParams(subject: name, text: text));
   }
@@ -225,7 +226,8 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
       '*Total: ${formatRupiah(_totalPrice)}*',
     );
     final targetPhone = _storePhone ?? '';
-    final waUrl = Uri.parse('https://wa.me/$targetPhone?text=$msg');
+    // Normalisasi via helper (v2.2.35): nomor toko bisa 08xx / 628xx / +62.
+    final waUrl = waLink(targetPhone, text: Uri.decodeComponent(msg));
     if (await canLaunchUrl(waUrl)) {
       await launchUrl(waUrl, mode: LaunchMode.externalApplication);
     }

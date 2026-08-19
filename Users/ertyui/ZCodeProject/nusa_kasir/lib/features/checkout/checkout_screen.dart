@@ -99,6 +99,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// pelanggan (masuk menu Piutang). Berlaku untuk semua metode bayar.
   bool _creditMode = false;
 
+  /// Jatuh tempo piutang (v2.2.35) — default +7 hari saat DP/Hutang aktif.
+  DateTime? _dueDate;
+
   // FnB params
   String? _orderType;
   int? _tableId;
@@ -1101,6 +1104,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             amount: due,
             description: desc,
             installmentMonths: months > 0 ? months : null,
+            dueDate: _dueDate,
           );
           // Link transaksi → debt (status bayar di riwayat sinkron dengan
           // menu Piutang; void transaksi ikut menghapus piutang yatim).
@@ -2424,47 +2428,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           SizedBox(height: 10),
           // Quick-action denomination chips + Uang Pas + custom nominal
           _buildDenomChips(isDark),
-          // Tombol cepat HUTANG: bayar belakangan, seluruh total jadi piutang.
-          SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _creditMode
-                  ? null
-                  : () => setState(() {
-                        _creditMode = true;
-                        _dpEnabled = false;
-                        _dpCtrl.clear();
-                      }),
-              icon: Icon(
-                _creditMode ? Icons.check_circle : Icons.bookmark_add_outlined,
-                size: 18,
-              ),
-              label: Text(
-                _creditMode
-                    ? 'HUTANG — total jadi hutang pelanggan'
-                    : 'Bayar dengan Hutang (catat di Piutang)',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _creditMode
-                    ? NusaConfig.success
-                    : NusaConfig.warning,
-                backgroundColor: _creditMode
-                    ? NusaConfig.success.withValues(alpha: 0.1)
-                    : NusaConfig.warning.withValues(alpha: 0.08),
-                side: BorderSide(
-                  color: _creditMode
-                      ? NusaConfig.success.withValues(alpha: 0.7)
-                      : NusaConfig.warning.withValues(alpha: 0.5),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
           if (_kembalian != null) ...[
             SizedBox(height: 12),
             Container(
@@ -2526,54 +2489,138 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     } catch (_) {}
   }
 
-  Widget _buildDpSection(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  /// Kartu toggle mode pembayaran tunda: DP (bayar sebagian) & Hutang
+  /// (bayar 0 sekarang). Dua kartu SEJAJAR dengan gaya identik (amber soft).
+  Widget _modeToggleBlock({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required bool isDark,
+    required VoidCallback onChanged,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onChanged,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: value
+                ? (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEF3C7))
+                : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: value
+                  ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    'Uang Muka (DP)',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? NusaConfig.darkTextPrimary
-                          : NusaConfig.textPrimary,
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
                     ),
                   ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Bayar sebagian sekarang, sisa dicatat hutang',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
+                  Transform.scale(
+                    scale: 0.85,
+                    child: Switch(
+                      value: value,
+                      activeThumbColor: NusaConfig.activePrimary,
+                      onChanged: (_) => onChanged(),
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.3,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bagian Uang Muka (DP) + HUTANG — bayar sebagian / bayar belakangan.
+  /// Sisa atau seluruh total dicatat sebagai piutang (menu Utang).
+  /// Tersedia untuk semua varian (lazim di servis/bengkel/salon).
+  /// Sinkronkan default jatuh tempo saat mode DP/Hutang berubah.
+  void _ensureDueDate() {
+    if (_dueDate == null) {
+      _dueDate = DateTime.now().add(const Duration(days: 7));
+    }
+  }
+
+  Widget _buildDpSection(bool isDark) {
+    final creditActive = _creditMode;
+    final dpActive = _dpEnabled && !creditActive;
+    // Nilai nominal DP yang sedang diketik (Rp).
+    final dpNominal = int.tryParse(_dpCtrl.text) ?? 0;
+    // % dari total yang diwakili nominal tsb (mode Nominal, tampil kecil).
+    final dpPctOfTotal =
+        _total > 0 && dpNominal > 0 ? (dpNominal * 100 / _total).ceil() : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Dua toggle SEJAJAR: DP & Hutang ──
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _modeToggleBlock(
+              title: 'Uang Muka (DP)',
+              subtitle: 'Bayar sebagian, sisa dicatat hutang',
+              value: dpActive,
+              isDark: isDark,
+              onChanged: () => setState(() {
+                if (creditActive) {
+                  _creditMode = false;
+                  _dpEnabled = true;
+                } else {
+                  _dpEnabled = !_dpEnabled;
+                  if (_dpEnabled) _ensureDueDate();
+                  if (!_dpEnabled) _dpCtrl.clear();
+                }
+              }),
             ),
-            Switch(
-              value: _dpEnabled,
-              activeThumbColor: NusaConfig.activePrimary,
-              onChanged: _creditMode
-                  ? null
-                  : (v) => setState(() {
-                        _dpEnabled = v;
-                        if (!v) _dpCtrl.clear();
-                      }),
+            const SizedBox(width: 8),
+            _modeToggleBlock(
+              title: 'Hutang (bayar belakangan)',
+              subtitle: 'Bayar 0 sekarang — total jadi hutang',
+              value: creditActive,
+              isDark: isDark,
+              onChanged: () => setState(() {
+                _creditMode = !creditActive;
+                if (_creditMode) {
+                  _dpEnabled = false;
+                  _dpCtrl.clear();
+                  _ensureDueDate();
+                }
+              }),
             ),
           ],
         ),
-        if (_dpEnabled) ...[
-          SizedBox(height: 10),
-          // ── Mode DP: Nominal / Persen (v2.2.34) ──
+        // ── Detail: mode DP aktif ──
+        if (dpActive) ...[
+          const SizedBox(height: 10),
+          // Mode DP: Nominal / Persen
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
@@ -2591,81 +2638,60 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ],
             ),
           ),
-          SizedBox(height: 10),
-          if (!_dpIsPercent)
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _dpCtrl,
-                    keyboardType: TextInputType.number,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? NusaConfig.darkTextPrimary
-                          : NusaConfig.textPrimary,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Rp 0',
-                      hintStyle: TextStyle(
-                        fontSize: 18,
-                        color: isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary,
-                      ),
-                      filled: true,
-                      fillColor: isDark
-                          ? NusaConfig.darkSurface2
-                          : const Color(0xFFF9FAFB),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(
-                          color: NusaConfig.activePrimary,
-                          width: 2,
-                        ),
-                      ),
-                    ),
+          const SizedBox(height: 10),
+          if (!_dpIsPercent) ...[
+            // ── Nominal: input BESAR, persen kecil hasil hitung ──
+            TextField(
+              controller: _dpCtrl,
+              keyboardType: TextInputType.number,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Rp 0',
+                hintStyle: TextStyle(
+                  fontSize: 22,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+                filled: true,
+                fillColor:
+                    isDark ? NusaConfig.darkSurface2 : const Color(0xFFF9FAFB),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                    color: NusaConfig.activePrimary,
+                    width: 2,
                   ),
                 ),
-                const SizedBox(width: 10),
-                // Quick chip: 50% total (lazim untuk servis/bengkel/salon)
-                GestureDetector(
-                  onTap: () {
-                    final half = (_total / 2).ceil();
-                    _dpCtrl.text = half.toString();
-                    setState(() {});
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: NusaConfig.activeSoft,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Text(
-                      '50%',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: NusaConfig.activePrimary,
-                      ),
-                    ),
-                  ),
+              ),
+            ),
+            if (dpNominal > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '= $dpPctOfTotal% dari total',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
                 ),
-              ],
-            )
-          else
+              ),
+            ],
+          ] else ...[
+            // ── Persen: input KECIL, nominal besar hasil hitung ──
             Row(
               children: [
                 Expanded(
@@ -2691,10 +2717,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       fillColor: isDark
                           ? NusaConfig.darkSurface2
                           : const Color(0xFFF9FAFB),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,
@@ -2711,13 +2735,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
                 const SizedBox(width: 10),
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: NusaConfig.activeSoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    'DP = ${formatRupiah(_downPayment)}',
+                    _downPayment > 0 ? '= ${formatRupiah(_downPayment)}' : '= Rp 0',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -2727,108 +2752,36 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ],
             ),
-          // ── Cicilan: sisa dibagi rata per bulan (v2.2.34) ──
-          if (_downPayment > 0) ...[
-            SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cicilan',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Sisa dibagi rata per bulan',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: _installmentEnabled,
-                  activeThumbColor: NusaConfig.activePrimary,
-                  onChanged: (v) => setState(() {
-                    _installmentEnabled = v;
-                    if (v && _installmentMonths == null) {
-                      _installmentMonths = _installmentOptions.isNotEmpty
-                          ? _installmentOptions.first.months
-                          : 1;
-                    }
-                  }),
-                ),
-              ],
-            ),
-            if (_installmentEnabled) ...[
-              SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? NusaConfig.darkSurface2
-                      : const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? NusaConfig.darkBorder
-                        : NusaConfig.borderColor,
-                  ),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
-                    value: _installmentMonths,
-                    isExpanded: true,
-                    hint: const Text('Pilih lama cicilan'),
-                    items: _installmentOptions
-                        .map((o) => DropdownMenuItem(
-                              value: o.months,
-                              child: Text(
-                                o.label?.isNotEmpty == true
-                                    ? o.label!
-                                    : '${o.months}× bulanan',
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() => _installmentMonths = v),
-                  ),
-                ),
-              ),
-            ],
           ],
-          SizedBox(height: 8),
+        ],
+        // ── Ringkasan + Cicilan + Jatuh Tempo (tampil saat DP/Hutang aktif) ──
+        if (dpActive || creditActive) ...[
+          const SizedBox(height: 10),
           Container(
             width: double.infinity,
-            padding: EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8),
+              color:
+                  isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _dpRow(
                   'Uang muka (dibayar)',
-                  formatRupiah(_downPayment),
+                  formatRupiah(creditActive ? 0 : _downPayment),
                   isDark,
                 ),
                 SizedBox(height: 4),
-                _dpRow('Sisa piutang', formatRupiah(_remainingDue), isDark),
+                _dpRow(
+                  creditActive ? 'Total jadi hutang' : 'Sisa piutang',
+                  formatRupiah(_remainingDue),
+                  isDark,
+                ),
                 if (_installmentEnabled && _installmentMonths != null) ...[
                   SizedBox(height: 4),
                   _dpRow(
@@ -2850,30 +2803,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ],
             ),
           ),
-        ],
-        // ── Mode HUTANG: bayar belakangan (seluruh total jadi hutang) ──
-        SizedBox(height: 6),
-        Container(
-          padding: EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _creditMode
-                ? (isDark ? NusaConfig.darkSurface2 : Color(0xFFFEF3C7))
-                : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8)),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _creditMode
-                  ? Color(0xFFF59E0B).withValues(alpha: 0.6)
-                  : Colors.transparent,
-            ),
-          ),
-          child: Row(
+          const SizedBox(height: 10),
+          // ── Sub-toggle CICILAN (opsional) ──
+          Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Hutang (bayar belakangan)',
+                      'Cicilan',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -2884,7 +2823,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Bayar 0 sekarang — seluruh total dicatat hutang',
+                      'Sisa dibagi rata per bulan',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark
@@ -2896,49 +2835,136 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ),
               Switch(
-                value: _creditMode,
+                value: _installmentEnabled,
                 activeThumbColor: NusaConfig.activePrimary,
                 onChanged: (v) => setState(() {
-                  _creditMode = v;
-                  if (v) {
-                    _dpEnabled = false;
-                    _dpCtrl.clear();
+                  _installmentEnabled = v;
+                  if (v && _installmentMonths == null) {
+                    _installmentMonths = _installmentOptions.isNotEmpty
+                        ? _installmentOptions.first.months
+                        : 1;
                   }
                 }),
               ),
             ],
           ),
-        ),
-        if (_creditMode) ...[
-          SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _dpRow('Dibayar sekarang', formatRupiah(0), isDark),
-                SizedBox(height: 4),
-                _dpRow('Total jadi hutang', formatRupiah(_total), isDark),
-                SizedBox(height: 6),
-                Text(
-                  'Pelanggan wajib dipilih — otomatis masuk menu Utang.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : const Color(0xFF854D0E),
-                  ),
+          if (_installmentEnabled) ...[
+            SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color:
+                    isDark ? NusaConfig.darkSurface2 : const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
                 ),
-              ],
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _installmentMonths,
+                  isExpanded: true,
+                  hint: const Text('Pilih lama cicilan'),
+                  items: _installmentOptions
+                      .map((o) => DropdownMenuItem(
+                            value: o.months,
+                            child: Text(
+                              o.label?.isNotEmpty == true
+                                  ? o.label!
+                                  : '${o.months}× bulanan',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _installmentMonths = v),
+                ),
+              ),
             ),
-          ),
+          ],
+          const SizedBox(height: 10),
+          // ── Jatuh Tempo (date picker, default +7 hari) ──
+          _buildDueDateField(isDark),
         ],
       ],
+    );
+  }
+
+  /// Field Jatuh Tempo — date picker (default +7 hari). Tampil selama
+  /// mode DP/Hutang aktif, dengan atau tanpa cicilan.
+  Widget _buildDueDateField(bool isDark) {
+    return GestureDetector(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          useRootNavigator: true,
+          initialDate: _dueDate ?? DateTime.now().add(const Duration(days: 7)),
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+          helpText: 'Jatuh Tempo Piutang',
+          cancelText: 'BATAL',
+          confirmText: 'PILIH',
+        );
+        if (picked != null) {
+          if (!mounted) return;
+          setState(() => _dueDate = picked);
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_outlined,
+              size: 18,
+              color: isDark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textSecondary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Jatuh Tempo',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _dueDate != null
+                        ? DateFormat('dd MMM yyyy', 'id').format(_dueDate!)
+                        : 'Pilih tanggal (default +7 hari)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

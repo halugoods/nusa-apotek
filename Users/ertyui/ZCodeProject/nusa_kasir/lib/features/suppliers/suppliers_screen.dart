@@ -17,6 +17,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -729,8 +730,8 @@ class _SupplierTile extends StatelessWidget {
   }
 
   Future<void> _launchWhatsApp(String phone) async {
-    final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final uri = Uri.parse('https://wa.me/$clean');
+    // Normalisasi via helper (v2.2.35): hapus tanda + / spasi / 0 di depan.
+    final uri = waLink(phone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

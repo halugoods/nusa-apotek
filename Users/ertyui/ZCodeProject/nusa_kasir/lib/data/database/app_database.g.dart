@@ -13520,6 +13520,17 @@ class $DebtPaymentsTable extends DebtPayments
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<int> branchId = GeneratedColumn<int>(
+    'branch_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -13528,6 +13539,7 @@ class $DebtPaymentsTable extends DebtPayments
     method,
     notes,
     paidAt,
+    branchId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -13578,6 +13590,12 @@ class $DebtPaymentsTable extends DebtPayments
         paidAt.isAcceptableOrUnknown(data['paid_at']!, _paidAtMeta),
       );
     }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    }
     return context;
   }
 
@@ -13611,6 +13629,10 @@ class $DebtPaymentsTable extends DebtPayments
         DriftSqlType.dateTime,
         data['${effectivePrefix}paid_at'],
       )!,
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}branch_id'],
+      ),
     );
   }
 
@@ -13627,6 +13649,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
   final String method;
   final String? notes;
   final DateTime paidAt;
+  final int? branchId;
   const DebtPayment({
     required this.id,
     required this.debtId,
@@ -13634,6 +13657,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
     required this.method,
     this.notes,
     required this.paidAt,
+    this.branchId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -13646,6 +13670,9 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
       map['notes'] = Variable<String>(notes);
     }
     map['paid_at'] = Variable<DateTime>(paidAt);
+    if (!nullToAbsent || branchId != null) {
+      map['branch_id'] = Variable<int>(branchId);
+    }
     return map;
   }
 
@@ -13659,6 +13686,9 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
           ? const Value.absent()
           : Value(notes),
       paidAt: Value(paidAt),
+      branchId: branchId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(branchId),
     );
   }
 
@@ -13674,6 +13704,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
       method: serializer.fromJson<String>(json['method']),
       notes: serializer.fromJson<String?>(json['notes']),
       paidAt: serializer.fromJson<DateTime>(json['paidAt']),
+      branchId: serializer.fromJson<int?>(json['branchId']),
     );
   }
   @override
@@ -13686,6 +13717,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
       'method': serializer.toJson<String>(method),
       'notes': serializer.toJson<String?>(notes),
       'paidAt': serializer.toJson<DateTime>(paidAt),
+      'branchId': serializer.toJson<int?>(branchId),
     };
   }
 
@@ -13696,6 +13728,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
     String? method,
     Value<String?> notes = const Value.absent(),
     DateTime? paidAt,
+    Value<int?> branchId = const Value.absent(),
   }) => DebtPayment(
     id: id ?? this.id,
     debtId: debtId ?? this.debtId,
@@ -13703,6 +13736,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
     method: method ?? this.method,
     notes: notes.present ? notes.value : this.notes,
     paidAt: paidAt ?? this.paidAt,
+    branchId: branchId.present ? branchId.value : this.branchId,
   );
   DebtPayment copyWithCompanion(DebtPaymentsCompanion data) {
     return DebtPayment(
@@ -13712,6 +13746,7 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
       method: data.method.present ? data.method.value : this.method,
       notes: data.notes.present ? data.notes.value : this.notes,
       paidAt: data.paidAt.present ? data.paidAt.value : this.paidAt,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
     );
   }
 
@@ -13723,13 +13758,15 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
           ..write('amount: $amount, ')
           ..write('method: $method, ')
           ..write('notes: $notes, ')
-          ..write('paidAt: $paidAt')
+          ..write('paidAt: $paidAt, ')
+          ..write('branchId: $branchId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, debtId, amount, method, notes, paidAt);
+  int get hashCode =>
+      Object.hash(id, debtId, amount, method, notes, paidAt, branchId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -13739,7 +13776,8 @@ class DebtPayment extends DataClass implements Insertable<DebtPayment> {
           other.amount == this.amount &&
           other.method == this.method &&
           other.notes == this.notes &&
-          other.paidAt == this.paidAt);
+          other.paidAt == this.paidAt &&
+          other.branchId == this.branchId);
 }
 
 class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
@@ -13749,6 +13787,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
   final Value<String> method;
   final Value<String?> notes;
   final Value<DateTime> paidAt;
+  final Value<int?> branchId;
   const DebtPaymentsCompanion({
     this.id = const Value.absent(),
     this.debtId = const Value.absent(),
@@ -13756,6 +13795,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
     this.method = const Value.absent(),
     this.notes = const Value.absent(),
     this.paidAt = const Value.absent(),
+    this.branchId = const Value.absent(),
   });
   DebtPaymentsCompanion.insert({
     this.id = const Value.absent(),
@@ -13764,6 +13804,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
     this.method = const Value.absent(),
     this.notes = const Value.absent(),
     this.paidAt = const Value.absent(),
+    this.branchId = const Value.absent(),
   }) : debtId = Value(debtId),
        amount = Value(amount);
   static Insertable<DebtPayment> custom({
@@ -13773,6 +13814,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
     Expression<String>? method,
     Expression<String>? notes,
     Expression<DateTime>? paidAt,
+    Expression<int>? branchId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -13781,6 +13823,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
       if (method != null) 'method': method,
       if (notes != null) 'notes': notes,
       if (paidAt != null) 'paid_at': paidAt,
+      if (branchId != null) 'branch_id': branchId,
     });
   }
 
@@ -13791,6 +13834,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
     Value<String>? method,
     Value<String?>? notes,
     Value<DateTime>? paidAt,
+    Value<int?>? branchId,
   }) {
     return DebtPaymentsCompanion(
       id: id ?? this.id,
@@ -13799,6 +13843,7 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
       method: method ?? this.method,
       notes: notes ?? this.notes,
       paidAt: paidAt ?? this.paidAt,
+      branchId: branchId ?? this.branchId,
     );
   }
 
@@ -13823,6 +13868,9 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
     if (paidAt.present) {
       map['paid_at'] = Variable<DateTime>(paidAt.value);
     }
+    if (branchId.present) {
+      map['branch_id'] = Variable<int>(branchId.value);
+    }
     return map;
   }
 
@@ -13834,7 +13882,8 @@ class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
           ..write('amount: $amount, ')
           ..write('method: $method, ')
           ..write('notes: $notes, ')
-          ..write('paidAt: $paidAt')
+          ..write('paidAt: $paidAt, ')
+          ..write('branchId: $branchId')
           ..write(')'))
         .toString();
   }
@@ -18592,6 +18641,17 @@ class $PrintOrdersTable extends PrintOrders
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _customFieldsJsonMeta = const VerificationMeta(
+    'customFieldsJson',
+  );
+  @override
+  late final GeneratedColumn<String> customFieldsJson = GeneratedColumn<String>(
+    'custom_fields_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -18608,6 +18668,7 @@ class $PrintOrdersTable extends PrintOrders
     status,
     notes,
     createdAt,
+    customFieldsJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -18718,6 +18779,15 @@ class $PrintOrdersTable extends PrintOrders
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('custom_fields_json')) {
+      context.handle(
+        _customFieldsJsonMeta,
+        customFieldsJson.isAcceptableOrUnknown(
+          data['custom_fields_json']!,
+          _customFieldsJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -18783,6 +18853,10 @@ class $PrintOrdersTable extends PrintOrders
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      customFieldsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_fields_json'],
+      ),
     );
   }
 
@@ -18807,6 +18881,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
   final String status;
   final String? notes;
   final DateTime createdAt;
+  final String? customFieldsJson;
   const PrintOrder({
     required this.id,
     required this.customerName,
@@ -18822,6 +18897,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     required this.status,
     this.notes,
     required this.createdAt,
+    this.customFieldsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -18850,6 +18926,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || customFieldsJson != null) {
+      map['custom_fields_json'] = Variable<String>(customFieldsJson);
+    }
     return map;
   }
 
@@ -18879,6 +18958,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      customFieldsJson: customFieldsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customFieldsJson),
     );
   }
 
@@ -18902,6 +18984,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      customFieldsJson: serializer.fromJson<String?>(json['customFieldsJson']),
     );
   }
   @override
@@ -18922,6 +19005,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'customFieldsJson': serializer.toJson<String?>(customFieldsJson),
     };
   }
 
@@ -18940,6 +19024,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     String? status,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> customFieldsJson = const Value.absent(),
   }) => PrintOrder(
     id: id ?? this.id,
     customerName: customerName ?? this.customerName,
@@ -18959,6 +19044,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    customFieldsJson: customFieldsJson.present
+        ? customFieldsJson.value
+        : this.customFieldsJson,
   );
   PrintOrder copyWithCompanion(PrintOrdersCompanion data) {
     return PrintOrder(
@@ -18984,6 +19072,9 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      customFieldsJson: data.customFieldsJson.present
+          ? data.customFieldsJson.value
+          : this.customFieldsJson,
     );
   }
 
@@ -19003,7 +19094,8 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('customFieldsJson: $customFieldsJson')
           ..write(')'))
         .toString();
   }
@@ -19024,6 +19116,7 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
     status,
     notes,
     createdAt,
+    customFieldsJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -19042,7 +19135,8 @@ class PrintOrder extends DataClass implements Insertable<PrintOrder> {
           other.total == this.total &&
           other.status == this.status &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.customFieldsJson == this.customFieldsJson);
 }
 
 class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
@@ -19060,6 +19154,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
   final Value<String> status;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<String?> customFieldsJson;
   const PrintOrdersCompanion({
     this.id = const Value.absent(),
     this.customerName = const Value.absent(),
@@ -19075,6 +19170,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.customFieldsJson = const Value.absent(),
   });
   PrintOrdersCompanion.insert({
     this.id = const Value.absent(),
@@ -19091,6 +19187,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.customFieldsJson = const Value.absent(),
   }) : customerName = Value(customerName),
        serviceType = Value(serviceType);
   static Insertable<PrintOrder> custom({
@@ -19108,6 +19205,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     Expression<String>? status,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<String>? customFieldsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -19124,6 +19222,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (customFieldsJson != null) 'custom_fields_json': customFieldsJson,
     });
   }
 
@@ -19142,6 +19241,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     Value<String>? status,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<String?>? customFieldsJson,
   }) {
     return PrintOrdersCompanion(
       id: id ?? this.id,
@@ -19158,6 +19258,7 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
       status: status ?? this.status,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      customFieldsJson: customFieldsJson ?? this.customFieldsJson,
     );
   }
 
@@ -19206,6 +19307,9 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (customFieldsJson.present) {
+      map['custom_fields_json'] = Variable<String>(customFieldsJson.value);
+    }
     return map;
   }
 
@@ -19225,7 +19329,8 @@ class PrintOrdersCompanion extends UpdateCompanion<PrintOrder> {
           ..write('total: $total, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('customFieldsJson: $customFieldsJson')
           ..write(')'))
         .toString();
   }
@@ -19275,8 +19380,19 @@ class $PrintServiceTypesTable extends PrintServiceTypes
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _fieldsJsonMeta = const VerificationMeta(
+    'fieldsJson',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, isDefault];
+  late final GeneratedColumn<String> fieldsJson = GeneratedColumn<String>(
+    'fields_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, isDefault, fieldsJson];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -19306,6 +19422,12 @@ class $PrintServiceTypesTable extends PrintServiceTypes
         isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
       );
     }
+    if (data.containsKey('fields_json')) {
+      context.handle(
+        _fieldsJsonMeta,
+        fieldsJson.isAcceptableOrUnknown(data['fields_json']!, _fieldsJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -19327,6 +19449,10 @@ class $PrintServiceTypesTable extends PrintServiceTypes
         DriftSqlType.bool,
         data['${effectivePrefix}is_default'],
       )!,
+      fieldsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fields_json'],
+      ),
     );
   }
 
@@ -19341,10 +19467,12 @@ class PrintServiceType extends DataClass
   final int id;
   final String name;
   final bool isDefault;
+  final String? fieldsJson;
   const PrintServiceType({
     required this.id,
     required this.name,
     required this.isDefault,
+    this.fieldsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -19352,6 +19480,9 @@ class PrintServiceType extends DataClass
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
     map['is_default'] = Variable<bool>(isDefault);
+    if (!nullToAbsent || fieldsJson != null) {
+      map['fields_json'] = Variable<String>(fieldsJson);
+    }
     return map;
   }
 
@@ -19360,6 +19491,9 @@ class PrintServiceType extends DataClass
       id: Value(id),
       name: Value(name),
       isDefault: Value(isDefault),
+      fieldsJson: fieldsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fieldsJson),
     );
   }
 
@@ -19372,6 +19506,7 @@ class PrintServiceType extends DataClass
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       isDefault: serializer.fromJson<bool>(json['isDefault']),
+      fieldsJson: serializer.fromJson<String?>(json['fieldsJson']),
     );
   }
   @override
@@ -19381,20 +19516,29 @@ class PrintServiceType extends DataClass
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
       'isDefault': serializer.toJson<bool>(isDefault),
+      'fieldsJson': serializer.toJson<String?>(fieldsJson),
     };
   }
 
-  PrintServiceType copyWith({int? id, String? name, bool? isDefault}) =>
-      PrintServiceType(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        isDefault: isDefault ?? this.isDefault,
-      );
+  PrintServiceType copyWith({
+    int? id,
+    String? name,
+    bool? isDefault,
+    Value<String?> fieldsJson = const Value.absent(),
+  }) => PrintServiceType(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    isDefault: isDefault ?? this.isDefault,
+    fieldsJson: fieldsJson.present ? fieldsJson.value : this.fieldsJson,
+  );
   PrintServiceType copyWithCompanion(PrintServiceTypesCompanion data) {
     return PrintServiceType(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+      fieldsJson: data.fieldsJson.present
+          ? data.fieldsJson.value
+          : this.fieldsJson,
     );
   }
 
@@ -19403,45 +19547,52 @@ class PrintServiceType extends DataClass
     return (StringBuffer('PrintServiceType(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('isDefault: $isDefault')
+          ..write('isDefault: $isDefault, ')
+          ..write('fieldsJson: $fieldsJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, isDefault);
+  int get hashCode => Object.hash(id, name, isDefault, fieldsJson);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is PrintServiceType &&
           other.id == this.id &&
           other.name == this.name &&
-          other.isDefault == this.isDefault);
+          other.isDefault == this.isDefault &&
+          other.fieldsJson == this.fieldsJson);
 }
 
 class PrintServiceTypesCompanion extends UpdateCompanion<PrintServiceType> {
   final Value<int> id;
   final Value<String> name;
   final Value<bool> isDefault;
+  final Value<String?> fieldsJson;
   const PrintServiceTypesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.isDefault = const Value.absent(),
+    this.fieldsJson = const Value.absent(),
   });
   PrintServiceTypesCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     this.isDefault = const Value.absent(),
+    this.fieldsJson = const Value.absent(),
   }) : name = Value(name);
   static Insertable<PrintServiceType> custom({
     Expression<int>? id,
     Expression<String>? name,
     Expression<bool>? isDefault,
+    Expression<String>? fieldsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (isDefault != null) 'is_default': isDefault,
+      if (fieldsJson != null) 'fields_json': fieldsJson,
     });
   }
 
@@ -19449,11 +19600,13 @@ class PrintServiceTypesCompanion extends UpdateCompanion<PrintServiceType> {
     Value<int>? id,
     Value<String>? name,
     Value<bool>? isDefault,
+    Value<String?>? fieldsJson,
   }) {
     return PrintServiceTypesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       isDefault: isDefault ?? this.isDefault,
+      fieldsJson: fieldsJson ?? this.fieldsJson,
     );
   }
 
@@ -19469,6 +19622,9 @@ class PrintServiceTypesCompanion extends UpdateCompanion<PrintServiceType> {
     if (isDefault.present) {
       map['is_default'] = Variable<bool>(isDefault.value);
     }
+    if (fieldsJson.present) {
+      map['fields_json'] = Variable<String>(fieldsJson.value);
+    }
     return map;
   }
 
@@ -19477,7 +19633,8 @@ class PrintServiceTypesCompanion extends UpdateCompanion<PrintServiceType> {
     return (StringBuffer('PrintServiceTypesCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('isDefault: $isDefault')
+          ..write('isDefault: $isDefault, ')
+          ..write('fieldsJson: $fieldsJson')
           ..write(')'))
         .toString();
   }
@@ -30044,6 +30201,7 @@ typedef $$DebtPaymentsTableCreateCompanionBuilder =
       Value<String> method,
       Value<String?> notes,
       Value<DateTime> paidAt,
+      Value<int?> branchId,
     });
 typedef $$DebtPaymentsTableUpdateCompanionBuilder =
     DebtPaymentsCompanion Function({
@@ -30053,6 +30211,7 @@ typedef $$DebtPaymentsTableUpdateCompanionBuilder =
       Value<String> method,
       Value<String?> notes,
       Value<DateTime> paidAt,
+      Value<int?> branchId,
     });
 
 class $$DebtPaymentsTableFilterComposer
@@ -30091,6 +30250,11 @@ class $$DebtPaymentsTableFilterComposer
 
   ColumnFilters<DateTime> get paidAt => $composableBuilder(
     column: $table.paidAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get branchId => $composableBuilder(
+    column: $table.branchId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -30133,6 +30297,11 @@ class $$DebtPaymentsTableOrderingComposer
     column: $table.paidAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DebtPaymentsTableAnnotationComposer
@@ -30161,6 +30330,9 @@ class $$DebtPaymentsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get paidAt =>
       $composableBuilder(column: $table.paidAt, builder: (column) => column);
+
+  GeneratedColumn<int> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
 }
 
 class $$DebtPaymentsTableTableManager
@@ -30200,6 +30372,7 @@ class $$DebtPaymentsTableTableManager
                 Value<String> method = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> paidAt = const Value.absent(),
+                Value<int?> branchId = const Value.absent(),
               }) => DebtPaymentsCompanion(
                 id: id,
                 debtId: debtId,
@@ -30207,6 +30380,7 @@ class $$DebtPaymentsTableTableManager
                 method: method,
                 notes: notes,
                 paidAt: paidAt,
+                branchId: branchId,
               ),
           createCompanionCallback:
               ({
@@ -30216,6 +30390,7 @@ class $$DebtPaymentsTableTableManager
                 Value<String> method = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> paidAt = const Value.absent(),
+                Value<int?> branchId = const Value.absent(),
               }) => DebtPaymentsCompanion.insert(
                 id: id,
                 debtId: debtId,
@@ -30223,6 +30398,7 @@ class $$DebtPaymentsTableTableManager
                 method: method,
                 notes: notes,
                 paidAt: paidAt,
+                branchId: branchId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -32546,6 +32722,7 @@ typedef $$PrintOrdersTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> customFieldsJson,
     });
 typedef $$PrintOrdersTableUpdateCompanionBuilder =
     PrintOrdersCompanion Function({
@@ -32563,6 +32740,7 @@ typedef $$PrintOrdersTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<String?> customFieldsJson,
     });
 
 class $$PrintOrdersTableFilterComposer
@@ -32641,6 +32819,11 @@ class $$PrintOrdersTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customFieldsJson => $composableBuilder(
+    column: $table.customFieldsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -32723,6 +32906,11 @@ class $$PrintOrdersTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get customFieldsJson => $composableBuilder(
+    column: $table.customFieldsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PrintOrdersTableAnnotationComposer
@@ -32783,6 +32971,11 @@ class $$PrintOrdersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get customFieldsJson => $composableBuilder(
+    column: $table.customFieldsJson,
+    builder: (column) => column,
+  );
 }
 
 class $$PrintOrdersTableTableManager
@@ -32830,6 +33023,7 @@ class $$PrintOrdersTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> customFieldsJson = const Value.absent(),
               }) => PrintOrdersCompanion(
                 id: id,
                 customerName: customerName,
@@ -32845,6 +33039,7 @@ class $$PrintOrdersTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                customFieldsJson: customFieldsJson,
               ),
           createCompanionCallback:
               ({
@@ -32862,6 +33057,7 @@ class $$PrintOrdersTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> customFieldsJson = const Value.absent(),
               }) => PrintOrdersCompanion.insert(
                 id: id,
                 customerName: customerName,
@@ -32877,6 +33073,7 @@ class $$PrintOrdersTableTableManager
                 status: status,
                 notes: notes,
                 createdAt: createdAt,
+                customFieldsJson: customFieldsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -32908,12 +33105,14 @@ typedef $$PrintServiceTypesTableCreateCompanionBuilder =
       Value<int> id,
       required String name,
       Value<bool> isDefault,
+      Value<String?> fieldsJson,
     });
 typedef $$PrintServiceTypesTableUpdateCompanionBuilder =
     PrintServiceTypesCompanion Function({
       Value<int> id,
       Value<String> name,
       Value<bool> isDefault,
+      Value<String?> fieldsJson,
     });
 
 class $$PrintServiceTypesTableFilterComposer
@@ -32937,6 +33136,11 @@ class $$PrintServiceTypesTableFilterComposer
 
   ColumnFilters<bool> get isDefault => $composableBuilder(
     column: $table.isDefault,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fieldsJson => $composableBuilder(
+    column: $table.fieldsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -32964,6 +33168,11 @@ class $$PrintServiceTypesTableOrderingComposer
     column: $table.isDefault,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get fieldsJson => $composableBuilder(
+    column: $table.fieldsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PrintServiceTypesTableAnnotationComposer
@@ -32983,6 +33192,11 @@ class $$PrintServiceTypesTableAnnotationComposer
 
   GeneratedColumn<bool> get isDefault =>
       $composableBuilder(column: $table.isDefault, builder: (column) => column);
+
+  GeneratedColumn<String> get fieldsJson => $composableBuilder(
+    column: $table.fieldsJson,
+    builder: (column) => column,
+  );
 }
 
 class $$PrintServiceTypesTableTableManager
@@ -33028,20 +33242,24 @@ class $$PrintServiceTypesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<bool> isDefault = const Value.absent(),
+                Value<String?> fieldsJson = const Value.absent(),
               }) => PrintServiceTypesCompanion(
                 id: id,
                 name: name,
                 isDefault: isDefault,
+                fieldsJson: fieldsJson,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
                 Value<bool> isDefault = const Value.absent(),
+                Value<String?> fieldsJson = const Value.absent(),
               }) => PrintServiceTypesCompanion.insert(
                 id: id,
                 name: name,
                 isDefault: isDefault,
+                fieldsJson: fieldsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

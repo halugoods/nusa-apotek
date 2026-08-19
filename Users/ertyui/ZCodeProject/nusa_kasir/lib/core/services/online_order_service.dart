@@ -134,6 +134,7 @@ class OnlineOrderService {
     String? pickupOptions,
     String? paymentMethods,
     String? memberSettings,
+    String? logoUrl,
   }) async {
     final sid = await storeId;
     if (sid == null) {
@@ -170,6 +171,7 @@ class OnlineOrderService {
         if (pickupOptions != null) 'pickup_options': pickupOptions,
         if (paymentMethods != null) 'payment_methods': paymentMethods,
         if (memberSettings != null) 'member_settings': memberSettings,
+        if (logoUrl != null) 'logo_url': logoUrl,
       });
       debugPrint('[OnlineOrderService] upsertStore: status=${res.status}');
       return (ok: res.status < 400, error: OnlineStoreError.unknown);
@@ -408,5 +410,45 @@ class OnlineOrderService {
   Future<bool> get isStoreActive async {
     final settings = await getStoreSettings();
     return settings?['is_active'] == true;
+  }
+
+  /// ---------------------------------------------------------------
+  /// Print form configs (Order Cetak — field per layanan)
+  /// ---------------------------------------------------------------
+
+  /// Upload config field form Order Cetak per layanan ke tabel
+  /// `print_form_configs` (replace-all per store). Web tidak memakai —
+  /// murni cadangan cloud supaya config tidak hilang saat clear-data.
+  Future<bool> syncPrintFormConfigs(List<Map<String, dynamic>> configs) async {
+    final sid = await storeId;
+    if (sid == null) return false;
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'sync_print_form_configs',
+        'store_id': sid,
+        'configs': configs,
+      });
+      return res.status < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Read-back config field form Order Cetak milik store ini
+  /// (daftar {service_name, fields_json}).
+  Future<List<Map<String, dynamic>>> getPrintFormConfigs() async {
+    final sid = await storeId;
+    if (sid == null) return [];
+    try {
+      final res = await _invoke('online-store', {
+        'action': 'get_print_form_configs',
+        'store_id': sid,
+      });
+      if (res.status >= 400) return [];
+      final data = res.data as Map<String, dynamic>;
+      return (data['configs'] as List).cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
   }
 }

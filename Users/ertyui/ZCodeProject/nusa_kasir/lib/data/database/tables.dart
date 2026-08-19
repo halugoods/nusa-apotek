@@ -432,6 +432,8 @@ class DebtPayments extends Table {
   TextColumn get method => text().withDefault(const Constant('Tunai'))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get paidAt => dateTime().withDefault(currentDateAndTime)();
+  // v2.2.35: cabang tempat setoran piutang dicatat (untuk laporan uang masuk).
+  IntColumn get branchId => integer().nullable()();
 }
 
 class StockCounts extends Table {
@@ -575,6 +577,8 @@ class PrintOrders extends Table {
   // Baru | Diproses | Selesai | Diambil
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  // v2.2.35: nilai field form kustom (JSON map label→value) per order cetak.
+  TextColumn get customFieldsJson => text().nullable()();
 }
 
 /// Fotocopy/Percetakan: jenis layanan (custom, tanpa icon bulat).
@@ -583,6 +587,9 @@ class PrintServiceTypes extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().unique()();
   BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
+  // v2.2.35: field form yang TAMPIL untuk layanan ini (JSON list string).
+  // null = semua field default tampil. Sinkron ke Supabase print_form_configs.
+  TextColumn get fieldsJson => text().nullable()();
 }
 
 /// FnB: Open tabs — saved orders that can be resumed later.

@@ -19,6 +19,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -558,8 +559,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
   /// Open WhatsApp with customer
   Future<void> _openWA(OnlineOrder order) async {
     if (order.customerPhone.isEmpty) return;
-    final phone = order.customerPhone.replaceAll(RegExp(r'[^0-9]'), '');
-    final uri = Uri.parse('https://wa.me/$phone');
+    // Normalisasi via helper (v2.2.35): 0818… → 62818… biar wa.me valid.
+    final uri = waLink(order.customerPhone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

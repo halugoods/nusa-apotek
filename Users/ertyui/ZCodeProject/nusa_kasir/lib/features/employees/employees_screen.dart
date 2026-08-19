@@ -21,6 +21,7 @@ import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _avatarColors = [
@@ -155,7 +156,18 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     }
   }
 
-  void _showForm({Employee? employee}) {
+  Future<void> _showForm({Employee? employee}) async {
+    // Preload branches SEBELUM membuka sheet (v2.2.35): FutureBuilder di
+    // dalam modal yang rebuild setelah date picker adalah sumber layar
+    // blank — fetch di sini, sheet pakai data polos.
+    List<Branche> branches;
+    try {
+      branches = await BranchRepository(ref.read(databaseProvider)).getAll();
+    } catch (_) {
+      branches = [];
+    }
+    if (!mounted) return;
+
     final nameC = TextEditingController(text: employee?.name ?? '');
     final pinC = TextEditingController(text: employee?.pin ?? '');
     final phoneC = TextEditingController(text: employee?.phone ?? '');
@@ -179,11 +191,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => FutureBuilder<List<Branche>>(
-          future: BranchRepository(ref.read(databaseProvider)).getAll(),
-          builder: (ctx, snap) {
-            final branches = snap.data ?? [];
-            return Container(
+        builder: (ctx, setSt) {
+          return Container(
               decoration: BoxDecoration(
                 color: isDark
                     ? NusaConfig.darkSurface
@@ -962,9 +971,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 ),
               ),
             ); // return Container
-          }, // FutureBuilder builder
-        ), // FutureBuilder
-      ), // StatefulBuilder builder
+        }, // StatefulBuilder builder
+      ), // StatefulBuilder
     ); // showModalBottomSheet
   }
 
@@ -1122,10 +1130,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
   Future<void> _openWA(Employee e) async {
     if (e.phone == null || e.phone!.isEmpty) return;
-    final phone = e.phone!.replaceAll(RegExp(r'[^0-9]'), '');
-    var num = phone;
-    if (num.startsWith('0')) num = '62${num.substring(1)}';
-    final uri = Uri.parse('https://wa.me/$num');
+    // Normalisasi via helper (v2.2.35): 08xx → 628xx.
+    final uri = waLink(e.phone!);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

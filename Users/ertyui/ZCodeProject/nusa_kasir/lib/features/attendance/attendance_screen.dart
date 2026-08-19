@@ -15,6 +15,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _avatarColors = [
@@ -666,14 +667,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
 
   void _sendWAReminder(Employee e) async {
     if (e.phone == null || e.phone!.isEmpty) return;
-    final phone = e.phone!.replaceAll(RegExp(r'[^0-9]'), '');
-    var num = phone;
-    if (num.startsWith('0')) num = '62${num.substring(1)}';
-    final msg = Uri.encodeComponent(
-      'Halo ${e.name}, ini dari NUSA Kasir.\n\n'
-      'Kamu belum absen masuk hari ini. Mohon segera absen ya.\n\nTerima kasih 🙏'
-    );
-    final uri = Uri.parse('https://wa.me/$num?text=$msg');
+    final msg =
+        'Halo ${e.name}, ini dari NUSA Kasir.\n\n'
+        'Kamu belum absen masuk hari ini. Mohon segera absen ya.\n\nTerima kasih 🙏';
+    // Normalisasi via helper (v2.2.35): 08xx → 628xx biar wa.me valid.
+    final uri = waLink(e.phone!, text: msg);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

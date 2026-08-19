@@ -9,7 +9,7 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 		static String _productId = "nusa-laundry";
 		static String _appSubtitle = "Aplikasi Kasir untuk Usaha Laundry";
-  static const String appVersion = "2.2.34";
+  static const String appVersion = "2.2.35";
   static const int appBuildNumber = 86;
 		static String _githubRepo = "halugoods/nusa-laundry";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";

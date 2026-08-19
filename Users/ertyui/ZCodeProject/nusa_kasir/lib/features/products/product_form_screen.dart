@@ -371,8 +371,20 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
     // avoids OOM on low-RAM devices (Samsung A14 50MP photos crash the app).
     final path = await pickAndSaveImage(maxSize: 1024, prefix: 'product_');
     if (path == null) return;
-    setState(() => _imagePath = path);
+    // Crop 1:1 ANTI-FC: file sudah di-downscale ≤1024px, jadi UCrop tidak
+    // membuka bitmap 50MP. Gagal → tetap pakai foto tanpa crop (app jalan).
+    final cropped = await cropAndSaveImage(path);
+    setState(() => _imagePath = cropped ?? path);
     TopToast.success(context, 'Gambar ditambahkan');
+  }
+
+  /// Re-crop foto yang sudah terpasang (ikon crop di preview).
+  Future<void> _recropImage() async {
+    if (_imagePath == null) return;
+    final cropped = await cropAndSaveImage(_imagePath!);
+    if (cropped == null || !mounted) return;
+    setState(() => _imagePath = cropped);
+    TopToast.success(context, 'Foto diperbarui');
   }
 
   void _uploadToCloud(String localPath) {
@@ -1162,7 +1174,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
     return GestureDetector(
       onTap: _pickImage,
       child: Container(
-        height: 160,
+        // Preview 1:1 (v2.2.35) — foto produk tampil persegi, bukan 160px.
+        constraints: BoxConstraints(maxHeight: 260),
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
           borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
@@ -1172,46 +1185,86 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
           ),
         ),
         child: _imagePath != null
-            ? Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.file(
-                      File(_imagePath!),
-                      fit: BoxFit.cover,
-                      cacheWidth: 600,
+            ? AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.file(
+                        File(_imagePath!),
+                        fit: BoxFit.cover,
+                        cacheWidth: 600,
+                      ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 12,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'Ganti Foto',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                    Positioned(
+                      bottom: 12,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Re-crop (v2.2.35): foto sudah ada → bisa
+                            // dipotong ulang tanpa harus ambil foto baru.
+                            GestureDetector(
+                              onTap: _recropImage,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.crop_rounded,
+                                        color: Colors.white, size: 14),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Crop',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
+                            SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _pickImage,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Ganti Foto',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,

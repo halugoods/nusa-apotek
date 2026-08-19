@@ -31,6 +31,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 
 class TransactionsScreen extends ConsumerStatefulWidget {
   TransactionsScreen({super.key});
@@ -955,17 +956,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                   data: data,
                                   storeName: storeName,
                                 );
-                                final digits = custPhone.replaceAll(
-                                  RegExp(r'\D'),
-                                  '',
-                                );
-                                final normalized = digits.startsWith('0')
-                                    ? '62${digits.substring(1)}'
-                                    : digits.startsWith('62')
-                                    ? digits
-                                    : '62$digits';
-                                final waUrl =
-                                    'https://wa.me/$normalized?text=${Uri.encodeComponent(text)}';
+                                final waUrl = waLink(
+                                  custPhone,
+                                  text: text,
+                                ).toString();
                                 launchUrl(Uri.parse(waUrl));
                               } else {
                                 SharePlus.instance.share(
@@ -1399,6 +1393,16 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
       final isCredit = (widget.tx.dpAmount ?? 0) == 0 &&
           (widget.tx.cashGiven ?? 0) == 0 &&
           debt.amount == widget.tx.total;
+      // Status cicilan (v2.2.35): x/N bila debt ber-cicilan & belum lunas.
+      String? installmentLabel;
+      if (!lunas && debt.installmentMonths != null && debt.installmentMonths! > 0) {
+        final months = debt.installmentMonths!;
+        final perMonth = (debt.amount / months).ceil();
+        final paidCount =
+            ((debt.amount - debt.remainingAmount) / perMonth).ceil();
+        installmentLabel =
+            '${paidCount.clamp(1, months)}/$months';
+      }
       setState(() {
         _debtStatus = Row(
           children: [
@@ -1416,9 +1420,11 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
               child: Text(
                 lunas
                     ? 'Piutang Lunas ✓'
-                    : isCredit
-                        ? 'Piutang — sisa ${formatRupiah(debt.remainingAmount)}'
-                        : 'Sisa piutang ${formatRupiah(debt.remainingAmount)}',
+                    : installmentLabel != null
+                        ? 'Cicilan $installmentLabel · sisa ${formatRupiah(debt.remainingAmount)}'
+                        : isCredit
+                            ? 'Piutang — sisa ${formatRupiah(debt.remainingAmount)}'
+                            : 'Sisa piutang ${formatRupiah(debt.remainingAmount)}',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

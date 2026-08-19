@@ -77,12 +77,26 @@ class DebtRepository {
     return q.get();
   }
 
+  /// Ubah jumlah bulan cicilan debt (null = hapus cicilan).
+  Future<void> setInstallmentMonths(int debtId, int? months) async {
+    await (db.update(db.customerDebts)..where((t) => t.id.equals(debtId)))
+        .write(CustomerDebtsCompanion(installmentMonths: Value(months)));
+  }
+
+  /// Ubah tanggal jatuh tempo debt (null = hapus jatuh tempo).
+  Future<void> setDueDate(int debtId, DateTime? dueDate) async {
+    await (db.update(db.customerDebts)..where((t) => t.id.equals(debtId)))
+        .write(CustomerDebtsCompanion(dueDate: Value(dueDate)));
+  }
+
   /// Add a payment towards a debt. Updates remainingAmount and auto-sets status to 'Lunas' if fully paid.
+  /// [branchId] = cabang tempat setoran dicatat (untuk laporan uang masuk v2.2.35).
   Future<void> addPayment({
     required int debtId,
     required int amount,
     String method = 'Tunai',
     String? notes,
+    int? branchId,
   }) async {
     if (amount <= 0) {
       throw ArgumentError.value(
@@ -125,6 +139,7 @@ class DebtRepository {
               amount: amount,
               method: Value(method.trim()),
               notes: Value(notes),
+              branchId: Value(branchId),
             ),
           );
 

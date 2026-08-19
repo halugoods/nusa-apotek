@@ -56,3 +56,4 @@ nusa_builds/
 
 # Supabase CLI temp state (nested working copy)
 supabase/supabase/
+.freebuff/

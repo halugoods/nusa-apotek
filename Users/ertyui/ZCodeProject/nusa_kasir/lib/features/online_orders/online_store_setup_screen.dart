@@ -42,6 +42,8 @@ class _OnlineStoreSetupScreenState
   String? _storeUrl;
   bool _isActive = false;
   String? _logoPath;
+  // Google UID — namespace path upload storage (dipakai bangun URL publik).
+  String _logoUid = '';
   int _onlineProductCount = 0;
   // Produk yang gagal upload gambarnya (nama) — ditampilkan sebagai banner
   // peringatan, bukan cuma toast yang gampang terlewat.
@@ -120,6 +122,19 @@ class _OnlineStoreSetupScreenState
     return '#$r$g$b';
   }
 
+  /// URL publik logo toko di bucket nusa-images (path sama dengan upload).
+  /// Dipakai upsertStore supaya web bisa render <img>.
+  String _buildLogoPublicUrl(String localPath) {
+    try {
+      return Supabase.instance.client.storage
+          .from('nusa-images')
+          .getPublicUrl(
+              '$_logoUid/${NusaConfig.productId}/settings/${p.basename(localPath)}');
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> _load() async {
     final key = await SecureStore.getActivation();
     if (key == null) {
@@ -133,6 +148,10 @@ class _OnlineStoreSetupScreenState
 
     // Load store logo from local settings
     _logoPath = await repo.getStoreLogoPath();
+    // Simpan UID untuk bangun URL publik logo (v2.2.35).
+    try {
+      _logoUid = await GoogleAuthService.getStoredUserId() ?? '';
+    } catch (_) {}
 
     final fallbackSlug = _slugify(name);
     _storeUrl =
@@ -271,6 +290,10 @@ class _OnlineStoreSetupScreenState
         address: _addressCtrl.text.trim(),
         openHours: _hoursCtrl.text.trim(),
         isActive: isActive,
+        // Logo toko (v2.2.35) — URL publik dari upload storage settings.
+        logoUrl: _logoPath != null && _logoPath!.isNotEmpty
+            ? _buildLogoPublicUrl(_logoPath!)
+            : null,
       );
       final ok = result.ok;
 
@@ -642,15 +665,33 @@ class _OnlineStoreSetupScreenState
       await ref.read(settingsRepoProvider).setStoreLogoPath(path);
       setState(() => _logoPath = path);
 
-      // Cloud upload
+      // Cloud upload → logo_url ke website (v2.2.35).
       try {
         // Logo toko — ID Google dari SecureStore (bukan Supabase currentUser).
         final uid = await GoogleAuthService.getStoredUserId();
         if (uid != null) {
-          ImageStorageService(
-            Supabase.instance.client,
-            uid,
-          ).uploadImage('settings', path);
+          _logoUid = uid;
+          final svc = ImageStorageService(Supabase.instance.client, uid);
+          final ok = await svc.uploadImage('settings', path);
+          if (ok) {
+            // URL publik (policy SELECT bucket nusa-images) — dikirim ke
+            // store_settings supaya web bisa render <img>.
+            final publicUrl = Supabase.instance.client.storage
+                .from('nusa-images')
+                .getPublicUrl('$uid/${NusaConfig.productId}/settings/'
+                    '${p.basename(path)}');
+            final online = OnlineOrderService(Supabase.instance.client);
+            await online.upsertStore(
+              storeName: _nameCtrl.text.trim().isEmpty
+                  ? 'Toko Saya'
+                  : _nameCtrl.text.trim(),
+              slug: _slugCtrl.text.trim().isEmpty
+                  ? 'toko-saya'
+                  : _slugCtrl.text.trim().toLowerCase(),
+              variant: NusaConfig.productId,
+              logoUrl: publicUrl,
+            );
+          }
         }
       } catch (_) {}
     } catch (_) {

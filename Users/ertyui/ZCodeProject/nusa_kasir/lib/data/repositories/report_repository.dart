@@ -48,6 +48,53 @@ class ReportRepository {
     return q.get();
   }
 
+  /// Pendapatan = uang yang BENAR-BENAR masuk (v2.2.35).
+  ///  - DP (uang muka): hanya nominal DP yang masuk ke kasir saat itu.
+  ///  - Hutang penuh: belum ada uang masuk → 0.
+  ///  - Tunai lunas: cashGiven dikurangi kembalian.
+  ///  - QRIS/Transfer/EDC: total (dianggap lunas).
+  int _paidAmount(Transaction t) {
+    final dp = t.dpAmount;
+    if (dp != null && dp > 0) return dp;
+    if (t.debtId != null) return 0;
+    final given = t.cashGiven;
+    if (given != null && given > 0) {
+      final ret = t.cashReturn ?? 0;
+      final net = given - ret;
+      return net > 0 ? net : given;
+    }
+    return t.total;
+  }
+
+  /// Setoran piutang (uang masuk belakangan) dalam periode — ikut dihitung
+  /// sebagai pendapatan. Filter cabang: setoran lama tanpa cabang (null)
+  /// dianggap milik semua cabang supaya tidak hilang dari laporan.
+  Future<List<DebtPayment>> _debtPaymentsFor({
+    DateTime? from,
+    DateTime? to,
+    int? branchId,
+  }) async {
+    var q = db.select(db.debtPayments);
+    if (from != null || to != null) {
+      q.where((p) {
+        final conds = <Expression<bool>>[];
+        if (from != null) {
+          conds.add(p.paidAt.isBiggerOrEqual(
+              Constant(DateTime(from.year, from.month, from.day))));
+        }
+        if (to != null) {
+          conds.add(p.paidAt.isSmallerOrEqual(
+              Constant(DateTime(to.year, to.month, to.day, 23, 59, 59))));
+        }
+        return conds.reduce((a, b) => a & b);
+      });
+    }
+    if (branchId != null) {
+      q.where((p) => p.branchId.equals(branchId) | p.branchId.isNull());
+    }
+    return q.get();
+  }
+
   /// Returns summary stats for a period.
   /// Keys: omzet (int, sudah dikurangi retur), count (int), avg (int),
   ///       items (List<Transaction>).
@@ -67,8 +114,15 @@ class ReportRepository {
     final refunds = await _refundsFor(
         from: from, to: to, branchId: branchId, employeeId: employeeId);
     final refundTotal = refunds.fold(0, (int s, r) => s + r.refundAmount);
-    final omzet =
-        list.fold(0, (int sum, t) => sum + t.total) - refundTotal;
+    // Uang masuk = pembayaran tunai/QRIS/Transfer yg diterima + setoran piutang.
+    // (DP & cicilan piutang baru dihitung saat uangnya benar-benar diterima.)
+    final debtIncome = employeeId == null
+        ? (await _debtPaymentsFor(from: from, to: to, branchId: branchId))
+            .fold(0, (int s, p) => s + p.amount)
+        : 0;
+    final omzet = list.fold(0, (int sum, t) => sum + _paidAmount(t)) -
+        refundTotal +
+        debtIncome;
     final count = list.length;
     final avg = count == 0 ? 0 : (omzet / count).round();
     return {'omzet': omzet, 'count': count, 'avg': avg, 'items': list};
@@ -88,7 +142,12 @@ class ReportRepository {
       branchId: branchId,
     );
     final normalTx = txList.where((t) => t.status == 'Normal');
-    final pendapatan = normalTx.fold(0, (int s, t) => s + t.total);
+    // Pendapatan = uang masuk: DP/QRIS/Transfer diterima + setoran piutang.
+    final txIncome = normalTx.fold(0, (int s, t) => s + _paidAmount(t));
+    final debtPayments =
+        await _debtPaymentsFor(from: from, to: to, branchId: branchId);
+    final debtIncome = debtPayments.fold<int>(0, (int s, p) => s + p.amount);
+    final pendapatan = txIncome + debtIncome;
 
     // ── HPP (Harga Pokok Penjualan) ───────────────────────────────
     int hpp = 0;
@@ -237,6 +296,7 @@ class ReportRepository {
 
   /// Daily revenue for bar chart.
   /// Returns Map where key is "YYYY-MM-DD" and value is total revenue.
+  /// Uang masuk saja: DP/hutang dihitung saat diterima (v2.2.35).
   Future<Map<String, int>> dailyRevenue({
     DateTime? from,
     DateTime? to,
@@ -247,7 +307,13 @@ class ReportRepository {
     for (final t in txs) {
       final key =
           '${t.date.year}-${t.date.month.toString().padLeft(2, '0')}-${t.date.day.toString().padLeft(2, '0')}';
-      byDay[key] = (byDay[key] ?? 0) + t.total;
+      byDay[key] = (byDay[key] ?? 0) + _paidAmount(t);
+    }
+    // Setoran piutang: uang masuk pada hari itu juga.
+    for (final p
+        in await _debtPaymentsFor(from: from, to: to, branchId: branchId)) {
+      final key = '${p.paidAt.year}-${p.paidAt.month.toString().padLeft(2, '0')}-${p.paidAt.day.toString().padLeft(2, '0')}';
+      byDay[key] = (byDay[key] ?? 0) + p.amount;
     }
     return byDay;
   }
@@ -285,6 +351,8 @@ class ReportRepository {
   }
 
   /// Totals per payment method (Tunai / QRIS / Transfer / Lainnya).
+  /// Uang masuk saja: DP masuk ke metode aslinya, hutang penuh = 0,
+  /// setoran piutang masuk ke metode setoran (default Tunai) (v2.2.35).
   Future<Map<String, int>> salesByPaymentMethod({
     DateTime? from,
     DateTime? to,
@@ -294,7 +362,12 @@ class ReportRepository {
     final totals = <String, int>{};
     for (final t in txs) {
       final m = _normalizeMethod(t.paymentMethod);
-      totals[m] = (totals[m] ?? 0) + t.total;
+      totals[m] = (totals[m] ?? 0) + _paidAmount(t);
+    }
+    for (final p
+        in await _debtPaymentsFor(from: from, to: to, branchId: branchId)) {
+      final m = _normalizeMethod(p.method);
+      totals[m] = (totals[m] ?? 0) + p.amount;
     }
     return totals;
   }

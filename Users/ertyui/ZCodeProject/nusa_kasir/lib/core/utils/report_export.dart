@@ -20,6 +20,22 @@ List<Map<String, dynamic>> parseItems(String json) {
 int _itemCount(Transaction t) =>
     parseItems(t.items).fold(0, (s, it) => s + ((it['qty'] as int?) ?? 0));
 
+/// Uang yang benar-benar masuk untuk transaksi ini (v2.2.35):
+/// DP → nominal DP; hutang penuh → 0; tunai lunas → cashGiven − kembali;
+/// QRIS/Transfer/EDC → total (lunas).
+int paidAmount(Transaction t) {
+  final dp = t.dpAmount;
+  if (dp != null && dp > 0) return dp;
+  if (t.debtId != null) return 0;
+  final given = t.cashGiven;
+  if (given != null && given > 0) {
+    final ret = t.cashReturn ?? 0;
+    final net = given - ret;
+    return net > 0 ? net : given;
+  }
+  return t.total;
+}
+
 List<List<dynamic>> _buildRows(List<Transaction> list) {
   const head = [
     'Invoice',
@@ -42,7 +58,7 @@ List<List<dynamic>> _buildRows(List<Transaction> list) {
       _itemCount(t),
       t.total,
       t.discount,
-      t.cashGiven ?? 0,
+      paidAmount(t),
       t.cashReturn ?? 0,
       t.cashierName ?? '-',
     ],

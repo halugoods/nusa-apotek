@@ -17,6 +17,7 @@ class PrintOrderRepository {
     String? estimateReady,
     int total = 0,
     String? notes,
+    String? customFieldsJson,
   }) =>
       db.into(db.printOrders).insert(PrintOrdersCompanion.insert(
             customerName: customerName,
@@ -30,6 +31,7 @@ class PrintOrderRepository {
             estimateReady: Value(estimateReady),
             total: Value(total),
             notes: Value(notes),
+            customFieldsJson: Value(customFieldsJson),
           ));
 
   Future<List<PrintOrder>> getAll() =>
@@ -65,6 +67,7 @@ class PrintOrderRepository {
     int total = 0,
     String? notes,
     String? status,
+    String? customFieldsJson,
   }) =>
       (db.update(db.printOrders)..where((t) => t.id.equals(id)))
           .write(PrintOrdersCompanion(
@@ -80,6 +83,8 @@ class PrintOrderRepository {
             total: Value(total),
             notes: Value(notes),
             status: status != null ? Value(status) : const Value.absent(),
+            customFieldsJson:
+                customFieldsJson != null ? Value(customFieldsJson) : const Value.absent(),
           ));
 
   Future<int> countByStatus(String status) async {

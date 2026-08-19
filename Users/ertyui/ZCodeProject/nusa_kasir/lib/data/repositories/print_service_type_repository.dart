@@ -26,6 +26,12 @@ class PrintServiceTypeRepository {
       (db.update(db.printServiceTypes)..where((t) => t.id.equals(id)))
           .write(PrintServiceTypesCompanion(name: Value(name)));
 
+  /// v2.2.35: config field form per layanan (JSON list string).
+  /// null = semua field default tampil.
+  Future<void> setFieldsJson(int id, String? fieldsJson) =>
+      (db.update(db.printServiceTypes)..where((t) => t.id.equals(id)))
+          .write(PrintServiceTypesCompanion(fieldsJson: Value(fieldsJson)));
+
   Future<void> delete(int id) =>
       (db.delete(db.printServiceTypes)..where((t) => t.id.equals(id))).go();
 }

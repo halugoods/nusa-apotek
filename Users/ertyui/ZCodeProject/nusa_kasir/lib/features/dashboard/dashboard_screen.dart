@@ -33,6 +33,7 @@ import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/providers/update_progress_provider.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ignore_for_file: use_build_context_synchronously
@@ -168,6 +169,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           type: 'attendance',
           title: '⏰ Jangan lupa absen',
           body: 'Buka menu Kasir untuk absen otomatis hari ini.',
+          route: '/presensi',
         );
       }
     }
@@ -274,6 +276,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         title: '🔄 Update Tersedia v${info.latestVersion}',
         body:
             'Versi baru NUSA tersedia$sizeTxt. Klik untuk mengunduh & menginstal.',
+        route: 'update',
       );
     }
   }
@@ -289,14 +292,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _showNotificationCenter() async {
     final notifs = await NotificationService.getCenter();
-    await NotificationService.markRead();
     if (!mounted) return;
-    if (_updateInfo?.hasUpdate ?? false) {
-      await NotificationService.markRead(id: 'update');
-    }
-    setState(() => _notifUnread = 0);
 
-    if (!mounted) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     await showModalBottomSheet<void>(
       context: context,
@@ -387,6 +384,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
       },
     );
+    // Badge di-refresh setelah drawer ditutup — item baru yang belum dibaca
+    // tetap menyala; yang sudah diketuk tandanya hilang (v2.2.35).
+    if (mounted) {
+      final unread = await NotificationService.unreadCount();
+      if (mounted) setState(() => _notifUnread = unread);
+    }
   }
 
   Widget _buildNotifCard(BuildContext ctx, AppNotification n, bool isDark) {
@@ -408,14 +411,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // updates in realtime even while the drawer is open (no close/reopen).
     final upd = ref.watch(updateProgressProvider);
     return InkWell(
-      onTap: () {
-        if (n.type == 'update') {
+      onTap: () async {
+        // Tool-calling (v2.2.35): tap notif → buka menu terkait.
+        final route = n.route ?? switch (n.type) {
+          'online' => '/pesanan_online',
+          'stock' => '/stok',
+          'attendance' => '/presensi',
+          'update' => 'update',
+          _ => null,
+        };
+        if (route == null) return;
+        // Tandai dibaca saat item diketuk (bukan saat drawer dibuka).
+        await NotificationService.markRead(id: n.id);
+        if (ctx.mounted) {
+          final unread = await NotificationService.unreadCount();
+          if (mounted) setState(() => _notifUnread = unread);
+        }
+        if (route == 'update') {
           final info = _updateInfo;
           if (info != null && info.hasUpdate && !upd.downloading) {
             // Langsung mulai unduh dari drawer — progress tampil realtime.
             Navigator.of(ctx).pop();
             _showUpdateDialog(autoStart: true);
           }
+          return;
+        }
+        Navigator.of(ctx).pop();
+        // /stok bisa dibuka dengan filter stok menipis (mimik menu dashboard).
+        if (route == '/stok' && _lowStockCount > 0) {
+          context.push('/stok?lowStock=true');
+        } else {
+          context.push(route);
         }
       },
       borderRadius: BorderRadius.circular(16),
@@ -438,12 +464,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    n.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          n.title,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      // Dot merah = belum dibaca (v2.2.35).
+                      if (!n.read)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(top: 4, left: 6),
+                          decoration: const BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -843,6 +887,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         body: onlinePending == 1
             ? 'Ada 1 pesanan online baru yang belum diproses.'
             : 'Ada $onlinePending pesanan online baru yang belum diproses.',
+        route: '/pesanan_online',
       );
     }
 
@@ -869,6 +914,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           body: lowStockCount == 1
               ? 'Stok "$lowNames" menipis. Segera restock.'
               : '$lowStockCount produk stoknya menipis: $lowNames',
+          route: '/stok',
         );
       }
     } catch (_) {}
@@ -1658,10 +1704,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Future<void> _launchWa(String phone) async {
-    final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final uri = Uri.parse(
-      'https://wa.me/${clean.startsWith('0') ? '62${clean.substring(1)}' : clean}',
-    );
+    // Normalisasi via helper (v2.2.35): 0 di depan → 62.
+    final uri = waLink(phone);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {

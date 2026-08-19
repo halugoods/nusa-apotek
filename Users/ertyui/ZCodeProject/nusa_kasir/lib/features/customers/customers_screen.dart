@@ -17,6 +17,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/core/utils/wa_phone.dart';
 
 /// 6 random avatar colors picked from hash of customer name.
 const _avatarColors = [
@@ -1079,13 +1080,8 @@ class _WaTemplatePickerState extends State<_WaTemplatePicker> {
         ElevatedButton(
           onPressed: () async {
             final msg = _body != null ? _fill(_body!) : '';
-            final digits = widget.phone.replaceAll(RegExp(r'\D'), '');
-            final normalized = digits.startsWith('0')
-                ? '62${digits.substring(1)}'
-                : digits.startsWith('62')
-                    ? digits
-                    : '62$digits';
-            final uri = Uri.parse('https://wa.me/$normalized${msg.isNotEmpty ? '?text=${Uri.encodeComponent(msg)}' : ''}');
+            // Normalisasi via helper (v2.2.35): 08xx → 628xx.
+            final uri = waLink(widget.phone, text: msg.isEmpty ? null : msg);
             Navigator.pop(context);
             try {
               if (await canLaunchUrl(uri)) {

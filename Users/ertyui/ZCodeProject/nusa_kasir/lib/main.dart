@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:nusa_kasir/app.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -247,6 +248,12 @@ void _syncImagesFromCloud() {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _setupErrorHandlers();
+  // DateFormat('...', 'id') dipakai di beberapa layar (mis. Tanggal Mulai
+  // Kerja karyawan). Tanpa init ini, format locale id melempar dan layar
+  // bisa blank — init sekali di awal (v2.2.35 fix blank tambah karyawan).
+  try {
+    await initializeDateFormatting('id');
+  } catch (_) {}
 
   // Default fallback values in case any init step throws.
   // runApp() MUST be called — a white screen is worse than missing features.
