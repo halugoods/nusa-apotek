@@ -68,6 +68,11 @@ class Transactions extends Table {
   TextColumn get orderType => text().nullable()();
   IntColumn get tableId => integer().nullable()();
   TextColumn get notes => text().nullable()();
+  // Piutang (v2.2.34): DP dibayar, cicilan, dan link ke debt row.
+  IntColumn get dpAmount => integer().nullable()();
+  IntColumn get installmentMonths => integer().nullable()();
+  IntColumn get installmentPerMonth => integer().nullable()();
+  IntColumn get debtId => integer().nullable()();
 }
 
 /// Retur/refund parsial per transaksi (barang dikembalikan pelanggan).
@@ -282,6 +287,23 @@ class MaterialPrices extends Table {
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Opsi cicilan piutang (v2.2.34): paket jumlah bulan yang bisa dipilih
+/// kasir saat checkout dengan DP. CRUD hanya Owner (di layar Piutang).
+/// months = berapa bulan sisa dibagi rata; label contoh "3× bulanan".
+class InstallmentOptions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get months => integer()();
+  TextColumn get label => text().nullable()();
+  BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
+}
+
+/// Preset estimasi selesai Order Cetak (v2.2.34): dropdown CRUD di form
+/// Order Cetak supaya estimasi konsisten (bukan free-text semrawut).
+class EstimateOptions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get label => text().unique()();
+}
+
 class Branches extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -399,6 +421,8 @@ class CustomerDebts extends Table {
   TextColumn get status => text().withDefault(
     const Constant('Belum Lunas'),
   )(); // Belum Lunas | Lunas
+  // Cicilan (v2.2.34): berapa bulan sisa dibagi rata (null = tidak dicicil).
+  IntColumn get installmentMonths => integer().nullable()();
 }
 
 class DebtPayments extends Table {

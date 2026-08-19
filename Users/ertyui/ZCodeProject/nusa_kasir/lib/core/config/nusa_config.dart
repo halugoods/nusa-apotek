@@ -368,11 +368,11 @@ abstract class NusaConfig {
   static const Map<String, List<String>> variantHiddenMenus = {
     'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
     'fnb': ['supplier', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'laundry': ['supplier', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
-    'bengkel': ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
-    'salon': ['supplier', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'laundry': ['supplier', 'promo', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+    'bengkel': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+    'salon': ['supplier', 'cabang', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     'apotek': ['promo', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
-    'fotocopy': ['cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+    'fotocopy': ['cabang', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     'servis': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
   };
 

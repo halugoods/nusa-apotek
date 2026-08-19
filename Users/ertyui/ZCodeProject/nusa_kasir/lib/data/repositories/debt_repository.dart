@@ -12,6 +12,7 @@ class DebtRepository {
     required int amount,
     DateTime? dueDate,
     String? description,
+    int? installmentMonths,
   }) {
     return db
         .into(db.customerDebts)
@@ -23,8 +24,32 @@ class DebtRepository {
             remainingAmount: amount,
             dueDate: Value(dueDate),
             description: Value(description),
+            installmentMonths: Value(installmentMonths),
           ),
         );
+  }
+
+  /// Get a debt by id.
+  Future<CustomerDebt?> byId(int id) =>
+      (db.select(db.customerDebts)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// Ambil debt yang terhubung ke sebuah transaksi (lewat tx.debtId).
+  Future<CustomerDebt?> byTransactionId(int transactionId) async {
+    final tx = await (db.select(db.transactions)
+          ..where((t) => t.id.equals(transactionId)))
+        .getSingleOrNull();
+    final debtId = tx?.debtId;
+    if (debtId == null) return null;
+    return byId(debtId);
+  }
+
+  /// Hapus debt + seluruh pembayarannya (dipakai saat transaksi di-void
+  /// supaya tidak ada piutang yatim yang tersisa).
+  Future<void> deleteDebtWithPayments(int debtId) async {
+    await db.transaction(() async {
+      await (db.delete(db.debtPayments)..where((t) => t.debtId.equals(debtId))).go();
+      await (db.delete(db.customerDebts)..where((t) => t.id.equals(debtId))).go();
+    });
   }
 
   /// Get active (unpaid) debts, optionally filtered by customer.

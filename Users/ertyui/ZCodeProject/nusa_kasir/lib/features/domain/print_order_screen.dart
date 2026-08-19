@@ -9,6 +9,8 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/print_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart';
+import 'package:nusa_kasir/data/repositories/estimate_option_repository.dart';
+import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -124,7 +126,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     return ScreenScaffold(
       'Order Cetak',
       Column(children: [
-        // Service type chips (dari DB, scrollable) + tombol kelola layanan
+        // Service type chips (dari DB, scrollable) — tanpa icon
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           child: SingleChildScrollView(
@@ -132,25 +134,32 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
             child: Row(children: [
               _typeChip('Semua', isDark),
               ..._serviceTypes.map((s) => _typeChip(s.name, isDark)),
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: ActionChip(
-                  avatar: Icon(Icons.settings_outlined,
-                      size: 16, color: NusaConfig.activePrimary),
-                  label: Text('Kelola Layanan',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: NusaConfig.activePrimary)),
-                  backgroundColor:
-                      isDark ? NusaConfig.darkSurface2 : NusaConfig.activeSoft,
-                  side: BorderSide(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
-                  onPressed: _openServiceManager,
-                ),
-              ),
             ]),
           ),
+        ),
+        // Kelola Layanan + Kelola Estimasi — tombol terpisah di atas
+        // FAB Order Baru (bukan chip yang bercampur filter layanan).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(children: [
+            Expanded(
+              child: _manageButton(
+                icon: Icons.settings_outlined,
+                label: 'Kelola Layanan',
+                isDark: isDark,
+                onTap: _openServiceManager,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _manageButton(
+                icon: Icons.timer_outlined,
+                label: 'Kelola Estimasi',
+                isDark: isDark,
+                onTap: _openEstimateManager,
+              ),
+            ),
+          ]),
         ),
         // Status tabs
         Container(
@@ -181,28 +190,43 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
             tabs: _statusTabs.map((t) => Tab(child: Text(t))).toList(),
           ),
         ),
-        // Search
+        // Search + customer picker (sejajar — pola booking/laundry/servis)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: TextField(
-            controller: _search,
-            decoration: InputDecoration(
-              hintText: 'Cari pelanggan...',
-              hintStyle: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              filled: true,
-              fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  hintText: 'Cari pelanggan...',
+                  hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true,
+                  fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            CustomerPickerButton(
+              onPick: (r) {
+                if (!mounted) return;
+                final q = r.phone.isNotEmpty ? r.phone : r.name;
+                if (q.isNotEmpty) {
+                  _search.text = q;
+                  _applyFilter();
+                }
+              },
+            ),
+          ]),
         ),
         // List
         Expanded(
@@ -268,6 +292,40 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
           setState(() => _serviceFilter = label);
           _applyFilter();
         },
+      ),
+    );
+  }
+
+  /// Tombol pengaturan di atas FAB Order Baru — [Kelola Layanan]
+  /// dan [Kelola Estimasi] (bukan chip, supaya tidak bercampur filter).
+  Widget _manageButton({
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.activeSoft,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: NusaConfig.activePrimary),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: NusaConfig.activePrimary)),
+          ],
+        ),
       ),
     );
   }
@@ -620,6 +678,223 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     }
   }
 
+  // ── Kelola Estimasi (preset dropdown CRUD) ──
+
+  /// Sheet CRUD preset estimasi selesai — dipakai dropdown di form Order.
+  Future<void> _openEstimateManager() async {
+    final db = ref.read(databaseProvider);
+    final repo = EstimateOptionRepository(db);
+    final estimates = await repo.getAll();
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        // List mutable lokal — refresh() memperbarui list di dalam sheet.
+        var current = List<EstimateOption>.from(estimates);
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          Future<void> refresh() async {
+            current = await repo.getAll();
+            if (ctx.mounted) setSheet(() {});
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 16),
+                Row(children: [
+                  const Text('Kelola Estimasi Selesai',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  IconButton(
+                    icon: Icon(Icons.add, color: NusaConfig.activePrimary),
+                    tooltip: 'Tambah estimasi',
+                    onPressed: () => _addEstimate(repo, refresh),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Text('Preset waktu selesai — dipilih lewat dropdown.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary)),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: current.length,
+                    itemBuilder: (_, i) {
+                      final e = current[i];
+                      return ListTile(
+                        dense: true,
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: NusaConfig.activePrimary
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.timer_outlined,
+                              size: 18, color: NusaConfig.activePrimary),
+                        ),
+                        title: Text(e.label,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined,
+                                    size: 18),
+                                onPressed: () =>
+                                    _renameEstimate(repo, e, refresh),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    size: 18, color: Colors.red),
+                                onPressed: () =>
+                                    _deleteEstimate(repo, e, refresh),
+                              ),
+                            ]),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _addEstimate(
+      EstimateOptionRepository repo, Future<void> Function() refresh) async {
+    final ctrl = TextEditingController();
+    final key = GlobalKey<FormState>();
+    if (!mounted) return;
+    final label = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tambah Estimasi'),
+        content: Form(
+          key: key,
+          child: TextFormField(
+            controller: ctrl,
+            autofocus: true,
+            decoration:
+                const InputDecoration(hintText: 'Cth: 1 jam, Besok 14:00, 3 hari'),
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(
+              onPressed: () {
+                if (key.currentState!.validate()) {
+                  Navigator.pop(ctx, ctrl.text.trim());
+                }
+              },
+              child: const Text('Simpan')),
+        ],
+      ),
+    );
+    if (label == null || label.isEmpty) return;
+    final exists = await repo.byLabel(label);
+    if (exists != null) {
+      if (mounted) TopToast.error(context, 'Estimasi "$label" sudah ada');
+      return;
+    }
+    await repo.add(label);
+    if (mounted) TopToast.success(context, 'Estimasi ditambahkan ✓');
+    await refresh();
+  }
+
+  Future<void> _renameEstimate(EstimateOptionRepository repo,
+      EstimateOption e, Future<void> Function() refresh) async {
+    final ctrl = TextEditingController(text: e.label);
+    final key = GlobalKey<FormState>();
+    if (!mounted) return;
+    final label = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ubah Estimasi'),
+        content: Form(
+          key: key,
+          child: TextFormField(
+            controller: ctrl,
+            autofocus: true,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(
+              onPressed: () {
+                if (key.currentState!.validate()) {
+                  Navigator.pop(ctx, ctrl.text.trim());
+                }
+              },
+              child: const Text('Simpan')),
+        ],
+      ),
+    );
+    if (label == null || label.isEmpty || label == e.label) return;
+    final exists = await repo.byLabel(label);
+    if (exists != null) {
+      if (mounted) TopToast.error(context, 'Estimasi "$label" sudah ada');
+      return;
+    }
+    await repo.rename(e.id, label);
+    if (mounted) TopToast.success(context, 'Estimasi diubah ✓');
+    await refresh();
+  }
+
+  Future<void> _deleteEstimate(EstimateOptionRepository repo,
+      EstimateOption e, Future<void> Function() refresh) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Estimasi?'),
+        content: Text('Hapus preset "${e.label}"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Hapus', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await repo.delete(e.id);
+      if (mounted) TopToast.success(context, 'Estimasi dihapus');
+      await refresh();
+    }
+  }
+
   // ── Form Order (pakai layanan DB + dimensi + estimasi) ──
   void _openForm({PrintOrder? order}) {
     final isEdit = order != null;
@@ -643,6 +918,10 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
         (_serviceTypes.isNotEmpty ? _serviceTypes.first.name : 'Fotocopy');
     String paperSize = order?.paperSize ?? 'A4';
     final paperSizes = ['A4', 'A3', 'F4', 'A5', 'Letter', 'Legal', 'Custom'];
+    // Estimasi preset dari DB — dropdown + opsi "Kustom…" (input bebas).
+    List<EstimateOption> estimatePresets = [];
+    String? estimateSelection = order?.estimateReady ?? null;
+    bool estimateIsCustom = order?.estimateReady != null;
 
     showModalBottomSheet(
       context: context,
@@ -650,7 +929,22 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return Padding(
+        // Muat preset estimasi dari DB (sebelum render dropdown).
+        EstimateOptionRepository(ref.read(databaseProvider))
+            .getAll()
+            .then((v) {
+          if (ctx.mounted) {
+            estimatePresets = v;
+            if (estimateSelection == null &&
+                order?.estimateReady == null &&
+                v.isNotEmpty) {
+              estimateSelection = v.first.label;
+            }
+          }
+        });
+        return StatefulBuilder(
+          builder: (ctx, setForm) {
+            return Padding(
           padding: EdgeInsets.fromLTRB(
               20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Form(
@@ -752,11 +1046,38 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
                             keyboardType: TextInputType.number)),
                   ]),
                   const SizedBox(height: 12),
-                  NusaFormField(
-                      label: 'Estimasi Selesai',
-                      controller: estimateC,
-                      hintText: 'cth: 2 jam, Besok 14:00, 3 hari',
-                      keyboardType: TextInputType.text),
+                  // Estimasi Selesai — dropdown preset (CRUD) + Kustom…
+                  NusaDropdownField<String?>(
+                    label: 'Estimasi Selesai',
+                    value: estimateIsCustom ? '__custom__' : estimateSelection,
+                    items: [
+                      ...estimatePresets
+                          .map((e) => DropdownMenuItem<String?>(
+                              value: e.label, child: Text(e.label))),
+                      const DropdownMenuItem<String?>(
+                          value: '__custom__', child: Text('Kustom…')),
+                    ],
+                    onChanged: (v) {
+                      setForm(() {
+                        if (v == '__custom__') {
+                          estimateIsCustom = true;
+                          estimateSelection = null;
+                        } else {
+                          estimateIsCustom = false;
+                          estimateSelection = v;
+                          estimateC.text = v ?? '';
+                        }
+                      });
+                    },
+                  ),
+                  if (estimateIsCustom) ...[
+                    const SizedBox(height: 12),
+                    NusaFormField(
+                        label: 'Estimasi (Kustom)',
+                        controller: estimateC,
+                        hintText: 'cth: 2 jam, Besok 14:00, 3 hari',
+                        keyboardType: TextInputType.text),
+                  ],
                   const SizedBox(height: 12),
                   NusaFormField(
                       label: 'Catatan',
@@ -785,9 +1106,15 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
                         final copies = int.tryParse(copiesC.text) ?? 1;
                         final widthCm = int.tryParse(widthC.text);
                         final lengthCm = int.tryParse(lengthC.text);
-                        final estimateReady = estimateC.text.trim().isEmpty
-                            ? null
-                            : estimateC.text.trim();
+                        final estimateReady =
+                            (estimateIsCustom ? estimateC.text : estimateSelection)
+                                    ?.trim()
+                                    .isEmpty ??
+                                false
+                                ? null
+                                : (estimateIsCustom
+                                    ? estimateC.text.trim()
+                                    : estimateSelection);
                         final total = int.tryParse(totalC.text) ?? 0;
                         final notes = notesC.text.trim().isEmpty
                             ? null
@@ -839,6 +1166,8 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
               ),
             ),
           ),
+            );
+          },
         );
       },
     );

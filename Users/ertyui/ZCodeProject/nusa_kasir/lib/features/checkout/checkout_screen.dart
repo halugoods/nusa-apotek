@@ -11,10 +11,12 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/debt_repository.dart';
+import 'package:nusa_kasir/data/repositories/installment_option_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
@@ -84,6 +86,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   // Lazim di servis/bengkel/salon (biasanya 50%), tapi bisa untuk semua varian.
   bool _dpEnabled = false;
   final _dpCtrl = TextEditingController();
+
+  // ── DP v2.2.34: mode nominal / persen + cicilan ──
+  // Persen: DP = ceil(total × %/100), sisa dibagi rata sesuai opsi cicilan.
+  bool _dpIsPercent = false;
+  final _dpPercentCtrl = TextEditingController();
+  bool _installmentEnabled = false;
+  int? _installmentMonths;
+  List<InstallmentOption> _installmentOptions = [];
 
   /// Mode HUTANG: bayar 0 sekarang, SELURUH total dicatat sebagai hutang
   /// pelanggan (masuk menu Piutang). Berlaku untuk semua metode bayar.
@@ -180,8 +190,25 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _cashGiven != null && _cashGiven! >= _total ? _cashGiven! - _total : null;
 
   /// Nominal DP yang dipakai transaksi ini (0 jika DP mati).
-  /// Saat DP aktif, uang muka = jumlah dibayar sekarang; sisa jadi piutang.
-  int get _downPayment => _dpEnabled ? (int.tryParse(_dpCtrl.text) ?? 0) : 0;
+  /// Saat DP aktif: nominal langsung (mode Rp) atau ceil(total × %) (mode %).
+  int get _downPayment {
+    if (!_dpEnabled) return 0;
+    if (_dpIsPercent) {
+      final pct = int.tryParse(_dpPercentCtrl.text) ?? 0;
+      if (pct <= 0 || pct >= 100) return 0;
+      return (_total * pct / 100).ceil();
+    }
+    return int.tryParse(_dpCtrl.text) ?? 0;
+  }
+
+  /// Cicilan per bulan (sisa dibagi rata, dibulatkan ke atas).
+  int get _installmentPerMonth {
+    final months = _installmentEnabled && _installmentMonths != null
+        ? _installmentMonths!
+        : 0;
+    if (months <= 0) return 0;
+    return (_remainingDue / months).ceil();
+  }
 
   /// Sisa yang belum dibayar (piutang) — hanya saat DP aktif.
   /// Saat mode HUTANG aktif, seluruh total menjadi sisa (piutang penuh).
@@ -195,6 +222,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     super.initState();
     _loadPaymentSettings();
     _checkBebasPromos();
+    _loadInstallmentOptions();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoApplyPromo();
       final extra = GoRouterState.of(context).uri.queryParameters;
@@ -951,7 +979,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     } else if (_paymentMethod == 'Tunai' && _dpEnabled) {
       final dp = _downPayment;
       if (dp <= 0) {
-        TopToast.error(context, 'Isi nominal uang muka (DP)');
+        TopToast.error(
+          context,
+          _dpIsPercent
+              ? 'Isi persen uang muka (DP) 1-99'
+              : 'Isi nominal uang muka (DP)',
+        );
         return;
       }
       if (dp >= _total) {
@@ -1011,6 +1044,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           : (cashGiven != null && cashGiven >= _total
                 ? cashGiven - _total
                 : null);
+      // Cicilan (hanya saat DP aktif): jumlah bulan dari opsi terpilih.
+      final months = _installmentEnabled && _installmentMonths != null
+          ? _installmentMonths!
+          : 0;
+      final perMonth = months > 0 ? _installmentPerMonth : 0;
 
       // Wrap all DB writes (stock, transaction, loyalty, promo) in a single transaction.
       // If any step fails, it all rolls back — no partial state.
@@ -1040,6 +1078,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           tableId: _tableId,
           employeeId: session?.employeeId,
           sessionId: activeShift?.id,
+          dpAmount: isDownPayment ? dp : null,
+          installmentMonths: months > 0 ? months : null,
+          installmentPerMonth: perMonth > 0 ? perMonth : null,
         );
 
         // ── HUTANG / DP: catat sisa sebagai hutang pelanggan (menu Piutang) ──
@@ -1052,13 +1093,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           final due = _total - (_creditMode ? 0 : dp);
           final desc = _creditMode
               ? 'Hutang transaksi INV $savedTxId (bayar di belakang)'
-              : 'Sisa bayar transaksi INV $savedTxId (DP ${formatRupiah(dp)})';
-          await debtRepo.addDebt(
+              : 'Sisa bayar transaksi INV $savedTxId (DP ${formatRupiah(dp)})'
+                  '${months > 0 ? ', cicil $months× ${formatRupiah(perMonth)}/bulan' : ''}';
+          final debtId = await debtRepo.addDebt(
             customerId: _selectedCustomer!.id,
             customerName: _selectedCustomer!.name,
             amount: due,
             description: desc,
+            installmentMonths: months > 0 ? months : null,
           );
+          // Link transaksi → debt (status bayar di riwayat sinkron dengan
+          // menu Piutang; void transaksi ikut menghapus piutang yatim).
+          if (debtId > 0) {
+            await (db.update(db.transactions)..where((t) => t.id.equals(savedTxId)))
+                .write(TransactionsCompanion(debtId: Value(debtId)));
+          }
         }
 
         // Update customer loyalty
@@ -1174,14 +1223,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ? printServiceTypes.first.name
               : 'Print';
           final printItems = <String>[];
+          int totalPages = 0;
+          int totalCopies = 0;
+          final String? estimateReady = null;
           // Ambil nama kategori percetakan dari config (semua kategori
-          // fotocopy adalah kategori cetak).
+          // fotocopy adalah kategori cetak). serviceType = NAMA KATEGORI
+          // produk pertama (bukan selalu 'Fotocopy').
           for (final c in cart) {
             if (c.isManual) continue;
             final p = await productRepo.byId(c.productId);
             if (p != null && p.category != 'Lainnya') {
               if (printItems.isEmpty) serviceType = p.category;
               printItems.add('${c.qty}× ${c.name}');
+              totalPages += c.qty;
+              totalCopies += 1;
             }
           }
           if (printItems.isNotEmpty) {
@@ -1189,9 +1244,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               customerName: _selectedCustomer?.name ?? 'Umum',
               customerPhone: _selectedCustomer?.phone,
               serviceType: serviceType,
-              pages: 0,
-              copies: 1,
+              pages: totalPages > 0 ? totalPages : 0,
+              copies: totalCopies > 0 ? totalCopies : 1,
               paperSize: 'A4',
+              estimateReady: estimateReady,
               total: savedTotal,
               notes: printItems.join(', '),
             );
@@ -2184,35 +2240,59 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
           ),
           SizedBox(height: 14),
-          // Scrollable horizontal — tetap aman jika metode pembayaran > 4.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _payCard('Tunai', Icons.money, isDark),
-                SizedBox(width: 10),
-                _payCard('QRIS', Icons.qr_code_2, isDark),
-                SizedBox(width: 10),
-                _payCard('Transfer', Icons.account_balance, isDark),
-                SizedBox(width: 10),
-                _payCard('EDC / Kartu', Icons.credit_card, isDark),
-              ],
+          // 4 metode → Expanded merata (bagi rata kanan-kiri);
+          // >4 metode → scroll horizontal (aman untuk penambahan).
+          if (_paymentMethods().length <= 4)
+            Row(
+              children: _paymentMethods().asMap().entries.map((e) {
+                final m = e.value;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: e.key == _paymentMethods().length - 1 ? 0 : 10,
+                    ),
+                    child: _payCard(m.$1, m.$2, isDark, expand: true),
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final m in _paymentMethods()) ...[
+                    _payCard(m.$1, m.$2, isDark),
+                    const SizedBox(width: 10),
+                  ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _payCard(String method, IconData icon, bool isDark) {
+  /// Daftar metode pembayaran aktif (4 item sekarang).
+  List<(String, IconData)> _paymentMethods() => [
+        ('Tunai', Icons.money),
+        ('QRIS', Icons.qr_code_2),
+        ('Transfer', Icons.account_balance),
+        ('EDC / Kartu', Icons.credit_card),
+      ];
+
+  Widget _payCard(String method, IconData icon, bool isDark,
+      {bool expand = false}) {
     final active = _paymentMethod == method;
     return GestureDetector(
       onTap: () => setState(() => _paymentMethod = method),
       child: AnimatedContainer(
         duration: Duration(milliseconds: 200),
-        // Lebar tetap 108 — tidak lagi Expanded supaya bisa discroll horizontal.
-        width: 108,
-        padding: EdgeInsets.symmetric(vertical: 16),
+        // Lebar tetap 108 — dipakai saat >4 metode (scroll horizontal).
+        // Saat expand (≤4 metode), lebar penuh dari Expanded parent
+        // supaya kartu bagi rata kanan-kiri.
+        width: expand ? null : 108,
+        padding: EdgeInsets.symmetric(vertical: 16, horizontal: expand ? 4 : 0),
         decoration: BoxDecoration(
           color: active
               ? NusaConfig.activeSoft
@@ -2239,8 +2319,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             SizedBox(height: 6),
             Text(
               method,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: expand ? 11 : 13,
                 fontWeight: FontWeight.w700,
                 color: active
                     ? NusaConfig.activePrimary
@@ -2427,6 +2510,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// Bagian Uang Muka (DP) + HUTANG — bayar sebagian / bayar belakangan.
   /// Sisa atau seluruh total dicatat sebagai piutang (menu Utang).
   /// Tersedia untuk semua varian (lazim di servis/bengkel/salon).
+  /// Muat opsi cicilan dari DB (default 1/2/3/6/12 bulan, CRUD owner).
+  Future<void> _loadInstallmentOptions() async {
+    try {
+      final db = ref.read(databaseProvider);
+      final opts = await InstallmentOptionRepository(db).getAll();
+      if (mounted) {
+        setState(() {
+          _installmentOptions = opts;
+          if (opts.isNotEmpty && _installmentMonths == null) {
+            _installmentMonths = opts.first.months;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
   Widget _buildDpSection(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2474,78 +2573,244 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ),
         if (_dpEnabled) ...[
           SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _dpCtrl,
-                  keyboardType: TextInputType.number,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Rp 0',
-                    hintStyle: TextStyle(
+          // ── Mode DP: Nominal / Persen (v2.2.34) ──
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                _dpModeChip('Nominal', !_dpIsPercent, isDark, () {
+                  setState(() => _dpIsPercent = false);
+                }),
+                _dpModeChip('Persen (%)', _dpIsPercent, isDark, () {
+                  setState(() => _dpIsPercent = true);
+                }),
+              ],
+            ),
+          ),
+          SizedBox(height: 10),
+          if (!_dpIsPercent)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _dpCtrl,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(
                       fontSize: 18,
+                      fontWeight: FontWeight.w700,
                       color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
                     ),
-                    filled: true,
-                    fillColor: isDark
-                        ? NusaConfig.darkSurface2
-                        : const Color(0xFFF9FAFB),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: NusaConfig.activePrimary,
-                        width: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Rp 0',
+                      hintStyle: TextStyle(
+                        fontSize: 18,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                      filled: true,
+                      fillColor: isDark
+                          ? NusaConfig.darkSurface2
+                          : const Color(0xFFF9FAFB),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: NusaConfig.activePrimary,
+                          width: 2,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              // Quick chip: 50% total (lazim untuk servis/bengkel/salon)
-              GestureDetector(
-                onTap: () {
-                  final half = (_total / 2).ceil();
-                  _dpCtrl.text = half.toString();
-                  setState(() {});
-                },
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                const SizedBox(width: 10),
+                // Quick chip: 50% total (lazim untuk servis/bengkel/salon)
+                GestureDetector(
+                  onTap: () {
+                    final half = (_total / 2).ceil();
+                    _dpCtrl.text = half.toString();
+                    setState(() {});
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activeSoft,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Text(
+                      '50%',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: NusaConfig.activePrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _dpPercentCtrl,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'cth: 20',
+                      hintStyle: TextStyle(
+                        fontSize: 18,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                      filled: true,
+                      fillColor: isDark
+                          ? NusaConfig.darkSurface2
+                          : const Color(0xFFF9FAFB),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: NusaConfig.activePrimary,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: NusaConfig.activeSoft,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.4),
-                    ),
                   ),
                   child: Text(
-                    '50%',
+                    'DP = ${formatRupiah(_downPayment)}',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w800,
                       color: NusaConfig.activePrimary,
                     ),
                   ),
                 ),
+              ],
+            ),
+          // ── Cicilan: sisa dibagi rata per bulan (v2.2.34) ──
+          if (_downPayment > 0) ...[
+            SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cicilan',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Sisa dibagi rata per bulan',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _installmentEnabled,
+                  activeThumbColor: NusaConfig.activePrimary,
+                  onChanged: (v) => setState(() {
+                    _installmentEnabled = v;
+                    if (v && _installmentMonths == null) {
+                      _installmentMonths = _installmentOptions.isNotEmpty
+                          ? _installmentOptions.first.months
+                          : 1;
+                    }
+                  }),
+                ),
+              ],
+            ),
+            if (_installmentEnabled) ...[
+              SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkSurface2
+                      : const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.borderColor,
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _installmentMonths,
+                    isExpanded: true,
+                    hint: const Text('Pilih lama cicilan'),
+                    items: _installmentOptions
+                        .map((o) => DropdownMenuItem(
+                              value: o.months,
+                              child: Text(
+                                o.label?.isNotEmpty == true
+                                    ? o.label!
+                                    : '${o.months}× bulanan',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _installmentMonths = v),
+                  ),
+                ),
               ),
             ],
-          ),
+          ],
           SizedBox(height: 8),
           Container(
             width: double.infinity,
@@ -2564,6 +2829,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
                 SizedBox(height: 4),
                 _dpRow('Sisa piutang', formatRupiah(_remainingDue), isDark),
+                if (_installmentEnabled && _installmentMonths != null) ...[
+                  SizedBox(height: 4),
+                  _dpRow(
+                    'Cicilan ${_installmentMonths}×',
+                    '${formatRupiah(_installmentPerMonth)}/bulan',
+                    isDark,
+                  ),
+                ],
                 SizedBox(height: 6),
                 Text(
                   'Pelanggan wajib dipilih — sisa otomatis dicatat di menu Utang.',
@@ -2693,6 +2966,43 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Chip pemilih mode DP (Nominal / Persen) — pola UI konsisten
+  /// dengan chips yang sudah ada di layar ini.
+  Widget _dpModeChip(
+    String label,
+    bool active,
+    bool isDark,
+    VoidCallback onTap,
+  ) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: active
+                ? NusaConfig.activePrimary
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: active
+                  ? Colors.white
+                  : (isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

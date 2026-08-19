@@ -48,13 +48,15 @@ part 'app_database.g.dart';
     PurchaseOrders,
     PurchaseOrderItems,
     MaterialPrices,
+    InstallmentOptions,
+    EstimateOptions,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
   @override
-  int get schemaVersion => 42;
+  int get schemaVersion => 43;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -550,6 +552,50 @@ class AppDatabase extends _$AppDatabase {
           for (final name in ['Fotocopy', 'Print Warna', 'Print B/W', 'Jilid', 'Laminating', 'Scan']) {
             await customStatement(
                 "INSERT INTO print_service_types (name, is_default) VALUES ('$name', 1)");
+          }
+        }
+      }
+      if (from < 43) {
+        // Piutang & cicilan (v2.2.34): DP/persen/nominal + opsi cicilan
+        // CRUD + link transaksi→debt (status bayar sinkron di riwayat).
+        await _addColumnIfMissing(m, 'transactions', 'dp_amount', 'INTEGER');
+        await _addColumnIfMissing(m, 'transactions', 'installment_months', 'INTEGER');
+        await _addColumnIfMissing(m, 'transactions', 'installment_per_month', 'INTEGER');
+        await _addColumnIfMissing(m, 'transactions', 'debt_id', 'INTEGER');
+        await _addColumnIfMissing(m, 'customer_debts', 'installment_months', 'INTEGER');
+        // Opsi cicilan (CRUD owner) — seed default 1/2/3/6/12 bulan.
+        await _createTableIfMissing(
+          m,
+          'installment_options',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'months INTEGER NOT NULL, '
+              'label TEXT, '
+              'is_default INTEGER DEFAULT 0',
+        );
+        final instCount = await m.database
+            .customSelect('SELECT COUNT(*) AS c FROM installment_options')
+            .getSingle();
+        if ((instCount.read<int>('c') ?? 0) == 0) {
+          for (final months in [1, 2, 3, 6, 12]) {
+            await customStatement(
+                "INSERT INTO installment_options (months, label, is_default) "
+                "VALUES ($months, '$months× bulanan', 1)");
+          }
+        }
+        // Preset estimasi selesai Order Cetak (CRUD) — seed default.
+        await _createTableIfMissing(
+          m,
+          'estimate_options',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'label TEXT NOT NULL UNIQUE',
+        );
+        final estCount = await m.database
+            .customSelect('SELECT COUNT(*) AS c FROM estimate_options')
+            .getSingle();
+        if ((estCount.read<int>('c') ?? 0) == 0) {
+          for (final label in ['1 jam', '2 jam', '3 jam', 'Besok 10:00', 'Besok 14:00', '3 hari', '1 minggu']) {
+            await customStatement(
+                "INSERT INTO estimate_options (label) VALUES ('$label')");
           }
         }
       }

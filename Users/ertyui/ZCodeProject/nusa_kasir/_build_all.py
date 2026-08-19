@@ -111,7 +111,7 @@ VARIANTS = [
             "Express": "Icons.bolt_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["supplier", "promo", "pesanan_online",
+        "hidden_menus": ["supplier", "promo",
                          "meja", "servis", "booking", "resep", "print_order"],
     },
     {
@@ -138,8 +138,7 @@ VARIANTS = [
             "Sparepart": "Icons.settings_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["pesanan_online",
-                         "meja", "laundry_status", "booking", "resep", "print_order"],
+        "hidden_menus": ["meja", "laundry_status", "booking", "resep", "print_order"],
     },
     {
         "id": "salon", "name": "NUSA Salon", "pkg": "com.nusa.salon",
@@ -165,7 +164,7 @@ VARIANTS = [
             "Styling": "Icons.face_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["supplier", "cabang", "pesanan_online",
+        "hidden_menus": ["supplier", "cabang",
                          "meja", "laundry_status", "servis", "resep", "print_order"],
     },
     {
@@ -223,7 +222,7 @@ VARIANTS = [
             "ATK": "Icons.edit_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["cabang", "pesanan_online",
+        "hidden_menus": ["cabang",
                          "meja", "laundry_status", "servis", "booking", "resep"],
     },
     {

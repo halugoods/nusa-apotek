@@ -1888,6 +1888,47 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dpAmountMeta = const VerificationMeta(
+    'dpAmount',
+  );
+  @override
+  late final GeneratedColumn<int> dpAmount = GeneratedColumn<int>(
+    'dp_amount',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _installmentMonthsMeta = const VerificationMeta(
+    'installmentMonths',
+  );
+  @override
+  late final GeneratedColumn<int> installmentMonths = GeneratedColumn<int>(
+    'installment_months',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _installmentPerMonthMeta =
+      const VerificationMeta('installmentPerMonth');
+  @override
+  late final GeneratedColumn<int> installmentPerMonth = GeneratedColumn<int>(
+    'installment_per_month',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _debtIdMeta = const VerificationMeta('debtId');
+  @override
+  late final GeneratedColumn<int> debtId = GeneratedColumn<int>(
+    'debt_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1910,6 +1951,10 @@ class $TransactionsTable extends Transactions
     orderType,
     tableId,
     notes,
+    dpAmount,
+    installmentMonths,
+    installmentPerMonth,
+    debtId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2050,6 +2095,36 @@ class $TransactionsTable extends Transactions
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
       );
     }
+    if (data.containsKey('dp_amount')) {
+      context.handle(
+        _dpAmountMeta,
+        dpAmount.isAcceptableOrUnknown(data['dp_amount']!, _dpAmountMeta),
+      );
+    }
+    if (data.containsKey('installment_months')) {
+      context.handle(
+        _installmentMonthsMeta,
+        installmentMonths.isAcceptableOrUnknown(
+          data['installment_months']!,
+          _installmentMonthsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('installment_per_month')) {
+      context.handle(
+        _installmentPerMonthMeta,
+        installmentPerMonth.isAcceptableOrUnknown(
+          data['installment_per_month']!,
+          _installmentPerMonthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('debt_id')) {
+      context.handle(
+        _debtIdMeta,
+        debtId.isAcceptableOrUnknown(data['debt_id']!, _debtIdMeta),
+      );
+    }
     return context;
   }
 
@@ -2139,6 +2214,22 @@ class $TransactionsTable extends Transactions
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      dpAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dp_amount'],
+      ),
+      installmentMonths: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}installment_months'],
+      ),
+      installmentPerMonth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}installment_per_month'],
+      ),
+      debtId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}debt_id'],
+      ),
     );
   }
 
@@ -2169,6 +2260,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final String? orderType;
   final int? tableId;
   final String? notes;
+  final int? dpAmount;
+  final int? installmentMonths;
+  final int? installmentPerMonth;
+  final int? debtId;
   const Transaction({
     required this.id,
     required this.invoice,
@@ -2190,6 +2285,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     this.orderType,
     this.tableId,
     this.notes,
+    this.dpAmount,
+    this.installmentMonths,
+    this.installmentPerMonth,
+    this.debtId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2237,6 +2336,18 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     }
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || dpAmount != null) {
+      map['dp_amount'] = Variable<int>(dpAmount);
+    }
+    if (!nullToAbsent || installmentMonths != null) {
+      map['installment_months'] = Variable<int>(installmentMonths);
+    }
+    if (!nullToAbsent || installmentPerMonth != null) {
+      map['installment_per_month'] = Variable<int>(installmentPerMonth);
+    }
+    if (!nullToAbsent || debtId != null) {
+      map['debt_id'] = Variable<int>(debtId);
     }
     return map;
   }
@@ -2287,6 +2398,18 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      dpAmount: dpAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dpAmount),
+      installmentMonths: installmentMonths == null && nullToAbsent
+          ? const Value.absent()
+          : Value(installmentMonths),
+      installmentPerMonth: installmentPerMonth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(installmentPerMonth),
+      debtId: debtId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(debtId),
     );
   }
 
@@ -2316,6 +2439,12 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       orderType: serializer.fromJson<String?>(json['orderType']),
       tableId: serializer.fromJson<int?>(json['tableId']),
       notes: serializer.fromJson<String?>(json['notes']),
+      dpAmount: serializer.fromJson<int?>(json['dpAmount']),
+      installmentMonths: serializer.fromJson<int?>(json['installmentMonths']),
+      installmentPerMonth: serializer.fromJson<int?>(
+        json['installmentPerMonth'],
+      ),
+      debtId: serializer.fromJson<int?>(json['debtId']),
     );
   }
   @override
@@ -2342,6 +2471,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'orderType': serializer.toJson<String?>(orderType),
       'tableId': serializer.toJson<int?>(tableId),
       'notes': serializer.toJson<String?>(notes),
+      'dpAmount': serializer.toJson<int?>(dpAmount),
+      'installmentMonths': serializer.toJson<int?>(installmentMonths),
+      'installmentPerMonth': serializer.toJson<int?>(installmentPerMonth),
+      'debtId': serializer.toJson<int?>(debtId),
     };
   }
 
@@ -2366,6 +2499,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     Value<String?> orderType = const Value.absent(),
     Value<int?> tableId = const Value.absent(),
     Value<String?> notes = const Value.absent(),
+    Value<int?> dpAmount = const Value.absent(),
+    Value<int?> installmentMonths = const Value.absent(),
+    Value<int?> installmentPerMonth = const Value.absent(),
+    Value<int?> debtId = const Value.absent(),
   }) => Transaction(
     id: id ?? this.id,
     invoice: invoice ?? this.invoice,
@@ -2387,6 +2524,14 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     orderType: orderType.present ? orderType.value : this.orderType,
     tableId: tableId.present ? tableId.value : this.tableId,
     notes: notes.present ? notes.value : this.notes,
+    dpAmount: dpAmount.present ? dpAmount.value : this.dpAmount,
+    installmentMonths: installmentMonths.present
+        ? installmentMonths.value
+        : this.installmentMonths,
+    installmentPerMonth: installmentPerMonth.present
+        ? installmentPerMonth.value
+        : this.installmentPerMonth,
+    debtId: debtId.present ? debtId.value : this.debtId,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
     return Transaction(
@@ -2422,6 +2567,14 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       orderType: data.orderType.present ? data.orderType.value : this.orderType,
       tableId: data.tableId.present ? data.tableId.value : this.tableId,
       notes: data.notes.present ? data.notes.value : this.notes,
+      dpAmount: data.dpAmount.present ? data.dpAmount.value : this.dpAmount,
+      installmentMonths: data.installmentMonths.present
+          ? data.installmentMonths.value
+          : this.installmentMonths,
+      installmentPerMonth: data.installmentPerMonth.present
+          ? data.installmentPerMonth.value
+          : this.installmentPerMonth,
+      debtId: data.debtId.present ? data.debtId.value : this.debtId,
     );
   }
 
@@ -2447,13 +2600,17 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('voidedAt: $voidedAt, ')
           ..write('orderType: $orderType, ')
           ..write('tableId: $tableId, ')
-          ..write('notes: $notes')
+          ..write('notes: $notes, ')
+          ..write('dpAmount: $dpAmount, ')
+          ..write('installmentMonths: $installmentMonths, ')
+          ..write('installmentPerMonth: $installmentPerMonth, ')
+          ..write('debtId: $debtId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     invoice,
     date,
@@ -2474,7 +2631,11 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     orderType,
     tableId,
     notes,
-  );
+    dpAmount,
+    installmentMonths,
+    installmentPerMonth,
+    debtId,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2498,7 +2659,11 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.voidedAt == this.voidedAt &&
           other.orderType == this.orderType &&
           other.tableId == this.tableId &&
-          other.notes == this.notes);
+          other.notes == this.notes &&
+          other.dpAmount == this.dpAmount &&
+          other.installmentMonths == this.installmentMonths &&
+          other.installmentPerMonth == this.installmentPerMonth &&
+          other.debtId == this.debtId);
 }
 
 class TransactionsCompanion extends UpdateCompanion<Transaction> {
@@ -2522,6 +2687,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<String?> orderType;
   final Value<int?> tableId;
   final Value<String?> notes;
+  final Value<int?> dpAmount;
+  final Value<int?> installmentMonths;
+  final Value<int?> installmentPerMonth;
+  final Value<int?> debtId;
   const TransactionsCompanion({
     this.id = const Value.absent(),
     this.invoice = const Value.absent(),
@@ -2543,6 +2712,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.orderType = const Value.absent(),
     this.tableId = const Value.absent(),
     this.notes = const Value.absent(),
+    this.dpAmount = const Value.absent(),
+    this.installmentMonths = const Value.absent(),
+    this.installmentPerMonth = const Value.absent(),
+    this.debtId = const Value.absent(),
   });
   TransactionsCompanion.insert({
     this.id = const Value.absent(),
@@ -2565,6 +2738,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.orderType = const Value.absent(),
     this.tableId = const Value.absent(),
     this.notes = const Value.absent(),
+    this.dpAmount = const Value.absent(),
+    this.installmentMonths = const Value.absent(),
+    this.installmentPerMonth = const Value.absent(),
+    this.debtId = const Value.absent(),
   }) : invoice = Value(invoice),
        items = Value(items);
   static Insertable<Transaction> custom({
@@ -2588,6 +2765,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<String>? orderType,
     Expression<int>? tableId,
     Expression<String>? notes,
+    Expression<int>? dpAmount,
+    Expression<int>? installmentMonths,
+    Expression<int>? installmentPerMonth,
+    Expression<int>? debtId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2610,6 +2791,11 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (orderType != null) 'order_type': orderType,
       if (tableId != null) 'table_id': tableId,
       if (notes != null) 'notes': notes,
+      if (dpAmount != null) 'dp_amount': dpAmount,
+      if (installmentMonths != null) 'installment_months': installmentMonths,
+      if (installmentPerMonth != null)
+        'installment_per_month': installmentPerMonth,
+      if (debtId != null) 'debt_id': debtId,
     });
   }
 
@@ -2634,6 +2820,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<String?>? orderType,
     Value<int?>? tableId,
     Value<String?>? notes,
+    Value<int?>? dpAmount,
+    Value<int?>? installmentMonths,
+    Value<int?>? installmentPerMonth,
+    Value<int?>? debtId,
   }) {
     return TransactionsCompanion(
       id: id ?? this.id,
@@ -2656,6 +2846,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       orderType: orderType ?? this.orderType,
       tableId: tableId ?? this.tableId,
       notes: notes ?? this.notes,
+      dpAmount: dpAmount ?? this.dpAmount,
+      installmentMonths: installmentMonths ?? this.installmentMonths,
+      installmentPerMonth: installmentPerMonth ?? this.installmentPerMonth,
+      debtId: debtId ?? this.debtId,
     );
   }
 
@@ -2722,6 +2916,18 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
+    if (dpAmount.present) {
+      map['dp_amount'] = Variable<int>(dpAmount.value);
+    }
+    if (installmentMonths.present) {
+      map['installment_months'] = Variable<int>(installmentMonths.value);
+    }
+    if (installmentPerMonth.present) {
+      map['installment_per_month'] = Variable<int>(installmentPerMonth.value);
+    }
+    if (debtId.present) {
+      map['debt_id'] = Variable<int>(debtId.value);
+    }
     return map;
   }
 
@@ -2747,7 +2953,11 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('voidedAt: $voidedAt, ')
           ..write('orderType: $orderType, ')
           ..write('tableId: $tableId, ')
-          ..write('notes: $notes')
+          ..write('notes: $notes, ')
+          ..write('dpAmount: $dpAmount, ')
+          ..write('installmentMonths: $installmentMonths, ')
+          ..write('installmentPerMonth: $installmentPerMonth, ')
+          ..write('debtId: $debtId')
           ..write(')'))
         .toString();
   }
@@ -12732,6 +12942,17 @@ class $CustomerDebtsTable extends CustomerDebts
     requiredDuringInsert: false,
     defaultValue: const Constant('Belum Lunas'),
   );
+  static const VerificationMeta _installmentMonthsMeta = const VerificationMeta(
+    'installmentMonths',
+  );
+  @override
+  late final GeneratedColumn<int> installmentMonths = GeneratedColumn<int>(
+    'installment_months',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -12743,6 +12964,7 @@ class $CustomerDebtsTable extends CustomerDebts
     debtDate,
     dueDate,
     status,
+    installmentMonths,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -12824,6 +13046,15 @@ class $CustomerDebtsTable extends CustomerDebts
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('installment_months')) {
+      context.handle(
+        _installmentMonthsMeta,
+        installmentMonths.isAcceptableOrUnknown(
+          data['installment_months']!,
+          _installmentMonthsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -12869,6 +13100,10 @@ class $CustomerDebtsTable extends CustomerDebts
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       )!,
+      installmentMonths: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}installment_months'],
+      ),
     );
   }
 
@@ -12888,6 +13123,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
   final DateTime debtDate;
   final DateTime? dueDate;
   final String status;
+  final int? installmentMonths;
   const CustomerDebt({
     required this.id,
     required this.customerId,
@@ -12898,6 +13134,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     required this.debtDate,
     this.dueDate,
     required this.status,
+    this.installmentMonths,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -12915,6 +13152,9 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       map['due_date'] = Variable<DateTime>(dueDate);
     }
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || installmentMonths != null) {
+      map['installment_months'] = Variable<int>(installmentMonths);
+    }
     return map;
   }
 
@@ -12933,6 +13173,9 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
           ? const Value.absent()
           : Value(dueDate),
       status: Value(status),
+      installmentMonths: installmentMonths == null && nullToAbsent
+          ? const Value.absent()
+          : Value(installmentMonths),
     );
   }
 
@@ -12951,6 +13194,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       debtDate: serializer.fromJson<DateTime>(json['debtDate']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
       status: serializer.fromJson<String>(json['status']),
+      installmentMonths: serializer.fromJson<int?>(json['installmentMonths']),
     );
   }
   @override
@@ -12966,6 +13210,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       'debtDate': serializer.toJson<DateTime>(debtDate),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
       'status': serializer.toJson<String>(status),
+      'installmentMonths': serializer.toJson<int?>(installmentMonths),
     };
   }
 
@@ -12979,6 +13224,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     DateTime? debtDate,
     Value<DateTime?> dueDate = const Value.absent(),
     String? status,
+    Value<int?> installmentMonths = const Value.absent(),
   }) => CustomerDebt(
     id: id ?? this.id,
     customerId: customerId ?? this.customerId,
@@ -12989,6 +13235,9 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     debtDate: debtDate ?? this.debtDate,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
     status: status ?? this.status,
+    installmentMonths: installmentMonths.present
+        ? installmentMonths.value
+        : this.installmentMonths,
   );
   CustomerDebt copyWithCompanion(CustomerDebtsCompanion data) {
     return CustomerDebt(
@@ -13009,6 +13258,9 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       debtDate: data.debtDate.present ? data.debtDate.value : this.debtDate,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
       status: data.status.present ? data.status.value : this.status,
+      installmentMonths: data.installmentMonths.present
+          ? data.installmentMonths.value
+          : this.installmentMonths,
     );
   }
 
@@ -13023,7 +13275,8 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
           ..write('description: $description, ')
           ..write('debtDate: $debtDate, ')
           ..write('dueDate: $dueDate, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('installmentMonths: $installmentMonths')
           ..write(')'))
         .toString();
   }
@@ -13039,6 +13292,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     debtDate,
     dueDate,
     status,
+    installmentMonths,
   );
   @override
   bool operator ==(Object other) =>
@@ -13052,7 +13306,8 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
           other.description == this.description &&
           other.debtDate == this.debtDate &&
           other.dueDate == this.dueDate &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.installmentMonths == this.installmentMonths);
 }
 
 class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
@@ -13065,6 +13320,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
   final Value<DateTime> debtDate;
   final Value<DateTime?> dueDate;
   final Value<String> status;
+  final Value<int?> installmentMonths;
   const CustomerDebtsCompanion({
     this.id = const Value.absent(),
     this.customerId = const Value.absent(),
@@ -13075,6 +13331,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     this.debtDate = const Value.absent(),
     this.dueDate = const Value.absent(),
     this.status = const Value.absent(),
+    this.installmentMonths = const Value.absent(),
   });
   CustomerDebtsCompanion.insert({
     this.id = const Value.absent(),
@@ -13086,6 +13343,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     this.debtDate = const Value.absent(),
     this.dueDate = const Value.absent(),
     this.status = const Value.absent(),
+    this.installmentMonths = const Value.absent(),
   }) : customerId = Value(customerId),
        customerName = Value(customerName),
        amount = Value(amount),
@@ -13100,6 +13358,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     Expression<DateTime>? debtDate,
     Expression<DateTime>? dueDate,
     Expression<String>? status,
+    Expression<int>? installmentMonths,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -13111,6 +13370,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
       if (debtDate != null) 'debt_date': debtDate,
       if (dueDate != null) 'due_date': dueDate,
       if (status != null) 'status': status,
+      if (installmentMonths != null) 'installment_months': installmentMonths,
     });
   }
 
@@ -13124,6 +13384,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     Value<DateTime>? debtDate,
     Value<DateTime?>? dueDate,
     Value<String>? status,
+    Value<int?>? installmentMonths,
   }) {
     return CustomerDebtsCompanion(
       id: id ?? this.id,
@@ -13135,6 +13396,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
       debtDate: debtDate ?? this.debtDate,
       dueDate: dueDate ?? this.dueDate,
       status: status ?? this.status,
+      installmentMonths: installmentMonths ?? this.installmentMonths,
     );
   }
 
@@ -13168,6 +13430,9 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (installmentMonths.present) {
+      map['installment_months'] = Variable<int>(installmentMonths.value);
+    }
     return map;
   }
 
@@ -13182,7 +13447,8 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
           ..write('description: $description, ')
           ..write('debtDate: $debtDate, ')
           ..write('dueDate: $dueDate, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('installmentMonths: $installmentMonths')
           ..write(')'))
         .toString();
   }
@@ -22627,6 +22893,498 @@ class MaterialPricesCompanion extends UpdateCompanion<MaterialPrice> {
   }
 }
 
+class $InstallmentOptionsTable extends InstallmentOptions
+    with TableInfo<$InstallmentOptionsTable, InstallmentOption> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InstallmentOptionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _monthsMeta = const VerificationMeta('months');
+  @override
+  late final GeneratedColumn<int> months = GeneratedColumn<int>(
+    'months',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDefaultMeta = const VerificationMeta(
+    'isDefault',
+  );
+  @override
+  late final GeneratedColumn<bool> isDefault = GeneratedColumn<bool>(
+    'is_default',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_default" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, months, label, isDefault];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'installment_options';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InstallmentOption> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('months')) {
+      context.handle(
+        _monthsMeta,
+        months.isAcceptableOrUnknown(data['months']!, _monthsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_monthsMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('is_default')) {
+      context.handle(
+        _isDefaultMeta,
+        isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InstallmentOption map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InstallmentOption(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      months: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}months'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
+      isDefault: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_default'],
+      )!,
+    );
+  }
+
+  @override
+  $InstallmentOptionsTable createAlias(String alias) {
+    return $InstallmentOptionsTable(attachedDatabase, alias);
+  }
+}
+
+class InstallmentOption extends DataClass
+    implements Insertable<InstallmentOption> {
+  final int id;
+  final int months;
+  final String? label;
+  final bool isDefault;
+  const InstallmentOption({
+    required this.id,
+    required this.months,
+    this.label,
+    required this.isDefault,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['months'] = Variable<int>(months);
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
+    map['is_default'] = Variable<bool>(isDefault);
+    return map;
+  }
+
+  InstallmentOptionsCompanion toCompanion(bool nullToAbsent) {
+    return InstallmentOptionsCompanion(
+      id: Value(id),
+      months: Value(months),
+      label: label == null && nullToAbsent
+          ? const Value.absent()
+          : Value(label),
+      isDefault: Value(isDefault),
+    );
+  }
+
+  factory InstallmentOption.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InstallmentOption(
+      id: serializer.fromJson<int>(json['id']),
+      months: serializer.fromJson<int>(json['months']),
+      label: serializer.fromJson<String?>(json['label']),
+      isDefault: serializer.fromJson<bool>(json['isDefault']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'months': serializer.toJson<int>(months),
+      'label': serializer.toJson<String?>(label),
+      'isDefault': serializer.toJson<bool>(isDefault),
+    };
+  }
+
+  InstallmentOption copyWith({
+    int? id,
+    int? months,
+    Value<String?> label = const Value.absent(),
+    bool? isDefault,
+  }) => InstallmentOption(
+    id: id ?? this.id,
+    months: months ?? this.months,
+    label: label.present ? label.value : this.label,
+    isDefault: isDefault ?? this.isDefault,
+  );
+  InstallmentOption copyWithCompanion(InstallmentOptionsCompanion data) {
+    return InstallmentOption(
+      id: data.id.present ? data.id.value : this.id,
+      months: data.months.present ? data.months.value : this.months,
+      label: data.label.present ? data.label.value : this.label,
+      isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InstallmentOption(')
+          ..write('id: $id, ')
+          ..write('months: $months, ')
+          ..write('label: $label, ')
+          ..write('isDefault: $isDefault')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, months, label, isDefault);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InstallmentOption &&
+          other.id == this.id &&
+          other.months == this.months &&
+          other.label == this.label &&
+          other.isDefault == this.isDefault);
+}
+
+class InstallmentOptionsCompanion extends UpdateCompanion<InstallmentOption> {
+  final Value<int> id;
+  final Value<int> months;
+  final Value<String?> label;
+  final Value<bool> isDefault;
+  const InstallmentOptionsCompanion({
+    this.id = const Value.absent(),
+    this.months = const Value.absent(),
+    this.label = const Value.absent(),
+    this.isDefault = const Value.absent(),
+  });
+  InstallmentOptionsCompanion.insert({
+    this.id = const Value.absent(),
+    required int months,
+    this.label = const Value.absent(),
+    this.isDefault = const Value.absent(),
+  }) : months = Value(months);
+  static Insertable<InstallmentOption> custom({
+    Expression<int>? id,
+    Expression<int>? months,
+    Expression<String>? label,
+    Expression<bool>? isDefault,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (months != null) 'months': months,
+      if (label != null) 'label': label,
+      if (isDefault != null) 'is_default': isDefault,
+    });
+  }
+
+  InstallmentOptionsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? months,
+    Value<String?>? label,
+    Value<bool>? isDefault,
+  }) {
+    return InstallmentOptionsCompanion(
+      id: id ?? this.id,
+      months: months ?? this.months,
+      label: label ?? this.label,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (months.present) {
+      map['months'] = Variable<int>(months.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (isDefault.present) {
+      map['is_default'] = Variable<bool>(isDefault.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InstallmentOptionsCompanion(')
+          ..write('id: $id, ')
+          ..write('months: $months, ')
+          ..write('label: $label, ')
+          ..write('isDefault: $isDefault')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $EstimateOptionsTable extends EstimateOptions
+    with TableInfo<$EstimateOptionsTable, EstimateOption> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EstimateOptionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, label];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'estimate_options';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EstimateOption> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EstimateOption map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EstimateOption(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+    );
+  }
+
+  @override
+  $EstimateOptionsTable createAlias(String alias) {
+    return $EstimateOptionsTable(attachedDatabase, alias);
+  }
+}
+
+class EstimateOption extends DataClass implements Insertable<EstimateOption> {
+  final int id;
+  final String label;
+  const EstimateOption({required this.id, required this.label});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['label'] = Variable<String>(label);
+    return map;
+  }
+
+  EstimateOptionsCompanion toCompanion(bool nullToAbsent) {
+    return EstimateOptionsCompanion(id: Value(id), label: Value(label));
+  }
+
+  factory EstimateOption.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EstimateOption(
+      id: serializer.fromJson<int>(json['id']),
+      label: serializer.fromJson<String>(json['label']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'label': serializer.toJson<String>(label),
+    };
+  }
+
+  EstimateOption copyWith({int? id, String? label}) =>
+      EstimateOption(id: id ?? this.id, label: label ?? this.label);
+  EstimateOption copyWithCompanion(EstimateOptionsCompanion data) {
+    return EstimateOption(
+      id: data.id.present ? data.id.value : this.id,
+      label: data.label.present ? data.label.value : this.label,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EstimateOption(')
+          ..write('id: $id, ')
+          ..write('label: $label')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, label);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EstimateOption &&
+          other.id == this.id &&
+          other.label == this.label);
+}
+
+class EstimateOptionsCompanion extends UpdateCompanion<EstimateOption> {
+  final Value<int> id;
+  final Value<String> label;
+  const EstimateOptionsCompanion({
+    this.id = const Value.absent(),
+    this.label = const Value.absent(),
+  });
+  EstimateOptionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String label,
+  }) : label = Value(label);
+  static Insertable<EstimateOption> custom({
+    Expression<int>? id,
+    Expression<String>? label,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (label != null) 'label': label,
+    });
+  }
+
+  EstimateOptionsCompanion copyWith({Value<int>? id, Value<String>? label}) {
+    return EstimateOptionsCompanion(
+      id: id ?? this.id,
+      label: label ?? this.label,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EstimateOptionsCompanion(')
+          ..write('id: $id, ')
+          ..write('label: $label')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -22680,6 +23438,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PurchaseOrderItemsTable purchaseOrderItems =
       $PurchaseOrderItemsTable(this);
   late final $MaterialPricesTable materialPrices = $MaterialPricesTable(this);
+  late final $InstallmentOptionsTable installmentOptions =
+      $InstallmentOptionsTable(this);
+  late final $EstimateOptionsTable estimateOptions = $EstimateOptionsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -22725,6 +23488,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     purchaseOrders,
     purchaseOrderItems,
     materialPrices,
+    installmentOptions,
+    estimateOptions,
   ];
 }
 
@@ -23569,6 +24334,10 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String?> orderType,
       Value<int?> tableId,
       Value<String?> notes,
+      Value<int?> dpAmount,
+      Value<int?> installmentMonths,
+      Value<int?> installmentPerMonth,
+      Value<int?> debtId,
     });
 typedef $$TransactionsTableUpdateCompanionBuilder =
     TransactionsCompanion Function({
@@ -23592,6 +24361,10 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String?> orderType,
       Value<int?> tableId,
       Value<String?> notes,
+      Value<int?> dpAmount,
+      Value<int?> installmentMonths,
+      Value<int?> installmentPerMonth,
+      Value<int?> debtId,
     });
 
 class $$TransactionsTableFilterComposer
@@ -23700,6 +24473,26 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dpAmount => $composableBuilder(
+    column: $table.dpAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get installmentPerMonth => $composableBuilder(
+    column: $table.installmentPerMonth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get debtId => $composableBuilder(
+    column: $table.debtId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -23812,6 +24605,26 @@ class $$TransactionsTableOrderingComposer
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get dpAmount => $composableBuilder(
+    column: $table.dpAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get installmentPerMonth => $composableBuilder(
+    column: $table.installmentPerMonth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get debtId => $composableBuilder(
+    column: $table.debtId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TransactionsTableAnnotationComposer
@@ -23894,6 +24707,22 @@ class $$TransactionsTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get dpAmount =>
+      $composableBuilder(column: $table.dpAmount, builder: (column) => column);
+
+  GeneratedColumn<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get installmentPerMonth => $composableBuilder(
+    column: $table.installmentPerMonth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get debtId =>
+      $composableBuilder(column: $table.debtId, builder: (column) => column);
 }
 
 class $$TransactionsTableTableManager
@@ -23947,6 +24776,10 @@ class $$TransactionsTableTableManager
                 Value<String?> orderType = const Value.absent(),
                 Value<int?> tableId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<int?> dpAmount = const Value.absent(),
+                Value<int?> installmentMonths = const Value.absent(),
+                Value<int?> installmentPerMonth = const Value.absent(),
+                Value<int?> debtId = const Value.absent(),
               }) => TransactionsCompanion(
                 id: id,
                 invoice: invoice,
@@ -23968,6 +24801,10 @@ class $$TransactionsTableTableManager
                 orderType: orderType,
                 tableId: tableId,
                 notes: notes,
+                dpAmount: dpAmount,
+                installmentMonths: installmentMonths,
+                installmentPerMonth: installmentPerMonth,
+                debtId: debtId,
               ),
           createCompanionCallback:
               ({
@@ -23991,6 +24828,10 @@ class $$TransactionsTableTableManager
                 Value<String?> orderType = const Value.absent(),
                 Value<int?> tableId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<int?> dpAmount = const Value.absent(),
+                Value<int?> installmentMonths = const Value.absent(),
+                Value<int?> installmentPerMonth = const Value.absent(),
+                Value<int?> debtId = const Value.absent(),
               }) => TransactionsCompanion.insert(
                 id: id,
                 invoice: invoice,
@@ -24012,6 +24853,10 @@ class $$TransactionsTableTableManager
                 orderType: orderType,
                 tableId: tableId,
                 notes: notes,
+                dpAmount: dpAmount,
+                installmentMonths: installmentMonths,
+                installmentPerMonth: installmentPerMonth,
+                debtId: debtId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -28903,6 +29748,7 @@ typedef $$CustomerDebtsTableCreateCompanionBuilder =
       Value<DateTime> debtDate,
       Value<DateTime?> dueDate,
       Value<String> status,
+      Value<int?> installmentMonths,
     });
 typedef $$CustomerDebtsTableUpdateCompanionBuilder =
     CustomerDebtsCompanion Function({
@@ -28915,6 +29761,7 @@ typedef $$CustomerDebtsTableUpdateCompanionBuilder =
       Value<DateTime> debtDate,
       Value<DateTime?> dueDate,
       Value<String> status,
+      Value<int?> installmentMonths,
     });
 
 class $$CustomerDebtsTableFilterComposer
@@ -28968,6 +29815,11 @@ class $$CustomerDebtsTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -29025,6 +29877,11 @@ class $$CustomerDebtsTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CustomerDebtsTableAnnotationComposer
@@ -29070,6 +29927,11 @@ class $$CustomerDebtsTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get installmentMonths => $composableBuilder(
+    column: $table.installmentMonths,
+    builder: (column) => column,
+  );
 }
 
 class $$CustomerDebtsTableTableManager
@@ -29112,6 +29974,7 @@ class $$CustomerDebtsTableTableManager
                 Value<DateTime> debtDate = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<int?> installmentMonths = const Value.absent(),
               }) => CustomerDebtsCompanion(
                 id: id,
                 customerId: customerId,
@@ -29122,6 +29985,7 @@ class $$CustomerDebtsTableTableManager
                 debtDate: debtDate,
                 dueDate: dueDate,
                 status: status,
+                installmentMonths: installmentMonths,
               ),
           createCompanionCallback:
               ({
@@ -29134,6 +29998,7 @@ class $$CustomerDebtsTableTableManager
                 Value<DateTime> debtDate = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<int?> installmentMonths = const Value.absent(),
               }) => CustomerDebtsCompanion.insert(
                 id: id,
                 customerId: customerId,
@@ -29144,6 +30009,7 @@ class $$CustomerDebtsTableTableManager
                 debtDate: debtDate,
                 dueDate: dueDate,
                 status: status,
+                installmentMonths: installmentMonths,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -33961,6 +34827,323 @@ typedef $$MaterialPricesTableProcessedTableManager =
       MaterialPrice,
       PrefetchHooks Function()
     >;
+typedef $$InstallmentOptionsTableCreateCompanionBuilder =
+    InstallmentOptionsCompanion Function({
+      Value<int> id,
+      required int months,
+      Value<String?> label,
+      Value<bool> isDefault,
+    });
+typedef $$InstallmentOptionsTableUpdateCompanionBuilder =
+    InstallmentOptionsCompanion Function({
+      Value<int> id,
+      Value<int> months,
+      Value<String?> label,
+      Value<bool> isDefault,
+    });
+
+class $$InstallmentOptionsTableFilterComposer
+    extends Composer<_$AppDatabase, $InstallmentOptionsTable> {
+  $$InstallmentOptionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get months => $composableBuilder(
+    column: $table.months,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$InstallmentOptionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $InstallmentOptionsTable> {
+  $$InstallmentOptionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get months => $composableBuilder(
+    column: $table.months,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$InstallmentOptionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $InstallmentOptionsTable> {
+  $$InstallmentOptionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get months =>
+      $composableBuilder(column: $table.months, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDefault =>
+      $composableBuilder(column: $table.isDefault, builder: (column) => column);
+}
+
+class $$InstallmentOptionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $InstallmentOptionsTable,
+          InstallmentOption,
+          $$InstallmentOptionsTableFilterComposer,
+          $$InstallmentOptionsTableOrderingComposer,
+          $$InstallmentOptionsTableAnnotationComposer,
+          $$InstallmentOptionsTableCreateCompanionBuilder,
+          $$InstallmentOptionsTableUpdateCompanionBuilder,
+          (
+            InstallmentOption,
+            BaseReferences<
+              _$AppDatabase,
+              $InstallmentOptionsTable,
+              InstallmentOption
+            >,
+          ),
+          InstallmentOption,
+          PrefetchHooks Function()
+        > {
+  $$InstallmentOptionsTableTableManager(
+    _$AppDatabase db,
+    $InstallmentOptionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InstallmentOptionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InstallmentOptionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InstallmentOptionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> months = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
+              }) => InstallmentOptionsCompanion(
+                id: id,
+                months: months,
+                label: label,
+                isDefault: isDefault,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int months,
+                Value<String?> label = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
+              }) => InstallmentOptionsCompanion.insert(
+                id: id,
+                months: months,
+                label: label,
+                isDefault: isDefault,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$InstallmentOptionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $InstallmentOptionsTable,
+      InstallmentOption,
+      $$InstallmentOptionsTableFilterComposer,
+      $$InstallmentOptionsTableOrderingComposer,
+      $$InstallmentOptionsTableAnnotationComposer,
+      $$InstallmentOptionsTableCreateCompanionBuilder,
+      $$InstallmentOptionsTableUpdateCompanionBuilder,
+      (
+        InstallmentOption,
+        BaseReferences<
+          _$AppDatabase,
+          $InstallmentOptionsTable,
+          InstallmentOption
+        >,
+      ),
+      InstallmentOption,
+      PrefetchHooks Function()
+    >;
+typedef $$EstimateOptionsTableCreateCompanionBuilder =
+    EstimateOptionsCompanion Function({Value<int> id, required String label});
+typedef $$EstimateOptionsTableUpdateCompanionBuilder =
+    EstimateOptionsCompanion Function({Value<int> id, Value<String> label});
+
+class $$EstimateOptionsTableFilterComposer
+    extends Composer<_$AppDatabase, $EstimateOptionsTable> {
+  $$EstimateOptionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$EstimateOptionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $EstimateOptionsTable> {
+  $$EstimateOptionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$EstimateOptionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EstimateOptionsTable> {
+  $$EstimateOptionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+}
+
+class $$EstimateOptionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EstimateOptionsTable,
+          EstimateOption,
+          $$EstimateOptionsTableFilterComposer,
+          $$EstimateOptionsTableOrderingComposer,
+          $$EstimateOptionsTableAnnotationComposer,
+          $$EstimateOptionsTableCreateCompanionBuilder,
+          $$EstimateOptionsTableUpdateCompanionBuilder,
+          (
+            EstimateOption,
+            BaseReferences<
+              _$AppDatabase,
+              $EstimateOptionsTable,
+              EstimateOption
+            >,
+          ),
+          EstimateOption,
+          PrefetchHooks Function()
+        > {
+  $$EstimateOptionsTableTableManager(
+    _$AppDatabase db,
+    $EstimateOptionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EstimateOptionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EstimateOptionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$EstimateOptionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> label = const Value.absent(),
+              }) => EstimateOptionsCompanion(id: id, label: label),
+          createCompanionCallback:
+              ({Value<int> id = const Value.absent(), required String label}) =>
+                  EstimateOptionsCompanion.insert(id: id, label: label),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$EstimateOptionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EstimateOptionsTable,
+      EstimateOption,
+      $$EstimateOptionsTableFilterComposer,
+      $$EstimateOptionsTableOrderingComposer,
+      $$EstimateOptionsTableAnnotationComposer,
+      $$EstimateOptionsTableCreateCompanionBuilder,
+      $$EstimateOptionsTableUpdateCompanionBuilder,
+      (
+        EstimateOption,
+        BaseReferences<_$AppDatabase, $EstimateOptionsTable, EstimateOption>,
+      ),
+      EstimateOption,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -34045,4 +35228,8 @@ class $AppDatabaseManager {
       $$PurchaseOrderItemsTableTableManager(_db, _db.purchaseOrderItems);
   $$MaterialPricesTableTableManager get materialPrices =>
       $$MaterialPricesTableTableManager(_db, _db.materialPrices);
+  $$InstallmentOptionsTableTableManager get installmentOptions =>
+      $$InstallmentOptionsTableTableManager(_db, _db.installmentOptions);
+  $$EstimateOptionsTableTableManager get estimateOptions =>
+      $$EstimateOptionsTableTableManager(_db, _db.estimateOptions);
 }

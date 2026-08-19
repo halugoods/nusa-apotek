@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:functions_client/functions_client.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -63,8 +64,17 @@ class OnlineOrderService {
     }
   }
 
-  /// Get the store_id (derived from activation key for uniqueness)
+  /// Store id yang sudah ter-resolve ke row asli di server (setelah
+  /// fallback (user_id, variant)). Dipakai semua operasi supaya produk/
+  /// order/promo selalu menunjuk ke row toko yang sama.
+  String? _resolvedStoreId;
+
+  /// Get the store_id (derived from activation key for uniqueness).
+  /// Setelah [getStoreSettings] berhasil, memakai store_id row asli —
+  /// supaya clear-data/re-login (key mungkin beda) tidak membuat toko
+  /// baru atau sync ke store yang salah.
   Future<String?> get storeId async {
+    if (_resolvedStoreId != null) return _resolvedStoreId;
     final key = await SecureStore.getActivation();
     return key; // activation key as store_id
   }
@@ -133,12 +143,16 @@ class OnlineOrderService {
       return (ok: false, error: OnlineStoreError.unknown);
     }
     try {
+      // Google UID = pemilik toko (persistensi lintas clear-data &
+      // anti rebutan slug antar varian). Sama dengan backup identity.
+      final userId = await GoogleAuthService.getStoredUserId();
       debugPrint(
         '[OnlineOrderService] upsertStore: invoking online-store edge function...',
       );
       final res = await _invoke('online-store', {
         'action': 'upsert_store',
         'store_id': sid,
+        if (userId != null) 'user_id': userId,
         'store_name': storeName,
         'slug': slug ?? '',
         'variant': variant ?? '',
@@ -170,13 +184,16 @@ class OnlineOrderService {
 
   /// Cek ketersediaan slug (debounce di UI). Sistem memastikan slug unik
   /// per varian — mencegah dua toko (varian sama) memakai alamat yang sama.
+  /// Slug milik user ini sendiri (user_id sama) tidak dianggap taken.
   Future<bool> isSlugAvailable(String slug, {String? variant}) async {
     if (slug.trim().isEmpty) return false;
     try {
+      final userId = await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'check_slug',
         'slug': slug.trim().toLowerCase(),
         'variant': variant ?? NusaConfig.productId,
+        if (userId != null) 'user_id': userId,
       });
       if (res.status >= 400) return false;
       final data = res.data as Map<String, dynamic>;
@@ -190,13 +207,27 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return null;
     try {
+      // Kirim user_id + variant: edge fn fallback ke (user_id, variant)
+      // bila row by store_id tidak ada (clear-data / key beda).
+      final userId = await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'get_store',
         'store_id': sid,
+        if (userId != null) 'user_id': userId,
+        'variant': NusaConfig.productId,
       });
       if (res.status >= 400) return null;
       final data = res.data as Map<String, dynamic>;
-      return data['store'] as Map<String, dynamic>?;
+      final store = data['store'] as Map<String, dynamic>?;
+      if (store != null) {
+        final rowStoreId = store['store_id'] as String?;
+        if (rowStoreId != null && rowStoreId.isNotEmpty) {
+          // Pakai store_id row asli untuk operasi berikutnya (sync
+          // produk/order/promo selalu menunjuk row yang sama).
+          _resolvedStoreId = rowStoreId;
+        }
+      }
+      return store;
     } catch (_) {
       return null;
     }

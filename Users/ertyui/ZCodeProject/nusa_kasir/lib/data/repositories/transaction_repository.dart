@@ -23,6 +23,10 @@ class TransactionRepository {
     String? notes,
     int? employeeId,
     int? sessionId,
+    int? dpAmount,
+    int? installmentMonths,
+    int? installmentPerMonth,
+    int? debtId,
   }) async {
     final invoice = 'INV-${DateTime.now().millisecondsSinceEpoch}';
     final itemsJson = jsonEncode(items.map((e) => e.toJson()).toList());
@@ -42,6 +46,12 @@ class TransactionRepository {
       orderType: orderType != null ? Value(orderType) : const Value.absent(),
       tableId: tableId != null ? Value(tableId) : const Value.absent(),
       notes: notes != null ? Value(notes) : const Value.absent(),
+      dpAmount: dpAmount != null ? Value(dpAmount) : const Value.absent(),
+      installmentMonths:
+          installmentMonths != null ? Value(installmentMonths) : const Value.absent(),
+      installmentPerMonth:
+          installmentPerMonth != null ? Value(installmentPerMonth) : const Value.absent(),
+      debtId: debtId != null ? Value(debtId) : const Value.absent(),
     ));
   }
 
@@ -139,6 +149,15 @@ class TransactionRepository {
                 .write(ProductsCompanion(stock: Value(next)));
           }
         }
+      }
+
+      // 3. Hapus piutang yatim: transaksi DP/Hutang punya debtId → hapus
+      //    debt + pembayarannya supaya riwayat Piutang tidak ada entri
+      //    yang sudah tidak relevan (transaksi batal).
+      final debtId = tx.debtId;
+      if (debtId != null) {
+        await (db.delete(db.debtPayments)..where((t) => t.debtId.equals(debtId))).go();
+        await (db.delete(db.customerDebts)..where((t) => t.id.equals(debtId))).go();
       }
     });
 

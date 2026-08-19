@@ -129,7 +129,7 @@ class VariantData {
         'Express': Icons.bolt_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['supplier', 'promo', 'pesanan_online', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+      hiddenMenus: ['supplier', 'promo', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     ),
     // ── Bengkel ──
     VariantData(
@@ -161,7 +161,7 @@ class VariantData {
         'Sparepart': Icons.settings_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['pesanan_online', 'meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+      hiddenMenus: ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
     ),
     // ── Salon ──
     VariantData(
@@ -193,7 +193,7 @@ class VariantData {
         'Styling': Icons.face_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['supplier', 'cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+      hiddenMenus: ['supplier', 'cabang', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     ),
     // ── Apotek ──
     VariantData(
@@ -261,7 +261,7 @@ class VariantData {
         'ATK': Icons.edit_rounded,
         'Lainnya': Icons.category_rounded,
       },
-      hiddenMenus: ['cabang', 'pesanan_online', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+      hiddenMenus: ['cabang', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     ),
     // ── Servis ──
     VariantData(

@@ -19,6 +19,7 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
@@ -1357,6 +1358,11 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
   bool _expanded = false;
   Future<List<Refund>>? _refundFuture;
 
+  // ── Status piutang (v2.2.34): dibaca dari debt yang terhubung via
+  // tx.debtId, supaya riwayat transaksi sinkron dengan menu Piutang
+  // (berubah saat DP/hutang dibayar progres atau lunas).
+  Widget? _debtStatus;
+
   static const _payColors = {
     'Tunai': NusaConfig.payCash,
     'QRIS': NusaConfig.payQris,
@@ -1373,6 +1379,62 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
       (isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary);
   IconData _payIcon() =>
       _payIcons[widget.tx.paymentMethod] ?? Icons.payment_rounded;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDebtStatus();
+  }
+
+  Future<void> _loadDebtStatus() async {
+    final debtId = widget.tx.debtId;
+    if (debtId == null) return;
+    try {
+      final debt = await DebtRepository(
+        ref.read(databaseProvider),
+      ).byId(debtId);
+      if (debt == null || !mounted) return;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final lunas = debt.status == 'Lunas';
+      final isCredit = (widget.tx.dpAmount ?? 0) == 0 &&
+          (widget.tx.cashGiven ?? 0) == 0 &&
+          debt.amount == widget.tx.total;
+      setState(() {
+        _debtStatus = Row(
+          children: [
+            Icon(
+              lunas
+                  ? Icons.check_circle_rounded
+                  : Icons.pending_actions_rounded,
+              size: 13,
+              color: lunas
+                  ? NusaConfig.accentGreen
+                  : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+            ),
+            SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                lunas
+                    ? 'Piutang Lunas ✓'
+                    : isCredit
+                        ? 'Piutang — sisa ${formatRupiah(debt.remainingAmount)}'
+                        : 'Sisa piutang ${formatRupiah(debt.remainingAmount)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: lunas
+                      ? NusaConfig.accentGreen
+                      : (isDark
+                            ? NusaConfig.darkTextTertiary
+                            : const Color(0xFFB45309)),
+                ),
+              ),
+            ),
+          ],
+        );
+      });
+    } catch (_) {}
+  }
 
   static String _relDate(DateTime date) {
     final now = DateTime.now();
@@ -1534,6 +1596,12 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                 ),
                               ],
                             ),
+                            // ── Status piutang (v2.2.34): sinkron dengan
+                            // menu Piutang — "Lunas ✓" / "Sisa RpX" / "Piutang".
+                            if (!isVoided && _debtStatus != null) ...[
+                              SizedBox(height: 6),
+                              _debtStatus!,
+                            ],
                           ],
                         ),
                       ),
