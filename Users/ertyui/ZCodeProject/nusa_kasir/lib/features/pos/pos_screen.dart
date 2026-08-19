@@ -126,15 +126,24 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Future<void> _loadTables() async {
-    final repo = DiningTableRepository(ref.read(databaseProvider));
-    final tables = await repo.getAll();
-    if (mounted) setState(() => _diningTables = tables);
+    try {
+      final repo = DiningTableRepository(ref.read(databaseProvider));
+      final tables = await repo.getAll();
+      if (mounted) setState(() => _diningTables = tables);
+    } catch (e) {
+      // Non-fatal: varian non-FnB tidak punya tabel — jangan crash initState.
+      debugPrint('[POS] _loadTables error (skip): $e');
+    }
   }
 
   Future<void> _loadGridColumns() async {
-    final repo = ref.read(settingsRepoProvider);
-    final cols = await repo.getPosGridColumns();
-    if (mounted) setState(() => _gridColumns = cols.clamp(1, 3));
+    try {
+      final repo = ref.read(settingsRepoProvider);
+      final cols = await repo.getPosGridColumns();
+      if (mounted) setState(() => _gridColumns = cols.clamp(1, 3));
+    } catch (e) {
+      debugPrint('[POS] _loadGridColumns error (default 3): $e');
+    }
   }
 
   void _setGridColumns(int cols) {
@@ -173,16 +182,21 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   Future<void> _loadCashier() async {
     if (widget.sessionId == null) return;
-    final repo = CashierSessionRepository(ref.read(databaseProvider));
-    final session = await repo.getLast();
-    if (session != null && mounted) {
-      final emps =
-          await (ref
-                  .read(databaseProvider)
-                  .select(ref.read(databaseProvider).employees)
-                ..where((t) => t.id.equals(session.employeeId)))
-              .get();
-      if (emps.isNotEmpty) setState(() => _cashierName = emps.first.name);
+    try {
+      final repo = CashierSessionRepository(ref.read(databaseProvider));
+      final session = await repo.getLast();
+      if (session != null && mounted) {
+        final emps =
+            await (ref
+                    .read(databaseProvider)
+                    .select(ref.read(databaseProvider).employees)
+                  ..where((t) => t.id.equals(session.employeeId)))
+                .get();
+        if (emps.isNotEmpty) setState(() => _cashierName = emps.first.name);
+      }
+    } catch (e) {
+      // Non-fatal: kasir tanpa sesi tetap bisa buka layar POS.
+      debugPrint('[POS] _loadCashier error (skip): $e');
     }
   }
 
@@ -1140,6 +1154,33 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     ? NusaConfig.darkTextSecondary
                     : NusaConfig.textSecondary,
                 fontSize: 15,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Muat ulang untuk mencoba memuat lagi dari database.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() => _productsLoading = true);
+                _preloadProducts();
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Muat Ulang'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: NusaConfig.activePrimary,
+                side: BorderSide(color: NusaConfig.activePrimary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],

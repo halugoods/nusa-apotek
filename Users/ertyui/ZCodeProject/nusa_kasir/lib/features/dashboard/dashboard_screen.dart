@@ -1805,7 +1805,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               role: roleText,
               branch: _storeName,
               hasNotification:
-                  (_updateInfo?.hasUpdate ?? false) ||
+                  // v2.2.36: dot lonceng = ADA NOTIF BELUM DIBACA saja.
+                  // Sebelumnya ikut `_updateInfo.hasUpdate` → dot nyala terus
+                  // walau notif sudah dibaca (release build number lama).
                   _notifUnread > 0 ||
                   (!_hasCheckedIn && _currentName.isNotEmpty),
               onBellTap: _onBellTap,

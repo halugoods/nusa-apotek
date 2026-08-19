@@ -112,6 +112,10 @@ class NotificationService {
   /// Add a notification (dedup by [id] — updating an existing one replaces it
   /// in place, keeping its position). Persists + shows an OS-level alert for
   /// important types.
+  ///
+  /// v2.2.36: when [id] already exists and was READ, the updated item keeps
+  /// its read state — otherwise a refresh (e.g. silent update check) would
+  /// recreate the card as unread and the bell badge never clears.
   static Future<void> add({
     required String id,
     required String type,
@@ -122,6 +126,10 @@ class NotificationService {
   }) async {
     final existing = await getCenter();
     final now = DateTime.now();
+    final previous = existing.cast<AppNotification?>().firstWhere(
+          (n) => n?.id == id,
+          orElse: () => null,
+        );
     final list = existing.where((n) => n.id != id).toList();
     list.insert(
       0,
@@ -131,6 +139,7 @@ class NotificationService {
         title: title,
         body: body,
         createdAt: now,
+        read: previous?.read ?? false,
         route: route,
       ),
     );

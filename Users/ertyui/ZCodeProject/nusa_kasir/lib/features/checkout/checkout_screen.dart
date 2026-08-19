@@ -2490,7 +2490,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   /// Kartu toggle mode pembayaran tunda: DP (bayar sebagian) & Hutang
-  /// (bayar 0 sekarang). Dua kartu SEJAJAR dengan gaya identik (amber soft).
+  /// (bayar 0 sekarang). Dua kartu FULL-WIDTH tersusun ATAS-BAWAH dengan gaya
+  /// identik (kuning soft) — v2.2.36: sebelumnya sejajar kiri-kanan (Row 2
+  /// Expanded) → judul panjang meluber di HP sempit + terlihat berantakan.
   Widget _modeToggleBlock({
     required String title,
     required String subtitle,
@@ -2498,62 +2500,61 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     required bool isDark,
     required VoidCallback onChanged,
   }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onChanged,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: onChanged,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: value
+              ? (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEF3C7))
+              : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
             color: value
-                ? (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEF3C7))
-                : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFFEFCE8)),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: value
-                  ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
-                  : Colors.transparent,
-            ),
+                ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
+                : Colors.transparent,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
                     ),
                   ),
-                  Transform.scale(
-                    scale: 0.85,
-                    child: Switch(
-                      value: value,
-                      activeThumbColor: NusaConfig.activePrimary,
-                      onChanged: (_) => onChanged(),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.3,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.3,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
-                ),
+            ),
+            Transform.scale(
+              scale: 0.85,
+              child: Switch(
+                value: value,
+                activeThumbColor: NusaConfig.activePrimary,
+                onChanged: (_) => onChanged(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2580,42 +2581,39 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Dua toggle SEJAJAR: DP & Hutang ──
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _modeToggleBlock(
-              title: 'Uang Muka (DP)',
-              subtitle: 'Bayar sebagian, sisa dicatat hutang',
-              value: dpActive,
-              isDark: isDark,
-              onChanged: () => setState(() {
-                if (creditActive) {
-                  _creditMode = false;
-                  _dpEnabled = true;
-                } else {
-                  _dpEnabled = !_dpEnabled;
-                  if (_dpEnabled) _ensureDueDate();
-                  if (!_dpEnabled) _dpCtrl.clear();
-                }
-              }),
-            ),
-            const SizedBox(width: 8),
-            _modeToggleBlock(
-              title: 'Hutang (bayar belakangan)',
-              subtitle: 'Bayar 0 sekarang — total jadi hutang',
-              value: creditActive,
-              isDark: isDark,
-              onChanged: () => setState(() {
-                _creditMode = !creditActive;
-                if (_creditMode) {
-                  _dpEnabled = false;
-                  _dpCtrl.clear();
-                  _ensureDueDate();
-                }
-              }),
-            ),
-          ],
+        // ── Dua kartu ATAS-BAWAH: DP (atas) & Hutang (bawah) ──
+        // v2.2.36: full-width, gaya kuning soft identik (sebelumnya sejajar
+        // kiri-kanan → meluber di HP sempit + terlihat tidak konsisten).
+        _modeToggleBlock(
+          title: 'Uang Muka (DP)',
+          subtitle: 'Bayar sebagian, sisa dicatat hutang',
+          value: dpActive,
+          isDark: isDark,
+          onChanged: () => setState(() {
+            if (creditActive) {
+              _creditMode = false;
+              _dpEnabled = true;
+            } else {
+              _dpEnabled = !_dpEnabled;
+              if (_dpEnabled) _ensureDueDate();
+              if (!_dpEnabled) _dpCtrl.clear();
+            }
+          }),
+        ),
+        const SizedBox(height: 8),
+        _modeToggleBlock(
+          title: 'Hutang (bayar belakangan)',
+          subtitle: 'Bayar 0 sekarang — total jadi hutang',
+          value: creditActive,
+          isDark: isDark,
+          onChanged: () => setState(() {
+            _creditMode = !creditActive;
+            if (_creditMode) {
+              _dpEnabled = false;
+              _dpCtrl.clear();
+              _ensureDueDate();
+            }
+          }),
         ),
         // ── Detail: mode DP aktif ──
         if (dpActive) ...[

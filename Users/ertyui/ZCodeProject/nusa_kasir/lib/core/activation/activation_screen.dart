@@ -140,7 +140,16 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         if (mounted) context.go('/setup');
         return;
       }
-    } catch (_) {}
+    } catch (_) {
+      // DB rusak / query gagal — JANGAN langsung pinpad (PIN pasti gagal
+      // karena tabel kosong/rusak). Coba pulihkan dari cloud dulu; setup
+      // hanya fallback kalau memang tidak ada backup (v2.2.36).
+      debugPrint('[Activation] _goToPinOrSetup error — coba restore cloud');
+      final restored = await RestoreBackupFlow.runIfNeeded(ref, context);
+      if (restored) return; // app restart
+      if (mounted && context.mounted) context.go('/setup');
+      return;
+    }
     if (mounted) setState(() => _screen = 'pin');
   }
 

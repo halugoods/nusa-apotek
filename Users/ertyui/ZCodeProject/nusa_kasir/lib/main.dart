@@ -260,11 +260,6 @@ void main() async {
   String persistedTheme = 'system';
   String initialLocation = '/activation';
 
-  // Auto-repair PIN length BEFORE anything opens — ensures 6-digit PINs always
-  try {
-    await _repairPinLength();
-  } catch (_) {}
-
   try {
     // Workmanager
     try {
@@ -297,6 +292,14 @@ void main() async {
     // sama → DB hasil restore korup → PIN tidak terbaca setelah restart.
     try {
       await _applyPendingRestore();
+    } catch (_) {}
+
+    // Auto-repair PIN length — SETELAH pending restore di-swap, supaya repair
+    // membaca DB hasil restore (bukan DB lama yang masih kosong/parsial).
+    // Sebelumnya repair jalan PALING AWAL → membuka koneksi ke DB lama +
+    // menulis perubahan → bisa bentrok dengan swap .pending di atas.
+    try {
+      await _repairPinLength();
     } catch (_) {}
 
     // Auto cloud sync — receive-at-launch: pull the newest cloud backup
