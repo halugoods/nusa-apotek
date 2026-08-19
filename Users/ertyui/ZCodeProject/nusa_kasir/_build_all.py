@@ -84,7 +84,7 @@ VARIANTS = [
             "Menu Utama": "Icons.dinner_dining_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["supplier", "spreadsheet",
+        "hidden_menus": ["spreadsheet",
                          "laundry_status", "servis", "booking", "resep", "print_order"],
     },
     {
@@ -111,7 +111,7 @@ VARIANTS = [
             "Express": "Icons.bolt_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["supplier", "promo",
+        "hidden_menus": ["promo",
                          "meja", "servis", "booking", "resep", "print_order"],
     },
     {
@@ -164,7 +164,7 @@ VARIANTS = [
             "Styling": "Icons.face_rounded",
             "Lainnya": "Icons.category_rounded",
         },
-        "hidden_menus": ["supplier", "cabang",
+        "hidden_menus": ["cabang",
                          "meja", "laundry_status", "servis", "resep", "print_order"],
     },
     {

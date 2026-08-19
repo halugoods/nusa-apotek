@@ -289,16 +289,23 @@ void main() async {
       } catch (_) {}
     }
 
-    // Auto cloud sync — receive-at-launch: pull the newest cloud backup
-    // BEFORE the database opens, but only when we have NO un-uploaded local
-    // changes (otherwise the local work would be silently overwritten).
-    try {
-      await _receiveAtLaunch();
-    } catch (_) {}
-
-    // Apply pending device-migration backup BEFORE opening the database.
+    // ── CRITICAL: apply pending device-migration backup FIRST ──
+    // Kalau user baru selesai restore "Data Ditemukan" (restoreDirect →
+    // .pending), swap DB-nya dulu sebelum auto-sync menyentuh apa pun.
+    // Urutan lama (receiveAtLaunch dulu) membuat probe DB lama membuka
+    // koneksi + menyisakan WAL, lalu restoreFromCloud menimpa .pending yang
+    // sama → DB hasil restore korup → PIN tidak terbaca setelah restart.
     try {
       await _applyPendingRestore();
+    } catch (_) {}
+
+    // Auto cloud sync — receive-at-launch: pull the newest cloud backup
+    // only when no pending restore exists (jangan timpa restore yang sudah
+    // dijadwalkan) AND we have no un-uploaded local changes.
+    try {
+      if (!await SecureStore.hasPendingRestore()) {
+        await _receiveAtLaunch();
+      }
     } catch (_) {}
 
     // Register background tasks

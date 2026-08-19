@@ -143,11 +143,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Future<void> _preloadProducts() async {
-    final repo = ProductRepository(ref.read(databaseProvider));
-    final all = await repo.getProducts();
-    // Also load real categories for the filter chips.
-    final catRepo = CategoryRepository(ref.read(databaseProvider));
-    final cats = await catRepo.getAll();
+    List<Product> all = const [];
+    List<String> cats = const [];
+    try {
+      final repo = ProductRepository(ref.read(databaseProvider));
+      all = await repo.getProducts();
+      // Also load real categories for the filter chips.
+      final catRepo = CategoryRepository(ref.read(databaseProvider));
+      cats = await catRepo.getAll();
+    } catch (e) {
+      // Jangan pernah menggantung: DB rusak/kosong → tampilkan list kosong
+      // (bukan spinner abadi). Produk tetap bisa di-scan via byBarcode.
+      debugPrint('[POS] _preloadProducts error (fallback empty): $e');
+    }
     if (mounted)
       setState(() {
         _allProducts = all;

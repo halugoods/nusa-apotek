@@ -367,10 +367,10 @@ abstract class NusaConfig {
   /// Owner tetap bisa mengaktifkan kembali via Kelola Fitur.
   static const Map<String, List<String>> variantHiddenMenus = {
     'kelontong': ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'fnb': ['supplier', 'spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
-    'laundry': ['supplier', 'promo', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+    'fnb': ['spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+    'laundry': ['promo', 'meja', 'servis', 'booking', 'resep', 'print_order'],
     'bengkel': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
-    'salon': ['supplier', 'cabang', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+    'salon': ['cabang', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
     'apotek': ['promo', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
     'fotocopy': ['cabang', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
     'servis': ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
