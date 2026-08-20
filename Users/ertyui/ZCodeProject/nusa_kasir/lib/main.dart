@@ -225,7 +225,11 @@ Future<void> _receiveAtLaunch() async {
 void _syncImagesFromCloud() {
   Future.microtask(() async {
     try {
-      final uid = Supabase.instance.client.auth.currentUser?.id;
+      // v2.2.38: pakai Google UID (bukan Supabase anon session UID).
+      // Path images di bucket nusa-images memakai Google UID ({googleUid}/
+      // {productId}/...). UID anon (UUID) beda → upload/download gambar
+      // nyasar ke path kosong → foto produk hilang setelah reinstall.
+      final uid = await SecureStore.read(key: 'nusa_google_user_id');
       if (uid == null) return;
 
       final svc = ImageStorageService(Supabase.instance.client, uid);

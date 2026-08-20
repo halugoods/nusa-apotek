@@ -27,21 +27,17 @@ class ActivationRepository {
 
   /// Get the Google user ID (used as encryption key for backups).
   ///
-  /// v2.2.37: fallback ke `Supabase.instance.client.auth.currentUser?.id`.
-  /// Backups lama dienkripsi dengan UID Google, tapi kalau `nusa_google_user_id`
-  /// hilang (aktivasi via key tanpa Google / write SecureStore gagal / data
-  /// ke-reset), UID sesi Supabase yang sama bisa menunjuk ke backup yang sama
-  /// (anon auth = satu UID per perangkat; Google auth = UID Google). Kalau
-  /// keduanya kosong → null (caller lanjut ke setup).
+  /// v2.2.38: JANGAN fallback ke UID sesi anon Supabase untuk path/decrypt.
+  /// Backup selalu dienkripsi + dipath dengan Google UID (`nusa_google_user_id`
+  /// dari GoogleAuthService — angka 21 digit). UID anon (UUID format) ≠ Google
+  /// UID → path berbeda → `hasBackup()` tak pernah menemukan backup + dekripsi
+  /// gagal. Verifikasi 2026-08-20: SEMUA backup di bucket nusa-backups ada di
+  /// path angka 21 digit, TIDAK ADA satu pun path UUID anon — fallback anon
+  /// hanya menghasilkan path kosong → dialog "Data Ditemukan" tak muncul →
+  /// user disuruh setup ulang padahal datanya ada. Kalau Google UID kosong →
+  /// null (caller lanjut ke setup / minta login Google).
   static Future<String?> _googleUserId() async {
-    final stored = await SecureStore.read(key: 'nusa_google_user_id');
-    if (stored != null && stored.isNotEmpty) return stored;
-    try {
-      final session = Supabase.instance.client.auth.currentSession;
-      final id = session?.user.id;
-      if (id != null && id.isNotEmpty) return id;
-    } catch (_) {}
-    return null;
+    return SecureStore.read(key: 'nusa_google_user_id');
   }
 
   /// Ensure an anonymous Supabase session exists so background storage calls

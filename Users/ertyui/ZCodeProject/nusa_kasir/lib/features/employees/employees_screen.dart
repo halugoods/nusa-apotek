@@ -10,6 +10,7 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/branch_repository.dart';
@@ -930,12 +931,11 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                               // Upload photo to cloud in background
                               if (photoPath != null) {
                                 try {
-                                  final uid = Supabase
-                                      .instance
-                                      .client
-                                      .auth
-                                      .currentUser
-                                      ?.id;
+                                  // v2.2.38: path cloud pakai Google UID,
+                                  // bukan Supabase anon UID.
+                                  final uid = await SecureStore.read(
+                                    key: 'nusa_google_user_id',
+                                  );
                                   if (uid != null) {
                                     ImageStorageService(
                                       Supabase.instance.client,
