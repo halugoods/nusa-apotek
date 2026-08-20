@@ -30,3 +30,17 @@ Alur lama: key aktivasi tersimpan per-varian (`nusa_activation_<produk>`). Saat 
 3. **Dialog "Data Ditemukan" muncul** → "Ya, Buka Toko Ini".
 4. Data restore → produk + kasir langsung jalan.
 5. Coba ganti akun Google → dialog muncul lagi untuk akun baru.
+
+---
+
+## UPDATE v2.2.40+93 — Akar masalah ketemu: AUTO-BACKUP Android
+
+Ternyata masih ada satu lapis lagi yang membuat "hapus app → install baru" tetap skip ke PIN pad: **Android Auto Backup**.
+
+- Default Android = `allowBackup=true` → saat app di-uninstall, Google **diam-diam menyimpan salinan DB + key aktivasi** di penyimpanan Google device.
+- Saat install ulang, Android **memulihkan otomatis** SEBELUM kode app jalan → app lihat `isActivated=true` (key aktivasi zombie) → **langsung PIN pad, dialog "Data Ditemukan" tidak pernah muncul**.
+- Ini menjelaskan kenapa fresh install tetap skip ke PIN pad padahal layar pertama sudah benar "Masuk dengan Google" — data lama dihidupkan lagi oleh sistem operasi, bukan oleh app.
+
+### Perbaikan
+- `android:allowBackup="false"` + `fullBackupContent="false"` + `data_extraction_rules.xml` (exclude semua domain) → **uninstall = data benar-benar terhapus**, install baru = fresh beneran → login Google → dialog "Data Ditemukan" muncul.
+- Data tidak hilang — cloud backup tetap aman (diverifikasi: fnb 269KB, download 200, isi NUS1 + sqlite valid).
