@@ -130,6 +130,13 @@ class ActivationRepository {
   /// false → dialog "Data Ditemukan" tak muncul → SEMUA user disuruh setup
   /// ulang padahal datanya ada (verifikasi 2026-08-20: download path persis
   /// 200 untuk 11 UID / 21 backup). Fix: probe dengan download → 200 = ada.
+  ///
+  /// v2.2.42: verifikasi ISI backup — folder backup bisa tercemar data varian
+  /// LAIN (mis. folder nusa-fnb berisi produk servis, kasus user 2026-08-20).
+  /// Kalau isi backup bukan milik varian ini, `hasBackup()` menganggap TIDAK
+  /// ADA supaya dialog "Data Ditemukan" TIDAK menawarkan data varian lain
+  /// (restore data salah varian = data user hilang dari layar). Cek murah:
+  /// PRAGMA user_version + nama tabel + kategori produk dari sqlite bytes.
   Future<bool> hasBackup() async {
     if (client == null) return false;
     await _ensureAnonAuth();
@@ -140,9 +147,143 @@ class ActivationRepository {
       final bytes = await client!.storage
           .from('nusa-backups')
           .download(path);
-      return bytes.isNotEmpty;
+      if (bytes.isEmpty) return false;
+      // v2.2.42: verifikasi ISI backup (decrypt + unpack + cek varian) —
+      // kalau isinya data varian lain, anggap TIDAK ADA (dialog Data
+      // Ditemukan tak muncul → user setup dari nol untuk varian ini).
+      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      return await _backupBelongsToVariant(decrypted, uid);
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Cek apakah isi backup milik varian aplikasi ini. Backup dari varian lain
+  /// (folder yang tercemar / setup keliru) TIDAK boleh di-restore — datanya
+  /// bukan punya user untuk varian ini.
+  ///
+  /// Input [archive] = bytes hasil `BackupCrypto.decrypt()` (gzip/NUS1 arsip
+  /// berisi nusa_kasir.sqlite + gambar) — di-unpack di sini, jadi aman
+  /// dipanggil dengan hasil decrypt langsung. Heuristik:
+  /// 1. user_version < 20 → backup sangat lama / rusak → tolak.
+  /// 2. Tabel kunci (products, transactions, employees) tidak ada → bukan
+  ///    DB NUSA → tolak.
+  /// 3. image_path produk menyebut paket aplikasi yang BUKAN paket varian ini
+  ///    (mis. `/data/user/0/com.nusa.servis/...` di dalam folder nusa-fnb) →
+  ///    pasti data varian lain → tolak. Ini sinyal PALING definitif (kasus
+  ///    user 2026-08-20: folder nusa-fnb berisi produk servis, pkg
+  ///    com.nusa.servis).
+  /// 4. metadata.json `variantKey` (ditulis mulai v2.2.42) beda dari varian
+  ///    ini → tolak. Backup baru selalu membawa identitas varian di metadata.
+  Future<bool> _backupBelongsToVariant(
+    List<int> archive,
+    String googleUserId,
+  ) async {
+    try {
+      // Cek metadata variantKey dulu (kalau ada — backup versi baru).
+      final meta = await getBackupMetadata();
+      final metaVariant = meta?['variantKey'] as String?;
+      if (metaVariant != null && metaVariant != NusaConfig.productId) {
+        return false;
+      }
+
+      // Unpack arsip → sqlite (atau raw sqlite kalau format lama).
+      final files = BackupCrypto.unpackFiles(Uint8List.fromList(archive));
+      final sqlite = files['nusa_kasir.sqlite'];
+      if (sqlite == null) return false;
+
+      // Tulis bytes sqlite ke file temp di documents dir (relatif — pola sama
+      // dengan _migrateSqliteBytes) lalu baca ringkasan schema.
+      final tempName =
+          'nusa_verify_${DateTime.now().millisecondsSinceEpoch}.sqlite';
+      final dir = await getApplicationDocumentsDirectory();
+      final tmp = File(p.join(dir.path, tempName));
+      await tmp.writeAsBytes(sqlite, flush: true);
+      try {
+        final res = await _inspectSqlite(tempName);
+        if (res == null) return false;
+        return inspectMatchesVariant(
+          res,
+          expectedPackage:
+              'com.nusa.${NusaConfig.productId.replaceFirst('nusa-', '')}',
+        );
+      } finally {
+        try {
+          await tmp.delete();
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Gagal verifikasi → aman: anggap backup tidak valid (jangan restore
+      // data yang tidak dikenal; lebih baik dialog tak muncul daripada
+      // menimpa user dengan data varian lain).
+      return false;
+    }
+  }
+
+  /// Keputusan murni dari hasil [inspectSqliteResult] — apakah isi DB milik
+  /// varian dengan paket [expectedPackage]. Dipisah supaya bisa di-unit-test
+  /// (tanpa Supabase / network). [inspectSqliteResult] = output _inspectSqlite.
+  /// Public (bukan private) supaya bisa dites dari test package.
+  static bool inspectMatchesVariant(
+    Map<String, dynamic> inspectSqliteResult, {
+    required String expectedPackage,
+  }) {
+    final version = inspectSqliteResult['user_version'] as int? ?? 0;
+    if (version < 20) return false; // backup terlalu lama/rusak
+    if (inspectSqliteResult['has_products'] != true ||
+        inspectSqliteResult['has_employees'] != true ||
+        inspectSqliteResult['has_transactions'] != true) {
+      return false; // bukan DB NUSA lengkap
+    }
+    // Cek paket aplikasi dari image_path produk (bila ada).
+    final pkgs = (inspectSqliteResult['packages'] as List<dynamic>? ?? [])
+        .cast<String>()
+        .toSet();
+    final foreignPkg =
+        pkgs.any((p) => p != expectedPackage && p.startsWith('com.nusa.'));
+    if (foreignPkg) return false;
+    return true;
+  }
+
+  /// Baca ringkasan sqlite (user_version, tabel kunci, kategori, paket
+  /// aplikasi) dari file temp via drift (AppDatabase.at — pola yang sama
+  /// dengan _migrateSqliteBytes; beforeOpen repair jalan tapi hanya pada
+  /// salinan temp). Return null kalau bukan sqlite valid.
+  Future<Map<String, dynamic>?> _inspectSqlite(String tempName) async {
+    try {
+      final db = AppDatabase.at(tempName);
+      await db.customSelect('SELECT 1').get(); // trigger open + migrasi
+      final versionRow =
+          await db.customSelect('PRAGMA user_version').getSingle();
+      final v = versionRow.data['user_version'] as int? ?? 0;
+      final tables = <String>{};
+      final tableRows = await db
+          .customSelect("SELECT name FROM sqlite_master WHERE type='table'")
+          .get();
+      for (final row in tableRows) {
+        tables.add('${row.data['name']}');
+      }
+      final packages = <String>[];
+      if (tables.contains('products')) {
+        final imgs = await db.customSelect(
+          "SELECT image_path FROM products WHERE image_path IS NOT NULL AND image_path != '' LIMIT 10",
+        ).get();
+        for (final row in imgs) {
+          final m = RegExp(r'com\.nusa\.[a-z0-9_]+')
+              .firstMatch('${row.data['image_path']}');
+          if (m != null) packages.add(m.group(0)!);
+        }
+      }
+      await db.close();
+      return {
+        'user_version': v,
+        'has_products': tables.contains('products'),
+        'has_employees': tables.contains('employees'),
+        'has_transactions': tables.contains('transactions'),
+        'packages': packages,
+      };
+    } catch (_) {
+      return null;
     }
   }
 
@@ -246,6 +387,13 @@ class ActivationRepository {
   /// Upload a small metadata.json alongside the encrypted backup.
   /// This lets the activation screen preview store name, owner, and
   /// backup time BEFORE downloading and decrypting the full archive.
+  ///
+  /// v2.2.42: metadata ditulis ke path TANPA nama varian (`metadata.json`)
+  /// agar aplikasi varian lain bisa membacanya untuk verifikasi varian
+  /// (folder backup yang tercemar data varian lain bisa ketahuan). Daftar
+  /// path yang dibaca: `metadata.json` (versi baru) lalu fallback ke
+  /// `{productId}/metadata.json` (versi lama). `variantKey` disimpan supaya
+  /// verifikasi isi backup bisa membandingkan identitas varian.
   Future<void> _uploadMetadata(
     String uid,
     String storeName,
@@ -259,12 +407,13 @@ class ActivationRepository {
         'backupTime': backupTime.toIso8601String(),
         'appVersion': '${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
         'productId': NusaConfig.productId,
+        'variantKey': NusaConfig.productId,
       };
       final jsonBytes = Uint8List.fromList(
         const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
       );
       await client!.storage.from('nusa-backups').uploadBinary(
-        '$uid/${NusaConfig.productId}/metadata.json',
+        '$uid/metadata.json',
         jsonBytes,
         fileOptions: const FileOptions(
           upsert: true,
@@ -283,15 +432,25 @@ class ActivationRepository {
     if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
-    final metaPath = '$uid/${NusaConfig.productId}/metadata.json';
-    try {
-      final bytes = await client!.storage.from('nusa-backups').download(metaPath);
-      if (bytes.isEmpty) return null;
-      final text = utf8.decode(bytes);
-      return jsonDecode(text) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
+    // v2.2.42: baca path versi-agnostik dulu, lalu fallback ke path lama
+    // (per-varian). Backup lama menulis per-varian; versi baru menulis
+    // root — dua-duanya dibaca supaya verifikasi varian jalan untuk backup
+    // lama sekaligus backup baru.
+    for (final metaPath in [
+      '$uid/metadata.json',
+      '$uid/${NusaConfig.productId}/metadata.json',
+    ]) {
+      try {
+        final bytes =
+            await client!.storage.from('nusa-backups').download(metaPath);
+        if (bytes.isEmpty) continue;
+        final text = utf8.decode(bytes);
+        return jsonDecode(text) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
     }
+    return null;
   }
 
   /// Download backup from cloud and write directly to the live DB + images.
@@ -308,6 +467,10 @@ class ActivationRepository {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // v2.2.42: jangan pernah restore backup yang isinya data varian LAIN
+      // (folder tercemar — mis. nusa-fnb berisi produk servis). Restore data
+      // salah varian = data user hilang dari layar varian ini.
+      if (!await _backupBelongsToVariant(decrypted, uid)) return false;
       final dir = await getApplicationDocumentsDirectory();
 
       // Unpack archive (DB + images) directly — no restart needed
@@ -397,6 +560,8 @@ class ActivationRepository {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // v2.2.42: jangan pernah stage backup yang isinya data varian LAIN.
+      if (!await _backupBelongsToVariant(decrypted, uid)) return false;
       final dir = await getApplicationDocumentsDirectory();
 
       // v2.2.39: migrasi schema eksplisit sebelum di-stage — backup lama
@@ -499,6 +664,12 @@ class ActivationRepository {
       if (bytes.isEmpty) return false;
 
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // v2.2.42: jangan pernah sync backup yang isinya data varian LAIN —
+      // kalau cloud tercemar, cukup adopsi timestamp-nya tanpa menimpa lokal.
+      if (!await _backupBelongsToVariant(decrypted, uid)) {
+        if (cloudTime != null) await SecureStore.setLastCloudSeen(cloudTime);
+        return false;
+      }
       final dir = await getApplicationDocumentsDirectory();
 
       // Unpack archive (DB + images). The DB goes to .pending (applied at

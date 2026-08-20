@@ -333,6 +333,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                     const Spacer(),
+                    // v2.2.42: "Baca Semua" — tandai SEMUA notifikasi dibaca
+                    // sekali (badge bell langsung mati). Service markRead(null)
+                    // sudah mendukung mark-all; tinggal tombol + refresh badge.
+                    if (notifs.isNotEmpty && notifs.any((n) => !n.read))
+                      TextButton(
+                        onPressed: () async {
+                          await NotificationService.markRead(); // null = all
+                          if (!ctx.mounted) return;
+                          final unread = await NotificationService.unreadCount();
+                          if (mounted) setState(() => _notifUnread = unread);
+                          // Refresh list di dalam sheet (hapus dot merah).
+                          Navigator.of(ctx).pop();
+                          _showNotificationCenter();
+                        },
+                        child: Text(
+                          'Baca Semua',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: NusaConfig.activePrimary,
+                          ),
+                        ),
+                      ),
                     IconButton(
                       onPressed: () => Navigator.of(ctx).pop(),
                       icon: Icon(
