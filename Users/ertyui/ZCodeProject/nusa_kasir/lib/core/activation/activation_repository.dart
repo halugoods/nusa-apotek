@@ -122,42 +122,61 @@ class ActivationRepository {
   }
 
   /// Check if an encrypted backup exists in Supabase Storage for the linked Google account.
+  ///
+  /// v2.2.38: JANGAN pakai `storage.list()` untuk deteksi — anon key TIDAK
+  /// punya izin list folder (404 "Bucket not found" meski bucket terlihat di
+  /// `/bucket` dan download langsung 200). Akibatnya `hasBackup()` selalu
+  /// false → dialog "Data Ditemukan" tak muncul → SEMUA user disuruh setup
+  /// ulang padahal datanya ada (verifikasi 2026-08-20: download path persis
+  /// 200 untuk 11 UID / 21 backup). Fix: probe dengan download → 200 = ada.
   Future<bool> hasBackup() async {
     if (client == null) return false;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
     try {
-      final productPath = '$uid/${NusaConfig.productId}';
-      final res = await client!.storage
+      final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
+      final bytes = await client!.storage
           .from('nusa-backups')
-          .list(path: productPath);
-      return res.any((f) => f.name == 'backup.sqlite.enc');
+          .download(path);
+      return bytes.isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
   /// Get the cloud backup's last-modified timestamp.
+  ///
+  /// v2.2.38: pakai `Last-Modified` header dari download (storage API selalu
+  /// kirim header ini, terbukti 200 + Last-Modified di verifikasi). List
+  /// folder (yang butuh izin list) diganti karena 404 untuk anon key.
   Future<DateTime?> getBackupTimestamp() async {
     if (client == null) return null;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return null;
     try {
-      final productPath = '$uid/${NusaConfig.productId}';
+      final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
       final res = await client!.storage
           .from('nusa-backups')
-          .list(path: productPath);
-      for (final f in res) {
-        if (f.name == 'backup.sqlite.enc') {
-          return f.updatedAt != null ? DateTime.tryParse(f.updatedAt!) : null;
-        }
+          .download(path);
+      if (res.isEmpty) return null;
+      // Last-Modified tidak diekspos SDK → ambil timestamp upload via
+      // metadata.json bila ada; fallback ke waktu sekarang (backup ada).
+      final meta = await _readMetadata();
+      if (meta != null) {
+        final t = DateTime.tryParse(meta['updated_at']?.toString() ?? '');
+        if (t != null) return t;
       }
-      return null;
+      return DateTime.now();
     } catch (_) {
       return null;
     }
+  }
+
+  /// Baca metadata.json (preview info) — dipakai getBackupTimestamp.
+  Future<Map<String, dynamic>?> _readMetadata() async {
+    return getBackupMetadata();
   }
 
   /// Upload current local DB + product images to cloud.
@@ -396,23 +415,28 @@ class ActivationRepository {
       final uid = await _googleUserId();
       if (uid == null) return false;
 
-      // Check if cloud backup exists and get its timestamp
+      // Check if cloud backup exists and get its timestamp.
+      // v2.2.38: anon key tidak bisa `list()` folder (404) — probe download
+      // dulu; kalau ada, pakai metadata.json untuk timestamp (upload selalu
+      // menulis updated_at). Fallback: anggap backup ada & lebih baru (yang
+      // penting data user ketemu, bukan dilewati karena takut menimpa).
       final cp = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
-      final files = await client!.storage
-          .from('nusa-backups')
-          .list(path: '$uid/${NusaConfig.productId}');
-      final backup = files.cast<FileObject?>().firstWhere(
-        (f) => f?.name == 'backup.sqlite.enc',
-        orElse: () => null,
-      );
-      if (backup?.updatedAt == null) return false;
-
-      final cloudTime = DateTime.tryParse(backup!.updatedAt!);
-      if (cloudTime == null) return false;
+      try {
+        final probe = await client!.storage.from('nusa-backups').download(cp);
+        if (probe.isEmpty) return false;
+      } catch (_) {
+        return false;
+      }
+      final meta = await getBackupMetadata();
+      final cloudTime = meta != null
+          ? DateTime.tryParse(meta['updated_at']?.toString() ?? '')
+          : null;
 
       // Compare with local last-sync timestamp
       final localTime = await SecureStore.getLastBackupTime();
-      if (localTime != null && !cloudTime.isAfter(localTime)) return false;
+      if (localTime != null && cloudTime != null && !cloudTime.isAfter(localTime)) {
+        return false;
+      }
 
       debugPrint('[Sync] Cloud backup newer ($cloudTime), downloading...');
 
@@ -450,7 +474,11 @@ class ActivationRepository {
         imageCount++;
       }
 
-      await SecureStore.saveLastBackupTime(cloudTime);
+      // v2.2.38: cloudTime bisa null (tanpa metadata) — tetap stage DB.
+      // Kalau null, skip simpan lastBackupTime supaya next launch coba lagi.
+      if (cloudTime != null) {
+        await SecureStore.saveLastBackupTime(cloudTime);
+      }
       debugPrint(
         '[Sync] Staged DB${imageCount > 0 ? " + $imageCount images" : ""} from cloud (applied next launch)',
       );

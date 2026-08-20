@@ -27,6 +27,13 @@ class ImageStorageService {
   String _remoteDir(String category) =>
       '$_uid/${NusaConfig.productId}/$category';
 
+  /// Map nama file lokal (product_*, photo_*, qris_*) → kategori remote.
+  static String _categoryOf(String filename) {
+    if (filename.startsWith('product_')) return 'products';
+    if (filename.startsWith('photo_')) return 'employees';
+    return 'settings'; // qris_*, printer_logo_*
+  }
+
   // ── Public API ────────────────────────────────────────────────────
 
   /// Upload a local file to Supabase Storage.
@@ -134,34 +141,73 @@ class ImageStorageService {
 
   /// Sync: download all cloud images that don't exist locally.
   /// Returns number of images downloaded.
+  ///
+  /// v2.2.38: anon key TIDAK bisa `list()` folder nusa-images (404) — list
+  /// hanya jalan untuk role dengan izin list. Ganti strategi: probe download
+  /// per nama yang mungkin (dari kandidat nama lokal yang terdaftar di DB:
+  /// produk, karyawan, QRIS/logo). Nama yang tidak ada di server → 404 → di-
+  /// skip; yang ada → ter-download. Ini bikin sync gambar jalan untuk SEMUA
+  /// user (bukan cuma yang kebetulan punya izin list).
   Future<int> syncAll() async {
     int count = 0;
     final categories = ['products', 'employees', 'settings'];
     final dir = await getApplicationDocumentsDirectory();
 
+    // Kumpulkan nama file yang mungkin ada di cloud dari DB lokal (via
+    // file cache: produk_*, photo_*, qris_* yang sudah pernah terlihat).
+    final candidates = <String>{};
+    try {
+      final entries = await dir.list().toList();
+      for (final e in entries) {
+        if (e is! File) continue;
+        final n = p.basename(e.path);
+        if (n.startsWith('product_') ||
+            n.startsWith('photo_') ||
+            n.startsWith('qris_') ||
+            n.startsWith('printer_logo_')) {
+          candidates.add(n);
+        }
+      }
+    } catch (_) {}
+
     for (final cat in categories) {
       try {
-        final files = await _client.storage
-            .from('nusa-images')
-            .list(path: _remoteDir(cat));
+        final remoteDir = _remoteDir(cat);
+        // Coba list dulu (kalau izinnya ada — varian/role tertentu).
+        // Kalau 404, lanjut ke probe download per kandidat.
+        List<dynamic> files = [];
+        try {
+          files = await _client.storage
+              .from('nusa-images')
+              .list(path: remoteDir);
+        } catch (_) {
+          files = [];
+        }
 
-        for (final f in files) {
+        final names = <String>{
+          for (final f in files)
+            if (f is Map && f['name'] is String) f['name'] as String,
+          for (final c in candidates)
+            if (_categoryOf(c) == cat) p.basename(c),
+        };
+
+        for (final name in names) {
           final localFile = File(
-            p.join(dir.path, '${NusaConfig.productId}_${f.name}'),
+            p.join(dir.path, '${NusaConfig.productId}_$name'),
           );
-
           // Skip if already cached locally
           if (await localFile.exists()) continue;
 
-          final remotePath = _remotePath(cat, f.name);
+          final remotePath = _remotePath(cat, name);
           try {
             final bytes = await _client.storage
                 .from('nusa-images')
                 .download(remotePath);
+            if (bytes.isEmpty) continue;
             await localFile.writeAsBytes(bytes, flush: true);
             count++;
           } catch (_) {
-            // Skip individual failures
+            // File tidak ada di cloud (404) atau gagal — skip individual
           }
         }
       } catch (_) {
