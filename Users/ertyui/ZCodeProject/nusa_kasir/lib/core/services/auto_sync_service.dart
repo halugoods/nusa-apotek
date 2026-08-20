@@ -133,7 +133,13 @@ class AutoSyncService {
         }
         await _snapshotLoser();
         // Replace local with cloud winner.
-        final ok = await repo.restoreDirect();
+        // v2.2.37: pakai restoreFromCloud() (stage .pending) BUKAN
+        // restoreDirect() (live swap) — service ini memegang koneksi drift
+        // `db` yang selalu terbuka; menulis live sqlite saat drift terbuka =
+        // korupsi. Stage .pending → di-swap oleh main.dart _applyPendingRestore
+        // saat start berikutnya, aman. Restore langsung hanya untuk jalur
+        // user-facing (activation/RestoreBackupFlow) yang menutup drift dulu.
+        final ok = await repo.restoreFromCloud();
         if (ok) {
           await SecureStore.setLastCloudSeen(cloudTime);
         } else {

@@ -25,7 +25,6 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:restart_app/restart_app.dart';
 
 /// Activation & auth screen with 4 branches:
 ///
@@ -251,22 +250,26 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
     if (confirmed != true || !mounted) return false;
 
-    // User confirmed — download and stage restore for next launch.
-    // NOTE: restoreDirect() hanya menulis DB ke nusa_kasir.sqlite.pending;
-    // swap ke DB asli terjadi di main() _applyPendingRestore() SAAT APP START
-    // BERIKUTNYA (menimpa sqlite live saat koneksi drift terbuka = korupsi).
-    // Kalau langsung context.go('/login'), LoginScreen membaca DB lama yang
-    // masih kosong → PIN selalu "salah" sampai app dibuka ulang. Jadi RESTART
-    // aplikasi beneran supaya pending swap jalan dulu.
+    // User confirmed — download and restore the DB directly.
+    // v2.2.37: restoreDirect() swap LANGSUNG ke sqlite live (drift sudah
+    // ditutup di atas) → data berlaku seketika, TIDAK perlu restart. Setelah
+    // restore sukses, langsung arahkan ke /login supaya user masuk dengan PIN
+    // dari data hasil restore (kalau masih di activation, PIN pad yang lama
+    // masih memegang state DB kosong).
+    try {
+      final db = ref.read(databaseProvider);
+      await db.close();
+    } catch (_) {}
+    ref.invalidate(databaseProvider);
+
     final ok = await repo.restoreDirect();
     if (ok && mounted) {
-      TopToast.success(context, 'Data berhasil dipulihkan — aplikasi dibuka ulang');
-      // Small delay so the toast is visible before the process restarts.
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) {
-        Restart.restartApp();
-        return true;
+      TopToast.success(context, 'Data berhasil dipulihkan');
+      if (context.canPop()) {
+        Navigator.of(context).popUntil((r) => r.isFirst);
       }
+      if (mounted && context.mounted) context.go('/login');
+      return true;
     }
     if (mounted) {
       TopToast.error(context, 'Gagal memulihkan data dari cloud');

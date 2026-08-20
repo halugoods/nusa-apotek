@@ -200,7 +200,13 @@ Future<void> _receiveAtLaunch() async {
     }
 
     // No local pending changes → adopt cloud backup.
-    final ok = await repo.restoreFromCloud().timeout(
+    // v2.2.37: pakai restoreDirect() (swap live) bukan restoreFromCloud()
+    // (.pending). restoreFromCloud stage .pending yang baru di-swap saat start
+    // BERIKUTNYA — tapi _applyPendingRestore() sudah lewat di urutan main, jadi
+    // .pending tidak akan pernah di-swap → restore tidak berlaku → DB kosong →
+    // PIN gagal + produk kosong. restoreDirect() menulis langsung ke sqlite
+    // live (aman: drift belum dibuka di titik ini) → data langsung dipakai.
+    final ok = await repo.restoreDirect().timeout(
       const Duration(seconds: 15),
       onTimeout: () => false,
     );

@@ -26,20 +26,46 @@ class ActivationRepository {
       (await SecureStore.getActivation()) != null;
 
   /// Get the Google user ID (used as encryption key for backups).
-  static Future<String?> _googleUserId() async =>
-      SecureStore.read(key: 'nusa_google_user_id');
+  ///
+  /// v2.2.37: fallback ke `Supabase.instance.client.auth.currentUser?.id`.
+  /// Backups lama dienkripsi dengan UID Google, tapi kalau `nusa_google_user_id`
+  /// hilang (aktivasi via key tanpa Google / write SecureStore gagal / data
+  /// ke-reset), UID sesi Supabase yang sama bisa menunjuk ke backup yang sama
+  /// (anon auth = satu UID per perangkat; Google auth = UID Google). Kalau
+  /// keduanya kosong → null (caller lanjut ke setup).
+  static Future<String?> _googleUserId() async {
+    final stored = await SecureStore.read(key: 'nusa_google_user_id');
+    if (stored != null && stored.isNotEmpty) return stored;
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      final id = session?.user.id;
+      if (id != null && id.isNotEmpty) return id;
+    } catch (_) {}
+    return null;
+  }
 
   /// Ensure an anonymous Supabase session exists so background storage calls
   /// (auto-sync upload/download) work without forcing interactive auth.
-  /// Non-blocking: failure just leaves the caller to use the existing session.
+  ///
+  /// v2.2.37: BLOCKING + RETRY. Sebelumnya `signInAnonymously()` dipanggil
+  /// tanpa menunggu — `hasBackup()` langsung lanjut ke `storage.list(...)`
+  /// padahal sesi anon belum ada → storage gagal → dialog "Data Ditemukan"
+  /// tidak pernah muncul (bug login kritis #1). Sekarang tunggu sesi sampai
+  /// benar-benar ada, retry maksimal 3x dengan jeda 300ms, baru lanjut.
   Future<void> _ensureAnonAuth() async {
-    try {
-      final auth = client?.auth;
-      if (auth == null) return;
-      if (auth.currentSession != null) return;
-      await auth.signInAnonymously();
-    } catch (e) {
-      debugPrint('[Auth] signInAnonymously skip: $e');
+    if (client == null) return;
+    final auth = client!.auth;
+    if (auth.currentSession != null) return;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final res = await auth.signInAnonymously();
+        if (res.session != null) return;
+      } catch (e) {
+        debugPrint('[Auth] signInAnonymously attempt $attempt: $e');
+      }
+      if (attempt < 2) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
     }
   }
 
@@ -102,9 +128,9 @@ class ActivationRepository {
   /// Check if an encrypted backup exists in Supabase Storage for the linked Google account.
   Future<bool> hasBackup() async {
     if (client == null) return false;
+    await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
-    await _ensureAnonAuth();
     try {
       final productPath = '$uid/${NusaConfig.productId}';
       final res = await client!.storage
@@ -119,9 +145,9 @@ class ActivationRepository {
   /// Get the cloud backup's last-modified timestamp.
   Future<DateTime?> getBackupTimestamp() async {
     if (client == null) return null;
+    await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return null;
-    await _ensureAnonAuth();
     try {
       final productPath = '$uid/${NusaConfig.productId}';
       final res = await client!.storage
@@ -253,13 +279,14 @@ class ActivationRepository {
   }
 
   /// Download backup from cloud and write directly to the live DB + images.
-  /// Does NOT require a restart — the restored DB is ready immediately.
+  /// Restore berlaku IMMEDIATE — caller harus menutup koneksi drift dulu
+  /// (lihat RestoreBackupFlow / _autoRestoreIfNeeded) supaya swap aman.
   /// Returns true on success.
   Future<bool> restoreDirect() async {
     if (client == null) return false;
+    await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
-    await _ensureAnonAuth();
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
@@ -281,21 +308,32 @@ class ActivationRepository {
           );
         }
 
-        // ── CRITICAL: never overwrite the LIVE sqlite file in place ──
-        // The app keeps a drift connection open for its whole lifetime. Writing
-        // the cloud backup over nusa_kasir.sqlite while that connection is
-        // active leaves the handle reading a half-replaced file (stale inode +
-        // WAL/journal mismatch) → queries return empty or SQLITE_NOTADB → menu
-        // buttons stop working and every PIN fails ("PIN salah"). This is
-        // device/network dependent (auto-sync restore only triggers when the
-        // cloud is newer), which is why it reproduced on some devices and not
-        // others. Stage the DB to a .pending file instead — main.dart's
-        // _applyPendingRestore() swaps it BEFORE the next DB open, where a
-        // swap is atomic and safe.
+        // ── v2.2.37: swap LANGSUNG ke live sqlite (bukan .pending) ──
+        // Caller (RestoreBackupFlow / _autoRestoreIfNeeded) SUDAH menutup
+        // koneksi drift (`ref.read(databaseProvider).close()` + invalidate)
+        // sebelum memanggil restoreDirect(). Karena tidak ada koneksi drift
+        // yang terbuka, menulis langsung ke nusa_kasir.sqlite AMAN dan restore
+        // berlaku IMMEDIATE — tidak perlu restart, tidak ada .pending yang
+        // menggantung, tidak ada jendela di mana app membaca DB lama yang
+        // kosong (PIN gagal + produk kosong) setelah restart gagal.
         if (entry.key == 'nusa_kasir.sqlite') {
-          final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
-          await pending.writeAsBytes(entry.value, flush: true);
-          await SecureStore.savePendingRestore();
+          final live = File(p.join(dir.path, 'nusa_kasir.sqlite'));
+          // Bersihkan sidecar WAL/SHM supaya SQLite tidak me-replay data lama
+          // di atas file yang baru ditimpa.
+          for (final sidecar in [
+            '${live.path}-wal',
+            '${live.path}-shm',
+            '${live.path}-journal',
+          ]) {
+            final f = File(sidecar);
+            if (await f.exists()) {
+              try {
+                await f.delete();
+              } catch (_) {}
+            }
+          }
+          await live.writeAsBytes(entry.value, flush: true);
+          await SecureStore.clearPendingRestore();
           continue;
         }
         await File(destinationCanonical).writeAsBytes(entry.value, flush: true);
@@ -309,7 +347,7 @@ class ActivationRepository {
         await SecureStore.saveLastBackupTime(DateTime.parse(ts));
       }
 
-      debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""} (DB staged for next launch)');
+      debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""} (live swap, no restart needed)');
       return true;
     } catch (e) {
       debugPrint('[RestoreDirect] error: $e');
@@ -319,11 +357,18 @@ class ActivationRepository {
 
   /// Download backup from cloud and stage it for restore on next launch.
   /// Uses Google user ID for decryption.
+  ///
+  /// v2.2.37: gunakan untuk jalur yang TIDAK bisa menutup drift — background
+  /// AutoSyncService & settings manual. Stage .pending → di-swap oleh
+  /// main.dart _applyPendingRestore() saat start berikutnya (tidak menabrak
+  /// koneksi drift yang selalu terbuka). Untuk jalur user-facing (activation /
+  /// RestoreBackupFlow) gunakan restoreDirect() (live swap setelah drift
+  /// ditutup).
   Future<bool> restoreFromCloud() async {
     if (client == null) return false;
+    await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
-    await _ensureAnonAuth();
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
@@ -351,9 +396,9 @@ class ActivationRepository {
   Future<bool> syncIfNewer() async {
     if (client == null) return false;
     try {
+      await _ensureAnonAuth();
       final uid = await _googleUserId();
       if (uid == null) return false;
-      await _ensureAnonAuth();
 
       // Check if cloud backup exists and get its timestamp
       final cp = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
@@ -454,6 +499,7 @@ class ActivationRepository {
   @Deprecated('Use restoreFromCloud() which decrypts with Google ID')
   Future<bool> downloadAndRestore(String activationKey) async {
     if (client == null) return false;
+    await _ensureAnonAuth();
     final path = await _backupPath();
     if (path == null) return false;
     try {

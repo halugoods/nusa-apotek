@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:restart_app/restart_app.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
-import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 /// Unified "restore from cloud backup" flow shared by LoginScreen and
@@ -140,16 +138,31 @@ class RestoreBackupFlow {
 
     if (confirmed != true || !context.mounted) return false;
 
-    // 5. Restore: stages DB ke .pending, di-swap saat app start berikutnya
-    //    (menimpa sqlite saat drift terbuka = korupsi — itu sebabnya restart).
+    // 5. Tutup koneksi drift yang sedang terbuka SEBELUM restore — kalau tidak,
+    //    restoreDirect() menulis .pending + restart, tapi kalau restart gagal,
+    //    fallback /login membaca DB lama yang masih kosong (drift lama masih
+    //    terbuka) → PIN gagal + produk kosong. Tutup + invalidate dulu supaya
+    //    koneksi berikutnya membaca DB hasil restore (v2.2.37).
+    try {
+      final db = ref.read(databaseProvider);
+      await db.close();
+    } catch (_) {}
+    ref.invalidate(databaseProvider);
+
+    // 6. Restore: v2.2.37 restoreDirect() swap LANGSUNG ke sqlite live (tanpa
+    //    restart) — aman karena drift sudah ditutup di atas. Data langsung
+    //    berlaku: login berikutnya membaca DB hasil restore, produk langsung
+    //    tampil, PIN sesuai.
     final ok = await repo.restoreDirect();
     if (ok && context.mounted) {
-      TopToast.success(context, 'Data berhasil dipulihkan — aplikasi dibuka ulang');
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (context.mounted) {
-        Restart.restartApp();
-        return true;
+      TopToast.success(context, 'Data berhasil dipulihkan');
+      // Tidak perlu Restart.restartApp() lagi — DB sudah live. Cukup kembali
+      // ke layar login supaya user masuk dengan PIN dari data hasil restore.
+      if (context.canPop()) {
+        Navigator.of(context).popUntil((r) => r.isFirst);
       }
+      if (context.mounted) context.go('/login');
+      return true;
     }
     if (context.mounted) {
       TopToast.error(context, 'Gagal memulihkan data dari cloud');
