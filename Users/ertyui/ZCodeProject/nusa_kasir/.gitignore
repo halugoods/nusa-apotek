@@ -60,3 +60,6 @@ nusa_builds/
 # Supabase CLI temp state (nested working copy)
 supabase/supabase/
 .freebuff/
+
+# Backup fixture DB (data user asli — JANGAN pernah di-commit)
+test/fixtures/*.sqlite

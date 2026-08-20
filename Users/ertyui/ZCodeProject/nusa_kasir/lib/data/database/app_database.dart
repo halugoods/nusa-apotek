@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -66,6 +67,23 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    // ── v2.2.41: repair schema SETIAP buka (bukan hanya saat upgrade) ──
+    // Backup cloud lama (mis. dari varian lain / app versi lama) bisa punya
+    // user_version == schemaVersion (44) tapi kolom-kolomnya NULL — contoh
+    // nyata: products.discount_percent/discount_type dibuat TANPA DEFAULT oleh
+    // app versi lama, jadi semua baris NULL. Drift hanya menjalankan onUpgrade
+    // saat user_version BERUBAH; kalau sudah 44, onUpgrade di-skip → NULL
+    // tidak pernah diisi → SELECT products melempar "Null check operator used
+    // on a null value" → dashboard kosong / loading abadi setelah restore.
+    // beforeOpen jalan SETIAP open, jadi perbaikan ini berlaku untuk SEMUA
+    // user, termasuk yang DB-nya hasil restore cloud. Idempoten & ringan.
+    beforeOpen: (details) async {
+      try {
+        await _repairNullDefaults(this);
+      } catch (e) {
+        debugPrint('[DB] beforeOpen repair error (non-fatal): $e');
+      }
+    },
     onUpgrade: (m, from, to) async {
       // ── v2.2.39: migrasi LENGKAP selalu dijalankan (bukan hanya delta) ──
       // DB hasil restore cloud bisa membawa user_version TUA (26-30) padahal
@@ -623,6 +641,163 @@ class AppDatabase extends _$AppDatabase {
       }
     },
   );
+}
+
+// ── v2.2.41: repair data NULL di kolom yang drift baca non-null ────────────
+// Backup cloud lama bisa punya user_version == schemaVersion (44) tapi baris
+// kolom bernilai NULL — kolom dibuat TANPA DEFAULT oleh app versi lama (lihat
+// riwayat: discount_percent/discount_type/price_type sempat tanpa DEFAULT).
+// Drift memetakan kolom non-nullable dengan `!` → NULL → "Null check operator
+// used on a null value" → query throw → layar kosong/loading abadi. beforeOpen
+// jalan SETIAP buka (koneksi normal + AppDatabase.at untuk migrasi temp),
+// jadi NULL diisi nilainya di sini. Semua statement pakai IFNULL/WHERE untuk
+// idempoten — aman dijalankan berulang.
+Future<void> _repairNullDefaults(AppDatabase db) async {
+  await db.customStatement(
+    'UPDATE products SET discount_percent = 0 WHERE discount_percent IS NULL',
+  );
+  await db.customStatement(
+    "UPDATE products SET discount_type = 'persen' WHERE discount_type IS NULL",
+  );
+  await db.customStatement(
+    "UPDATE products SET price_type = 'pcs' WHERE price_type IS NULL",
+  );
+  await db.customStatement(
+    "UPDATE products SET category = 'Lainnya' WHERE category IS NULL",
+  );
+  await db.customStatement(
+    "UPDATE transactions SET status = 'Normal' WHERE status IS NULL",
+  );
+  await db.customStatement(
+    "UPDATE employees SET role = 'Kasir' WHERE role IS NULL",
+  );
+  await db.customStatement(
+    "UPDATE employees SET status = 'Aktif' WHERE status IS NULL",
+  );
+  await db.customStatement(
+    'UPDATE cashier_sessions SET starting_cash = 0 WHERE starting_cash IS NULL',
+  );
+  // Kolom yang secara teknis nullable di drift TAPI beberapa query memakai
+  // operator seperti `.equals(null)` yang bisa error — pastikan default yang
+  // aman: invoice/items wajib ada supaya join & parsing JSON tidak jatuh.
+  await db.customStatement(
+    "UPDATE transactions SET items = '[]' WHERE items IS NULL OR items = ''",
+  );
+  await db.customStatement(
+    "UPDATE products SET name = 'Produk' WHERE name IS NULL OR name = ''",
+  );
+  await db.customStatement(
+    "UPDATE transactions SET invoice = '' WHERE invoice IS NULL",
+  );
+  await db.customStatement(
+    'UPDATE online_orders SET subtotal = 0 WHERE subtotal IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE online_orders SET discount = 0 WHERE discount IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE online_orders SET handling_fee = 0 WHERE handling_fee IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE customer_debts SET amount = 0 WHERE amount IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE customer_debts SET remaining_amount = 0 WHERE remaining_amount IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE debt_payments SET amount = 0 WHERE amount IS NULL',
+  );
+  // Tabel yang belum ada di backup lama (mis. open_tabs, roles) — buat kalau
+  // hilang. Guard ini hanya berjalan kalau tabel belum ada (idempoten).
+  await _createTableIfMissingSafe(db, 'open_tabs');
+  await _createTableIfMissingSafe(db, 'roles');
+  await _createTableIfMissingSafe(db, 'stock_counts');
+  await _createTableIfMissingSafe(db, 'stock_count_items');
+  await _createTableIfMissingSafe(db, 'stock_movements');
+  await _createTableIfMissingSafe(db, 'point_histories');
+  await _createTableIfMissingSafe(db, 'promos');
+  await _createTableIfMissingSafe(db, 'recurring_expenses');
+  await _createTableIfMissingSafe(db, 'waste');
+  await _createTableIfMissingSafe(db, 'sync_queue');
+}
+
+/// CREATE TABLE IF NOT EXISTS untuk tabel yang mungkin hilang di backup lama
+/// (mis. backup varian lain yang masih schema < 40). Query select drift ke
+/// tabel yang tidak ada melempar "no such table" — ini mencegahnya.
+/// Definisi tabel mengikuti tables.dart (drift) — JANGAN ubah tanpa sinkron.
+Future<void> _createTableIfMissingSafe(AppDatabase db, String table) async {
+  final exists = await db.customSelect(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+    variables: [Variable(table)],
+  ).get();
+  if (exists.isNotEmpty) return;
+  switch (table) {
+    case 'open_tabs':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS open_tabs ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'table_id INTEGER, order_type TEXT, items_json TEXT, total INTEGER, '
+        'discount INTEGER, status TEXT, created_at INTEGER, updated_at INTEGER)',
+      );
+    case 'roles':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS roles ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'name TEXT NOT NULL, permissions TEXT, created_at INTEGER)',
+      );
+    case 'stock_counts':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS stock_counts ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, status TEXT, '
+        'created_at INTEGER, completed_at INTEGER, total_products INTEGER, '
+        'match_count INTEGER, diff_count INTEGER)',
+      );
+    case 'stock_count_items':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS stock_count_items ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, count_session_id INTEGER, '
+        'product_id INTEGER, product_name TEXT, system_stock INTEGER, '
+        'physical_stock INTEGER, difference INTEGER, buy_price INTEGER, '
+        'sell_price INTEGER, notes TEXT)',
+      );
+    case 'stock_movements':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS stock_movements ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, type TEXT, '
+        'qty INTEGER, note TEXT, date INTEGER)',
+      );
+    case 'point_histories':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS point_histories ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, points INTEGER, '
+        'type TEXT, note TEXT, created_at INTEGER)',
+      );
+    case 'promos':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS promos ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, code TEXT, type TEXT, '
+        'value INTEGER, min_belanja INTEGER, start_date INTEGER, end_date INTEGER, '
+        'max_uses INTEGER, used_count INTEGER, status TEXT, mode TEXT)',
+      );
+    case 'recurring_expenses':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS recurring_expenses ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT, amount INTEGER, '
+        'description TEXT, frequency TEXT, next_date INTEGER, active INTEGER)',
+      );
+    case 'waste':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS waste ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, qty INTEGER, '
+        'reason TEXT, type TEXT, date INTEGER)',
+      );
+    case 'sync_queue':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS sync_queue ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT, payload TEXT, '
+        'status TEXT, retry_count INTEGER, error_message TEXT, created_at INTEGER)',
+      );
+  }
 }
 
 // ── Self-healing migration guards ──────────────────────────────────────────
