@@ -171,8 +171,24 @@ Future<void> _receiveAtLaunch() async {
     final lastSeen = await SecureStore.getLastCloudSeen();
     final lastLocalChange = await SecureStore.getLastLocalChange();
 
+    // ── v2.2.40: JANGAN restore diam-diam kalau device BELUM PERNAH sinkron
+    // dengan cloud (lastSeen == null). Ini adalah fresh install / install di
+    // atas data rusak. Restore DIAM-DIAM di sini akan menimpa DB lokal tanpa
+    // dialog → user tidak pernah melihat "Data Ditemukan" dan kalau gagal,
+    // data tidak keluar. Device yang belum pernah sinkron harus melewati
+    // jalur user-facing (login Google → dialog Data Ditemukan) supaya user
+    // TAHU data apa yang dipulihkan dan bisa memilih.
+    if (lastSeen == null) return;
+
+    // ── v2.2.40: JANGAN restore diam-diam kalau akun yang baru login BEDA
+    // dari yang terakhir tersimpan (ganti akun). Restore akun baru harus lewat
+    // dialog "Data Ditemukan" di activation screen (user harus TAHU + pilih),
+    // bukan ditimpa diam-diam di sini.
+    final prevLinked = await SecureStore.getLinkedAccountId();
+    if (prevLinked != null && prevLinked != uid) return;
+
     // Cloud not newer than last seen → nothing to pull.
-    if (lastSeen != null && !cloudTime.isAfter(lastSeen)) return;
+    if (!cloudTime.isAfter(lastSeen)) return;
 
     // Local un-uploaded changes → don't overwrite local; leave for upload.
     if (lastLocalChange != null &&
@@ -393,9 +409,17 @@ void main() async {
           } catch (_) {
             anyEmployee = null;
           }
-          initialLocation = (anyEmployee == null)
-              ? '/setup'
-              : '/login';
+          if (anyEmployee == null) {
+            // ── v2.2.40: DB kosong ATAU rusak → jangan langsung /setup.
+            // Kalau akun Google ini punya backup cloud, dialog "Data
+            // Ditemukan" harus MUNCUL dulu (lewat login Google di layar
+            // activation). /setup hanya jadi pilihan terakhir kalau memang
+            // TIDAK ADA backup. Dengan /activation, user bisa ganti akun dan
+            // backup akun lain ikut terdeteksi.
+            initialLocation = '/activation';
+          } else {
+            initialLocation = '/login';
+          }
         }
       }
     } catch (_) {

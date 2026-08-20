@@ -120,6 +120,18 @@ class SecureStore {
   static Future<void> clearLastBackupTime() =>
       SecureStore.delete(key: _backupTimeKey);
 
+  // -- Akun Google yang TERAKHIR login di perangkat ini (untuk deteksi
+  //    ganti akun / fresh install di atas data lama). Kalau akun yang baru
+  //    login berbeda dari yang tersimpan → data lokal belum tentu milik akun
+  //    itu → dialog "Data Ditemukan" harus muncul SEBELUM PIN pad.
+  static const String _linkedAccountKey = 'nusa_linked_account_id';
+  static Future<String?> getLinkedAccountId() =>
+      SecureStore.read(key: _linkedAccountKey);
+  static Future<void> setLinkedAccountId(String uid) =>
+      SecureStore.write(key: _linkedAccountKey, value: uid);
+  static Future<void> clearLinkedAccountId() =>
+      SecureStore.delete(key: _linkedAccountKey);
+
   // -- Sheets tokens --
   static Future<void> saveSheetsTokens(String json) =>
       SecureStore.write(key: AppConstants.sheetsTokenKey, value: json);

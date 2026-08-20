@@ -150,6 +150,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         if (mounted) context.go('/setup');
         return;
       }
+      // DB lokal punya karyawan → PIN pad. Ganti akun ditangani di
+      // `_checkLicenseStatus` (sebelum _goToPinOrSetup dipanggil).
     } catch (_) {
       // DB rusak / query gagal — JANGAN langsung pinpad (PIN pasti gagal
       // karena tabel kosong/rusak). Coba pulihkan dari cloud dulu; setup
@@ -326,12 +328,52 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   }
 
   /// Check if this Google account already has an activated license.
+  ///
+  /// v2.2.40: SETELAH login Google (termasuk ganti akun / install ulang di
+  /// atas data lama), SELALU cek backup cloud DULU sebelum menampilkan PIN
+  /// pad. Sebelumnya kalau key aktivasi lokal masih ada (`isActivated`),
+  /// langsung `_goToPinOrSetup()` → PIN pad tanpa cek backup → user yang
+  /// ganti akun / install ulang tidak pernah melihat "Data Ditemukan"
+  /// (harus hapus data aplikasi dulu). Key aktivasi berlaku per-varian,
+  /// bukan per-akun — jadi key lama tidak menjamin backup akun baru sudah
+  /// di-restore.
   Future<void> _checkLicenseStatus(String googleUserId) async {
+    // ── v2.2.40: catat akun yang baru login. Kalau akun ini BEDA dari yang
+    // terakhir tersimpan → data lokal milik akun lain / fresh install di atas
+    // data lama → backup cloud akun ini harus ditawarkan SEBELUM PIN pad.
+    final prevLinked = await SecureStore.getLinkedAccountId();
+    final accountSwitched = (prevLinked != null && prevLinked != googleUserId);
+    await SecureStore.setLinkedAccountId(googleUserId);
+
     // First check local storage
     final isActivated = await ref.read(activationRepoProvider).isActivated;
 
     if (isActivated) {
-      _goToPinOrSetup();
+      // ── v2.2.40: ganti akun / install ulang → key masih ada, tapi DB lokal
+      // bisa kosong (fresh) atau milik akun lain. Kalau akun berubah ATAU DB
+      // lokal tidak punya karyawan → cek backup cloud DULU (dialog "Data
+      // Ditemukan" tampil) sebelum PIN pad. `_goToPinOrSetup` sendiri sudah
+      // mengecek karyawan + restore saat DB kosong, tapi kita panggil
+      // hasBackup eksplisit supaya dialog muncul meski DB lokal masih punya
+      // karyawan milik akun LAMA (ganti akun) — restore hanya menimpa DB
+      // kalau user setuju (dialog). Kalau user batal, PIN pad pakai data lama.
+      if (accountSwitched) {
+        final hasBak = await ref.read(activationRepoProvider).hasBackup();
+        if (hasBak) {
+          // Tutup koneksi drift SEBELUM restore supaya swap aman, lalu
+          // tampilkan dialog "Data Ditemukan" → restore → redirect login.
+          try {
+            final db = ref.read(databaseProvider);
+            await db.close();
+          } catch (_) {}
+          ref.invalidate(databaseProvider);
+          final restored = await _autoRestoreIfNeeded();
+          if (restored) return; // redirect ke /login
+        }
+      }
+      if (mounted) {
+        _goToPinOrSetup();
+      }
       return;
     }
 
