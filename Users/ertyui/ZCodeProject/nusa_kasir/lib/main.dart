@@ -192,6 +192,9 @@ Future<void> _receiveAtLaunch() async {
       final probe = AppDatabase();
       final empCount =
           await probe.select(probe.employees).get().then((r) => r.length);
+      // v2.2.39: TUTUP koneksi probe SEBELUM restoreDirect — kalau tidak,
+      // drift probe masih membuka file saat restore menulis live sqlite =
+      // korupsi (login pertama setelah install selalu korup). Ini akar Bug A.
       await probe.close();
       if (empCount > 0) return;
     } catch (_) {
@@ -206,6 +209,15 @@ Future<void> _receiveAtLaunch() async {
     // .pending tidak akan pernah di-swap → restore tidak berlaku → DB kosong →
     // PIN gagal + produk kosong. restoreDirect() menulis langsung ke sqlite
     // live (aman: drift belum dibuka di titik ini) → data langsung dipakai.
+    //
+    // v2.2.39: kalau ada .pending (dari AutoSyncService / settings manual),
+    // _applyPendingRestore() di urutan main SUDAH swap DB-nya. Jangan
+    // restoreDirect lagi di sini — itu menulis ulang live sqlite yang sudah
+    // fresh, dan probe DB di atas sudah ditutup, jadi aman. Tapi kalau .pending
+    // MASIH ada (baru dibuat oleh AutoSyncService saat app start), skip —
+    // biar _applyPendingRestore() berikutnya yang swap (jangan dobel).
+    if (await SecureStore.hasPendingRestore()) return;
+
     final ok = await repo.restoreDirect().timeout(
       const Duration(seconds: 15),
       onTimeout: () => false,

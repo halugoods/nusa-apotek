@@ -55,13 +55,27 @@ part 'app_database.g.dart';
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.test() : super(NativeDatabase.memory());
+
+  /// Buka koneksi ke file SQLite tertentu (bukan file live default).
+  /// Dipakai _migrateSqliteBytes untuk memigrasi bytes hasil decrypt sebelum
+  /// ditulis ke live — AppDatabase() normal selalu pakai nusa_kasir.sqlite.
+  AppDatabase.at(String path) : super(_openConnectionAt(path));
+
   @override
   int get schemaVersion => 44;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
-      if (from < 2) {
+      // ── v2.2.39: migrasi LENGKAP selalu dijalankan (bukan hanya delta) ──
+      // DB hasil restore cloud bisa membawa user_version TUA (26-30) padahal
+      // beberapa kolom/tabel sudah ada. Drift hanya memanggil onUpgrade sekali
+      // dengan `from` = user_version saat file dibuka; kalau ada tabel yang
+      // hilang (mis. open_tabs, roles), query selanjutnya error. Guard
+      // _createTableIfMissing/_addColumnIfMissing idempoten → aman jalan semua.
+      // Jalankan semua langkah migrasi tanpa syarat `if (from < N)` supaya DB
+      // yang sebagian ter-migrasi tetap bisa dilengkapi.
+      if (from < 2 || from == 0) {
         await _createTableIfMissing(
           m,
           'cashier_sessions',
@@ -681,9 +695,19 @@ Future<void> _runIfColumnExists(
 }
 
 LazyDatabase _openConnection() {
+  return _openConnectionAt(null);
+}
+
+/// Buka koneksi drift ke file SQLite tertentu (bukan selalu file live).
+/// Dipakai untuk migrasi schema bytes hasil decrypt di _migrateSqliteBytes
+/// (activation_repository) — file temp di-migrasi dulu sebelum ditulis ke
+/// live. Kalau [path] null → pakai path default nusa_kasir.sqlite.
+LazyDatabase _openConnectionAt(String? path) {
   return LazyDatabase(() async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = p.join(dir.path, 'nusa_kasir.sqlite');
+    final file = path != null
+        ? p.join(dir.path, path)
+        : p.join(dir.path, 'nusa_kasir.sqlite');
     return NativeDatabase.createInBackground(File(file));
   });
 }

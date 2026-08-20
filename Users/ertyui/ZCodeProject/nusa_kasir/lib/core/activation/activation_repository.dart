@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/backup_crypto.dart';
+import 'package:nusa_kasir/data/database/app_database.dart';
 
 class ActivationResult {
   final bool ok;
@@ -331,7 +332,14 @@ class ActivationRepository {
         // berlaku IMMEDIATE — tidak perlu restart, tidak ada .pending yang
         // menggantung, tidak ada jendela di mana app membaca DB lama yang
         // kosong (PIN gagal + produk kosong) setelah restart gagal.
+        // v2.2.39: SEBELUM menulis file, jalankan migrasi drift schema
+        // terhadap bytes hasil decrypt — backup lama (mis. varian lain yang
+        // masih ver 26-30) bisa bawa kolom/tabel yang belum ada. Kalau dibiarkan,
+        // drift tidak akan migrasi (user_version sudah dibaca & di-cache di
+        // koneksi), query produk error "no such column" → loading abadi.
+        // Jalankan eksplisit supaya DB hasil restore SELALU schema 44.
         if (entry.key == 'nusa_kasir.sqlite') {
+          final migrated = await _migrateSqliteBytes(entry.value, uid);
           final live = File(p.join(dir.path, 'nusa_kasir.sqlite'));
           // Bersihkan sidecar WAL/SHM supaya SQLite tidak me-replay data lama
           // di atas file yang baru ditimpa.
@@ -347,7 +355,7 @@ class ActivationRepository {
               } catch (_) {}
             }
           }
-          await live.writeAsBytes(entry.value, flush: true);
+          await live.writeAsBytes(migrated, flush: true);
           await SecureStore.clearPendingRestore();
           continue;
         }
@@ -390,12 +398,58 @@ class ActivationRepository {
       if (bytes.isEmpty) return false;
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
       final dir = await getApplicationDocumentsDirectory();
+
+      // v2.2.39: migrasi schema eksplisit sebelum di-stage — backup lama
+      // (ver 26-30 dari varian lain) butuh kolom/tabel baru; kalau tidak,
+      // drift tidak akan migrasi saat koneksi baru dibuka (user_version sudah
+      // di-cache) → query produk error → loading abadi (lihat restoreDirect).
+      final migrated = await _migrateSqliteBytes(decrypted, uid);
+
       final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
-      await pending.writeAsBytes(decrypted, flush: true);
+      await pending.writeAsBytes(migrated, flush: true);
       await SecureStore.savePendingRestore();
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Jalankan migrasi drift schema terhadap bytes SQLite hasil decrypt.
+  /// Menulis bytes ke file temp, buka dengan AppDatabase (memicu `onUpgrade`
+  /// sampai schemaVersion 44), lalu baca hasilnya kembali. Fallback: kalau
+  /// migrasi gagal (DB rusak), kembalikan bytes asli — restore tetap jalan,
+  /// query produk yang butuh kolom baru tinggal error, tapi app tidak crash.
+  Future<List<int>> _migrateSqliteBytes(
+    List<int> bytes,
+    String googleUserId,
+  ) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final temp = File(p.join(dir.path, 'nusa_kasir.sqlite.migrate'));
+      await temp.writeAsBytes(bytes, flush: true);
+      // AppDatabase.at() membuka FILE TEMP (bukan live) → migrasi onUpgrade
+      // dijalankan terhadap bytes hasil decrypt. AppDatabase() normal selalu
+      // buka nusa_kasir.sqlite (live) — salah sasaran kalau dipakai di sini.
+      final db = AppDatabase.at('nusa_kasir.sqlite.migrate');
+      // Buka + tutup → drift menjalankan onUpgrade (from=user_version → 44).
+      // Tutup file secara manual supaya koneksi benar-benar release.
+      await db.customSelect('SELECT 1').get();
+      await db.close();
+      // Hapus sidecar hasil migrasi (temp saja, bukan live).
+      for (final sidecar in ['-wal', '-shm', '-journal']) {
+        final f = File(temp.path + sidecar);
+        if (await f.exists()) {
+          try {
+            await f.delete();
+          } catch (_) {}
+        }
+      }
+      final migrated = await temp.readAsBytes();
+      await temp.delete();
+      return migrated;
+    } catch (e) {
+      debugPrint('[Restore] _migrateSqliteBytes fallback (keep original): $e');
+      return bytes;
     }
   }
 

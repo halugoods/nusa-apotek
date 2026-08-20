@@ -126,16 +126,27 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
   /// Check if employees exist. If not, try cloud restore first, then redirect to /setup.
   /// If employees exist, directly show PIN dialog.
+  ///
+  /// v2.2.39: restore/pin DIPUTUSKAN SEKARANG, bukan setelahnya. Sebelumnya
+  /// alur `_goToPinOrSetup` → `_autoRestoreIfNeeded` mengecek backup TANPA
+  /// menutup koneksi drift → `restoreDirect()` swap live sqlite saat drift
+  /// masih terbuka = korupsi. Kali ini tutup DB dulu sebelum restore, supaya
+  /// login pertama setelah install bisa langsung restore (tanpa hapus data).
   Future<void> _goToPinOrSetup() async {
     try {
       final db = ref.read(databaseProvider);
       final repo = AttendanceRepository(db);
       final emps = await repo.getEmployees();
       if (emps.isEmpty) {
-        // No employees — try cloud auto-restore first
+        // Tidak ada karyawan — cek backup cloud DULU. Tutup koneksi drift
+        // sebelum restore supaya swap aman (v2.2.39).
+        try {
+          await db.close();
+        } catch (_) {}
+        ref.invalidate(databaseProvider);
         final restored = await _autoRestoreIfNeeded();
-        if (restored) return; // app will restart
-        // No backup or restore failed — setup from scratch
+        if (restored) return; // app akan restart / pindah ke login
+        // Tidak ada backup atau restore gagal — setup dari nol.
         if (mounted) context.go('/setup');
         return;
       }
@@ -144,7 +155,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       // karena tabel kosong/rusak). Coba pulihkan dari cloud dulu; setup
       // hanya fallback kalau memang tidak ada backup (v2.2.36).
       debugPrint('[Activation] _goToPinOrSetup error — coba restore cloud');
-      final restored = await RestoreBackupFlow.runIfNeeded(ref, context);
+      try {
+        final db = ref.read(databaseProvider);
+        await db.close();
+      } catch (_) {}
+      ref.invalidate(databaseProvider);
+      final restored = await _autoRestoreIfNeeded();
       if (restored) return; // app restart
       if (mounted && context.mounted) context.go('/setup');
       return;
