@@ -330,6 +330,32 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _imageBase64Meta = const VerificationMeta(
+    'imageBase64',
+  );
+  @override
+  late final GeneratedColumn<String> imageBase64 = GeneratedColumn<String>(
+    'image_base64',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isServiceMeta = const VerificationMeta(
+    'isService',
+  );
+  @override
+  late final GeneratedColumn<bool> isService = GeneratedColumn<bool>(
+    'is_service',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_service" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _isOnlineMeta = const VerificationMeta(
     'isOnline',
   );
@@ -438,6 +464,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     stock,
     minStock,
     imagePath,
+    imageBase64,
+    isService,
     isOnline,
     expiryDate,
     productType,
@@ -536,6 +564,21 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       context.handle(
         _imagePathMeta,
         imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    }
+    if (data.containsKey('image_base64')) {
+      context.handle(
+        _imageBase64Meta,
+        imageBase64.isAcceptableOrUnknown(
+          data['image_base64']!,
+          _imageBase64Meta,
+        ),
+      );
+    }
+    if (data.containsKey('is_service')) {
+      context.handle(
+        _isServiceMeta,
+        isService.isAcceptableOrUnknown(data['is_service']!, _isServiceMeta),
       );
     }
     if (data.containsKey('is_online')) {
@@ -652,6 +695,14 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.string,
         data['${effectivePrefix}image_path'],
       ),
+      imageBase64: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_base64'],
+      ),
+      isService: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_service'],
+      )!,
       isOnline: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_online'],
@@ -706,6 +757,8 @@ class Product extends DataClass implements Insertable<Product> {
   final int stock;
   final int minStock;
   final String? imagePath;
+  final String? imageBase64;
+  final bool isService;
   final bool isOnline;
   final DateTime? expiryDate;
   final String? productType;
@@ -727,6 +780,8 @@ class Product extends DataClass implements Insertable<Product> {
     required this.stock,
     required this.minStock,
     this.imagePath,
+    this.imageBase64,
+    required this.isService,
     required this.isOnline,
     this.expiryDate,
     this.productType,
@@ -757,6 +812,10 @@ class Product extends DataClass implements Insertable<Product> {
     if (!nullToAbsent || imagePath != null) {
       map['image_path'] = Variable<String>(imagePath);
     }
+    if (!nullToAbsent || imageBase64 != null) {
+      map['image_base64'] = Variable<String>(imageBase64);
+    }
+    map['is_service'] = Variable<bool>(isService);
     map['is_online'] = Variable<bool>(isOnline);
     if (!nullToAbsent || expiryDate != null) {
       map['expiry_date'] = Variable<DateTime>(expiryDate);
@@ -796,6 +855,10 @@ class Product extends DataClass implements Insertable<Product> {
       imagePath: imagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(imagePath),
+      imageBase64: imageBase64 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageBase64),
+      isService: Value(isService),
       isOnline: Value(isOnline),
       expiryDate: expiryDate == null && nullToAbsent
           ? const Value.absent()
@@ -835,6 +898,8 @@ class Product extends DataClass implements Insertable<Product> {
       stock: serializer.fromJson<int>(json['stock']),
       minStock: serializer.fromJson<int>(json['minStock']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
+      imageBase64: serializer.fromJson<String?>(json['imageBase64']),
+      isService: serializer.fromJson<bool>(json['isService']),
       isOnline: serializer.fromJson<bool>(json['isOnline']),
       expiryDate: serializer.fromJson<DateTime?>(json['expiryDate']),
       productType: serializer.fromJson<String?>(json['productType']),
@@ -861,6 +926,8 @@ class Product extends DataClass implements Insertable<Product> {
       'stock': serializer.toJson<int>(stock),
       'minStock': serializer.toJson<int>(minStock),
       'imagePath': serializer.toJson<String?>(imagePath),
+      'imageBase64': serializer.toJson<String?>(imageBase64),
+      'isService': serializer.toJson<bool>(isService),
       'isOnline': serializer.toJson<bool>(isOnline),
       'expiryDate': serializer.toJson<DateTime?>(expiryDate),
       'productType': serializer.toJson<String?>(productType),
@@ -885,6 +952,8 @@ class Product extends DataClass implements Insertable<Product> {
     int? stock,
     int? minStock,
     Value<String?> imagePath = const Value.absent(),
+    Value<String?> imageBase64 = const Value.absent(),
+    bool? isService,
     bool? isOnline,
     Value<DateTime?> expiryDate = const Value.absent(),
     Value<String?> productType = const Value.absent(),
@@ -906,6 +975,8 @@ class Product extends DataClass implements Insertable<Product> {
     stock: stock ?? this.stock,
     minStock: minStock ?? this.minStock,
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
+    imageBase64: imageBase64.present ? imageBase64.value : this.imageBase64,
+    isService: isService ?? this.isService,
     isOnline: isOnline ?? this.isOnline,
     expiryDate: expiryDate.present ? expiryDate.value : this.expiryDate,
     productType: productType.present ? productType.value : this.productType,
@@ -935,6 +1006,10 @@ class Product extends DataClass implements Insertable<Product> {
       stock: data.stock.present ? data.stock.value : this.stock,
       minStock: data.minStock.present ? data.minStock.value : this.minStock,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      imageBase64: data.imageBase64.present
+          ? data.imageBase64.value
+          : this.imageBase64,
+      isService: data.isService.present ? data.isService.value : this.isService,
       isOnline: data.isOnline.present ? data.isOnline.value : this.isOnline,
       expiryDate: data.expiryDate.present
           ? data.expiryDate.value
@@ -971,6 +1046,8 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('stock: $stock, ')
           ..write('minStock: $minStock, ')
           ..write('imagePath: $imagePath, ')
+          ..write('imageBase64: $imageBase64, ')
+          ..write('isService: $isService, ')
           ..write('isOnline: $isOnline, ')
           ..write('expiryDate: $expiryDate, ')
           ..write('productType: $productType, ')
@@ -984,7 +1061,7 @@ class Product extends DataClass implements Insertable<Product> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     sku,
@@ -997,6 +1074,8 @@ class Product extends DataClass implements Insertable<Product> {
     stock,
     minStock,
     imagePath,
+    imageBase64,
+    isService,
     isOnline,
     expiryDate,
     productType,
@@ -1005,7 +1084,7 @@ class Product extends DataClass implements Insertable<Product> {
     priceType,
     supplierId,
     createdAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1022,6 +1101,8 @@ class Product extends DataClass implements Insertable<Product> {
           other.stock == this.stock &&
           other.minStock == this.minStock &&
           other.imagePath == this.imagePath &&
+          other.imageBase64 == this.imageBase64 &&
+          other.isService == this.isService &&
           other.isOnline == this.isOnline &&
           other.expiryDate == this.expiryDate &&
           other.productType == this.productType &&
@@ -1045,6 +1126,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> stock;
   final Value<int> minStock;
   final Value<String?> imagePath;
+  final Value<String?> imageBase64;
+  final Value<bool> isService;
   final Value<bool> isOnline;
   final Value<DateTime?> expiryDate;
   final Value<String?> productType;
@@ -1066,6 +1149,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.stock = const Value.absent(),
     this.minStock = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.imageBase64 = const Value.absent(),
+    this.isService = const Value.absent(),
     this.isOnline = const Value.absent(),
     this.expiryDate = const Value.absent(),
     this.productType = const Value.absent(),
@@ -1088,6 +1173,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.stock = const Value.absent(),
     this.minStock = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.imageBase64 = const Value.absent(),
+    this.isService = const Value.absent(),
     this.isOnline = const Value.absent(),
     this.expiryDate = const Value.absent(),
     this.productType = const Value.absent(),
@@ -1111,6 +1198,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? stock,
     Expression<int>? minStock,
     Expression<String>? imagePath,
+    Expression<String>? imageBase64,
+    Expression<bool>? isService,
     Expression<bool>? isOnline,
     Expression<DateTime>? expiryDate,
     Expression<String>? productType,
@@ -1133,6 +1222,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (stock != null) 'stock': stock,
       if (minStock != null) 'min_stock': minStock,
       if (imagePath != null) 'image_path': imagePath,
+      if (imageBase64 != null) 'image_base64': imageBase64,
+      if (isService != null) 'is_service': isService,
       if (isOnline != null) 'is_online': isOnline,
       if (expiryDate != null) 'expiry_date': expiryDate,
       if (productType != null) 'product_type': productType,
@@ -1157,6 +1248,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<int>? stock,
     Value<int>? minStock,
     Value<String?>? imagePath,
+    Value<String?>? imageBase64,
+    Value<bool>? isService,
     Value<bool>? isOnline,
     Value<DateTime?>? expiryDate,
     Value<String?>? productType,
@@ -1179,6 +1272,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       stock: stock ?? this.stock,
       minStock: minStock ?? this.minStock,
       imagePath: imagePath ?? this.imagePath,
+      imageBase64: imageBase64 ?? this.imageBase64,
+      isService: isService ?? this.isService,
       isOnline: isOnline ?? this.isOnline,
       expiryDate: expiryDate ?? this.expiryDate,
       productType: productType ?? this.productType,
@@ -1229,6 +1324,12 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (imagePath.present) {
       map['image_path'] = Variable<String>(imagePath.value);
     }
+    if (imageBase64.present) {
+      map['image_base64'] = Variable<String>(imageBase64.value);
+    }
+    if (isService.present) {
+      map['is_service'] = Variable<bool>(isService.value);
+    }
     if (isOnline.present) {
       map['is_online'] = Variable<bool>(isOnline.value);
     }
@@ -1271,6 +1372,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('stock: $stock, ')
           ..write('minStock: $minStock, ')
           ..write('imagePath: $imagePath, ')
+          ..write('imageBase64: $imageBase64, ')
+          ..write('isService: $isService, ')
           ..write('isOnline: $isOnline, ')
           ..write('expiryDate: $expiryDate, ')
           ..write('productType: $productType, ')
@@ -4248,6 +4351,17 @@ class $EmployeesTable extends Employees
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _barcodeMeta = const VerificationMeta(
+    'barcode',
+  );
+  @override
+  late final GeneratedColumn<String> barcode = GeneratedColumn<String>(
+    'barcode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _workStartMeta = const VerificationMeta(
     'workStart',
   );
@@ -4339,6 +4453,7 @@ class $EmployeesTable extends Employees
     baseSalary,
     startDate,
     nfcTag,
+    barcode,
     workStart,
     workEnd,
     requiresAttendance,
@@ -4425,6 +4540,12 @@ class $EmployeesTable extends Employees
       context.handle(
         _nfcTagMeta,
         nfcTag.isAcceptableOrUnknown(data['nfc_tag']!, _nfcTagMeta),
+      );
+    }
+    if (data.containsKey('barcode')) {
+      context.handle(
+        _barcodeMeta,
+        barcode.isAcceptableOrUnknown(data['barcode']!, _barcodeMeta),
       );
     }
     if (data.containsKey('work_start')) {
@@ -4525,6 +4646,10 @@ class $EmployeesTable extends Employees
         DriftSqlType.string,
         data['${effectivePrefix}nfc_tag'],
       ),
+      barcode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}barcode'],
+      ),
       workStart: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}work_start'],
@@ -4570,6 +4695,7 @@ class Employee extends DataClass implements Insertable<Employee> {
   final int? baseSalary;
   final DateTime? startDate;
   final String? nfcTag;
+  final String? barcode;
   final String? workStart;
   final String? workEnd;
   final bool requiresAttendance;
@@ -4588,6 +4714,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     this.baseSalary,
     this.startDate,
     this.nfcTag,
+    this.barcode,
     this.workStart,
     this.workEnd,
     required this.requiresAttendance,
@@ -4622,6 +4749,9 @@ class Employee extends DataClass implements Insertable<Employee> {
     }
     if (!nullToAbsent || nfcTag != null) {
       map['nfc_tag'] = Variable<String>(nfcTag);
+    }
+    if (!nullToAbsent || barcode != null) {
+      map['barcode'] = Variable<String>(barcode);
     }
     if (!nullToAbsent || workStart != null) {
       map['work_start'] = Variable<String>(workStart);
@@ -4663,6 +4793,9 @@ class Employee extends DataClass implements Insertable<Employee> {
       nfcTag: nfcTag == null && nullToAbsent
           ? const Value.absent()
           : Value(nfcTag),
+      barcode: barcode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(barcode),
       workStart: workStart == null && nullToAbsent
           ? const Value.absent()
           : Value(workStart),
@@ -4693,6 +4826,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       baseSalary: serializer.fromJson<int?>(json['baseSalary']),
       startDate: serializer.fromJson<DateTime?>(json['startDate']),
       nfcTag: serializer.fromJson<String?>(json['nfcTag']),
+      barcode: serializer.fromJson<String?>(json['barcode']),
       workStart: serializer.fromJson<String?>(json['workStart']),
       workEnd: serializer.fromJson<String?>(json['workEnd']),
       requiresAttendance: serializer.fromJson<bool>(json['requiresAttendance']),
@@ -4716,6 +4850,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       'baseSalary': serializer.toJson<int?>(baseSalary),
       'startDate': serializer.toJson<DateTime?>(startDate),
       'nfcTag': serializer.toJson<String?>(nfcTag),
+      'barcode': serializer.toJson<String?>(barcode),
       'workStart': serializer.toJson<String?>(workStart),
       'workEnd': serializer.toJson<String?>(workEnd),
       'requiresAttendance': serializer.toJson<bool>(requiresAttendance),
@@ -4737,6 +4872,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     Value<int?> baseSalary = const Value.absent(),
     Value<DateTime?> startDate = const Value.absent(),
     Value<String?> nfcTag = const Value.absent(),
+    Value<String?> barcode = const Value.absent(),
     Value<String?> workStart = const Value.absent(),
     Value<String?> workEnd = const Value.absent(),
     bool? requiresAttendance,
@@ -4755,6 +4891,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     baseSalary: baseSalary.present ? baseSalary.value : this.baseSalary,
     startDate: startDate.present ? startDate.value : this.startDate,
     nfcTag: nfcTag.present ? nfcTag.value : this.nfcTag,
+    barcode: barcode.present ? barcode.value : this.barcode,
     workStart: workStart.present ? workStart.value : this.workStart,
     workEnd: workEnd.present ? workEnd.value : this.workEnd,
     requiresAttendance: requiresAttendance ?? this.requiresAttendance,
@@ -4777,6 +4914,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           : this.baseSalary,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
       nfcTag: data.nfcTag.present ? data.nfcTag.value : this.nfcTag,
+      barcode: data.barcode.present ? data.barcode.value : this.barcode,
       workStart: data.workStart.present ? data.workStart.value : this.workStart,
       workEnd: data.workEnd.present ? data.workEnd.value : this.workEnd,
       requiresAttendance: data.requiresAttendance.present
@@ -4806,6 +4944,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           ..write('baseSalary: $baseSalary, ')
           ..write('startDate: $startDate, ')
           ..write('nfcTag: $nfcTag, ')
+          ..write('barcode: $barcode, ')
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
@@ -4829,6 +4968,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     baseSalary,
     startDate,
     nfcTag,
+    barcode,
     workStart,
     workEnd,
     requiresAttendance,
@@ -4851,6 +4991,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           other.baseSalary == this.baseSalary &&
           other.startDate == this.startDate &&
           other.nfcTag == this.nfcTag &&
+          other.barcode == this.barcode &&
           other.workStart == this.workStart &&
           other.workEnd == this.workEnd &&
           other.requiresAttendance == this.requiresAttendance &&
@@ -4871,6 +5012,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
   final Value<int?> baseSalary;
   final Value<DateTime?> startDate;
   final Value<String?> nfcTag;
+  final Value<String?> barcode;
   final Value<String?> workStart;
   final Value<String?> workEnd;
   final Value<bool> requiresAttendance;
@@ -4889,6 +5031,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.baseSalary = const Value.absent(),
     this.startDate = const Value.absent(),
     this.nfcTag = const Value.absent(),
+    this.barcode = const Value.absent(),
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
@@ -4908,6 +5051,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.baseSalary = const Value.absent(),
     this.startDate = const Value.absent(),
     this.nfcTag = const Value.absent(),
+    this.barcode = const Value.absent(),
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
@@ -4929,6 +5073,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Expression<int>? baseSalary,
     Expression<DateTime>? startDate,
     Expression<String>? nfcTag,
+    Expression<String>? barcode,
     Expression<String>? workStart,
     Expression<String>? workEnd,
     Expression<bool>? requiresAttendance,
@@ -4948,6 +5093,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       if (baseSalary != null) 'base_salary': baseSalary,
       if (startDate != null) 'start_date': startDate,
       if (nfcTag != null) 'nfc_tag': nfcTag,
+      if (barcode != null) 'barcode': barcode,
       if (workStart != null) 'work_start': workStart,
       if (workEnd != null) 'work_end': workEnd,
       if (requiresAttendance != null) 'requires_attendance': requiresAttendance,
@@ -4969,6 +5115,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Value<int?>? baseSalary,
     Value<DateTime?>? startDate,
     Value<String?>? nfcTag,
+    Value<String?>? barcode,
     Value<String?>? workStart,
     Value<String?>? workEnd,
     Value<bool>? requiresAttendance,
@@ -4988,6 +5135,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       baseSalary: baseSalary ?? this.baseSalary,
       startDate: startDate ?? this.startDate,
       nfcTag: nfcTag ?? this.nfcTag,
+      barcode: barcode ?? this.barcode,
       workStart: workStart ?? this.workStart,
       workEnd: workEnd ?? this.workEnd,
       requiresAttendance: requiresAttendance ?? this.requiresAttendance,
@@ -5033,6 +5181,9 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     if (nfcTag.present) {
       map['nfc_tag'] = Variable<String>(nfcTag.value);
     }
+    if (barcode.present) {
+      map['barcode'] = Variable<String>(barcode.value);
+    }
     if (workStart.present) {
       map['work_start'] = Variable<String>(workStart.value);
     }
@@ -5068,6 +5219,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
           ..write('baseSalary: $baseSalary, ')
           ..write('startDate: $startDate, ')
           ..write('nfcTag: $nfcTag, ')
+          ..write('barcode: $barcode, ')
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
@@ -25555,6 +25707,8 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<int> stock,
       Value<int> minStock,
       Value<String?> imagePath,
+      Value<String?> imageBase64,
+      Value<bool> isService,
       Value<bool> isOnline,
       Value<DateTime?> expiryDate,
       Value<String?> productType,
@@ -25578,6 +25732,8 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<int> stock,
       Value<int> minStock,
       Value<String?> imagePath,
+      Value<String?> imageBase64,
+      Value<bool> isService,
       Value<bool> isOnline,
       Value<DateTime?> expiryDate,
       Value<String?> productType,
@@ -25654,6 +25810,16 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get imagePath => $composableBuilder(
     column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageBase64 => $composableBuilder(
+    column: $table.imageBase64,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isService => $composableBuilder(
+    column: $table.isService,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -25767,6 +25933,16 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get imageBase64 => $composableBuilder(
+    column: $table.imageBase64,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isService => $composableBuilder(
+    column: $table.isService,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isOnline => $composableBuilder(
     column: $table.isOnline,
     builder: (column) => ColumnOrderings(column),
@@ -25857,6 +26033,14 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<String> get imagePath =>
       $composableBuilder(column: $table.imagePath, builder: (column) => column);
 
+  GeneratedColumn<String> get imageBase64 => $composableBuilder(
+    column: $table.imageBase64,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isService =>
+      $composableBuilder(column: $table.isService, builder: (column) => column);
+
   GeneratedColumn<bool> get isOnline =>
       $composableBuilder(column: $table.isOnline, builder: (column) => column);
 
@@ -25932,6 +26116,8 @@ class $$ProductsTableTableManager
                 Value<int> stock = const Value.absent(),
                 Value<int> minStock = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> imageBase64 = const Value.absent(),
+                Value<bool> isService = const Value.absent(),
                 Value<bool> isOnline = const Value.absent(),
                 Value<DateTime?> expiryDate = const Value.absent(),
                 Value<String?> productType = const Value.absent(),
@@ -25953,6 +26139,8 @@ class $$ProductsTableTableManager
                 stock: stock,
                 minStock: minStock,
                 imagePath: imagePath,
+                imageBase64: imageBase64,
+                isService: isService,
                 isOnline: isOnline,
                 expiryDate: expiryDate,
                 productType: productType,
@@ -25976,6 +26164,8 @@ class $$ProductsTableTableManager
                 Value<int> stock = const Value.absent(),
                 Value<int> minStock = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> imageBase64 = const Value.absent(),
+                Value<bool> isService = const Value.absent(),
                 Value<bool> isOnline = const Value.absent(),
                 Value<DateTime?> expiryDate = const Value.absent(),
                 Value<String?> productType = const Value.absent(),
@@ -25997,6 +26187,8 @@ class $$ProductsTableTableManager
                 stock: stock,
                 minStock: minStock,
                 imagePath: imagePath,
+                imageBase64: imageBase64,
+                isService: isService,
                 isOnline: isOnline,
                 expiryDate: expiryDate,
                 productType: productType,
@@ -27397,6 +27589,7 @@ typedef $$EmployeesTableCreateCompanionBuilder =
       Value<int?> baseSalary,
       Value<DateTime?> startDate,
       Value<String?> nfcTag,
+      Value<String?> barcode,
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
@@ -27417,6 +27610,7 @@ typedef $$EmployeesTableUpdateCompanionBuilder =
       Value<int?> baseSalary,
       Value<DateTime?> startDate,
       Value<String?> nfcTag,
+      Value<String?> barcode,
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
@@ -27486,6 +27680,11 @@ class $$EmployeesTableFilterComposer
 
   ColumnFilters<String> get nfcTag => $composableBuilder(
     column: $table.nfcTag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get barcode => $composableBuilder(
+    column: $table.barcode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -27584,6 +27783,11 @@ class $$EmployeesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get barcode => $composableBuilder(
+    column: $table.barcode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get workStart => $composableBuilder(
     column: $table.workStart,
     builder: (column) => ColumnOrderings(column),
@@ -27659,6 +27863,9 @@ class $$EmployeesTableAnnotationComposer
   GeneratedColumn<String> get nfcTag =>
       $composableBuilder(column: $table.nfcTag, builder: (column) => column);
 
+  GeneratedColumn<String> get barcode =>
+      $composableBuilder(column: $table.barcode, builder: (column) => column);
+
   GeneratedColumn<String> get workStart =>
       $composableBuilder(column: $table.workStart, builder: (column) => column);
 
@@ -27723,6 +27930,7 @@ class $$EmployeesTableTableManager
                 Value<int?> baseSalary = const Value.absent(),
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<String?> nfcTag = const Value.absent(),
+                Value<String?> barcode = const Value.absent(),
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
@@ -27741,6 +27949,7 @@ class $$EmployeesTableTableManager
                 baseSalary: baseSalary,
                 startDate: startDate,
                 nfcTag: nfcTag,
+                barcode: barcode,
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,
@@ -27761,6 +27970,7 @@ class $$EmployeesTableTableManager
                 Value<int?> baseSalary = const Value.absent(),
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<String?> nfcTag = const Value.absent(),
+                Value<String?> barcode = const Value.absent(),
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
@@ -27779,6 +27989,7 @@ class $$EmployeesTableTableManager
                 baseSalary: baseSalary,
                 startDate: startDate,
                 nfcTag: nfcTag,
+                barcode: barcode,
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,

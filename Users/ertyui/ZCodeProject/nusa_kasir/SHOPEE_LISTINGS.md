@@ -1,7 +1,6 @@
 # NUSA — Shopee Product Listings (8 Varian)
 
 > **PENTING:** JANGAN cantumkan nomor WA penjual di deskripsi. Buyer tulis nomor WA mereka sendiri di kolom "Pesan untuk Penjual" saat checkout.
-> Lisensi digital dikirim via WhatsApp. Bonus Kartu NFC dikirim via ekspedisi reguler.
 
 ---
 
@@ -10,9 +9,8 @@
 | Nama Variasi | Harga | Isi |
 |---|---|---|
 | **1Bulan** | Rp49.000 | Lisensi 1 bulan penuh (APK + kode aktivasi) via WhatsApp |
-| **Lifetime** | Rp249.000 | Lisensi seumur hidup via WhatsApp + **FREE Kartu NFC 2pcs** (NTAG215) dikirim fisik |
+| **Lifetime** | Rp249.000 | Lisensi seumur hidup via WhatsApp dikirim via WhatsApp |
 
-> Kartu NFC adalah bonus gratis tidak dipungut biaya tambahan. Bisa digunakan untuk tap-to-pay, absensi, scan produk, dsb. Spesifikasi: NTAG215, compatible semua HP Android NFC.
 
 ---
 
@@ -25,7 +23,7 @@
 | **Berat** | 50 gram (variasi Lifetime); 1 gram (variasi 1Bulan) |
 | **Pengiriman** | Ekspedisi reguler (variasi Lifetime); Pengiriman Digital (variasi 1Bulan) |
 | **Stok** | 999 |
-| **Gambar** | Screenshot dari landing page + tampilan aplikasi + foto Kartu NFC |
+| **Gambar** | Screenshot dari landing page + tampilan aplikasi + foto aplikasi |
 
 ---
 
@@ -76,7 +74,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -84,7 +81,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -113,7 +109,6 @@ Selain mencetak struk pembelian dalam format kertas (via printer Bluetooth therm
 
 NUSA F&B adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -146,7 +141,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -154,7 +148,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -183,7 +176,6 @@ Selain mencetak struk pembelian dalam format kertas (via printer Bluetooth therm
 
 NUSA Laundry adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -216,7 +208,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -224,7 +215,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -253,7 +243,6 @@ Selain mencetak invoice & struk dalam format kertas (via printer Bluetooth therm
 
 NUSA Bengkel adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -287,7 +276,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -295,7 +283,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -324,7 +311,6 @@ Selain mencetak struk dalam format kertas (via printer Bluetooth thermal) juga b
 
 NUSA Salon adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -357,7 +343,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -365,7 +350,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -394,7 +378,6 @@ Selain mencetak struk dalam format kertas (via printer Bluetooth thermal) juga b
 
 NUSA Apotek adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -428,7 +411,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -436,7 +418,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -465,7 +446,6 @@ Selain mencetak struk dalam format kertas (via printer Bluetooth thermal) juga b
 
 NUSA Fotocopy adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -498,7 +478,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -506,7 +485,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -535,7 +513,6 @@ Selain mencetak invoice & struk dalam format kertas (via printer Bluetooth therm
 
 NUSA Servis adalah **PRODUK DIGITAL** berupa aplikasi Android, **TIDAK TERMASUK PRINTER/ALAT CETAK, HANYA APLIKASI**. Kalau membutuhkan paket bundling dengan Printer Thermal, silahkan chat kami dulu untuk info ketersediaan.
 
-**BONUS:** Pilih variasi "Lisensi Penuh + Bonus NFC" dapat **FREE Kartu NFC 2pcs** (NTAG215). Bisa dipakai untuk tap-to-pay, absensi pelanggan, scan produk, dan integrasi dengan aplikasi NUSA.
 
 ---
 
@@ -569,7 +546,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 **PENGIRIMAN:**
 
 - **Lisensi Digital:** Dikirim via WhatsApp (APK + kode aktivasi)
-- **Kartu NFC (variasi Lifetime):** Dikirim fisik via ekspedisi reguler (FREE, tidak dipungut biaya)
 
 ---
 
@@ -577,7 +553,6 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 
 1. **TULIS NOMOR WHATSAPP AKTIF KAMU** di kolom "Pesan untuk Penjual" saat checkout
 2. Lisensi digital dikirim via WhatsApp maksimal 1x24 jam setelah pesanan diterima
-3. Kartu NFC (untuk variasi Lifetime) dikirim via ekspedisi dalam 1-2 hari kerja
 
 ---
 
@@ -614,9 +589,9 @@ S&K berlaku: Terhitung mulai dari tanggal pembelian.
 - [ ] Nama produk sudah format: `Aplikasi Kasir Digital untuk [bisnis] (Android) — NUSA [varian]`
 - [ ] Deskripsi sudah Kasmini-style (intro → NOTE → fitur → garansi → pengiriman → catatan)
 - [ ] **TIDAK ada nomor WA penjual** di deskripsi
-- [ ] Variasi: 1Bulan (Rp49K), Lifetime (Rp249K + bonus Kartu NFC 2pcs)
+- [ ] Variasi: 1Bulan (Rp49K), Lifetime (Rp249K)
 - [ ] Kategori: Handphone & Aksesoris > Aplikasi & Software > Aplikasi Bisnis
 - [ ] Berat: 50 gram (variasi Lifetime); 1 gram (variasi 1Bulan)
 - [ ] Pengiriman: Ekspedisi reguler (variasi Lifetime); Digital (variasi 1Bulan)
-- [ ] Gambar produk: screenshot landing page + tampilan aplikasi + foto Kartu NFC (3-5 foto)
+- [ ] Gambar produk: screenshot landing page + tampilan aplikasi + foto aplikasi (3-5 foto)
 - [ ] SKU: NUSA-[VARIAN]-V1 (contoh: NUSA-KELONTONG-V1)

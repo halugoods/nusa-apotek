@@ -18,6 +18,8 @@ import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
+import 'package:nusa_kasir/shared/widgets/unit_manager_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -60,6 +62,7 @@ Future<int?> showProductFormSheet(
   int? productId,
   int? supplierId,
   String? supplierName,
+  bool? isService,
 }) {
   return showModalBottomSheet<int>(
     context: context,
@@ -69,6 +72,7 @@ Future<int?> showProductFormSheet(
       productId: productId,
       supplierId: supplierId,
       supplierName: supplierName,
+      isService: isService,
     ),
   );
 }
@@ -80,10 +84,14 @@ class ProductFormSheet extends ConsumerStatefulWidget {
   /// langsung ON + terisi.
   final int? supplierId;
   final String? supplierName;
+
+  /// B10 (v2.2.44): preset produk sebagai LAYANAN (dibuka dari tab Layanan).
+  final bool? isService;
   const ProductFormSheet({
     this.productId,
     this.supplierId,
     this.supplierName,
+    this.isService,
     super.key,
   });
   @override
@@ -109,6 +117,9 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   bool _isOnline = false;
   String? _imagePath;
   DateTime? _expiryDate;
+  // B10 (v2.2.44): produk = LAYANAN (jasa). Tanpa wajib stok, kategori default
+  // 'Layanan'. Barcode tetap boleh (keputusan user: jangan dihilangkan).
+  bool _isService = false;
   // Diskon: 'persen' | 'nominal' (Rp)
   String _discountType = ProductDiscountX.typePersen;
 
@@ -145,6 +156,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
     super.initState();
     _barcode = ActivationKey.generateSerial();
     _barcodeCtrl.text = _barcode;
+    // B10: preset layanan dari tab Layanan (add mode).
+    _isService = widget.isService ?? false;
     _init();
   }
 
@@ -256,6 +269,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
       _imagePath = p.imagePath;
       _isOnline = p.isOnline;
       _expiryDate = p.expiryDate;
+      // B10: flag layanan produk (edit mode) — override preset awal.
+      _isService = p.isService;
       // Supplier tersimpan pada produk (edit mode).
       if (p.supplierId != null) {
         _hasSupplier = true;
@@ -539,6 +554,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   : ProductDiscountX.typePersen,
             ),
             supplierId: supplierVal,
+            isService: Value(_isService),
           ),
         );
       } else {
@@ -567,6 +583,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                       : ProductDiscountX.typePersen,
                 ),
                 supplierId: supplierVal,
+                isService: Value(_isService),
               ),
             );
       }
@@ -638,7 +655,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
           ),
           decoration: InputDecoration(
             labelText: 'Nama Kategori',
-            hintText: 'Cth: Sembako',
+            hintText: NusaConfig.hintsFor('productCategory'),
             hintStyle: TextStyle(
               color: isDark
                   ? NusaConfig.darkTextTertiary
@@ -675,14 +692,28 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        10,
+    // B6: scan barcode EKSTERNAL (HID) di mana pun dalam form → isi kolom
+    // barcode + aktifkan toggle. Scanner bertingkah keyboard; HidBarcodeListener
+    // menangkapnya di level Focus TANPA membuka keypad layar.
+    return HidBarcodeListener(
+      onBarcode: (code) {
+        final norm = ProductRepository.normalizeBarcode(code);
+        if (norm.isEmpty) return;
+        setState(() {
+          _barcode = norm;
+          _barcodeCtrl.text = norm;
+          _barcodeOn = true;
+        });
+        TopToast.success(context, 'Barcode: $norm');
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          10,
         20,
         MediaQuery.of(context).viewInsets.bottom + 20,
       ),
@@ -752,7 +783,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   NusaFormField(
                     label: 'Nama Produk',
                     controller: _name,
-                    hintText: 'Cth: Indomie Goreng',
+                    hintText: NusaConfig.hintsFor('productName'),
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
 
@@ -848,6 +879,31 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     ],
                   ),
                   SizedBox(height: NusaConfig.spaceMD),
+
+                  // ── B10: Toggle: Layanan (jasa) — BUKAN produk fisik ──
+                  // Varian jasa: layanan tanpa wajib stok, masuk kategori
+                  // "Layanan". Barcode tetap boleh (keputusan user).
+                  if (NusaConfig.isJasaVariant) ...[
+                    _buildToggleCard(
+                      title: 'Layanan (Jasa)',
+                      icon: Icons.handyman_outlined,
+                      value: _isService,
+                      onChanged: (v) => setState(() {
+                        _isService = v;
+                        if (v) {
+                          // Layanan: kategori default "Layanan" (bisa diganti),
+                          // stok di-nol-kan (tidak dilacak).
+                          if (_category.isEmpty) _category = 'Layanan';
+                          _stock.text = '0';
+                          _hasVarian = false;
+                          _variants.clear();
+                          _hasGrosir = false;
+                          _wholesaleTiers.clear();
+                        }
+                      }),
+                    ),
+                    SizedBox(height: NusaConfig.spaceSM),
+                  ],
 
                   // ── Toggle: Varian ──
                   _buildToggleCard(
@@ -954,7 +1010,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                                         ),
                                         decoration: InputDecoration(
                                           labelText: 'Kode barcode',
-                                          hintText: 'contoh: 8991002101234',
+                                          hintText: NusaConfig.hintsFor('barcode'),
                                           isDense: true,
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(
@@ -1163,6 +1219,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                 ],
               ),
             ),
+      ),
     );
   }
 
@@ -2511,12 +2568,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   /// "Kelola Satuan" — CRUD kamus satuan global (tambah/rename/hapus).
   Future<void> _openUnitManager() async {
     final repo = RecipeRepository(ref.read(databaseProvider));
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _UnitManagerSheet(repo: repo),
-    );
+    final result = await UnitManagerSheet.show(context: context, repo: repo);
     if (result == true && mounted) {
       // Kamus berubah → reload + pertahankan pilihan lama kalau masih ada.
       final units = await repo.getUnits();
@@ -2761,241 +2813,6 @@ class _SellingUnitPickerSheetState extends State<_SellingUnitPickerSheet> {
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('Tambah'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// CRUD kamus satuan global (tambah/rename/hapus) — dibuka dari form produk.
-/// Return true bila kamus diubah (biar pemanggil reload).
-class _UnitManagerSheet extends StatefulWidget {
-  final RecipeRepository repo;
-  const _UnitManagerSheet({required this.repo});
-
-  @override
-  State<_UnitManagerSheet> createState() => _UnitManagerSheetState();
-}
-
-class _UnitManagerSheetState extends State<_UnitManagerSheet> {
-  late Future<List<Unit>> _future;
-  final _newCtrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _future = widget.repo.getUnits();
-  }
-
-  @override
-  void dispose() {
-    _newCtrl.dispose();
-    super.dispose();
-  }
-
-  void _reload() {
-    setState(() => _future = widget.repo.getUnits());
-  }
-
-  Future<void> _add() async {
-    final name = _newCtrl.text.trim();
-    if (name.isEmpty) {
-      TopToast.error(context, 'Isi nama satuan');
-      return;
-    }
-    try {
-      await widget.repo.addUnit(name);
-      _newCtrl.clear();
-      _reload();
-    } catch (_) {
-      TopToast.error(context, 'Satuan "$name" sudah ada');
-    }
-  }
-
-  Future<void> _rename(Unit u) async {
-    final newCtrl = TextEditingController(text: u.name);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Ubah Satuan'),
-        content: TextField(
-          controller: newCtrl,
-          autofocus: true,
-          decoration: InputDecoration(labelText: 'Nama satuan'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, newCtrl.text.trim()),
-            child: Text('Simpan'),
-          ),
-        ],
-      ),
-    );
-    newCtrl.dispose();
-    if (result == null || result.isEmpty || result == u.name) return;
-    try {
-      await widget.repo.renameUnit(u.id, result);
-      _reload();
-    } catch (_) {
-      TopToast.error(context, 'Nama satuan sudah ada');
-    }
-  }
-
-  Future<void> _delete(Unit u) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Hapus Satuan "${u.name}"?'),
-        content: Text(
-          'Satuan yang dipakai bahan/produk akan dilepas (tidak dihapus datanya).',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Hapus'),
-            style: TextButton.styleFrom(foregroundColor: NusaConfig.error),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await widget.repo.deleteUnit(u.id);
-    _reload();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SafeArea(
-      child: Container(
-        margin: EdgeInsets.all(12),
-        padding: EdgeInsets.all(20),
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Kelola Satuan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? NusaConfig.darkTextPrimary
-                          : NusaConfig.textPrimary,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.close, color: NusaConfig.textSecondary),
-                  onPressed: () {
-                    // Tutup dengan hasil "diubah" bila ada — simpel: selalu true
-                    // karena pemanggil reload kamus sendiri.
-                    Navigator.pop(context, true);
-                  },
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            // Tambah baru
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _newCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Nama satuan baru (cth: dus)',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onSubmitted: (_) => _add(),
-                  ),
-                ),
-                SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _add,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: NusaConfig.activePrimary,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                  child: Text('Tambah'),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
-            Expanded(
-              child: FutureBuilder<List<Unit>>(
-                future: _future,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-                  final units = snap.data ?? const [];
-                  if (units.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'Belum ada satuan. Tambah di atas.',
-                        style: TextStyle(
-                          color: NusaConfig.textSecondary,
-                        ),
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    itemCount: units.length,
-                    separatorBuilder: (_, __) => Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final u = units[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          u.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary,
-                          ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(Icons.edit_outlined, size: 20),
-                              color: NusaConfig.activePrimary,
-                              onPressed: () => _rename(u),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.delete_outline, size: 20),
-                              color: NusaConfig.error,
-                              onPressed: () => _delete(u),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
               ),
             ),
           ],

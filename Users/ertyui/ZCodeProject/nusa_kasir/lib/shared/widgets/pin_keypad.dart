@@ -4,6 +4,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/widgets/animated_builder.dart'
     show NusaAnimatedBuilder;
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 
 /// A standalone numeric keypad — EDC/ATM physical-keypad style.
 ///
@@ -31,6 +32,7 @@ class PinKeypad extends StatefulWidget {
   final String? error;
   final bool showFingerprint;
   final bool showNfc;
+  final bool showBarcode;
   final bool showCancel;
   final Future<bool> Function()? onFingerprint;
   final VoidCallback? onFingerprintSuccess;
@@ -38,6 +40,7 @@ class PinKeypad extends StatefulWidget {
   final VoidCallback? onCancel;
   final ValueChanged<String>? onChanged;
   final Future<String?> Function()? onNfc;
+  final Future<String?> Function(String code)? onBarcode;
 
   PinKeypad({
     super.key,
@@ -45,6 +48,7 @@ class PinKeypad extends StatefulWidget {
     this.error,
     this.showFingerprint = false,
     this.showNfc = false,
+    this.showBarcode = false,
     this.showCancel = false,
     this.onFingerprint,
     this.onFingerprintSuccess,
@@ -52,6 +56,7 @@ class PinKeypad extends StatefulWidget {
     this.onCancel,
     this.onChanged,
     this.onNfc,
+    this.onBarcode,
   }) : assert(length == 4 || length == 6);
 
   @override
@@ -62,6 +67,7 @@ class PinKeypadState extends State<PinKeypad>
     with SingleTickerProviderStateMixin {
   String _digits = '';
   bool _nfcScanning = false;
+  bool _barcodeScanning = false;
   bool _biometricAvailable = false;
   IconData _biometricIcon = Icons.fingerprint;
 
@@ -100,6 +106,13 @@ class PinKeypadState extends State<PinKeypad>
         if (mounted) _autoStartNfc();
       });
     }
+    // ── Barcode auto-start (B8): sama seperti NFC — scanner HID langsung
+    // aktif, user tinggal scan id-card tanpa perlu tap apa pun.
+    if (widget.showBarcode && widget.onBarcode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _autoStartBarcode();
+      });
+    }
   }
 
   @override
@@ -125,6 +138,10 @@ class PinKeypadState extends State<PinKeypad>
     // this catches that transition and auto-starts the NFC session.
     if (!oldWidget.showNfc && widget.showNfc && widget.onNfc != null) {
       _autoStartNfc();
+    }
+    // Barcode auto-start saat showBarcode berubah true.
+    if (!oldWidget.showBarcode && widget.showBarcode && widget.onBarcode != null) {
+      _autoStartBarcode();
     }
   }
 
@@ -203,6 +220,30 @@ class PinKeypadState extends State<PinKeypad>
     _onNfcTap();
   }
 
+  /// Scan barcode karyawan (B8) — jalur auth ke-4 (PIN/FP/NFC/barcode).
+  /// Dict hijack via HidBarcodeListener aktif di level Focus TANPA membuka
+  /// keypad layar. Scanner HID "mengetik" barcode lalu kirim Enter →
+  /// code hasil buffer diteruskan ke resolver `onBarcode(code)`; jika terima
+  /// `String?` non-null, diserahkan ke `onComplete` seperti hasil ketik PIN.
+  Future<void> _onBarcodeScan(String code) async {
+    if (widget.onBarcode == null || _barcodeScanning) return;
+    setState(() => _barcodeScanning = true);
+    try {
+      final result = await widget.onBarcode!(code);
+      if (result != null && mounted) {
+        widget.onComplete?.call(result);
+      }
+    } finally {
+      if (mounted) setState(() => _barcodeScanning = false);
+    }
+  }
+
+  void _autoStartBarcode() {
+    // HidBarcodeListener di widget tree sudah mengambil fokus dan langsung
+    // menangkap scan. Reset flag supaya scan berikutnya diizinkan.
+    if (mounted) setState(() => _barcodeScanning = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -247,7 +288,15 @@ class PinKeypadState extends State<PinKeypad>
         }
         return KeyEventResult.ignored;
       },
-      child: Column(
+      // Barcode scan (B8): HidBarcodeListener di level Focus TANPA TextInput
+      // → scanner HID jalan tanpa membuka keypad layar, cocok untuk id-card.
+      child: HidBarcodeListener(
+        onBarcode: (code) {
+          if (widget.showBarcode && widget.onBarcode != null) {
+            _onBarcodeScan(code);
+          }
+        },
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // ── Dot indicators + error (shake only this block) ──
@@ -438,6 +487,70 @@ class PinKeypadState extends State<PinKeypad>
             ),
           ],
 
+          // ── Barcode: static hint card (below keypad) ───
+          // B8 — jalur auth ke-4: scan id-card ber-barcode. HidBarcodeListener
+          // di atas sudah mengambil fokus; kartu ini hanya hint + status.
+          if (widget.showBarcode) ...[
+            SizedBox(height: 10),
+            AbsorbPointer(
+              absorbing: _barcodeScanning,
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.borderColor,
+                  ),
+                  color: isDark
+                      ? NusaConfig.darkSurface
+                      : NusaConfig.surfaceColor,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _barcodeScanning
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: NusaConfig.accentPurple,
+                              ),
+                            )
+                          : Icon(
+                              Icons.qr_code_2,
+                              size: 18,
+                              color: NusaConfig.accentPurple,
+                            ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      _barcodeScanning
+                          ? 'Memproses barcode…'
+                          : 'Scan Barcode ID',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           // ── Cancel (card style) ──────────────────────
           if (widget.showCancel) ...[
             SizedBox(height: 8),
@@ -471,6 +584,7 @@ class PinKeypadState extends State<PinKeypad>
           // Bottom padding so NFC / cancel card doesn't stick to edge
           SizedBox(height: 8),
         ],
+        ),
       ),
     );
   }

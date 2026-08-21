@@ -19,6 +19,12 @@ class Products extends Table {
   IntColumn get stock => integer().withDefault(const Constant(0))();
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   TextColumn get imagePath => text().nullable()();
+  // v2.2.44 (B1): foto produk sebagai BASE64 — ikut backup/restore cloud
+  // (imagePath hanya path lokal yang tidak ikut cloud).
+  TextColumn get imageBase64 => text().nullable()();
+  // v2.2.44 (B10): true = produk bertipe jasa/layanan (tanpa stok wajib,
+  // barcode tetap boleh). Menjadi dasar Tab Layanan di POS + menu Produk.
+  BoolColumn get isService => boolean().withDefault(const Constant(false))();
   BoolColumn get isOnline => boolean().withDefault(const Constant(false))();
   DateTimeColumn get expiryDate => dateTime().nullable()();
   TextColumn get productType => text().nullable()();
@@ -154,6 +160,9 @@ class Employees extends Table {
   IntColumn get baseSalary => integer().nullable()();
   DateTimeColumn get startDate => dateTime().nullable()();
   TextColumn get nfcTag => text().nullable()(); // NFC tag hash for tap-to-login
+  // v2.2.44 (B8): barcode karyawan — jalur auth ke-4 (PIN/FP/NFC/barcode).
+  // Owner bisa cetak id-card ber-barcode → scan HID untuk login/presensi.
+  TextColumn get barcode => text().nullable()();
   TextColumn get workStart => text().nullable()(); // "HH:mm" default "08:00"
   TextColumn get workEnd => text().nullable()(); // "HH:mm" default "17:00"
   BoolColumn get requiresAttendance =>

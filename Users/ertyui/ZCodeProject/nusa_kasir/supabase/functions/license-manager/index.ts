@@ -278,7 +278,7 @@ async function sendActivationEmail(
         ? "1 Bulan"
         : "Lifetime";
   const tierPrice =
-    tier === "trial" ? "GRATIS" : tier === "1month" ? "Rp 49K" : "Rp 199K";
+    tier === "trial" ? "GRATIS" : tier === "1month" ? "Rp 49K" : "Rp 249K";
 
   const subject =
     tier === "trial"
@@ -294,14 +294,14 @@ async function sendActivationEmail(
       ? `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:24px">
         <p style="margin:0;font-size:13px;color:#92400e">
           ⏳ <strong>Trial 3 Hari</strong> — Key ini berlaku selama 3 hari sejak aktivasi pertama.<br>
-          Setelah masa trial habis, kamu bisa beli lisensi seharga <strong>Rp 49K/bulan</strong> atau <strong>Rp 199K lifetime</strong>.
+          Setelah masa trial habis, kamu bisa beli lisensi seharga <strong>Rp 49K/bulan</strong> atau <strong>Rp 249K lifetime</strong>.
         </p>
       </div>`
       : tier === "1month"
         ? `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:24px">
         <p style="margin:0;font-size:13px;color:#92400e">
           📅 <strong>Lisensi 1 Bulan</strong> — Berlaku 30 hari sejak aktivasi.<br>
-          Ingin selamanya? Upgrade ke <strong>Rp 199K lifetime</strong> kapan saja.
+          Ingin selamanya? Upgrade ke <strong>Rp 249K lifetime</strong> kapan saja.
         </p>
       </div>`
         : `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:24px">

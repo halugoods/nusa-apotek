@@ -68,6 +68,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   // Screen state: 'welcome' | 'google_loading' | 'decision' | 'pin' | 'key'
   String _screen = 'welcome';
 
+  // v2.2.44 (L2/L3): expires_at lisensi yang habis — untuk countdown grace
+  // 7 hari (H-7 diterima server; H+7 key di-revoke) di layar blokir.
+  DateTime? _licenseExpiry;
+
   @override
   void initState() {
     super.initState();
@@ -126,6 +130,21 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
   Future<void> _openLandingPage() async {
     final uri = Uri.parse(NusaConfig.landingPageUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// v2.2.44 (L4): buka halaman pembayaran /pay (abstrak — gateway bisa
+  /// diganti di web tanpa menyentuh app). Kalau belum login Google, pakai
+  /// _googleId kalau ada; kalau kosong, buka tanpa google_id (web minta login).
+  Future<void> _openPayPage() async {
+    final googleId = _googleId;
+    final uri = Uri.parse(
+      googleId != null && googleId.isNotEmpty
+          ? NusaConfig.paymentLink(googleId, 'lifetime')
+          : '${NusaConfig.paymentUrl}?product=${NusaConfig.productId}',
+    );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -445,6 +464,15 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   /// (harus hapus data aplikasi dulu). Key aktivasi berlaku per-varian,
   /// bukan per-akun — jadi key lama tidak menjamin backup akun baru sudah
   /// di-restore.
+  ///
+  /// v2.2.44 (L2): CEK CLOUD SELALU (sekali per session), bukan cuma saat
+  /// belum aktivasi. Sebelumnya `isActivated` early-return → user yang sudah
+  /// aktivasi TIDAK PERNAH diblokir walau lisensi (mis. 1 bulan) sudah habis.
+  /// register_activation CHECK sekarang mengembalikan has_license=false +
+  /// is_expired=true untuk Active yang expires_at lewat (server fix L1) —
+  /// jadi di sini tinggal percaya pada respon cloud. Grace 7 hari = app
+  /// LANGSUNG terkunci sejak expires_at lewat; countdown ditampilkan di
+  /// layar blokir (L3).
   Future<void> _checkLicenseStatus(String googleUserId) async {
     // ── v2.2.40: catat akun yang baru login. Kalau akun ini BEDA dari yang
     // terakhir tersimpan → data lokal milik akun lain / fresh install di atas
@@ -452,6 +480,43 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     final prevLinked = await SecureStore.getLinkedAccountId();
     final accountSwitched = (prevLinked != null && prevLinked != googleUserId);
     await SecureStore.setLinkedAccountId(googleUserId);
+
+    // ── v2.2.44 (L2): cek cloud DULU (sekali per session). Ini jalur SATU
+    // sumber kebenaran untuk status lisensi — expired Active/Trial diblokir
+    // server, jadi user yang sudah aktivasi pun tetap terkunci kalau lisensi
+    // kedaluwarsa. Kalau offline → fallback ke key lokal (jangan blokir
+    // user yang sah karena jaringan).
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'register_activation',
+        body: {'googleUserId': googleUserId, 'product': NusaConfig.productId},
+      );
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['has_license'] == false) {
+        final cloudStatus = data!['status'] as String?;
+        final isExpired = data['is_expired'] == true;
+
+        if (isExpired || cloudStatus == 'Expired' ||
+            cloudStatus == 'Cancelled' || cloudStatus == 'Suspended') {
+          if (mounted) {
+            setState(() {
+              _googleLoading = false;
+              _googleError = data['message'] as String? ??
+                  (cloudStatus == 'Expired'
+                      ? 'Lisensi Anda telah kedaluwarsa.\nPerpanjang untuk melanjutkan.'
+                      : 'Lisensi Anda tidak aktif lagi.\nHubungi admin untuk bantuan.');
+              _licenseExpiry = data['expires_at'] != null
+                  ? DateTime.tryParse(data['expires_at'] as String)
+                  : null;
+              _screen = 'trial_expired';
+            });
+          }
+          return;
+        }
+      }
+    } catch (_) {
+      // Offline / Supabase error → fall through ke jalur lokal di bawah.
+    }
 
     // First check local storage
     final isActivated = await ref.read(activationRepoProvider).isActivated;
@@ -499,7 +564,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         if (isExpired) {
           setState(() {
             _googleLoading = false;
-            _googleError = 'Masa trial Anda telah habis.\nBeli lisensi seumur hidup untuk melanjutkan.';
+            _googleError = 'Masa trial Anda telah habis.\nBeli lisensi untuk melanjutkan.';
+            _licenseExpiry = data['expires_at'] != null
+                ? DateTime.tryParse(data['expires_at'] as String)
+                : null;
             _screen = 'trial_expired';
           });
           return;
@@ -522,6 +590,15 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         }
 
         await SecureStore.saveActivation(key);
+        // v2.2.44 (L3/L5): simpan metadata lisensi (expiry/tier/status) supaya
+        // dashboard bisa tampilkan banner perpanjang & settings tampil status.
+        await SecureStore.saveLicenseInfo(
+          expiresAt: data['expires_at'] != null
+              ? DateTime.tryParse(data['expires_at'] as String)
+              : null,
+          tier: (data['tier'] as String?) ?? 'lifetime',
+          status: (data['status'] as String?) ?? 'Active',
+        );
         _goToPinOrSetup();
         return;
       }
@@ -906,9 +983,22 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     );
   }
 
-  // ── Trial Expired Screen ─────────────────────────────────────────────
+  // ── License Expired / Block Screen ──────────────────────────────────
+  //
+  // v2.2.44 (L2/L3): layar ini = app TERKUNCI setelah lisensi (trial ATAU
+  // aktif 1-bulan) kedaluwarsa. Grace 7 hari ditampilkan sebagai countdown
+  // (H-7 terima di sini; H+7 key di-revoke server oleh cron). User harus
+  // memperpanjang (buka /pay) — kalau cuma ganti akun, tidak bisa lewat.
 
   Widget _buildTrialExpiredScreen(bool isDark) {
+    // Grace 7 hari dihitung dari expires_at. Kalau expires_at tidak ada
+    // (mis. di-revoke), tampilkan tanpa countdown.
+    final now = DateTime.now();
+    final expiry = _licenseExpiry;
+    final graceEnd = expiry != null ? expiry.add(const Duration(days: 7)) : null;
+    final daysLeft = graceEnd != null ? graceEnd.difference(now).inDays : null;
+    final inGrace = expiry != null && daysLeft != null && daysLeft >= 0;
+
     return Scaffold(
       backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
       body: SafeArea(
@@ -922,14 +1012,19 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   width: 72, height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.amber.shade100,
+                    color: inGrace ? Colors.amber.shade100 : Colors.red.shade100,
                   ),
-                  child: Icon(Icons.timer_off_rounded, size: 36, color: Colors.amber.shade700),
+                  child: Icon(
+                    inGrace ? Icons.timer_off_rounded : Icons.block_rounded,
+                    size: 36,
+                    color: inGrace ? Colors.amber.shade700 : Colors.red.shade700,
+                  ),
                 ),
                 SizedBox(height: 20),
-                Text('Masa Trial Habis', style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                Text(_googleError?.contains('trial') == true ? 'Masa Trial Habis' : 'Lisensi Kedaluwarsa',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
                 SizedBox(height: 28),
                 // Card
                 Container(
@@ -949,17 +1044,50 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   child: Column(
                     children: [
                       Text(
-                        _googleError ?? 'Masa trial 30 hari Anda telah berakhir.\nBeli lisensi seumur hidup untuk melanjutkan.',
+                        _googleError ?? 'Masa aktivasi Anda telah berakhir.\nPerpanjang untuk melanjutkan.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 14, height: 1.6,
                           color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      if (inGrace) ...[
+                        SizedBox(height: 20),
+                        // Countdown grace
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: isDark ? 0.12 : 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                daysLeft <= 0
+                                    ? 'Masa tenggang berakhir hari ini'
+                                    : 'Sisa masa tenggang: $daysLeft hari',
+                                style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w700,
+                                  color: Colors.amber.shade800),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Lisensi berakhir ${expiry.day}/${expiry.month}/${expiry.year}. '
+                                'Lengah selama grace 7 hari → lisensi dicabut permanen.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 12,
+                                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       SizedBox(height: 24),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: _openLandingPage,
-                          icon: Icon(Icons.shopping_bag_outlined, size: 18),
-                          label: Text('Beli Lisensi (Rp 249K)'),
+                          onPressed: _openPayPage,
+                          icon: Icon(Icons.credit_card_rounded, size: 18),
+                          label: Text('Perpanjang / Beli Lisensi'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: NusaConfig.activePrimary,
                             foregroundColor: Colors.white,

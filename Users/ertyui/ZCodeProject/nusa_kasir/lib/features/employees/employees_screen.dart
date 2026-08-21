@@ -14,9 +14,11 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/branch_repository.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -172,6 +174,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     final nameC = TextEditingController(text: employee?.name ?? '');
     final pinC = TextEditingController(text: employee?.pin ?? '');
     final phoneC = TextEditingController(text: employee?.phone ?? '');
+    final barcodeC = TextEditingController(text: employee?.barcode ?? '');
     final salaryC = TextEditingController(
       text: employee?.baseSalary != null ? '${employee!.baseSalary}' : '',
     );
@@ -193,7 +196,13 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) {
-          return Container(
+          return HidBarcodeListener(
+            onBarcode: (code) {
+              final norm = ProductRepository.normalizeBarcode(code);
+              if (norm.isEmpty) return;
+              setSt(() => barcodeC.text = norm);
+            },
+            child: Container(
               decoration: BoxDecoration(
                 color: isDark
                     ? NusaConfig.darkSurface
@@ -348,7 +357,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                     NusaInput(
                       'Nama',
                       controller: nameC,
-                      hint: 'Cth: Budi Santoso',
+                      hint: NusaConfig.hintsFor('employeeName'),
                     ),
                     SizedBox(height: 12),
                     NusaInput(
@@ -357,6 +366,27 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                       type: TextInputType.number,
                       obscure: true,
                       hint: 'Cth: 123456',
+                    ),
+                    SizedBox(height: 12),
+                    // Barcode id-card (B8) — input manual + scan HID otomatis.
+                    TextField(
+                      controller: barcodeC,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 14,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Barcode ID (opsional)',
+                        hintText: 'Scan id-card atau ketik manual',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onChanged: (_) => setSt(() {}),
                     ),
                     SizedBox(height: 12),
                     NusaInput(
@@ -894,6 +924,30 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                 );
                                 return;
                               }
+                              // Barcode id-card (B8): juga harus unik kalau diisi.
+                              final barcode =
+                                  barcodeC.text.trim().isEmpty
+                                  ? null
+                                  : ProductRepository.normalizeBarcode(
+                                      barcodeC.text.trim(),
+                                    );
+                              if (barcode != null) {
+                                final sameBarcode = all.cast<Employee?>()
+                                    .firstWhere(
+                                      (e) =>
+                                          e!.barcode != null &&
+                                          e.barcode == barcode &&
+                                          e.id != (employee?.id ?? -1),
+                                      orElse: () => null,
+                                    );
+                                if (sameBarcode != null) {
+                                  setSt(
+                                    () => error =
+                                        'Barcode sudah dipakai ${sameBarcode.name} (${sameBarcode.role}). Gunakan barcode lain.',
+                                  );
+                                  return;
+                                }
+                              }
                               if (employee == null) {
                                 await repo.addEmployee(
                                   name: name,
@@ -909,6 +963,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   workEnd: workEnd,
                                   requiresCashOpen: requiresCashOpen,
                                   requiresCashClose: requiresCashClose,
+                                  barcode: barcode,
                                 );
                               } else {
                                 await repo.updateEmployee(
@@ -926,6 +981,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   workEnd: workEnd,
                                   requiresCashOpen: requiresCashOpen,
                                   requiresCashClose: requiresCashClose,
+                                  barcode: barcode,
                                 );
                               }
                               // Upload photo to cloud in background
@@ -970,7 +1026,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                   ],
                 ),
               ),
-            ); // return Container
+            ), // Container
+          ); // HidBarcodeListener + return
         }, // StatefulBuilder builder
       ), // StatefulBuilder
     ); // showModalBottomSheet

@@ -143,4 +143,160 @@ void main() {
       expect(json['unitQtyPerBase'], 12);
     });
   });
+
+  group('Layanan isService (v2.2.44 B10)', () {
+    test('addProduct with isService true marks the line', () {
+      final n = CartNotifier();
+      n.addProduct(99, 'Cuci Mobil', 25000, isService: true);
+      expect(n.state.single.isService, isTrue);
+      expect(n.state.single.isManual, isFalse);
+    });
+
+    test('regular product is not a service by default', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Snack', 5000);
+      expect(n.state.single.isService, isFalse);
+    });
+
+    test('merge keeps isService when re-adding', () {
+      final n = CartNotifier();
+      n.addProduct(99, 'Cuci Mobil', 25000, isService: true);
+      n.addProduct(99, 'Cuci Mobil', 25000, isService: true);
+      final item = n.state.single;
+      expect(item.qty, 2);
+      expect(item.isService, isTrue);
+    });
+
+    test('service + regular product merge independently', () {
+      final n = CartNotifier();
+      n.addProduct(99, 'Cuci Mobil', 25000, isService: true);
+      n.addProduct(99, 'Shampo', 5000); // same id, not service → separate? no—
+      // Merge key = productId + variantName; service flag tidak memisahkan baris.
+      // Simulasi: layanan & produk fisik punya id berbeda → 2 baris.
+      n.addProduct(100, 'Shampo', 5000);
+      expect(n.state.length, 2);
+      expect(n.state[0].isService, isTrue);
+      expect(n.state[1].isService, isFalse);
+    });
+
+    test('toJson includes isService flag (untuk draft tersimpan B7)', () {
+      final n = CartNotifier();
+      n.addProduct(99, 'Cuci Mobil', 25000, isService: true);
+      expect(n.state.single.toJson()['isService'], isTrue);
+    });
+  });
+
+  group('Grosir recompute (v2.2.44 B5)', () {
+    // Tier: 10+ → 8000, 20+ → 7000. Harga normal 10000, full 12000.
+    int? tierFor(int qty) {
+      if (qty >= 20) return 7000;
+      if (qty >= 10) return 8000;
+      return null;
+    }
+
+    test('qty naik di atas ambang → harga grosir diterapkan', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Snack', 10000, originalPrice: 12000);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      // qty 1 → belum grosir
+      expect(n.state.single.price, 10000);
+
+      n.setQty(1, 12);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 8000);
+      // coret = harga penuh saat grosir aktif
+      expect(n.state.single.originalPrice, 12000);
+    });
+
+    test('qty turun di bawah ambang → harga balik normal (bug fix)', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Snack', 10000);
+      n.setQty(1, 15);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 8000);
+
+      // Turun di bawah ambang 10 → harus balik 10000 (sebelumnya beku 8000).
+      // Produk tetap punya diskon (normal 10000 < full 12000) → coret dipertahankan.
+      n.setQty(1, 5);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 10000);
+      expect(n.state.single.originalPrice, 12000);
+    });
+
+    test('tanpa diskon, originalPrice bersih saat grosir mati', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Snack', 10000); // no discount: normal == full
+      n.setQty(1, 12);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 10000);
+      expect(n.state.single.price, 8000);
+      expect(n.state.single.originalPrice, 10000);
+
+      n.setQty(1, 3);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 10000);
+      expect(n.state.single.price, 10000);
+      expect(n.state.single.originalPrice, isNull);
+    });
+
+    test('decrement changeQty lalu recompute → harga ikut turun', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Snack', 10000);
+      n.setQty(1, 22);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 7000);
+
+      n.changeQty(1, -5); // → 17, masih tier 10
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 8000);
+
+      n.changeQty(1, -10); // → 7, di bawah ambang
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 10000);
+    });
+
+    test('ambang grosir pakai qtyInBase (satuan jual × qtyPerBase)', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Air Galon', 10000);
+      n.setUnit(1, 'dus', 12); // 1 dus = 12 pcs → langsung tembus ambang 10
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.qtyInBase, 12);
+      expect(n.state.single.price, 8000);
+    });
+
+    test('item manual (ad-hoc) tidak kena grosir', () {
+      final n = CartNotifier();
+      n.addManualItem('Jasa angkut', 15000);
+      n.recomputeWholesale(n.state.single.productId,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 15000);
+    });
+
+    test('per-kg item tidak kena grosir', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Cuci Kilo', 5000, weightKg: 3);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 10000, fullPrice: 12000);
+      expect(n.state.single.price, 5000);
+    });
+
+    test('diskon standalone tetap tampil saat tanpa grosir', () {
+      final n = CartNotifier();
+      // Produk diskon 25%: sellPrice 12000 → effectivePrice 9000.
+      n.addProduct(1, 'Snack', 9000, originalPrice: 12000);
+      n.recomputeWholesale(1,
+          wholesalePriceForQty: tierFor, normalPrice: 9000, fullPrice: 12000);
+      // qty 1, no tier → harga normal (9000) dipertahankan, coret diskon utuh.
+      expect(n.state.single.price, 9000);
+      expect(n.state.single.originalPrice, 12000);
+    });
+  });
 }

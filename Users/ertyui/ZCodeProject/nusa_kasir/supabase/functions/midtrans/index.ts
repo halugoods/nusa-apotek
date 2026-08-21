@@ -54,6 +54,12 @@ const PACKAGE_DURATION: Record<string, number | null> = {
   lifetime: null, // never expires
 };
 
+// Map UI package id → licenses.tier value (check constraint only allows trial/1month/lifetime)
+const PACKAGE_TIER: Record<string, string> = {
+  "1bulan": "1month",
+  lifetime: "lifetime",
+};
+
 // ─── Keygen (identical to license-manager/index.ts) ──────────────
 
 const SERIAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -283,6 +289,7 @@ serve(async (req: Request) => {
           amount: price,
           status: "pending",
           snap_token: token,
+          provider: "midtrans",
         });
 
         return json({
@@ -373,6 +380,7 @@ serve(async (req: Request) => {
         google_user_id: payment.google_id,
         expires_at: expiresAt,
         order_id,
+        tier: PACKAGE_TIER[payment.package] ?? "lifetime",
         owner_email: null,
       });
 
@@ -388,6 +396,7 @@ serve(async (req: Request) => {
             google_user_id: payment.google_id,
             expires_at: expiresAt,
             order_id,
+            tier: PACKAGE_TIER[payment.package] ?? "lifetime",
           });
           if (retryErr) {
             return json({ error: "db_error", message: retryErr.message }, 500);

@@ -81,6 +81,40 @@ class SecureStore {
     await SecureStore.delete(key: _legacyActivationKey);
   }
 
+  // -- License metadata (expires_at / tier / status) for dashboard banner + settings UI --
+  // Namespaced per product. Dipisah dari key aktivasi supaya UI bisa menampilkan
+  // status nyata (v2.2.44 L3/L5) tanpa perlu decrypt key.
+  static String get _licenseInfoKey =>
+      'nusa_license_info_${NusaConfig.productId}';
+
+  static Future<void> saveLicenseInfo({
+    required DateTime? expiresAt,
+    required String tier,
+    required String status,
+  }) async {
+    final json =
+        '${expiresAt?.toIso8601String() ?? ''}|$tier|$status';
+    await SecureStore.write(key: _licenseInfoKey, value: json);
+  }
+
+  static Future<({DateTime? expiresAt, String tier, String status})?>
+      getLicenseInfo() async {
+    final raw = await SecureStore.read(key: _licenseInfoKey);
+    if (raw == null || raw.isEmpty) return null;
+    final parts = raw.split('|');
+    final expiresAt =
+        parts.isNotEmpty && parts[0].isNotEmpty ? DateTime.tryParse(parts[0]) : null;
+    return (
+      expiresAt: expiresAt,
+      tier: parts.length > 1 ? parts[1] : 'lifetime',
+      status: parts.length > 2 ? parts[2] : 'Active',
+    );
+  }
+
+  static Future<void> clearLicenseInfo() async {
+    await SecureStore.delete(key: _licenseInfoKey);
+  }
+
   // -- Pending DB restore (device migration) --
   static Future<void> savePendingRestore() =>
       SecureStore.write(key: 'nusa_pending_restore', value: '1');

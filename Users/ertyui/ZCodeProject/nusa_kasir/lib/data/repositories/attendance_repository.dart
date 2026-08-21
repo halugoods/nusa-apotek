@@ -42,6 +42,7 @@ class AttendanceRepository {
     String? workEnd,
     bool requiresCashOpen = false,
     bool requiresCashClose = false,
+    String? barcode,
   }) {
     return db
         .into(db.employees)
@@ -60,6 +61,7 @@ class AttendanceRepository {
             workEnd: Value(workEnd),
             requiresCashOpen: Value(requiresCashOpen),
             requiresCashClose: Value(requiresCashClose),
+            barcode: Value(barcode),
           ),
         );
   }
@@ -79,6 +81,7 @@ class AttendanceRepository {
     String? workEnd,
     bool requiresCashOpen = false,
     bool requiresCashClose = false,
+    String? barcode,
   }) => (db.update(db.employees)..where((t) => t.id.equals(id))).write(
     EmployeesCompanion(
       name: Value(name),
@@ -94,6 +97,7 @@ class AttendanceRepository {
       workEnd: Value(workEnd),
       requiresCashOpen: Value(requiresCashOpen),
       requiresCashClose: Value(requiresCashClose),
+      barcode: Value(barcode),
     ),
   );
 
@@ -105,6 +109,29 @@ class AttendanceRepository {
   Future<void> updateEmployeeStatus(int id, String status) =>
       (db.update(db.employees)..where((t) => t.id.equals(id))).write(
         EmployeesCompanion(status: Value(status)),
+      );
+
+  /// Find an employee by their custom barcode (id-card) — B8. Mencocokkan
+  /// barcode persis (sudah di-normalize oleh pemanggil via normalizeBarcode).
+  Future<Employee?> getByBarcode(String barcode, {String? status}) {
+    final query = db.select(db.employees)
+      ..where((t) => t.barcode.equals(barcode));
+    if (status != null) {
+      query.where((t) => t.status.equals(status));
+    }
+    return query.getSingleOrNull();
+  }
+
+  /// Store / change the custom barcode for an employee.
+  Future<void> setBarcode(int employeeId, String barcode) =>
+      (db.update(db.employees)..where((t) => t.id.equals(employeeId))).write(
+        EmployeesCompanion(barcode: Value(barcode)),
+      );
+
+  /// Clear the barcode from an employee (set back to null / unused).
+  Future<void> clearBarcode(int employeeId) =>
+      (db.update(db.employees)..where((t) => t.id.equals(employeeId))).write(
+        EmployeesCompanion(barcode: const Value.absent()),
       );
 
   /// Bulk-migrate all employee PINs when changing PIN length.

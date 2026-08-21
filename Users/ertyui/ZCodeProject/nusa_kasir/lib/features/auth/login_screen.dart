@@ -7,6 +7,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
@@ -123,6 +124,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           (e) => e!.role == 'Owner', orElse: () => null);
     if (owner == null || !mounted) return;
     await _doLogin(owner, remember: _remember);
+  }
+
+  /// Login via barcode id-card (B8) — jalur auth ke-4 setelah PIN/FP/NFC.
+  /// Resolver dipanggil dengan code hasil scan HID; jika barcode cocok dengan
+  /// karyawan aktif → langsung _doLogin.
+  Future<void> _barcodeLogin(String code) async {
+    final db = ref.read(databaseProvider);
+    final repo = AttendanceRepository(db);
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    final emp = await repo.getByBarcode(norm, status: 'Aktif');
+    if (emp == null) {
+      if (mounted) setState(() => _error = 'Barcode tidak terdaftar');
+      _keypadKey.currentState?.clear();
+      return;
+    }
+    await _doLogin(emp, remember: _remember);
   }
 
   /// DB karyawan tidak terbaca / kosong: pulihkan dari cloud dulu.
@@ -359,6 +377,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         error: _error,
                         showFingerprint: true,
                         showNfc: _nfcAvailable,
+                        showBarcode: true,
                         showCancel: false,
                         onFingerprint: () => BiometricService.authenticate(
                           reason: 'Verifikasi biometrik untuk melanjutkan',
@@ -373,6 +392,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           if (emp != null && mounted) {
                             await _doLogin(emp, remember: _remember);
                           }
+                          return null;
+                        },
+                        onBarcode: (code) async {
+                          await _barcodeLogin(code);
                           return null;
                         },
                         onComplete: (pin) async {

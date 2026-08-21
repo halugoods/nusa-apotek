@@ -59,6 +59,12 @@ VARIANTS = [
             "Lainnya": "Icons.category_rounded",
         },
         "hidden_menus": ["meja", "laundry_status", "servis", "booking", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Indomie Goreng",
+            "productCategory": "Cth: Sembako",
+            "barcode": "contoh: 8991002101234",
+            "employeeName": "Cth: Budi Santoso",
+        },
     },
     {
         "id": "fnb", "name": "NUSA F&B", "pkg": "com.nusa.fnb",
@@ -86,6 +92,11 @@ VARIANTS = [
         },
         "hidden_menus": ["spreadsheet",
                          "laundry_status", "servis", "booking", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Nasi Goreng Spesial",
+            "productCategory": "Cth: Makanan",
+            "employeeName": "Cth: Koki Joko",
+        },
     },
     {
         "id": "laundry", "name": "NUSA Laundry", "pkg": "com.nusa.laundry",
@@ -113,6 +124,11 @@ VARIANTS = [
         },
         "hidden_menus": ["promo",
                          "meja", "servis", "booking", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Cuci Kering Lipat",
+            "productCategory": "Cth: Layanan",
+            "employeeName": "Cth: Tika",
+        },
     },
     {
         "id": "bengkel", "name": "NUSA Bengkel", "pkg": "com.nusa.bengkel",
@@ -139,6 +155,11 @@ VARIANTS = [
             "Lainnya": "Icons.category_rounded",
         },
         "hidden_menus": ["meja", "laundry_status", "booking", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Ganti Oli Mesin",
+            "productCategory": "Cth: Servis",
+            "employeeName": "Cth: Mekanik Andi",
+        },
     },
     {
         "id": "salon", "name": "NUSA Salon", "pkg": "com.nusa.salon",
@@ -166,6 +187,11 @@ VARIANTS = [
         },
         "hidden_menus": ["cabang",
                          "meja", "laundry_status", "servis", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Potong Rambut",
+            "productCategory": "Cth: Layanan",
+            "employeeName": "Cth: Hair Stylist Rina",
+        },
     },
     {
         "id": "apotek", "name": "NUSA Apotek", "pkg": "com.nusa.apotek",
@@ -193,6 +219,12 @@ VARIANTS = [
         },
         "hidden_menus": ["promo",
                          "meja", "laundry_status", "servis", "booking", "print_order"],
+        "hints": {
+            "productName": "Cth: Paracetamol 500mg",
+            "productCategory": "Cth: Obat",
+            "barcode": "contoh: 8991002101234",
+            "employeeName": "Cth: Apoteker Dewi",
+        },
     },
     {
         "id": "fotocopy", "name": "NUSA Fotocopy", "pkg": "com.nusa.fotocopy",
@@ -224,6 +256,11 @@ VARIANTS = [
         },
         "hidden_menus": ["cabang",
                          "meja", "laundry_status", "servis", "booking", "resep"],
+        "hints": {
+            "productName": "Cth: Cetak Dokumen A4",
+            "productCategory": "Cth: Cetak",
+            "employeeName": "Cth: Operator Fajar",
+        },
     },
     {
         "id": "servis", "name": "NUSA Servis", "pkg": "com.nusa.servis",
@@ -250,6 +287,11 @@ VARIANTS = [
             "Lainnya": "Icons.category_rounded",
         },
         "hidden_menus": ["meja", "laundry_status", "booking", "resep", "print_order"],
+        "hints": {
+            "productName": "Cth: Ganti LCD HP",
+            "productCategory": "Cth: Servis",
+            "employeeName": "Cth: Teknisi Surya",
+        },
     },
 ]
 
@@ -328,6 +370,11 @@ def format_gradient_entries(grad_dict: dict) -> list:
 def format_icons_entries(icons_dict: dict) -> list:
     """Format catIcons key-value entries (indentation applied by caller)."""
     return [f"'{k}': {v}," for k, v in icons_dict.items()]
+
+
+def format_hints_entries(hints_dict: dict) -> list:
+    """Format variantHints key-value entries (indentation applied by caller)."""
+    return [f"'{k}': '{v}'," for k, v in hints_dict.items()]
 
 
 def _escape_xml(s: str) -> str:
@@ -418,6 +465,8 @@ def update_config(variant: dict):
     lines = replace_map_section(lines, "_catEmoji", format_emoji_entries(v["cat_emoji"]))
     lines = replace_map_section(lines, "_catGradients", format_gradient_entries(v["cat_gradients"]))
     lines = replace_map_section(lines, "_catIcons", format_icons_entries(v["cat_icons"]))
+    # Field hints per variant (B2) — same line-based approach for the hints map
+    lines = replace_map_section(lines, "variantHints", format_hints_entries(v["hints"]))
     config = "\n".join(lines)
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:

@@ -56,6 +56,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   List<Product>? _allProducts;
   List<String> _allCats = [];
 
+  // B10 (v2.2.44): segmen POS Produk | Layanan (varian jasa only).
+  // false = produk biasa, true = layanan. Keranjang tetap bisa campur.
+  bool _posServiceOnly = false;
+
   // Satuan dinamis (v2.2.43): productId → daftar satuan jual produk.
   // Empty list = belum atur satuan → fallback 'pcs'.
   Map<int, List<({int unitId, String name, int? unitStock, double qtyPerBase, bool isBase})>>
@@ -233,6 +237,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final q = _search.text.toLowerCase();
     return all.where((p) {
       if (_category != 'Semua' && p.category != _category) return false;
+      // B10: segmen Produk | Layanan — filter flag isService.
+      if (NusaConfig.isJasaVariant && _posServiceOnly != p.isService) {
+        return false;
+      }
       if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) return false;
       return true;
     }).toList();
@@ -453,14 +461,33 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   ///
   /// Guard stok: produk stok 0 TIDAK masuk cart (toast), dan qty tidak boleh
   /// melebihi stok — scan barcode, search, dan tap grid semua lewat sini.
+  /// Re-apply harga grosir pada baris keranjang setelah qty berubah
+  /// (decrement / qty editable / ganti varian / ganti satuan).
+  ///
+  /// Sebelum v2.2.44 hanya tombol `+` yang menghitung ulang grosir — `-` dan
+  /// qty editable membiarkan harga "beku" di tier tinggi walau qty sudah
+  /// turun di bawah ambang. Ambang pakai [CartItem.qtyInBase] (qty ×
+  /// qtyPerBase) supaya satuan jual (mis. dus = 12 pcs) ikut ambang grosir.
+  void _reapplyWholesale(CartItem item, Product product) {
+    if (item.isManual || item.isPerKg) return;
+    ref.read(cartProvider.notifier).recomputeWholesale(
+          item.productId,
+          wholesalePriceForQty: product.wholesalePriceFor,
+          normalPrice: product.effectivePrice,
+          fullPrice: product.sellPrice,
+          variantName: item.variantName,
+        );
+  }
+
   void _addToCart(Product product) {
     // Stok guard: produk ber-varian pakai Σ stok semua varian; reguler pakai
-    // stok produk langsung.
+    // stok produk langsung. B10: LAYANAN (isService) TIDAK dilacak stoknya —
+    // lewati guard, selalu bisa ditambahkan ke keranjang.
     final variants = ProductRepository.parseVariants(product);
     final totalStock = variants.isEmpty
         ? product.stock
         : variants.fold<int>(0, (s, v) => s + v.stock);
-    if (totalStock <= 0) {
+    if (totalStock <= 0 && !product.isService) {
       TopToast.error(context, 'Stok "${product.name}" habis');
       return;
     }
@@ -504,6 +531,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             variantStock: variants.isEmpty ? null : totalStock,
             unitName: baseUnit != null ? defaultUnitName : null,
             unitQtyPerBase: baseUnit != null ? defaultQtyPerBase : 1,
+            isService: product.isService,
           );
     }
   }
@@ -684,6 +712,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _buildSearchBar(isDark),
             ),
+            if (NusaConfig.isJasaVariant) ...[
+              const SizedBox(height: 10),
+              _buildServiceSegment(isDark),
+            ],
             _buildCategoryChips(isDark),
             Expanded(child: _buildProductGrid(isDark)),
             if (!_cartExpanded) _buildCartBar(isDark, totalItems, totalPrice),
@@ -710,6 +742,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: _buildSearchBar(isDark),
         ),
+        if (NusaConfig.isJasaVariant) ...[
+          const SizedBox(height: 10),
+          _buildServiceSegment(isDark),
+        ],
         _buildCategoryChips(isDark),
         Expanded(
           child: Row(
@@ -756,6 +792,28 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           _gridToggle(2, Icons.grid_view_rounded, isDark),
           SizedBox(width: 4),
           _gridToggle(3, Icons.apps_rounded, isDark),
+          SizedBox(width: 4),
+          // ── Pesanan Tersimpan (B7): draft/antrian — SEMUA varian ──
+          GestureDetector(
+            onTap: _showSavedOrders,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface2
+                    : NusaConfig.inputFill,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.bookmark_border,
+                size: 18,
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+            ),
+          ),
           Spacer(),
           if (_cashierName.isNotEmpty)
             Container(
@@ -781,6 +839,65 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  // B10 (v2.2.44): segmen Produk | Layanan — varian jasa only.
+  Widget _buildServiceSegment(bool isDark) {
+    if (!NusaConfig.isJasaVariant) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segmentChip(
+            label: 'Produk',
+            active: !_posServiceOnly,
+            isDark: isDark,
+            onTap: () => setState(() => _posServiceOnly = false),
+          ),
+          const SizedBox(width: 8),
+          _segmentChip(
+            label: 'Layanan',
+            active: _posServiceOnly,
+            isDark: isDark,
+            onTap: () => setState(() => _posServiceOnly = true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentChip({
+    required String label,
+    required bool active,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: active
+              ? NusaConfig.activePrimary
+              : (isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor),
+          borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: active
+                ? Colors.white
+                : (isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary),
+          ),
+        ),
       ),
     );
   }
@@ -1267,8 +1384,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             isDark: isDark,
             qtyInCart: cartItem?.qty ?? 0,
             onAdd: () => _addToCart(product),
-            onDecrement: () =>
-                ref.read(cartProvider.notifier).changeQty(product.id, -1),
+            onDecrement: () {
+              ref.read(cartProvider.notifier).changeQty(product.id, -1);
+              if (cartItem != null) _reapplyWholesale(cartItem, product);
+            },
             onIncrement: () => _addToCart(product),
           );
         },
@@ -1309,8 +1428,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               isDark: isDark,
               qtyInCart: cartItem?.qty ?? 0,
               onAdd: () => _addToCart(product),
-              onDecrement: () =>
-                  ref.read(cartProvider.notifier).changeQty(product.id, -1),
+              onDecrement: () {
+                ref.read(cartProvider.notifier).changeQty(product.id, -1);
+                if (cartItem != null) _reapplyWholesale(cartItem, product);
+              },
               onIncrement: () => _addToCart(product),
               onQtyEdited: cartItem == null || cartItem.isPerKg
                   ? null
@@ -1322,6 +1443,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             .changeQty(product.id, -9999);
                       } else {
                         ref.read(cartProvider.notifier).setQty(product.id, nq);
+                        _reapplyWholesale(cartItem, product);
                       }
                     },
             );
@@ -1564,21 +1686,27 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             ? () => _pickVariant(item, prod)
                             : null,
                         units: units,
-                        onSelectUnit: (name, qtyPerBase) => ref
-                            .read(cartProvider.notifier)
-                            .setUnit(
-                              item.productId,
-                              name,
-                              qtyPerBase,
-                              variantName: item.variantName,
-                            ),
-                        onDecrement: () => ref
-                            .read(cartProvider.notifier)
-                            .changeQty(
-                              item.productId,
-                              -1,
-                              variantName: item.variantName,
-                            ),
+                        onSelectUnit: (name, qtyPerBase) {
+                          final notifier = ref.read(cartProvider.notifier);
+                          notifier.setUnit(
+                            item.productId,
+                            name,
+                            qtyPerBase,
+                            variantName: item.variantName,
+                          );
+                          // Ganti satuan mengubah qtyInBase → ambang grosir
+                          // bisa berubah; re-apply harga (B5).
+                          if (prod != null) _reapplyWholesale(item, prod);
+                        },
+                        onDecrement: () {
+                          final notifier = ref.read(cartProvider.notifier);
+                          notifier.changeQty(
+                            item.productId,
+                            -1,
+                            variantName: item.variantName,
+                          );
+                          if (prod != null) _reapplyWholesale(item, prod);
+                        },
                         onIncrement: () {
                           final notifier = ref.read(cartProvider.notifier);
                           // Satuan: naikkan qty dalam satuan jual; stok guard
@@ -1621,6 +1749,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                               variantStock: item.variantStock,
                               unitName: item.unitName,
                               unitQtyPerBase: item.unitQtyPerBase,
+                              isService: item.isService,
                             );
                             return;
                           }
@@ -1636,6 +1765,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             variantStock: item.variantStock,
                             unitName: item.unitName,
                             unitQtyPerBase: item.unitQtyPerBase,
+                            isService: item.isService,
                           );
                         },
                         onTap:
@@ -1689,8 +1819,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Column(
             children: [
-              // ── FnB: Save Order button ──
-              if (NusaConfig.isFnbVariant && cart.isNotEmpty) ...[
+              // ── Simpan Pesanan (B7 — semua varian; FnB = open tab, lainnya
+              // = draft antrian yang bisa dilanjutkan/bayar belakangan) ──
+              if (cart.isNotEmpty) ...[
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -1799,8 +1930,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       if (_selectedTableId != null) qp['tableId'] = _selectedTableId.toString();
       if (_selectedTableName != null)
         qp['tableName'] = Uri.encodeComponent(_selectedTableName!);
-      if (_activeTabId != null) qp['activeTabId'] = _activeTabId.toString();
     }
+    // B7: draft/antrian berlaku SEMUA varian — tab yang di-save (Simpan
+    // Pesanan) dikunci saat bayar di checkout.
+    if (_activeTabId != null) qp['activeTabId'] = _activeTabId.toString();
     if (_routeCustomer != null && _routeCustomer!.isNotEmpty) {
       qp['customer'] = Uri.encodeComponent(_routeCustomer!);
     }
@@ -1814,7 +1947,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     context.push(uri.toString());
   }
 
-  // ── FnB: Save order (Open Tab) ──
+  // ── Save order (Open Tab / draft antrian) — B7: semua varian ──
 
   Future<void> _saveOrder() async {
     final cart = ref.read(cartProvider);
@@ -1829,21 +1962,25 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             'price': c.price,
             'qty': c.qty,
             'note': c.note,
+            'isService': c.isService,
           },
         )
         .toList();
     final total = cart.fold<int>(0, (s, e) => s + e.subtotal);
+    // Non-FnB: draft antrian tanpa meja/orderType — pakai label 'Draft'.
+    final orderType = NusaConfig.isFnbVariant ? _orderType : 'Draft';
     await tabRepo.save(
-      tableId: _selectedTableId,
-      orderType: _orderType,
+      tableId: NusaConfig.isFnbVariant ? _selectedTableId : null,
+      orderType: orderType,
       items: items,
       total: total,
     );
-    if (_selectedTableId != null) {
+    if (NusaConfig.isFnbVariant && _selectedTableId != null) {
       await DiningTableRepository(
         db,
       ).updateStatus(_selectedTableId!, 'Dipesan');
     }
+    _activeTabId = null;
     ref.read(cartProvider.notifier).clear();
     final savedName = _selectedTableName;
     _selectedTableId = null;
@@ -1853,8 +1990,123 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         context,
         savedName != null
             ? 'Pesanan disimpan — $savedName'
-            : 'Pesanan disimpan',
+            : 'Pesanan disimpan sebagai draft',
       );
+  }
+
+  // ── B7: Daftar pesanan tersimpan (draft/antrian) — semua varian ──
+
+  Future<void> _showSavedOrders() async {
+    final db = ref.read(databaseProvider);
+    final tabs = await TabRepository(db).getOpen();
+    if (!mounted) return;
+    if (tabs.isEmpty) {
+      TopToast.info(context, 'Belum ada pesanan tersimpan');
+      return;
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                'Pesanan Tersimpan (${tabs.length})',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: tabs.length,
+                itemBuilder: (_, i) {
+                  final tab = tabs[i];
+                  final items = (json.decode(tab.itemsJson) as List)
+                      .cast<Map<String, dynamic>>();
+                  final itemCount =
+                      items.fold<int>(0, (s, e) => s + (e['qty'] as int));
+                  final title = NusaConfig.isFnbVariant && tab.tableId != null
+                      ? 'Meja ${tab.tableId}'
+                      : 'Draft #${tab.id}';
+                  final sub = tab.orderType == 'Draft'
+                      ? '$itemCount item · ${formatRupiah(tab.total)}'
+                      : '${tab.orderType} · $itemCount item · '
+                          '${formatRupiah(tab.total)}';
+                  return ListTile(
+                    leading: Icon(
+                      Icons.bookmark_outline,
+                      color: NusaConfig.activePrimary,
+                    ),
+                    title: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: Text(
+                      sub,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Lanjutkan',
+                          icon: Icon(
+                            Icons.play_arrow,
+                            color: NusaConfig.activePrimary,
+                          ),
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _loadTab(tab);
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'Hapus',
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: Colors.red.shade400,
+                          ),
+                          onPressed: () async {
+                            await TabRepository(db).delete(tab.id);
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              _showSavedOrders();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _loadTab(tab);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── FnB: Load open tab into cart ──
@@ -1871,6 +2123,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           item['name'] as String,
           item['price'] as int,
           note: item['note'] as String?,
+          isService: item['isService'] as bool? ?? false,
         );
         for (var i = 1; i < (item['qty'] as int); i++) {
           notifier.changeQty(item['productId'] as int, 1);
@@ -1998,6 +2251,23 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       selected.price,
       selected.stock,
     );
+    // Grosir ikut dihitung ulang terhadap harga varian (B5).
+    final updated = ref.read(cartProvider).cast<CartItem?>().firstWhere(
+          (c) => c?.productId == item.productId &&
+              c?.variantName == selected.name,
+          orElse: () => null,
+        );
+    if (updated != null) {
+      final variantBase = newPrice; // harga varian (normal)
+      final variantFull = product.sellPrice + selected.price; // coret varian
+      notifier.recomputeWholesale(
+        item.productId,
+        wholesalePriceForQty: product.wholesalePriceFor,
+        normalPrice: variantBase,
+        fullPrice: variantFull,
+        variantName: selected.name,
+      );
+    }
     TopToast.success(context, 'Varian: ${item.name} — ${selected.name}');
   }
 
@@ -2351,7 +2621,7 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final outOfStock = product.stock <= 0;
+    final outOfStock = product.stock <= 0 && !product.isService;
     final lowStock = !outOfStock && product.stock <= product.minStock;
     final gradient = NusaConfig.catGradientFor(product.category);
     final hasImage =
@@ -2444,15 +2714,21 @@ class _ProductCard extends StatelessWidget {
                             ),
                           ),
                           child: Text(
-                            outOfStock ? 'Habis' : '${product.stock}x',
+                            product.isService
+                                ? 'Layanan'
+                                : outOfStock
+                                    ? 'Habis'
+                                    : '${product.stock}x',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: outOfStock
-                                  ? NusaConfig.stockOutText
-                                  : (lowStock
-                                        ? NusaConfig.stockLowText
-                                        : NusaConfig.activePrimary),
+                              color: product.isService
+                                  ? NusaConfig.activePrimary
+                                  : outOfStock
+                                      ? NusaConfig.stockOutText
+                                      : (lowStock
+                                            ? NusaConfig.stockLowText
+                                            : NusaConfig.activePrimary),
                             ),
                           ),
                         ),
@@ -3146,7 +3422,7 @@ class _ProductListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final outOfStock = product.stock <= 0;
+    final outOfStock = product.stock <= 0 && !product.isService;
     final lowStock = !outOfStock && product.stock <= product.minStock;
     final gradient = NusaConfig.catGradientFor(product.category);
     final hasImage =
@@ -3263,15 +3539,21 @@ class _ProductListCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              outOfStock ? 'Habis' : 'Stok ${product.stock}',
+                              product.isService
+                                  ? 'Layanan'
+                                  : outOfStock
+                                      ? 'Habis'
+                                      : 'Stok ${product.stock}',
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color: outOfStock
-                                    ? NusaConfig.stockOutText
-                                    : (lowStock
-                                          ? NusaConfig.stockLowText
-                                          : NusaConfig.stockActiveText),
+                                color: product.isService
+                                    ? NusaConfig.activePrimary
+                                    : outOfStock
+                                        ? NusaConfig.stockOutText
+                                        : (lowStock
+                                              ? NusaConfig.stockLowText
+                                              : NusaConfig.stockActiveText),
                               ),
                             ),
                           ),

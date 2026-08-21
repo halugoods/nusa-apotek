@@ -17,6 +17,7 @@ import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/features/stock_opname/stock_opname_screen.dart';
@@ -39,6 +40,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   int _gridColumns = 2; // 1 = list, 2 = grid, 3 = grid padat
   int _tabIndex = 0; // 0 = Stok, 1 = Opname
 
+  /// B6: key untuk memanggil handleBarcode di opname (embedded).
+  final _opnameKey = GlobalKey<StockOpnameScreenState>();
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +54,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   Future<void> _load() async {
     final db = ref.read(databaseProvider);
     final repo = ProductRepository(db);
-    final products = await repo.getProducts();
+    var products = await repo.getProducts();
+    // B10 (v2.2.44): layanan (isService) tidak dilacak stok — sembunyikan
+    // dari layar Stok (varian jasa). Barang (non-jasa) tetap semua.
+    if (NusaConfig.isJasaVariant) {
+      products = products.where((p) => !p.isService).toList();
+    }
     final movements =
         await (db.select(db.stockMovements)..orderBy([
               (t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc),
@@ -264,6 +273,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                 ? (_loading ? SkeletonList() : _buildBody())
                 : StockOpnameScreen(
                     key: ValueKey('opname_$_tabIndex'),
+                    screenKey: _opnameKey,
                     embedded: true,
                   ),
           ),
@@ -276,9 +286,18 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   /// Barcode eksternal (HID) — v2.2.43: scan di layar utama Stok membuka
   /// sheet "Stok Masuk" dengan barcode di-pre-fill agar langsung resolve
   /// produk tanpa tap kolom cari / scan ulang.
+  /// v2.2.44 (B6): saat tab Opname aktif → scan diteruskan ke opname
+  /// (auto-match produk + naikkan hitungan fisik), bukan buka sheet masuk.
   Future<void> _onExternalBarcode(String code) async {
     final norm = ProductRepository.normalizeBarcode(code);
     if (norm.isEmpty) return;
+    if (_tabIndex == 1) {
+      final op = _opnameKey.currentState;
+      if (op != null) {
+        await op.handleBarcode(norm);
+        return;
+      }
+    }
     _openAdjustSheet('in', initialBarcode: norm);
   }
 
@@ -1488,7 +1507,14 @@ class _AdjustSheetState extends State<_AdjustSheet> {
   Widget build(BuildContext context) {
     final isDark = _isDark;
     final results = _results;
-    return Container(
+    // Scan HID jalan di SELURUH sheet (tanpa fokus kolom cari) — B6.
+    // Feeds _submitScanHid sehingga barcode auto-resolve → masuk keranjang.
+    return HidBarcodeListener(
+      onBarcode: (code) {
+        _searchC.text = code;
+        _submitScanHid();
+      },
+      child: Container(
       decoration: BoxDecoration(
         color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1719,6 +1745,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

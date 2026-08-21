@@ -9,8 +9,8 @@ abstract class NusaConfig {
   static const String brandName = "NUSA";
 		static String _productId = "nusa-laundry";
 		static String _appSubtitle = "Aplikasi Kasir untuk Usaha Laundry";
-  static const String appVersion = "2.2.43";
-  static const int appBuildNumber = 96;
+  static const String appVersion = "2.2.44";
+  static const int appBuildNumber = 97;
 		static String _githubRepo = "halugoods/nusa-laundry";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
 		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Laundry";
@@ -68,12 +68,23 @@ abstract class NusaConfig {
   /// Whether this is the Kelontong variant — gates grocery-store features.
   static bool get isKelontongVariant => productId == 'nusa-kelontong';
 
+  /// Whether this is a JASA (service) variant — gates Tab Layanan (B10):
+  /// salon, bengkel, servis, laundry, fotocopy. Varian barang (kelontong,
+  /// fnb, apotek) tidak wajib layanan — tab disembunyikan bila tidak dipakai.
+  static bool get isJasaVariant =>
+      isSalonVariant ||
+      isBengkelVariant ||
+      isServisVariant ||
+      isLaundryVariant ||
+      isFotocopyVariant;
+
   // ── Dev variant runtime overrides (null in production, set by VariantNotifier in dev) ──
   static VariantData? _devVariant;
   static Map<String, String>? _devCatEmoji;
   static Map<String, List<Color>>? _devCatGradients;
   static Map<String, IconData>? _devCatIcons;
   static List<String>? _devHiddenMenus;
+  static Map<String, String>? _devHints;
 
   /// Apply a full VariantData override at runtime (dev mode only).
   static void applyDevVariant(VariantData v) {
@@ -82,6 +93,7 @@ abstract class NusaConfig {
     _devCatGradients = v.catGradients;
     _devCatIcons = v.catIcons;
     _devHiddenMenus = v.hiddenMenus;
+    _devHints = v.hints;
     // Also apply theme preset
     applyTheme(v.id);
   }
@@ -93,6 +105,7 @@ abstract class NusaConfig {
     _devCatGradients = null;
     _devCatIcons = null;
     _devHiddenMenus = null;
+    _devHints = null;
     _primaryOverride = null;
     _darkOverride = null;
     _softOverride = null;
@@ -383,6 +396,19 @@ abstract class NusaConfig {
     final variantId = productId.startsWith('nusa-') ? productId.substring(5) : productId;
     return variantHiddenMenus[variantId] ?? [];
   }
+
+  /// Field hint per varian (placeholder "Cth: ..." sesuai industri).
+  /// Prod build: pakai [variantHints] yang di-patch _build_all.py per varian;
+  /// Dev build: override dari VariantData (VariantNotifier).
+  static String hintsFor(String key) => (_devHints ?? variantHints)[key] ?? '';
+
+  /// Build-time hints (patched by _build_all.py per variant).
+  static Map<String, String> variantHints = {
+    'productName': 'Cth: Indomie Goreng',
+    'productCategory': 'Cth: Sembako',
+    'barcode': 'contoh: 8991002101234',
+    'employeeName': 'Cth: Budi Santoso',
+  };
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).
   /// Format: {'id', 'label', 'icon'}

@@ -1010,11 +1010,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       }
     }
 
-    // Validate stock before deducting (item manual — productId negatif — dilewati)
+    // Validate stock before deducting (item manual — productId negatif —
+    // dilewati; layanan isService — tidak dilacak stoknya, dilewati juga).
     final db = ref.read(databaseProvider);
     final productRepo = ProductRepository(db);
     for (final item in cart) {
       if (item.isManual) continue;
+      if (item.isService) continue;
       final product = await productRepo.byId(item.productId);
       if (product == null || product.stock < item.qty) {
         final name = product?.name ?? item.name;
@@ -1066,8 +1068,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       await db.transaction(() async {
         // Deduct stock for each item (item manual tidak punya stok).
         // Stok selalu dalam satuan dasar → pakai qtyInBase (qty × qtyPerBase).
+        // B10: LAYANAN (isService) tidak dilacak stoknya → skip decrement.
         for (final item in cart) {
           if (item.isManual) continue;
+          if (item.isService) continue;
           await productRepo.adjustStock(item.productId, -item.qtyInBase);
           // Varian (v2.2.43): kurangi stok varian spesifik bila item memilih varian.
           if (item.variantName != null && item.variantName!.isNotEmpty) {

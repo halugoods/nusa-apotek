@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.at(String path) : super(_openConnectionAt(path));
 
   @override
-  int get schemaVersion => 45;
+  int get schemaVersion => 46;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -702,6 +702,19 @@ class AppDatabase extends _$AppDatabase {
               'date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
         );
       }
+      if (from < 46) {
+        // v2.2.44: (B1) foto produk ikut backup cloud — BASE64 di kolom produk;
+        // (B8) barcode karyawan — 4 jalur auth (PIN/FP/NFC/barcode);
+        // (B10) Tab Layanan — flag isService pada produk (jasa vs barang).
+        await _addColumnIfMissing(m, 'products', 'image_base64', 'TEXT');
+        await _addColumnIfMissing(m, 'employees', 'barcode', 'TEXT');
+        await _addColumnIfMissing(m, 'products', 'is_service', 'INTEGER');
+        // ALTER tanpa DEFAULT → baris lama NULL; backfill 0 (barang) supaya
+        // SELECT tidak "Null check" pada bool non-nullable.
+        await m.database.customStatement(
+          'UPDATE products SET is_service = 0 WHERE is_service IS NULL',
+        );
+      }
     },
   );
 }
@@ -727,6 +740,12 @@ Future<void> _repairNullDefaults(AppDatabase db) async {
   );
   await db.customStatement(
     "UPDATE products SET category = 'Lainnya' WHERE category IS NULL",
+  );
+  // v2.2.44 (B10): is_service ditambah via ALTER tanpa DEFAULT → baris lama
+  // NULL. Drift memetakan bool non-nullable → "Null check" saat SELECT. Backfill
+  // 0 (barang) — idempoten.
+  await db.customStatement(
+    'UPDATE products SET is_service = 0 WHERE is_service IS NULL',
   );
   await db.customStatement(
     "UPDATE transactions SET status = 'Normal' WHERE status IS NULL",

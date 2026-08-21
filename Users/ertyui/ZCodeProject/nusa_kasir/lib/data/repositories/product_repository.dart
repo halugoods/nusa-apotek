@@ -112,13 +112,23 @@ class ProductRepository {
     return q.get();
   }
 
-  Future<List<Product>> getProducts({String? category, String? status, String? productType}) async {
+  Future<List<Product>> getProducts({
+    String? category,
+    String? status,
+    String? productType,
+    bool? isService,
+  }) async {
     final q = db.select(db.products);
     if (category != null && category != 'Semua') {
       q.where((t) => t.category.equals(category));
     }
     if (productType != null && productType.isNotEmpty) {
       q.where((t) => t.productType.equals(productType));
+    }
+    // B10 (v2.2.44): filter jasa vs barang. isService=true → layanan;
+    // isService=false → produk biasa. null → semua.
+    if (isService != null) {
+      q.where((t) => t.isService.equals(isService));
     }
     // server-side status filter
     if (status == 'Aktif') {
@@ -128,6 +138,12 @@ class ProductRepository {
     }
     return q.get();
   }
+
+  /// Semua produk layanan (isService == true) — dipakai tab Layanan (B10).
+  Future<List<Product>> getServices() => getProducts(isService: true);
+
+  /// Semua produk biasa (isService == false) — dipakai POS segmen Produk.
+  Future<List<Product>> getRegularProducts() => getProducts(isService: false);
 
   Future<void> adjustStock(int id, int delta) async {
     final p = await byId(id);

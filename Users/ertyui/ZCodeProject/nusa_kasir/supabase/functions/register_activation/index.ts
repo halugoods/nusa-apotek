@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
       // license for one variant but opened another.)
       const { data: owned } = await supabase
         .from("licenses")
-        .select("id, key, serial, status, google_user_id, expires_at, product")
+        .select("id, key, serial, status, google_user_id, expires_at, tier, product")
         .eq("google_user_id", verifiedGoogleId)
         .order("created_at", { ascending: false })
         .limit(5);
@@ -151,17 +151,21 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Check if trial has expired (via expires_at)
+      // Check if license has expired (via expires_at) — blocks Trial AND Active.
+      // Active expired = lisensi berbayar yang masanya habis (mis. 1 bulan);
+      // tanpa blokir ini user yang sudah aktivasi tidak pernah diblokir.
       const isExpired =
         license.expires_at && new Date(license.expires_at) < new Date();
-      if (isExpired && license.status === "Trial") {
+      if (isExpired && (license.status === "Trial" || license.status === "Active")) {
         return json(
           {
             has_license: false,
             status: "Expired",
             is_expired: true,
-            message:
-              "Masa trial Anda telah berakhir. Silakan beli lisensi penuh.",
+            expires_at: license.expires_at,
+            message: license.status === "Trial"
+              ? "Masa trial Anda telah berakhir. Silakan beli lisensi penuh."
+              : "Lisensi Anda telah kedaluwarsa. Silakan perpanjang untuk melanjutkan.",
           },
           200,
         );
@@ -175,6 +179,7 @@ Deno.serve(async (req: Request) => {
           key: license.key,
           serial: license.serial,
           expires_at: license.expires_at,
+          tier: license.tier,
           is_expired: isExpired,
         },
         200,

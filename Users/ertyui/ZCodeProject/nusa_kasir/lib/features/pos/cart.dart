@@ -31,8 +31,12 @@ class CartItem {
   int qty;
   String? note;
 
-  /// Weight in kg — when non-null, pricing is per-kg (subtotal = price × weightKg).
+  /// Berat dalam kg — saat non-null, harga per-kg (subtotal = price × weightKg).
   double? weightKg;
+
+  /// B10 (v2.2.44): baris = LAYANAN (isService) — tidak dilacak stoknya
+  /// (skip guard & decrement saat checkout).
+  final bool isService;
   CartItem({
     required this.productId,
     required this.name,
@@ -47,6 +51,7 @@ class CartItem {
     this.qty = 1,
     this.note,
     this.weightKg,
+    this.isService = false,
   });
 
   /// True for ad-hoc items added from the "+" manual sheet (not in the
@@ -90,6 +95,7 @@ class CartItem {
     if (originalPrice != null) 'originalPrice': originalPrice,
     if (costPrice != null) 'costPrice': costPrice,
     if (weightKg != null) 'weightKg': weightKg,
+    if (isService) 'isService': isService,
   };
 
   /// Copy helper untuk update qty/varian tanpa menulis ulang semua field.
@@ -120,6 +126,7 @@ class CartItem {
     qty: qty ?? this.qty,
     note: note ?? this.note,
     weightKg: weightKg ?? this.weightKg,
+    isService: isService,
   );
 }
 
@@ -143,6 +150,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     int? variantStock,
     String? unitName,
     double unitQtyPerBase = 1,
+    bool isService = false,
   }) {
     // Merge key: productId + varian (baris varian berbeda tidak digabung).
     final i = state.indexWhere(
@@ -164,6 +172,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
         qty: list[i].qty + qty,
         note: list[i].note ?? note,
         weightKg: list[i].weightKg ?? weightKg,
+        isService: list[i].isService || isService,
       );
       state = list;
     } else {
@@ -183,6 +192,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
           note: note,
           weightKg: weightKg,
           qty: qty,
+          isService: isService,
         ),
       ];
     }
@@ -230,6 +240,60 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     if (i < 0) return;
     final list = [...state];
     list[i] = list[i].copyWith(unitName: unitName, unitQtyPerBase: qtyPerBase);
+    state = list;
+  }
+
+  /// Recompute the per-unit price of an item from its wholesale tiers.
+  ///
+  /// [wholesalePriceForQty] returns the best wholesale price for a given qty
+  /// (in base units) or null when the item has no applicable wholesale tier.
+  /// [normalPrice] = harga jual biasa (effectivePrice) — dipakai saat tidak
+  /// ada tier yang terpenuhi. [fullPrice] = harga sebelum diskon (sellPrice)
+  /// — baseline coret saat grosir aktif (konsisten dengan _addToCart).
+  ///
+  /// Fix grosir (v2.2.44): sebelumnya `-` dan qty editable TIDAK pernah
+  /// menghitung ulang harga grosir → harga "beku" di tier tinggi walau qty
+  /// sudah turun di bawah ambang. Sekarang semua jalur (decrement, setQty,
+  /// ganti varian, ganti satuan) lewat sini supaya harga selalu sinkron qty.
+  void recomputeWholesale(
+    int productId, {
+    required int? Function(int qtyInBase) wholesalePriceForQty,
+    required int normalPrice,
+    required int fullPrice,
+    String? variantName,
+  }) {
+    final i = state.indexWhere(
+      (e) => e.productId == productId && e.variantName == variantName,
+    );
+    if (i < 0 || state[i].isManual || state[i].isPerKg) return;
+    final list = [...state];
+    final item = list[i];
+    final wPrice = wholesalePriceForQty(item.qtyInBase);
+    final newPrice = wPrice ?? normalPrice;
+    // Coret harga asli tampil saat grosir aktif ATAU produk punya diskon
+    // standalone (normal < full). Konsisten dengan _addToCart.
+    final hasStandaloneDiscount = normalPrice < fullPrice;
+    final newOriginal = (wPrice != null || hasStandaloneDiscount)
+        ? fullPrice
+        : null;
+    if (newPrice == item.price && newOriginal == item.originalPrice) return;
+    // Catatan: pakai constructor langsung, bukan copyWith — copyWith tidak
+    // bisa men-set originalPrice kembali ke null (`?? this.originalPrice`).
+    list[i] = CartItem(
+      productId: item.productId,
+      name: item.name,
+      price: newPrice,
+      variantName: item.variantName,
+      variantPriceAdjustment: item.variantPriceAdjustment,
+      variantStock: item.variantStock,
+      unitName: item.unitName,
+      unitQtyPerBase: item.unitQtyPerBase,
+      originalPrice: newOriginal,
+      costPrice: item.costPrice,
+      qty: item.qty,
+      note: item.note,
+      weightKg: item.weightKg,
+    );
     state = list;
   }
 

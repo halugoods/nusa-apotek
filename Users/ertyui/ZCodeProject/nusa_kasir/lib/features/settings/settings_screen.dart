@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:restart_app/restart_app.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/receipt/receipt_config.dart';
 import 'package:nusa_kasir/core/receipt/receipt_data.dart';
 import 'package:nusa_kasir/core/receipt/receipt_preview_widget.dart';
@@ -1293,8 +1294,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── License Detail Bottom Sheet ───────────────────────────
 
-  void _showLicense() {
+  Future<void> _showLicense() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // v2.2.44 (L5): baca metadata lisensi nyata (diisi saat login) —
+    // bukan hardcoded "Status: Aktif".
+    final info = await SecureStore.getLicenseInfo();
+    final exp = info?.expiresAt;
+    final now = DateTime.now();
+    final blocked = info == null ||
+        info.status == 'Expired' ||
+        info.status == 'Cancelled' ||
+        info.status == 'Suspended';
+    final isExpired = !blocked && exp != null && exp.isBefore(now);
+    final statusText = info == null
+        ? 'Tidak Terdeteksi'
+        : blocked
+            ? (info.status == 'Cancelled'
+                ? 'Dibatalkan'
+                : info.status == 'Suspended'
+                    ? 'Dinonaktifkan'
+                    : 'Kedaluwarsa')
+            : isExpired
+                ? 'Kedaluwarsa'
+                : 'Aktif';
+    final statusColor = (blocked || isExpired)
+        ? (isDark ? Colors.red.shade300 : Colors.red.shade600)
+        : NusaConfig.accentGreen;
+    final tierLabel = info?.tier == 'trial'
+        ? 'Trial'
+        : info?.tier == '1month'
+            ? '1 Bulan'
+            : 'Lifetime';
+    final expText = exp != null
+        ? '${exp.day}/${exp.month}/${exp.year}'
+        : 'Seumur hidup';
+    // v2.2.44 (L4/L5): tampilkan CTA perpanjang kalau status bermasalah
+    // ATAU mendekati habis (H-7). Lifetime (exp null) tidak perlu.
+    final needsRenew = blocked ||
+        isExpired ||
+        (exp != null && exp.isBefore(now.add(const Duration(days: 7))));
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1304,159 +1343,239 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkDivider
-                    : NusaConfig.dividerColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: NusaConfig.accentGreen.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.key,
-                    color: NusaConfig.accentGreen,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Lisensi',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Activation key
-            const Text(
-              'Kode Aktivasi',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface2
-                    : NusaConfig.backgroundColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
                   color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
+                      ? NusaConfig.darkDivider
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              child: Row(
+              const SizedBox(height: 8),
+              Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      _activationKey ?? '-',
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 14,
-                      ),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.key,
+                      color: statusColor,
+                      size: 20,
                     ),
                   ),
-                  if (_activationKey != null)
-                    GestureDetector(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: _activationKey!));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Kode aktivasi disalin'),
-                            behavior: SnackBarBehavior.floating,
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
-                      },
-                      child: Icon(
-                        Icons.copy,
-                        size: 18,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
-                    ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Lisensi',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  size: 14,
-                  color: NusaConfig.accentGreen,
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Status: Aktif',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: NusaConfig.accentGreen,
-                    fontWeight: FontWeight.w600,
+              const SizedBox(height: 16),
+
+              // Activation key
+              const Text(
+                'Kode Aktivasi',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkSurface2
+                      : NusaConfig.backgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.borderColor,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Backup button
-            OutlinedButton.icon(
-              onPressed: _backingUp
-                  ? null
-                  : () {
-                      Navigator.pop(ctx);
-                      _backupNow();
-                    },
-              icon: _backingUp
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.cloud_upload_outlined, size: 18),
-              label: Text(_backingUp ? 'Menyimpan...' : 'Backup ke Cloud'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: NusaConfig.activePrimary,
-                side: BorderSide(color: NusaConfig.activePrimary),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _activationKey ?? '-',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    if (_activationKey != null)
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(
+                            ClipboardData(text: _activationKey!),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Kode aktivasi disalin'),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                        child: Icon(
+                          Icons.copy,
+                          size: 18,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                  ],
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Backup cloud tersimpan di akun Google Anda. Gunakan Sinkronisasi Cloud untuk upload/download manual.',
-              style: TextStyle(
-                fontSize: 11,
-                color:
-                    (isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary)
-                        .withValues(alpha: 0.8),
+              const SizedBox(height: 12),
+
+              // v2.2.44 (L5): status + tier + expiry nyata.
+              Row(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    size: 14,
+                    color: statusColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Status: $statusText',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-          ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.card_membership_outlined,
+                    size: 14,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Paket: $tierLabel',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.event_outlined,
+                    size: 14,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Berlaku sampai: $expText',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // v2.2.44 (L4/L5): CTA perpanjang/beli — buka /pay (lih. needsRenew).
+              if (needsRenew)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final googleId =
+                        await GoogleAuthService.getStoredUserId();
+                    final uri = Uri.parse(
+                      googleId != null && googleId.isNotEmpty
+                          ? NusaConfig.paymentLink(googleId, 'lifetime')
+                          : '${NusaConfig.paymentUrl}?product=${NusaConfig.productId}',
+                    );
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  icon: const Icon(Icons.credit_card_outlined, size: 18),
+                  label: Text(
+                    (blocked || isExpired) ? 'Perpanjang Lisensi' : 'Perpanjang / Beli',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+
+              // Backup button
+              OutlinedButton.icon(
+                onPressed: _backingUp
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        _backupNow();
+                      },
+                icon: _backingUp
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_upload_outlined, size: 18),
+                label: Text(_backingUp ? 'Menyimpan...' : 'Backup ke Cloud'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Backup cloud tersimpan di akun Google Anda. Gunakan Sinkronisasi Cloud untuk upload/download manual.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color:
+                      (isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary)
+                          .withValues(alpha: 0.8),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );

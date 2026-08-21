@@ -16,6 +16,11 @@ class VariantData {
   final Map<String, List<Color>> catGradients;
   final Map<String, IconData> catIcons;
   final List<String> hiddenMenus;
+  // v2.2.44 (B2): contoh/placeholder teks per field form sesuai industri
+  // varian. Key: productName, productCategory, sku, buyPrice, sellPrice,
+  // stock, barcode, employeeName, employeePin, supplierName. Fallback aman
+  // di lookup via `hintsFor(key)` — tidak semua key harus diisi.
+  final Map<String, String> hints;
 
   const VariantData({
     required this.id,
@@ -31,7 +36,27 @@ class VariantData {
     required this.catGradients,
     required this.catIcons,
     required this.hiddenMenus,
+    this.hints = const {},
   });
+
+  /// Baca hint per field, dengan fallback generik bila key tidak diisi varian.
+  String hintsFor(String key) {
+    const fallback = <String, String>{
+      'productName': 'Cth: Nama produk',
+      'productCategory': 'Cth: Nama kategori',
+      'sku': 'Cth: SKU-001',
+      'buyPrice': 'Cth: 2500',
+      'sellPrice': 'Cth: 3000',
+      'stock': 'Cth: 100',
+      'minStock': 'Cth: 10',
+      'barcode': 'contoh: 8991002101234',
+      'employeeName': 'Cth: Nama karyawan',
+      'employeePin': 'Cth: PIN 4-6 digit',
+      'employeePhone': 'Cth: 08123456789',
+      'supplierName': 'Cth: Nama supplier',
+    };
+    return hints[key] ?? fallback[key] ?? '';
+  }
 
   /// All 8 variants, hardcoded identically to _build_all.py.
   static const List<VariantData> all = [
@@ -66,6 +91,12 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['meja', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Indomie Goreng',
+        'productCategory': 'Cth: Sembako',
+        'barcode': 'contoh: 8991002101234',
+        'employeeName': 'Cth: Budi Santoso',
+      },
     ),
     // ── F&B ──
     VariantData(
@@ -98,6 +129,12 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['spreadsheet', 'laundry_status', 'servis', 'booking', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Nasi Goreng Spesial',
+        'productCategory': 'Cth: Makanan',
+        'barcode': 'contoh: 8991002101234',
+        'employeeName': 'Cth: Koki Joko',
+      },
     ),
     // ── Laundry ──
     VariantData(
@@ -130,6 +167,11 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['promo', 'meja', 'servis', 'booking', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Cuci Kering Lipat',
+        'productCategory': 'Cth: Layanan',
+        'employeeName': 'Cth: Tika',
+      },
     ),
     // ── Bengkel ──
     VariantData(
@@ -162,6 +204,11 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Ganti Oli Mesin',
+        'productCategory': 'Cth: Servis',
+        'employeeName': 'Cth: Mekanik Andi',
+      },
     ),
     // ── Salon ──
     VariantData(
@@ -194,6 +241,11 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['cabang', 'meja', 'laundry_status', 'servis', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Potong Rambut',
+        'productCategory': 'Cth: Layanan',
+        'employeeName': 'Cth: Hair Stylist Rina',
+      },
     ),
     // ── Apotek ──
     VariantData(
@@ -226,6 +278,12 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['promo', 'meja', 'laundry_status', 'servis', 'booking', 'print_order'],
+      hints: {
+        'productName': 'Cth: Paracetamol 500mg',
+        'productCategory': 'Cth: Obat',
+        'barcode': 'contoh: 8991002101234',
+        'employeeName': 'Cth: Apoteker Dewi',
+      },
     ),
     // ── Fotocopy ──
     VariantData(
@@ -262,6 +320,11 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['cabang', 'meja', 'laundry_status', 'servis', 'booking', 'resep'],
+      hints: {
+        'productName': 'Cth: Cetak Dokumen A4',
+        'productCategory': 'Cth: Cetak',
+        'employeeName': 'Cth: Operator Fajar',
+      },
     ),
     // ── Servis ──
     VariantData(
@@ -294,6 +357,11 @@ class VariantData {
         'Lainnya': Icons.category_rounded,
       },
       hiddenMenus: ['meja', 'laundry_status', 'booking', 'resep', 'print_order'],
+      hints: {
+        'productName': 'Cth: Ganti LCD HP',
+        'productCategory': 'Cth: Servis',
+        'employeeName': 'Cth: Teknisi Surya',
+      },
     ),
   ];
 

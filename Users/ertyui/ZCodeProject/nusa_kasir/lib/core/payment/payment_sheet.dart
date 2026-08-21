@@ -46,7 +46,7 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
       id: 'lifetime',
       label: 'Lifetime',
       price: 'Rp249.000',
-      desc: 'Akses seumur hidup + FREE Kartu NFC 2pcs',
+      desc: 'Akses seumur hidup',
       priceNum: NusaConfig.priceLifetime,
       isBest: true,
     ),

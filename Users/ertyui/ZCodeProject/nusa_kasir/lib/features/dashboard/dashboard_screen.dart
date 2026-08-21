@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -119,6 +120,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Flip card data
   EmployeeCardData? _cardData;
   int? _cardEmployeeId;
+
+  // v2.2.44 (L3/L5): metadata lisensi untuk banner perpanjang di dashboard.
+  ({DateTime? expiresAt, String tier, String status})? _licenseInfo;
 
   final List<Map<String, dynamic>> _items = const [
     {'id': 'produk', 'label': 'Produk', 'icon': 'product'},
@@ -848,6 +852,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _load() async {
     final name = await ref.read(settingsRepoProvider).getStoreName();
     _pinPadEnabled = await SecureStore.getPinPadEnabled();
+    // v2.2.44 (L3): baca metadata lisensi dari SecureStore (diisi saat login).
+    _licenseInfo = await SecureStore.getLicenseInfo();
     final db = ref.read(databaseProvider);
     final attRepo = AttendanceRepository(db);
     final emps = await attRepo.getEmployees();
@@ -1738,6 +1744,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  /// v2.2.44 (L4): buka halaman perpanjang/beli lisensi /pay. Gateway
+  /// pembayaran abstrak di web — app tidak perlu tahu midtrans/lainnya.
+  Future<void> _openPayPage() async {
+    final googleId = await GoogleAuthService.getStoredUserId();
+    final uri = Uri.parse(
+      googleId != null && googleId.isNotEmpty
+          ? NusaConfig.paymentLink(googleId, 'lifetime')
+          : '${NusaConfig.paymentUrl}?product=${NusaConfig.productId}',
+    );
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        TopToast.error(context, 'Gagal membuka halaman pembayaran');
+      }
+    }
+  }
+
   // ── Build ──────────────────────────────────────────────────────────
 
   @override
@@ -1923,6 +1947,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           _confirmLogout();
                         },
                       ),
+
+                      // v2.2.44 (L3): banner perpanjang lisensi (H-7 s/d habis).
+                      if (_licenseInfo != null) ...[
+                        _LicenseExpiryBanner(
+                          info: _licenseInfo!,
+                          onRenew: _openPayPage,
+                        ),
+                      ],
 
                       // Keuangan summary card
                       if (_financeExpense > 0 || _financeIncome > 0) ...[
@@ -2205,6 +2237,150 @@ class _MenuItem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// v2.2.44 (L3): banner lisensi di dashboard — peringatan perpanjang H-7
+/// sebelum habis. Lifetime / non-expliring tidak menampilkan apa-apa.
+class _LicenseExpiryBanner extends StatelessWidget {
+  final ({DateTime? expiresAt, String tier, String status}) info;
+  final VoidCallback onRenew;
+  const _LicenseExpiryBanner({required this.info, required this.onRenew});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final exp = info.expiresAt;
+    final now = DateTime.now();
+
+    // Status non-aktif (expired/cancelled/suspended) → banner merah wajib.
+    final blocked = info.status == 'Expired' ||
+        info.status == 'Cancelled' ||
+        info.status == 'Suspended';
+    // Aktif tapi masa berlaku sudah lewat (expires_at < now) → harus segera
+    // perpanjang; kalau lifetime (tanpa expires_at) → tidak perlu.
+    final isExpired = !blocked && exp != null && exp.isBefore(now);
+    // Aktif + belum habis → hitung H-7.
+    final daysUntil = exp != null
+        ? exp.difference(now).inDays
+        : null;
+    final approaching = !blocked && !isExpired && daysUntil != null && daysUntil <= 7;
+
+    // Tidak ada yang perlu tampil → jangan render apapun.
+    if (!blocked && !isExpired && !approaching) {
+      return const SizedBox.shrink();
+    }
+
+    final urgent = blocked || isExpired;
+    final accent = urgent ? Colors.red.shade600 : Colors.amber.shade800;
+    final bg = urgent
+        ? (isDark ? Colors.red.withValues(alpha: 0.12) : Colors.red.shade50)
+        : (isDark ? Colors.amber.withValues(alpha: 0.12) : Colors.amber.shade50);
+
+    String message;
+    if (blocked) {
+      message = info.status == 'Cancelled'
+          ? 'Lisensi Anda dihentikan. Hubungi admin.'
+          : info.status == 'Suspended'
+              ? 'Lisensi Anda dinonaktifkan sementara.'
+              : 'Lisensi Anda telah kedaluwarsa. Perpanjang agar kasir aktif kembali.';
+    } else if (isExpired) {
+      message = 'Masa lisensi Anda telah berakhir. Perpanjang untuk melanjutkan.';
+    } else if (daysUntil != null && daysUntil <= 0) {
+      message = 'Lisensi berakhir hari ini. Perpanjang sekarang.';
+    } else {
+      message = daysUntil == 1
+          ? 'Lisensi berlaku sampai ${_fmt(exp)} — tersisa 1 hari!'
+          : 'Lisensi berakhir ${_fmt(exp)} — tersisa $daysUntil hari. Perpanjang agar tidak terputus.';
+    }
+
+    final expText = exp != null ? _fmt(exp) : null;
+    final tierLabel = info.tier == 'trial'
+        ? 'Trial'
+        : info.tier == '1month'
+            ? '1 Bulan'
+            : 'Lifetime';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  urgent ? Icons.error_outline : Icons.event_outlined,
+                  size: 18,
+                  color: accent,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Lisensi ${urgent ? 'Perlu Perpanjangan' : 'Segera Berakhir'}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: accent,
+                    ),
+                  ),
+                ),
+                Text(
+                  tierLabel,
+                  style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              ),
+            ),
+            if (expText != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Berlaku sampai: $expText',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: accent,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onRenew,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text('Perpanjang / Beli Lisensi'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmt(DateTime? d) =>
+      d == null ? '—' : '${d.day}/${d.month}/${d.year}';
 }
 
 class _KeuanganSummary extends StatelessWidget {

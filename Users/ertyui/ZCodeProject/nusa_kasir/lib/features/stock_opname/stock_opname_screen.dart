@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/stock_count_repository.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -16,13 +18,21 @@ import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 
 class StockOpnameScreen extends ConsumerStatefulWidget {
   final bool embedded;
-  StockOpnameScreen({super.key, this.embedded = false});
+  final GlobalKey<StockOpnameScreenState>? screenKey;
+
+  /// v2.2.44 (B6): callback ke layar induk (Stok) agar scan barcode dari
+  /// Stok tab bisa diferuskan ke opname saat tab Opname aktif.
+  StockOpnameScreen(
+      {super.key, this.embedded = false, this.screenKey, this.onBarcodeHandled});
+
+  /// Callback dipanggil layar induk saat barcode HID diteruskan.
+  final ValueChanged<String>? onBarcodeHandled;
 
   @override
-  ConsumerState<StockOpnameScreen> createState() => _StockOpnameScreenState();
+  ConsumerState<StockOpnameScreen> createState() => StockOpnameScreenState();
 }
 
-class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
+class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
   StockCount? _activeSession;
   List<StockCountItem> _items = [];
   List<StockCount> _sessions = [];
@@ -33,6 +43,10 @@ class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
   final _searchController = TextEditingController();
   final Map<int, TextEditingController> _physicalControllers = {};
   bool _finalizing = false;
+
+  /// productId → barcode ternormalisasi (untuk scan opname, B6).
+  final Map<int, String> _barcodeByProductId = {};
+  MobileScannerController? _scanner;
 
   @override
   void initState() {
@@ -47,6 +61,7 @@ class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
     for (final c in _physicalControllers.values) {
       c.dispose();
     }
+    _scanner?.dispose();
     super.dispose();
   }
 
@@ -59,22 +74,119 @@ class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
     if (active != null) {
       items = await repo.getItems(active.id);
     }
+    // B6: peta barcode produk untuk scan opname.
+    var products = await ProductRepository(ref.read(databaseProvider))
+        .getProducts();
+    // B10 (v2.2.44): layanan (isService) tidak dilacak stok — tak perlu opname.
+    if (NusaConfig.isJasaVariant) {
+      products = products.where((p) => !p.isService).toList();
+    }
+    final bcMap = <int, String>{};
+    for (final p in products) {
+      final bc = ProductRepository.normalizeBarcode(p.barcode ?? '');
+      if (bc.isNotEmpty) bcMap[p.id] = bc;
+    }
     if (mounted) {
       setState(() {
         _activeSession = active;
         _items = items;
         _sessions = sessions;
+        _barcodeByProductId
+          ..clear()
+          ..addAll(bcMap);
         _loading = false;
       });
     }
   }
 
+  /// B6: filter juga by barcode (scan produk pakai barcode fisik).
   List<StockCountItem> get _filteredItems {
     final q = _searchController.text.trim().toLowerCase();
     if (q.isEmpty) return _items;
     return _items
-        .where((item) => item.productName.toLowerCase().contains(q))
+        .where(
+          (item) =>
+              item.productName.toLowerCase().contains(q) ||
+              _barcodeByProductId[item.productId]
+                      ?.contains(ProductRepository.normalizeBarcode(q)) ==
+                  true,
+        )
         .toList();
+  }
+
+  /// B6: barcode masuk (HID / kamera) → resolve item → auto naikkan
+  /// physical count (pola _AdjustSheet). Kembalikan apakah berhasil.
+  Future<bool> handleBarcode(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return false;
+    if (_activeSession == null) {
+      TopToast.info(context, 'Mulai sesi opname dulu sebelum scan');
+      return false;
+    }
+    final item = _items
+        .where((i) => _barcodeByProductId[i.productId] == norm)
+        .firstOrNull;
+    if (item == null) {
+      TopToast.error(context, 'Barcode tidak ada di sesi opname');
+      return false;
+    }
+    // Naikkan physical count +1 (scan fisik beruntun).
+    final current = item.physicalStock ?? item.systemStock;
+    final next = current + 1;
+    await _updatePhysicalCount(item, '$next');
+    // Set controller text agar UI sinkron.
+    _physicalControllers[item.id]?.text = '$next';
+    // Scroll target tidak kita setel — cukup highlight lewat toast.
+    _searchController.clear();
+    if (mounted) {
+      setState(() {});
+      TopToast.success(
+          context, '${item.productName}: fisik $next');
+    }
+    return true;
+  }
+
+  /// Kamera scanner — dialog kecil (pola POS/stok).
+  Future<void> _scanCamera() async {
+    if (_scanner == null) {
+      _scanner = MobileScannerController(
+        detectionSpeed: DetectionSpeed.noDuplicates,
+        formats: const [
+          BarcodeFormat.ean13,
+          BarcodeFormat.ean8,
+          BarcodeFormat.upcA,
+          BarcodeFormat.upcE,
+          BarcodeFormat.code128,
+          BarcodeFormat.code39,
+          BarcodeFormat.qrCode,
+        ],
+      );
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.all(24),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: 280,
+            height: 280,
+            child: MobileScanner(
+              controller: _scanner,
+              onDetect: (capture) {
+                final codes = capture.barcodes;
+                if (codes.isEmpty) return;
+                final raw = codes.first.rawValue ?? '';
+                if (raw.trim().isEmpty) return;
+                Navigator.pop(ctx);
+                handleBarcode(raw.trim());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   int get _countedProducts {
@@ -399,7 +511,7 @@ class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
             controller: _searchController,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              hintText: 'Cari produk...',
+              hintText: 'Cari produk / scan barcode...',
               hintStyle: TextStyle(
                 color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
                 fontSize: 14,
@@ -407,6 +519,10 @@ class _StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
               prefixIcon: Icon(Icons.search_rounded,
                   color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
                   size: 20),
+              suffixIcon: IconButton(
+                icon: Icon(Icons.qr_code_scanner, size: 20),
+                onPressed: _scanCamera,
+              ),
               filled: true,
               fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
               border: OutlineInputBorder(

@@ -34,8 +34,10 @@ class PinDialog extends StatelessWidget {
   final int pinLength;
   final bool showFingerprint;
   final bool showNfc;
+  final bool showBarcode;
   final Future<bool> Function()? onFingerprint;
   final Future<String?> Function()? onNfc;
+  final Future<String?> Function(String code)? onBarcode;
 
   PinDialog({
     super.key,
@@ -50,8 +52,10 @@ class PinDialog extends StatelessWidget {
     this.pinLength = 6,
     this.showFingerprint = false,
     this.showNfc = false,
+    this.showBarcode = false,
     this.onFingerprint,
     this.onNfc,
+    this.onBarcode,
   });
 
   /// Show the dialog. Returns [PinResult] (success/failure) or null if cancelled.
@@ -71,8 +75,10 @@ class PinDialog extends StatelessWidget {
     int? pinLength,
     bool showFingerprint = false,
     bool showNfc = false,
+    bool showBarcode = false,
     Future<bool> Function()? onFingerprint,
     Future<String?> Function()? onNfc,
+    Future<String?> Function(String code)? onBarcode,
   }) async {
     // Resolve stored PIN length (4/6) — never hardcode 6.
     var resolvedLength = pinLength ?? 6;
@@ -185,11 +191,17 @@ class PinDialog extends StatelessWidget {
                       error: error,
                       showFingerprint: showFingerprint,
                       showNfc: showNfc,
+                      showBarcode: showBarcode,
                       onFingerprint: onFingerprint,
                       onNfc: onNfc,
                       onNfcSuccess: (employeeId) {
                         Navigator.of(ctx).pop(PinResult(
                             success: true, remember: remember, nfcEmployeeId: int.tryParse(employeeId)));
+                      },
+                      onBarcode: onBarcode,
+                      onBarcodeSuccess: (employeeId) {
+                        Navigator.of(ctx).pop(PinResult(
+                            success: true, remember: remember, nfcEmployeeId: employeeId));
                       },
                       onComplete: (pin) async {
                         if (pin.isEmpty) return;
@@ -288,10 +300,13 @@ class _PinDialogKeypad extends StatefulWidget {
   final String? error;
   final bool showFingerprint;
   final bool showNfc;
+  final bool showBarcode;
   final Future<bool> Function()? onFingerprint;
   final Future<String?> Function()? onNfc;
+  final Future<String?> Function(String code)? onBarcode;
   final ValueChanged<String> onComplete;
   final ValueChanged<String>? onNfcSuccess;
+  final ValueChanged<int>? onBarcodeSuccess;
 
   _PinDialogKeypad({
     super.key,
@@ -299,10 +314,13 @@ class _PinDialogKeypad extends StatefulWidget {
     this.error,
     this.showFingerprint = false,
     this.showNfc = false,
+    this.showBarcode = false,
     this.onFingerprint,
     this.onNfc,
+    this.onBarcode,
     required this.onComplete,
     this.onNfcSuccess,
+    this.onBarcodeSuccess,
   });
 
   @override
@@ -327,6 +345,17 @@ class _PinDialogKeypadState extends State<_PinDialogKeypad> {
     return null;
   }
 
+  Future<String?> _onBarcodeHandler(String code) async {
+    if (widget.onBarcode != null) {
+      final result = await widget.onBarcode!(code);
+      if (result != null && mounted) {
+        widget.onBarcodeSuccess?.call(int.tryParse(result) ?? -1);
+      }
+      return result;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return PinKeypad(
@@ -335,11 +364,13 @@ class _PinDialogKeypadState extends State<_PinDialogKeypad> {
       error: widget.error,
       showFingerprint: widget.showFingerprint,
       showNfc: widget.showNfc,
+      showBarcode: widget.showBarcode,
       showCancel: false,
       onFingerprint: widget.onFingerprint,
       onFingerprintSuccess: () => Navigator.of(context)
           .pop(PinResult(success: true, remember: true)),
       onNfc: _onNfcHandler,
+      onBarcode: _onBarcodeHandler,
       onComplete: widget.onComplete,
       onCancel: () => Navigator.of(context).pop(null),
     );

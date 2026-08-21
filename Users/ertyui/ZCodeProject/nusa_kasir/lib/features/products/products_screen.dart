@@ -6,16 +6,19 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
+import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/unit_manager_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -36,6 +39,22 @@ const _sortLabels = <_SortBy, String>{
   _SortBy.priceLow: 'Harga (Terendah)',
 };
 
+/// Shared section-card style konsisten dengan checkout (B3 v2.2.44).
+BoxDecoration _sectionCard(bool isDark) => BoxDecoration(
+  color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+  borderRadius: BorderRadius.circular(18),
+  border: Border.all(
+    color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+  ),
+  boxShadow: [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.03),
+      blurRadius: 8,
+      offset: Offset(0, 2),
+    ),
+  ],
+);
+
 class ProductsScreen extends ConsumerStatefulWidget {
   ProductsScreen({super.key});
   @override
@@ -52,6 +71,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   int _gridColumns = 2;
   // v2.2.43: tab menu Produk — 0=Produk, 1=Kategori, 2=Bahan Baku (F&B only).
   int _tabIndex = 0;
+  // v2.2.44 (B9): reload kategori tab setelah CRUD langsung.
+  int _kategoriTick = 0;
   // Legacy alias (Produk mode) — dipertahankan agar referensi lama tetap jalan.
   bool get _showKategori => _tabIndex == 1;
   // Increment saat bahan ditambah dari FAB → _BahanView re-init & reload.
@@ -117,9 +138,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     List<Product> all;
     if (q.isNotEmpty) {
       all = await repo.searchProducts(q);
+      // B10: tab Produk = barang fisik saja; layanan pindah ke tab Layanan.
+      if (NusaConfig.isJasaVariant) {
+        all = all.where((p) => !p.isService).toList();
+      }
     } else {
       all = await repo.getProducts(
         status: _statusFilter == 'Semua' ? null : _statusFilter,
+        isService: NusaConfig.isJasaVariant ? false : null,
       );
     }
     all = _sort(all);
@@ -494,6 +520,17 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     if (result != null && mounted) _load();
   }
 
+  /// v2.2.44 (B4): "Kelola Satuan" — kamus satuan dinamis (CRUD) dari tab
+  /// Produk. Reusable widget UnitManagerSheet (shared/widgets).
+  Future<void> _openUnitManager() async {
+    final repo = ref.read(recipeRepoProvider);
+    final changed = await UnitManagerSheet.show(context: context, repo: repo);
+    if (changed == true && mounted) {
+      // Kamus berubah → daftar produk mungkin pakai satuan baru; reload.
+      _load();
+    }
+  }
+
   Future<void> _deleteProduct(Product product) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -577,6 +614,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           active: _tabIndex == 2,
                           onTap: () => setState(() => _tabIndex = 2),
                         ),
+                      // B10 (v2.2.44): tab Layanan — HANYA varian jasa.
+                      // Varian barang: tab disembunyikan (produk jasa tidak
+                      // lazim di kelontong/fnb/apotek).
+                      if (NusaConfig.isJasaVariant)
+                        _SegmentTab(
+                          label: 'Layanan',
+                          active: _tabIndex == 3,
+                          onTap: () => setState(() => _tabIndex = 3),
+                        ),
                     ],
                   ),
                 ),
@@ -619,6 +665,32 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                   SizedBox(width: 8),
                 ],
+                // v2.2.44 (B4): "Kelola Satuan" — kamus satuan dinamis bisa
+                // dikelola dari tab Produk, tidak hanya di form produk.
+                if (_tabIndex == 0)
+                  GestureDetector(
+                    onTap: _openUnitManager,
+                    child: Container(
+                      height: 36,
+                      width: 36,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? NusaConfig.darkSurface
+                            : NusaConfig.surfaceColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark
+                              ? NusaConfig.darkBorder
+                              : NusaConfig.borderColor,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.straighten_outlined,
+                        size: 18,
+                        color: NusaConfig.activePrimary,
+                      ),
+                    ),
+                  ),
                 // Export/Import button
                 GestureDetector(
                   onTap: _showExportImportSheet,
@@ -684,11 +756,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ),
             ),
 
-          // Content: product list, category grid, or bahan baku (F&B)
+          // Content: product list, category grid, bahan baku (F&B), or layanan (jasa)
           if (_tabIndex == 2 && NusaConfig.isFnbVariant)
             Expanded(child: _BahanView(key: ValueKey(_bahanTick)))
+          else if (_tabIndex == 3 && NusaConfig.isJasaVariant)
+            Expanded(child: _LayananView(key: ValueKey(_kategoriTick)))
           else if (_showKategori)
-            Expanded(child: _KategoriView())
+            Expanded(child: _KategoriView(key: ValueKey(_kategoriTick)))
           else ...[
             // Status chips row
             SizedBox(
@@ -830,17 +904,34 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         foregroundColor: Colors.white,
         icon: Icon(_tabIndex == 1
             ? Icons.create_new_folder
-            : _tabIndex == 2
-                ? Icons.add
+            : _tabIndex == 3
+                ? Icons.handyman_outlined
                 : Icons.add),
         label: Text(_tabIndex == 1
             ? 'Tambah Kategori'
-            : _tabIndex == 2
-                ? 'Tambah Bahan'
-                : 'Tambah Produk'),
+            : _tabIndex == 3
+                ? 'Tambah Layanan'
+                : _tabIndex == 2
+                    ? 'Tambah Bahan'
+                    : 'Tambah Produk'),
         onPressed: () async {
           if (_tabIndex == 1) {
-            context.push('/produk/kategori');
+            await showAddCategoryDialog(
+              context,
+              ref.read(databaseProvider),
+              onChanged: () {
+                if (mounted) setState(() => _kategoriTick++);
+              },
+            );
+          } else if (_tabIndex == 3) {
+            final saved = await showProductFormSheet(
+              context,
+              isService: true,
+            );
+            if (saved != null && mounted) {
+              TopToast.success(context, 'Layanan disimpan');
+              setState(() => _kategoriTick++);
+            }
           } else if (_tabIndex == 2) {
             await showAddBahanSheet(context, ref.read(databaseProvider));
             if (mounted) setState(() => _bahanTick++);
@@ -858,6 +949,19 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Future<void> _onExternalBarcode(String code) async {
     final norm = ProductRepository.normalizeBarcode(code);
     if (norm.isEmpty) return;
+    // Tab Kategori: scan barcode PRODUK → buka kategori produk tsb (B6).
+    if (_tabIndex == 1) {
+      final repo = ref.read(productRepoProvider);
+      final product = await repo.byBarcode(norm);
+      if (product != null && mounted) {
+        context.push('/produk/kategori/${product.category}');
+        return;
+      }
+      if (mounted) {
+        TopToast.info(context, 'Barcode tidak terdaftar di produk mana pun.');
+      }
+      return;
+    }
     _search.text = norm;
     if (mounted) setState(() {});
     await _submitScanHid();
@@ -1021,7 +1125,131 @@ class _GridToggleBtn extends StatelessWidget {
 
 // ── Kategori View (inline) ──
 
+// ── B9 (v2.2.44): Kategori CRUD langsung di tab ──
+// Dialog tambah kategori top-level (dipakai FAB tab Kategori + menu long-press).
+// onChanged dipanggil setelah sukses supaya _KategoriView reload via tick.
+Future<void> showAddCategoryDialog(
+  BuildContext context,
+  AppDatabase db, {
+  VoidCallback? onChanged,
+}) async {
+  final ctrl = TextEditingController();
+  final name = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Tambah Kategori'),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'Nama kategori',
+          border: OutlineInputBorder(),
+        ),
+        textCapitalization: TextCapitalization.words,
+        onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NusaConfig.activePrimary,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Simpan'),
+        ),
+      ],
+    ),
+  );
+  if (name == null || name.isEmpty) return;
+  await CategoryRepository(db).add(name);
+  if (context.mounted) TopToast.success(context, 'Kategori "$name" ditambahkan');
+  onChanged?.call();
+}
+
+/// Dialog ubah nama kategori (dipakai menu long-press).
+Future<void> _renameCategoryDialog(
+  BuildContext context,
+  AppDatabase db,
+  String oldName, {
+  VoidCallback? onChanged,
+}) async {
+  final ctrl = TextEditingController(text: oldName);
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Ubah Nama Kategori'),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'Nama baru',
+          border: OutlineInputBorder(),
+        ),
+        textCapitalization: TextCapitalization.words,
+        onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NusaConfig.activePrimary,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Simpan'),
+        ),
+      ],
+    ),
+  );
+  if (result == null || result.isEmpty || result == oldName) return;
+  await CategoryRepository(db).rename(oldName, result);
+  // Update referensi kategori di produk.
+  await (db.update(db.products)..where((t) => t.category.equals(oldName)))
+      .write(ProductsCompanion(category: Value(result)));
+  if (context.mounted) TopToast.success(context, 'Kategori diubah ke "$result"');
+  onChanged?.call();
+}
+
+/// Hapus kategori — produk dipindah ke "Lainnya".
+Future<void> _deleteCategoryDialog(
+  BuildContext context,
+  AppDatabase db,
+  String name, {
+  VoidCallback? onChanged,
+}) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Hapus Kategori'),
+      content: Text(
+        'Hapus kategori "$name"? Produk dengan kategori ini akan dipindah ke "Lainnya".',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NusaConfig.error,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Hapus'),
+        ),
+      ],
+    ),
+  );
+  if (confirm != true) return;
+  await (db.update(db.products)..where((t) => t.category.equals(name)))
+      .write(ProductsCompanion(category: Value('Lainnya')));
+  await CategoryRepository(db).delete(name);
+  if (context.mounted) TopToast.success(context, 'Kategori "$name" dihapus');
+  onChanged?.call();
+}
+
+/// Tab Kategori di menu Produk — CRUD langsung:
+/// tap → buka isi kategori; long-press → ubah nama / hapus.
 class _KategoriView extends ConsumerStatefulWidget {
+  const _KategoriView({super.key});
   @override
   ConsumerState<_KategoriView> createState() => _KategoriViewState();
 }
@@ -1045,6 +1273,60 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
       });
   }
 
+  /// Menu long-press: Ubah Nama / Hapus.
+  void _showCategoryMenu(String cat) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: NusaConfig.dividerColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Text(
+            cat,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: Icon(Icons.edit_rounded, color: NusaConfig.activePrimary),
+            title: const Text('Ubah Nama'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _renameCategoryDialog(context, ref.read(databaseProvider), cat,
+                  onChanged: () => setState(() {}));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_rounded, color: NusaConfig.error),
+            title: Text('Hapus Kategori', style: TextStyle(color: NusaConfig.error)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _deleteCategoryDialog(context, ref.read(databaseProvider), cat,
+                  onChanged: () => setState(() {}));
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1062,13 +1344,23 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
                   ? NusaConfig.darkTextTertiary
                   : NusaConfig.textTertiary,
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Belum ada kategori',
               style: TextStyle(
                 color: isDark
                     ? NusaConfig.darkTextSecondary
                     : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tekan Tambah Kategori untuk mulai',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
               ),
             ),
           ],
@@ -1080,12 +1372,15 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
       child: ListView.separated(
         padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
         itemCount: cats.length,
-        separatorBuilder: (_, __) => SizedBox(height: 8),
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, i) {
           final cat = cats[i].key;
           final count = cats[i].value;
+          final emoji = NusaConfig.catEmojiFor(cat);
+          final gradient = NusaConfig.catGradientFor(cat);
           return GestureDetector(
             onTap: () => context.push('/produk/kategori/$cat'),
+            onLongPress: () => _showCategoryMenu(cat),
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
@@ -1101,6 +1396,21 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
               ),
               child: Row(
                 children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gradient,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1115,7 +1425,7 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
                                 : NusaConfig.textPrimary,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           '$count produk',
                           style: TextStyle(
@@ -1128,12 +1438,210 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
+                  GestureDetector(
+                    onTap: () => _showCategoryMenu(cat),
+                    child: Icon(
+                      Icons.more_vert,
+                      size: 20,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── B10 (v2.2.44): Tab Layanan (jasa) — varian jasa only ──
+// Daftar produk bertanda isService. Tap → edit form (preset layanan);
+// menu (⋯) → hapus. Tambah via FAB (isService preset true).
+
+class _LayananView extends ConsumerStatefulWidget {
+  const _LayananView({super.key});
+  @override
+  ConsumerState<_LayananView> createState() => _LayananViewState();
+}
+
+class _LayananViewState extends ConsumerState<_LayananView> {
+  List<Product> _services = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final repo = ref.read(productRepoProvider);
+    final services = await repo.getServices();
+    services.sort((a, b) => a.name.compareTo(b.name));
+    if (mounted) {
+      setState(() {
+        _services = services;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _editService(Product p) async {
+    final saved = await showProductFormSheet(context, productId: p.id);
+    if (saved != null && mounted) _load();
+  }
+
+  Future<void> _deleteService(Product p) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
+        ),
+        title: const Text('Hapus Layanan'),
+        content: Text('Hapus layanan "${p.name}"?\nTindakan ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: NusaConfig.error,
+            ),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await ref.read(productRepoProvider).deleteProduct(p.id);
+    if (mounted) {
+      TopToast.success(context, 'Layanan dihapus');
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_services.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.handyman_outlined,
+              size: 48,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Belum ada layanan',
+              style: TextStyle(
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tekan Tambah Layanan untuk mulai',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
+        itemCount: _services.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (_, i) {
+          final p = _services[i];
+          return GestureDetector(
+            onTap: () => _editService(p),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.handyman_outlined,
+                      size: 20,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          p.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${p.category} · ${p.sellPrice > 0 ? formatRupiah(p.sellPrice) : 'Gratis'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => _deleteService(p),
+                    child: Icon(
+                      Icons.delete_outline,
+                      size: 20,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
                   ),
                 ],
               ),
@@ -1264,6 +1772,39 @@ class _BahanViewState extends ConsumerState<_BahanView> {
     }
   }
 
+  /// v2.2.44 (B3): tap baris bahan → sheet detail (pola app), bukan popup menu.
+  /// Aksi edit/hapus/pembelian/stok masuk tersedia di dalam sheet.
+  Future<void> _openDetail(RawMaterial m) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BahanDetailSheet(
+        material: m,
+        unitName: _unitNames[m.unitId] ?? '',
+      ),
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'edit':
+        await _openForm(material: m);
+      case 'hapus':
+        await _deleteBahan(m);
+      case 'pembelian':
+        if (mounted) context.push('/pembelian');
+      case 'stok':
+        if (mounted) await _stokMasuk(m);
+    }
+  }
+
+  /// v2.2.44 (B4): "Kelola Satuan" dari tab Bahan Baku (F&B) — kamus satuan
+  /// dinamis reusable UnitManagerSheet.
+  Future<void> _openUnitManager() async {
+    final repo = ref.read(recipeRepoProvider);
+    final changed = await UnitManagerSheet.show(context: context, repo: repo);
+    if (changed == true && mounted) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1299,6 +1840,15 @@ class _BahanViewState extends ConsumerState<_BahanView> {
                     : NusaConfig.textTertiary,
               ),
             ),
+            const SizedBox(height: 12),
+            // Kelola Satuan tetap bisa diakses meski bahan belum ada
+            // (kamus satuan global untuk resep/HPP).
+            TextButton.icon(
+              onPressed: _openUnitManager,
+              icon: Icon(Icons.straighten_outlined, size: 18),
+              style: TextButton.styleFrom(foregroundColor: NusaConfig.activePrimary),
+              label: Text('Kelola Satuan'),
+            ),
           ],
         ),
       );
@@ -1307,15 +1857,58 @@ class _BahanViewState extends ConsumerState<_BahanView> {
       onRefresh: _load,
       child: ListView.separated(
         padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
-        itemCount: _materials.length,
+        itemCount: _materials.length + 1, // +1 header Kelola Satuan
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, i) {
-          final m = _materials[i];
+          if (i == 0) {
+            // v2.2.44 (B4): akses kamus satuan global dari tab Bahan Baku.
+            return GestureDetector(
+              onTap: _openUnitManager,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
+                  border: Border.all(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.straighten_outlined,
+                      size: 18,
+                      color: NusaConfig.activePrimary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Kelola Satuan',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: NusaConfig.textSecondary,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          final m = _materials[i - 1];
           return _BahanCard(
             material: m,
             unitName: _unitNames[m.unitId] ?? '',
-            onEdit: () => _openForm(material: m),
-            onDelete: () => _deleteBahan(m),
+            onEdit: () => _openDetail(m),
+            onDelete: () => _openDetail(m),
             onPembelian: () => context.push('/pembelian'),
             onStokMasuk: () => _stokMasuk(m),
           );
@@ -1404,22 +1997,14 @@ class _BahanCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') onEdit();
-                    if (v == 'hapus') onDelete();
-                  },
-                  color: isDark ? NusaConfig.darkSurface : Colors.white,
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Text('Edit'),
-                    ),
-                    PopupMenuItem(
-                      value: 'hapus',
-                      child: Text('Hapus'),
-                    ),
-                  ],
+                // v2.2.44 (B3): tap baris → detail sheet; chevron sebagai
+                // affordance (bukan popup menu).
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
                 ),
               ],
             ),
@@ -1532,6 +2117,210 @@ class _ActionBtn extends StatelessWidget {
   }
 }
 
+/// Sheet detail bahan (v2.2.44 B3): tap baris → lihat info + aksi.
+/// Return String aksi: 'edit' | 'hapus' | 'pembelian' | 'stok'.
+class _BahanDetailSheet extends StatelessWidget {
+  final RawMaterial material;
+  final String unitName;
+  const _BahanDetailSheet({required this.material, required this.unitName});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lowStock =
+        material.minStock > 0 && material.stock <= material.minStock;
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(NusaConfig.radiusXL)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Drag handle ──
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.eco_outlined,
+                    color: NusaConfig.accentGreen,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        material.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Bahan Baku',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // ── Info card ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: _sectionCard(isDark),
+              child: Column(
+                children: [
+                  _InfoRow(
+                    label: 'Stok saat ini',
+                    value: '${material.stock}'
+                        '${unitName.isNotEmpty ? ' $unitName' : ''}',
+                    valueColor: lowStock
+                        ? const Color(0xFFF59E0B)
+                        : null,
+                  ),
+                  const Divider(height: 16),
+                  _InfoRow(
+                    label: 'Stok minimal',
+                    value: '${material.minStock}'
+                        '${unitName.isNotEmpty ? ' $unitName' : ''}',
+                  ),
+                  const Divider(height: 16),
+                  _InfoRow(
+                    label: 'Harga modal (HPP)',
+                    value: formatRupiah(material.costPrice),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // ── Aksi ──
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context, 'edit'),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context, 'pembelian'),
+                    icon: const Icon(Icons.shopping_cart_outlined, size: 18),
+                    label: const Text('Pembelian'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(context, 'stok'),
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NusaConfig.activePrimary,
+                      foregroundColor: Colors.white,
+                    ),
+                    label: const Text('Stok Masuk'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context, 'hapus'),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: NusaConfig.error,
+                    ),
+                    label: const Text('Hapus'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  const _InfoRow({required this.label, required this.value, this.valueColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: valueColor ??
+                (isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Bottom-sheet form tambah/edit bahan baku.
 class _BahanFormSheet extends StatefulWidget {
   final db;
@@ -1633,7 +2422,7 @@ class _BahanFormSheetState extends State<_BahanFormSheet> {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     return SafeArea(
       child: Container(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : Colors.white,
           borderRadius:
@@ -1644,70 +2433,115 @@ class _BahanFormSheetState extends State<_BahanFormSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Drag handle ──
               Center(
                 child: Container(
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.dividerColor,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Text(
                 widget.material == null ? 'Tambah Bahan Baku' : 'Edit Bahan Baku',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
-              NusaInput(
-                'Nama bahan',
-                controller: _name,
-                hint: 'cth: Tepung terigu',
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int?>(
-                value: _unitId,
-                decoration: InputDecoration(
-                  labelText: 'Satuan (dari kamus satuan)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                items: [
-                  const DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text('Pilih satuan'),
-                  ),
-                  ...widget.units.map(
-                    (u) => DropdownMenuItem<int?>(
-                      value: u.id,
-                      child: Text(u.name),
+              // ── Bagian 1: identitas & satuan ──
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: _sectionCard(isDark),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Informasi Bahan',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
                     ),
-                  ),
-                ],
-                onChanged: (v) => setState(() => _unitId = v),
+                    const SizedBox(height: 12),
+                    NusaInput(
+                      'Nama bahan',
+                      controller: _name,
+                      hint: 'cth: Tepung terigu',
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int?>(
+                      value: _unitId,
+                      decoration: InputDecoration(
+                        labelText: 'Satuan (dari kamus satuan)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      items: [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('Pilih satuan'),
+                        ),
+                        ...widget.units.map(
+                          (u) => DropdownMenuItem<int?>(
+                            value: u.id,
+                            child: Text(u.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _unitId = v),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
-              NusaInput(
-                'Harga modal (HPP per satuan)',
-                controller: _cost,
-                type: TextInputType.number,
-                hint: '0',
-              ),
-              const SizedBox(height: 12),
-              NusaInput(
-                'Stok awal',
-                controller: _stock,
-                type: TextInputType.number,
-                hint: '0',
-              ),
-              const SizedBox(height: 12),
-              NusaInput(
-                'Stok minimal (peringatan)',
-                controller: _minStock,
-                type: TextInputType.number,
-                hint: '0',
+              // ── Bagian 2: harga & stok ──
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: _sectionCard(isDark),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Harga & Stok',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    NusaInput(
+                      'Harga modal (HPP per satuan)',
+                      controller: _cost,
+                      type: TextInputType.number,
+                      hint: '0',
+                    ),
+                    const SizedBox(height: 12),
+                    NusaInput(
+                      'Stok awal',
+                      controller: _stock,
+                      type: TextInputType.number,
+                      hint: '0',
+                    ),
+                    const SizedBox(height: 12),
+                    NusaInput(
+                      'Stok minimal (peringatan)',
+                      controller: _minStock,
+                      type: TextInputType.number,
+                      hint: '0',
+                    ),
+                  ],
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
@@ -1768,7 +2602,7 @@ class _StokMasukSheetState extends State<_StokMasukSheet> {
         : '';
     return SafeArea(
       child: Container(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : Colors.white,
           borderRadius:
@@ -1778,6 +2612,20 @@ class _StokMasukSheetState extends State<_StokMasukSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Drag handle ──
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             Text(
               'Stok Masuk — ${widget.material.name}',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -1793,12 +2641,16 @@ class _StokMasukSheetState extends State<_StokMasukSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            NusaInput(
-              'Jumlah (${unit.isNotEmpty ? unit : 'unit'})',
-              controller: widget.controller,
-              type: const TextInputType.numberWithOptions(decimal: true),
-              hint: 'cth: 1.5',
-              onChanged: (v) => _qty = double.tryParse(v) ?? 0,
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: _sectionCard(isDark),
+              child: NusaInput(
+                'Jumlah (${unit.isNotEmpty ? unit : 'unit'})',
+                controller: widget.controller,
+                type: const TextInputType.numberWithOptions(decimal: true),
+                hint: 'cth: 1.5',
+                onChanged: (v) => _qty = double.tryParse(v) ?? 0,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(

@@ -186,31 +186,24 @@ class _KategoriListScreenState extends ConsumerState<KategoriListScreen> {
       _loading
           ? SkeletonList()
           : Column(children: [
-              // Sort toggle
+              // Sort toggle — ringkas (B9): satu label ganti urut, tanpa pill boros.
               Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: Row(children: [
-                  Icon(Icons.sort, size: 18, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                  SizedBox(width: 8),
+                  Text('${_counts.length} kategori',
+                      style: TextStyle(fontSize: 12,
+                          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  const Spacer(),
                   GestureDetector(
                     onTap: () => setState(() => _sortByCount = !_sortByCount),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text(_sortByCount ? 'Terbanyak' : 'A-Z',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                        SizedBox(width: 4),
-                        Icon(Icons.swap_vert, size: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                      ]),
-                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_sortByCount ? 'Terbanyak' : 'A-Z',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: NusaConfig.activePrimary)),
+                      const SizedBox(width: 2),
+                      Icon(Icons.swap_vert, size: 16, color: NusaConfig.activePrimary),
+                    ]),
                   ),
-                  Spacer(),
-                  Text('${_counts.length} kategori', style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
                 ]),
               ),
               SizedBox(height: 8),

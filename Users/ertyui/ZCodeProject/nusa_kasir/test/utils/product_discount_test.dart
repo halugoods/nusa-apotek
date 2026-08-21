@@ -17,6 +17,7 @@ void main() {
       stock: 0,
       minStock: 0,
       imagePath: null,
+      isService: false,
       isOnline: false,
       expiryDate: null,
       productType: null,
