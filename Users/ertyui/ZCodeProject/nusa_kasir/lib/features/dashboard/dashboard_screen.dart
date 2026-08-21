@@ -1500,7 +1500,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final id = await NfcTagService.readEmployeeTag();
         return id?.toString();
       },
-      pinLength: 6,
     );
 
     if (result == null || !result.success) {
@@ -1906,7 +1905,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         await NfcTagService.readEmployeeTag();
                                     return id?.toString();
                                   },
-                                  pinLength: 6,
                                 );
                                 return result?.success ?? false;
                               }

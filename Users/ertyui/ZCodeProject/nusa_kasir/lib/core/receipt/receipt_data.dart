@@ -16,6 +16,10 @@ class ReceiptItem {
   /// Berat (kg) untuk item per-kg (market). Null = item satuan.
   final double? weightKg;
 
+  /// Label satuan jual (v2.2.43 dinamis), mis. "dus", "karton". Null =
+  /// fallback 'pcs' (renderer menampilkan qty polos).
+  final String? unitLabel;
+
   const ReceiptItem({
     required this.name,
     required this.qty,
@@ -23,6 +27,7 @@ class ReceiptItem {
     this.originalPrice,
     this.note,
     this.weightKg,
+    this.unitLabel,
   });
 
   bool get isPerKg => weightKg != null;
@@ -39,11 +44,14 @@ class ReceiptItem {
   /// Potongan diskon item total (per unit × qty).
   int get discountTotal => hasDiscount ? discountNominal * (isPerKg ? 1 : qty) : 0;
 
-  /// Format qty untuk baris item: "2 x Rp 5.000" atau "1.5 kg x Rp 5.000/kg".
-  String get qtyLabel =>
-      isPerKg
-          ? '${weightKg!.toStringAsFixed(1)} kg'
-          : '$qty';
+  /// Format qty untuk baris item: "2 x Rp 5.000" atau "1.5 kg x Rp 5.000/kg"
+  /// atau "2 dus (24 pcs)" bila produk pakai satuan jual (v2.2.43).
+  String get qtyLabel {
+    if (isPerKg) return '${weightKg!.toStringAsFixed(1)} kg';
+    if (unitLabel == null || unitLabel!.isEmpty) return '$qty';
+    if (qty <= 1) return '$qty $unitLabel';
+    return '$qty $unitLabel';
+  }
 }
 
 /// Data transaksi struk — MURNI data, tanpa config template.
@@ -130,12 +138,15 @@ class ReceiptData {
       items: cartItems
           .map(
             (c) => ReceiptItem(
-              name: c.name,
+              // v2.2.43: nama + varian ("Nama — Varian") di struk.
+              name: c.displayName,
               qty: c.qty,
               price: c.price,
               originalPrice: c.originalPrice,
               note: c.note,
               weightKg: c.weightKg,
+              // v2.2.43: satuan jual dinamis (qtyLabel pakai ini).
+              unitLabel: c.unitName,
             ),
           )
           .toList(),
@@ -178,16 +189,23 @@ class ReceiptData {
       orderType: orderType,
       tableName: tableName,
       items: rawItems
-          .map(
-            (m) => ReceiptItem(
-              name: '${m['name'] ?? ''}',
+          .map((m) {
+            final baseName = '${m['name'] ?? ''}';
+            final v = m['variantName'] as String?;
+            // v2.2.43: reprint tampilkan varian bila disimpan saat checkout.
+            final display = (v != null && v.isNotEmpty && baseName.isNotEmpty)
+                ? '$baseName — $v'
+                : baseName;
+            return ReceiptItem(
+              name: display,
               qty: (m['qty'] as num?)?.toInt() ?? 0,
               price: (m['price'] as num?)?.toInt() ?? 0,
               originalPrice: (m['originalPrice'] as num?)?.toInt(),
               note: m['note'] as String?,
               weightKg: (m['weightKg'] as num?)?.toDouble(),
-            ),
-          )
+              unitLabel: m['unitName'] as String?,
+            );
+          })
           .toList(),
       discount: discount,
       total: total,

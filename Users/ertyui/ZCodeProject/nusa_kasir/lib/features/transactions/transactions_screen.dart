@@ -33,6 +33,25 @@ import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 
+/// v2.2.43: tampilkan nama item + varian ("Nama — Varian") bila tersimpan.
+String _itemDisplayName(Map<String, dynamic> it) {
+  final base = (it['name'] as String?) ?? 'Item';
+  final v = it['variantName'] as String?;
+  if (v != null && v.isNotEmpty && base.isNotEmpty && base != 'Item') {
+    return '$base — $v';
+  }
+  return base;
+}
+
+/// Label qty item di riwayat: "x 3" polos, atau "x 3 dus" bila transaksi
+/// memakai satuan jual dinamis (v2.2.43).
+String _itemQtyLabel(Map<String, dynamic> it) {
+  final qty = (it['qty'] as num?)?.toInt() ?? 0;
+  final unit = it['unitName'] as String?;
+  if (unit == null || unit.isEmpty || qty <= 0) return '$qty';
+  return '$qty $unit';
+}
+
 class TransactionsScreen extends ConsumerStatefulWidget {
   TransactionsScreen({super.key});
   @override
@@ -302,7 +321,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       ...items.asMap().entries.map((e) {
                         final i = e.key;
                         final it = e.value;
-                        final name = (it['name'] as String?) ?? 'Item';
+                        final name = _itemDisplayName(it);
                         final qty = (it['qty'] as num?)?.toInt() ?? 0;
                         final price = (it['price'] as num?)?.toInt() ?? 0;
                         return Padding(
@@ -568,7 +587,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         final id = await NfcTagService.readEmployeeTag();
         return id?.toString();
       },
-      pinLength: 6,
     );
     return result?.success ?? false;
   }
@@ -1695,7 +1713,7 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                           children: [
                             Expanded(
                               child: Text(
-                                '${it['name']} x ${it['qty']}',
+                                '${_itemDisplayName(it)} x ${_itemQtyLabel(it)}',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13,
                                   color: isDark

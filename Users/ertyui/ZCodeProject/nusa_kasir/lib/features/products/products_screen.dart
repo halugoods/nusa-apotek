@@ -12,6 +12,8 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -48,7 +50,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   List<Product> _products = [];
   bool _loading = true;
   int _gridColumns = 2;
-  bool _showKategori = false; // Produk vs Kategori tab
+  // v2.2.43: tab menu Produk — 0=Produk, 1=Kategori, 2=Bahan Baku (F&B only).
+  int _tabIndex = 0;
+  // Legacy alias (Produk mode) — dipertahankan agar referensi lama tetap jalan.
+  bool get _showKategori => _tabIndex == 1;
+  // Increment saat bahan ditambah dari FAB → _BahanView re-init & reload.
+  int _bahanTick = 0;
   List<String> labels = [];
 
   @override
@@ -555,20 +562,27 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     children: [
                       _SegmentTab(
                         label: 'Produk',
-                        active: !_showKategori,
-                        onTap: () => setState(() => _showKategori = false),
+                        active: _tabIndex == 0,
+                        onTap: () => setState(() => _tabIndex = 0),
                       ),
                       _SegmentTab(
                         label: 'Kategori',
-                        active: _showKategori,
-                        onTap: () => setState(() => _showKategori = true),
+                        active: _tabIndex == 1,
+                        onTap: () => setState(() => _tabIndex = 1),
                       ),
+                      // v2.2.43: tab ke-3 Bahan Baku — HANYA varian F&B.
+                      if (NusaConfig.isFnbVariant)
+                        _SegmentTab(
+                          label: 'Bahan Baku',
+                          active: _tabIndex == 2,
+                          onTap: () => setState(() => _tabIndex = 2),
+                        ),
                     ],
                   ),
                 ),
                 Spacer(),
                 // Grid toggle (only when in Produk mode)
-                if (!_showKategori) ...[
+                if (_tabIndex == 0) ...[
                   Container(
                     height: 36,
                     decoration: BoxDecoration(
@@ -636,40 +650,44 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ),
           SizedBox(height: 10),
 
-          // Search + scan
-          Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: NusaInput(
-              'Cari nama atau barcode...',
-              controller: _search,
-              hint: 'Cari nama atau barcode...',
-              focusNode: _searchFocus,
-              // Scan barcode EKSTERNAL (HID): Enter tidak unfocus, fokus
-              // tetap di kolom cari → scan beruntun tanpa tap ulang (v2.2.29).
-              textInputAction: TextInputAction.newline,
-              onSubmitted: (_) => _submitScanHid(),
-              prefixIcon: Icon(
-                Icons.search,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-              suffixIcon: GestureDetector(
-                onTap: _scanBarcode,
-                child: Padding(
-                  padding: EdgeInsets.only(right: 4),
-                  child: Icon(
-                    Icons.qr_code_scanner,
-                    size: 20,
-                    color: NusaConfig.activePrimary,
+          // Search + scan (sembunyi di tab Bahan Baku — daftar bahan punya
+          // tombol aksi sendiri + barcode HID tetap jalan via ScreenScaffold).
+          if (_tabIndex != 2)
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: NusaInput(
+                'Cari nama atau barcode...',
+                controller: _search,
+                hint: 'Cari nama atau barcode...',
+                focusNode: _searchFocus,
+                // Scan barcode EKSTERNAL (HID): Enter tidak unfocus, fokus
+                // tetap di kolom cari → scan beruntun tanpa tap ulang (v2.2.29).
+                textInputAction: TextInputAction.newline,
+                onSubmitted: (_) => _submitScanHid(),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+                suffixIcon: GestureDetector(
+                  onTap: _scanBarcode,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.qr_code_scanner,
+                      size: 20,
+                      color: NusaConfig.activePrimary,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          // Content: either product list or category grid
-          if (_showKategori)
+          // Content: product list, category grid, or bahan baku (F&B)
+          if (_tabIndex == 2 && NusaConfig.isFnbVariant)
+            Expanded(child: _BahanView(key: ValueKey(_bahanTick)))
+          else if (_showKategori)
             Expanded(child: _KategoriView())
           else ...[
             // Status chips row
@@ -810,13 +828,39 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: NusaConfig.activePrimary,
         foregroundColor: Colors.white,
-        icon: Icon(_showKategori ? Icons.create_new_folder : Icons.add),
-        label: Text(_showKategori ? 'Tambah Kategori' : 'Tambah Produk'),
-        onPressed: () => _showKategori
-            ? context.push('/produk/kategori')
-            : _openProductForm(),
+        icon: Icon(_tabIndex == 1
+            ? Icons.create_new_folder
+            : _tabIndex == 2
+                ? Icons.add
+                : Icons.add),
+        label: Text(_tabIndex == 1
+            ? 'Tambah Kategori'
+            : _tabIndex == 2
+                ? 'Tambah Bahan'
+                : 'Tambah Produk'),
+        onPressed: () async {
+          if (_tabIndex == 1) {
+            context.push('/produk/kategori');
+          } else if (_tabIndex == 2) {
+            await showAddBahanSheet(context, ref.read(databaseProvider));
+            if (mounted) setState(() => _bahanTick++);
+          } else {
+            _openProductForm();
+          }
+        },
       ),
+      onBarcode: _onExternalBarcode,
     );
+  }
+
+  /// Barcode eksternal (HID) — v2.2.43: scan jalan otomatis tanpa tap kolom
+  /// cari. Reuse _submitScanHid via buffer kolom cari.
+  Future<void> _onExternalBarcode(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    _search.text = norm;
+    if (mounted) setState(() {});
+    await _submitScanHid();
   }
 
   // 1-column list view (thin horizontal cards)
@@ -1096,6 +1140,682 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Bahan Baku View (F&B) — tab ke-3 menu Produk ──
+
+/// Helper FAB "Tambah Bahan": buka sheet form bahan baru (F&B).
+/// Dipanggil dari FloatingActionButton — form-nya top-level supaya bisa
+/// dipakai tanpa perlu GlobalKey ke [_BahanViewState].
+Future<void> showAddBahanSheet(BuildContext context, AppDatabase db) async {
+  final saved = await _BahanFormSheet.show(
+    context: context,
+    db: db,
+    units: await RecipeRepository(db).getUnits(),
+    materials: await RecipeRepository(db).getMaterials(),
+  );
+  if (saved && context.mounted) TopToast.success(context, 'Bahan disimpan');
+}
+
+/// Daftar bahan baku (raw material) + aksi "Pembelian" (fast-track ke
+/// Catat Pembelian → stok & HPP ikut update) + "Stok Masuk" (tambah stok
+/// cepat, TANPA ubah HPP). Hanya varian F&B.
+class _BahanView extends ConsumerStatefulWidget {
+  const _BahanView({super.key});
+  @override
+  ConsumerState<_BahanView> createState() => _BahanViewState();
+}
+
+class _BahanViewState extends ConsumerState<_BahanView> {
+  List<RawMaterial> _materials = [];
+  Map<int, String> _unitNames = {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final repo = ref.read(recipeRepoProvider);
+    final materials = await repo.getMaterials();
+    final units = await repo.getUnits();
+    if (!mounted) return;
+    setState(() {
+      _materials = materials;
+      _unitNames = {for (final u in units) u.id: u.name};
+      _loading = false;
+    });
+  }
+
+  Future<void> _openForm({RawMaterial? material}) async {
+    final repo = ref.read(recipeRepoProvider);
+    final units = await repo.getUnits();
+    final saved = await _BahanFormSheet.show(
+      context: context,
+      db: ref.read(databaseProvider),
+      units: units,
+      materials: _materials,
+      material: material,
+    );
+    if (saved && mounted) {
+      TopToast.success(
+        context,
+        material == null ? 'Bahan disimpan' : 'Bahan diperbarui',
+      );
+      await _load();
+    }
+  }
+
+  Future<void> _stokMasuk(RawMaterial m) async {
+    final repo = ref.read(recipeRepoProvider);
+    final qty = await _promptStokMasuk(m);
+    if (qty == null || qty <= 0) return;
+    await repo.addMaterialStock(m.id, qty);
+    if (mounted) {
+      TopToast.success(context, 'Stok ${m.name} bertambah $qty');
+      await _load();
+    }
+  }
+
+  Future<double?> _promptStokMasuk(RawMaterial m) {
+    final ctrl = TextEditingController(text: '1');
+    return showModalBottomSheet<double>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _StokMasukSheet(material: m, controller: ctrl),
+    );
+  }
+
+  Future<void> _deleteBahan(RawMaterial m) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
+        ),
+        title: const Text('Hapus Bahan'),
+        content: Text('Hapus "${m.name}"?\nTindakan ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: NusaConfig.activePrimary,
+            ),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await ref.read(recipeRepoProvider).deleteMaterial(m.id);
+    if (mounted) {
+      TopToast.success(context, 'Bahan dihapus');
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_materials.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 48,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Belum ada bahan baku',
+              style: TextStyle(
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tambah bahan lalu catat pembeliannya',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
+        itemCount: _materials.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (_, i) {
+          final m = _materials[i];
+          return _BahanCard(
+            material: m,
+            unitName: _unitNames[m.unitId] ?? '',
+            onEdit: () => _openForm(material: m),
+            onDelete: () => _deleteBahan(m),
+            onPembelian: () => context.push('/pembelian'),
+            onStokMasuk: () => _stokMasuk(m),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Kartu satu bahan: nama + satuan + stok + modal + 2 tombol aksi.
+class _BahanCard extends StatelessWidget {
+  final RawMaterial material;
+  final String unitName;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onPembelian;
+  final VoidCallback onStokMasuk;
+  _BahanCard({
+    required this.material,
+    required this.unitName,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onPembelian,
+    required this.onStokMasuk,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lowStock =
+        material.minStock > 0 && material.stock <= material.minStock;
+
+    return GestureDetector(
+      onTap: onEdit,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.eco_outlined,
+                    color: NusaConfig.accentGreen,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        material.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Modal ${formatRupiah(material.costPrice)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'edit') onEdit();
+                    if (v == 'hapus') onDelete();
+                  },
+                  color: isDark ? NusaConfig.darkSurface : Colors.white,
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Edit'),
+                    ),
+                    PopupMenuItem(
+                      value: 'hapus',
+                      child: Text('Hapus'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  lowStock
+                      ? Icons.warning_amber_rounded
+                      : Icons.inventory_2_outlined,
+                  size: 16,
+                  color: lowStock
+                      ? const Color(0xFFF59E0B)
+                      : isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Stok ${material.stock}'
+                  '${unitName.isNotEmpty ? ' $unitName' : ''}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: lowStock
+                        ? const Color(0xFFF59E0B)
+                        : isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _ActionBtn(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'Pembelian',
+                    filled: false,
+                    onTap: onPembelian,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ActionBtn(
+                    icon: Icons.add_circle_outline,
+                    label: 'Stok Masuk',
+                    filled: true,
+                    onTap: onStokMasuk,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+  _ActionBtn({
+    required this.icon,
+    required this.label,
+    required this.filled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: filled ? NusaConfig.activePrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: filled
+              ? null
+              : Border.all(color: NusaConfig.activePrimary, width: 1.2),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: filled ? Colors.white : NusaConfig.activePrimary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: filled ? Colors.white : NusaConfig.activePrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet form tambah/edit bahan baku.
+class _BahanFormSheet extends StatefulWidget {
+  final db;
+  final List<Unit> units;
+  final List<RawMaterial> materials;
+  final RawMaterial? material;
+  const _BahanFormSheet({
+    required this.db,
+    required this.units,
+    required this.materials,
+    this.material,
+  });
+
+  static Future<bool> show({
+    required BuildContext context,
+    required AppDatabase db,
+    required List<Unit> units,
+    required List<RawMaterial> materials,
+    RawMaterial? material,
+  }) async {
+    final res = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BahanFormSheet(
+        db: db,
+        units: units,
+        materials: materials,
+        material: material,
+      ),
+    );
+    return res ?? false;
+  }
+
+  @override
+  State<_BahanFormSheet> createState() => _BahanFormSheetState();
+}
+
+class _BahanFormSheetState extends State<_BahanFormSheet> {
+  late final _name = TextEditingController(text: widget.material?.name ?? '');
+  late final _stock = TextEditingController(
+    text: (widget.material?.stock ?? 0).toString(),
+  );
+  late final _minStock = TextEditingController(
+    text: (widget.material?.minStock ?? 0).toString(),
+  );
+  late final _cost = TextEditingController(
+    text: (widget.material?.costPrice ?? 0).toString(),
+  );
+  int? _unitId;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _unitId = widget.material?.unitId;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _stock.dispose();
+    _minStock.dispose();
+    _cost.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Nama bahan wajib diisi');
+      return;
+    }
+    final repo = RecipeRepository(widget.db);
+    if (widget.material == null) {
+      await repo.addMaterial(
+        name: name,
+        unitId: _unitId,
+        stock: int.tryParse(_stock.text) ?? 0,
+        minStock: int.tryParse(_minStock.text) ?? 0,
+        costPrice: int.tryParse(_cost.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0,
+      );
+    } else {
+      await repo.updateMaterial(
+        widget.material!.id,
+        name: name,
+        unitId: _unitId == null ? null : _unitId,
+        minStock: int.tryParse(_minStock.text) ?? 0,
+        costPrice:
+            int.tryParse(_cost.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0,
+      );
+    }
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(NusaConfig.radiusXL)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.material == null ? 'Tambah Bahan Baku' : 'Edit Bahan Baku',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              NusaInput(
+                'Nama bahan',
+                controller: _name,
+                hint: 'cth: Tepung terigu',
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int?>(
+                value: _unitId,
+                decoration: InputDecoration(
+                  labelText: 'Satuan (dari kamus satuan)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Pilih satuan'),
+                  ),
+                  ...widget.units.map(
+                    (u) => DropdownMenuItem<int?>(
+                      value: u.id,
+                      child: Text(u.name),
+                    ),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _unitId = v),
+              ),
+              const SizedBox(height: 12),
+              NusaInput(
+                'Harga modal (HPP per satuan)',
+                controller: _cost,
+                type: TextInputType.number,
+                hint: '0',
+              ),
+              const SizedBox(height: 12),
+              NusaInput(
+                'Stok awal',
+                controller: _stock,
+                type: TextInputType.number,
+                hint: '0',
+              ),
+              const SizedBox(height: 12),
+              NusaInput(
+                'Stok minimal (peringatan)',
+                controller: _minStock,
+                type: TextInputType.number,
+                hint: '0',
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Batal'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _save,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text(widget.material == null ? 'Simpan' : 'Perbarui'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sheet "Stok Masuk" — tambah stok cepat, TANPA supplier/ubah HPP.
+class _StokMasukSheet extends StatefulWidget {
+  final RawMaterial material;
+  final TextEditingController controller;
+  const _StokMasukSheet({required this.material, required this.controller});
+
+  @override
+  State<_StokMasukSheet> createState() => _StokMasukSheetState();
+}
+
+class _StokMasukSheetState extends State<_StokMasukSheet> {
+  double _qty = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final unit = widget.material.unitId != null
+        ? widget.material.unitId!.toString()
+        : '';
+    return SafeArea(
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(NusaConfig.radiusXL)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Stok Masuk — ${widget.material.name}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Menambah stok bahan tanpa mengubah harga modal (HPP).',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            NusaInput(
+              'Jumlah (${unit.isNotEmpty ? unit : 'unit'})',
+              controller: widget.controller,
+              type: const TextInputType.numberWithOptions(decimal: true),
+              hint: 'cth: 1.5',
+              onChanged: (v) => _qty = double.tryParse(v) ?? 0,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, _qty > 0 ? _qty : null);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Tambah Stok'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

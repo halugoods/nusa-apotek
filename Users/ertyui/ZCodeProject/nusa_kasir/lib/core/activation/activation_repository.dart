@@ -19,6 +19,21 @@ class ActivationResult {
   ActivationResult(this.ok, [this.error]);
 }
 
+/// Status verifikasi backup cloud terhadap varian aplikasi ini — dipakai
+/// activation_screen / RestoreBackupFlow untuk MENAMPILKAN pesan yang tepat
+/// saat backup ada tapi isinya milik varian lain (folder tercemar), bukannya
+/// diam-diam menganggap "tidak ada" lalu memaksa user setup ulang (v2.2.43).
+enum BackupVariantStatus {
+  /// Tidak ada backup di path varian ini (atau gagal unduh/decrypt).
+  none,
+  /// Backup ada dan isinya milik varian ini — layak ditawarkan untuk restore.
+  matches,
+  /// Backup ADA di path varian ini tapi isinya data varian LAIN (folder
+  /// tercemar / setup keliru di perangkat lain). JANGAN restore diam-diam;
+  /// beri tahu user dengan jelas.
+  wrongVariant,
+}
+
 class ActivationRepository {
   final SupabaseClient? client;
   ActivationRepository(this.client);
@@ -155,6 +170,29 @@ class ActivationRepository {
       return await _backupBelongsToVariant(decrypted, uid);
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Status backup cloud di path varian ini — membedakan "tidak ada" dari
+  /// "ada tapi isinya varian lain". v2.2.43: dipakai UI untuk menampilkan
+  /// pesan jelas (bukan diam-diam setup ulang) saat folder tercemar.
+  Future<BackupVariantStatus> checkBackupVariant() async {
+    if (client == null) return BackupVariantStatus.none;
+    await _ensureAnonAuth();
+    final uid = await _googleUserId();
+    if (uid == null) return BackupVariantStatus.none;
+    try {
+      final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
+      final bytes =
+          await client!.storage.from('nusa-backups').download(path);
+      if (bytes.isEmpty) return BackupVariantStatus.none;
+      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      final ok = await _backupBelongsToVariant(decrypted, uid);
+      return ok
+          ? BackupVariantStatus.matches
+          : BackupVariantStatus.wrongVariant;
+    } catch (_) {
+      return BackupVariantStatus.none;
     }
   }
 
@@ -307,7 +345,14 @@ class ActivationRepository {
       // metadata.json bila ada; fallback ke waktu sekarang (backup ada).
       final meta = await _readMetadata();
       if (meta != null) {
-        final t = DateTime.tryParse(meta['updated_at']?.toString() ?? '');
+        // v2.2.43: penulis metadata (`_uploadMetadata`) menulis `updated_at`
+        // DAN `backupTime`. Selalu utamakan `updated_at`; kalau backup lama
+        // hanya punya `backupTime`, turunkan ke situ biar timestamp tidak
+        // pernah lompat ke now (lompat ke now = auto-sync selalu anggap cloud
+        // lebih baru = upload device asli MATI → restore selalu data lama).
+        final t =
+            DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
+            DateTime.tryParse(meta['backupTime']?.toString() ?? '');
         if (t != null) return t;
       }
       return DateTime.now();
@@ -392,8 +437,15 @@ class ActivationRepository {
   /// agar aplikasi varian lain bisa membacanya untuk verifikasi varian
   /// (folder backup yang tercemar data varian lain bisa ketahuan). Daftar
   /// path yang dibaca: `metadata.json` (versi baru) lalu fallback ke
-  /// `{productId}/metadata.json` (versi lama). `variantKey` disimpan supaya
-  /// verifikasi isi backup bisa membandingkan identitas varian.
+  /// `{productId}/metadata.json`. `variantKey` disimpan supaya verifikasi isi
+  /// backup bisa membandingkan identitas varian.
+  ///
+  /// v2.2.43 (isolasi per-varian): WAJIB tulis ke `$uid/{productId}/metadata.json`
+  /// — JANGAN pernah tulis `$uid/metadata.json` root. Semua 8 varian berbagi
+  /// akun Google yang sama; metadata root adalah shared state yang bikin varian
+  /// saling menimpa preview/verifikasi (akar kontaminasi). Field `updated_at`
+  /// adalah SOLE timestamp yang dibaca getBackupTimestamp/syncIfNewer; jangan
+  /// ganti nama/format tanpa sinkron ke pembaca tersebut.
   Future<void> _uploadMetadata(
     String uid,
     String storeName,
@@ -401,10 +453,12 @@ class ActivationRepository {
     DateTime backupTime,
   ) async {
     try {
+      final now = backupTime.toUtc().toIso8601String();
       final meta = {
         'storeName': storeName,
         'ownerName': ownerName,
-        'backupTime': backupTime.toIso8601String(),
+        'backupTime': now,
+        'updated_at': now,
         'appVersion': '${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
         'productId': NusaConfig.productId,
         'variantKey': NusaConfig.productId,
@@ -413,7 +467,7 @@ class ActivationRepository {
         const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
       );
       await client!.storage.from('nusa-backups').uploadBinary(
-        '$uid/metadata.json',
+        '$uid/${NusaConfig.productId}/metadata.json',
         jsonBytes,
         fileOptions: const FileOptions(
           upsert: true,
@@ -432,25 +486,20 @@ class ActivationRepository {
     if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
-    // v2.2.42: baca path versi-agnostik dulu, lalu fallback ke path lama
-    // (per-varian). Backup lama menulis per-varian; versi baru menulis
-    // root — dua-duanya dibaca supaya verifikasi varian jalan untuk backup
-    // lama sekaligus backup baru.
-    for (final metaPath in [
-      '$uid/metadata.json',
-      '$uid/${NusaConfig.productId}/metadata.json',
-    ]) {
-      try {
-        final bytes =
-            await client!.storage.from('nusa-backups').download(metaPath);
-        if (bytes.isEmpty) continue;
-        final text = utf8.decode(bytes);
-        return jsonDecode(text) as Map<String, dynamic>;
-      } catch (_) {
-        continue;
-      }
+    // v2.2.43 (isolasi per-varian): baca HANYA path per-varian. JANGAN baca
+    // `$uid/metadata.json` root — backup lama menulis root sebagai shared 8
+    // varian, dan membacanya bisa membuat verifikasi varian menolak backup
+    // valid (metadata punya varian lain) atau menimpa preview. Per-varian
+    // saja = akar kontaminasi antar varian dihilangkan.
+    try {
+      final bytes = await client!.storage
+          .from('nusa-backups')
+          .download('$uid/${NusaConfig.productId}/metadata.json');
+      if (bytes.isEmpty) return null;
+      return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
     }
-    return null;
   }
 
   /// Download backup from cloud and write directly to the live DB + images.
@@ -528,9 +577,12 @@ class ActivationRepository {
 
       // Pull backup timestamp from metadata if available
       final meta = await getBackupMetadata();
-      final ts = meta?['backupTime'] as String?;
+      final ts = meta?['updated_at'] ?? meta?['backupTime'];
       if (ts != null) {
-        await SecureStore.saveLastBackupTime(DateTime.parse(ts));
+        final parsed = DateTime.tryParse(ts.toString());
+        if (parsed != null) {
+          await SecureStore.saveLastBackupTime(parsed);
+        }
       }
 
       debugPrint('[RestoreDirect] Restored DB${imageCount > 0 ? " + $imageCount images" : ""} (live swap, no restart needed)');
@@ -648,7 +700,8 @@ class ActivationRepository {
       }
       final meta = await getBackupMetadata();
       final cloudTime = meta != null
-          ? DateTime.tryParse(meta['updated_at']?.toString() ?? '')
+          ? DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
+              DateTime.tryParse(meta['backupTime']?.toString() ?? '')
           : null;
 
       // Compare with local last-sync timestamp

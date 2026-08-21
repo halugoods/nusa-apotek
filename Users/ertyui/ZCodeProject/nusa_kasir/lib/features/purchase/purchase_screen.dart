@@ -58,7 +58,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
   }
 
   // ── Form pembelian baru ───────────────────────────────────────
-  void _openForm() {
+  void _openForm({String? initialBarcode}) {
     final db = ref.read(databaseProvider);
     // supplierId bisa lewat constructor maupun query param (?supplierId=x).
     var supplierId = widget.supplierId;
@@ -81,6 +81,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
         suppliersFuture: SupplierRepository(db).getSuppliers(),
         productsFuture: ProductRepository(db).getProducts(),
         presetSupplierId: supplierId,
+        initialBarcode: initialBarcode,
       ),
     );
   }
@@ -509,7 +510,17 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
           ),
         ],
       ),
+      onBarcode: _onExternalBarcode,
     );
+  }
+
+  /// Barcode eksternal (HID) — v2.2.43: scan di layar utama Pembelian membuka
+  /// form "Catat Pembelian" dengan barcode di-pre-fill agar langsung resolve
+  /// produk tanpa tap kolom cari / scan ulang.
+  Future<void> _onExternalBarcode(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    _openForm(initialBarcode: norm);
   }
 }
 
@@ -1254,12 +1265,18 @@ class _PurchaseFormSheet extends StatefulWidget {
 
   /// Supplier yang langsung terpilih saat form dibuka (dari "Beli ke Supplier").
   final int? presetSupplierId;
+
+  /// v2.2.43: barcode dari scan HID di layar utama Pembelian — di-pre-fill ke
+  /// kolom cari form agar langsung resolve produk tanpa scan ulang.
+  final String? initialBarcode;
+
   const _PurchaseFormSheet({
     required this.db,
     required this.suppliersFuture,
     required this.productsFuture,
     required this.onSaved,
     this.presetSupplierId,
+    this.initialBarcode,
   });
 
   @override
@@ -1322,6 +1339,16 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
     PurchaseRepository(widget.db).getMaterialNames().then((names) {
       if (mounted) setState(() => _materialNames = names);
     });
+    // Scan HID dari layar utama: pre-fill kolom cari lalu submit (setelah
+    // daftar produk termuat, supaya byBarcode bisa resolve).
+    final initBc = widget.initialBarcode;
+    if (initBc != null && initBc.isNotEmpty) {
+      widget.productsFuture.then((_) {
+        if (!mounted) return;
+        _searchC.text = initBc;
+        _submitScanHid();
+      });
+    }
   }
 
   @override

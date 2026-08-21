@@ -16,12 +16,10 @@ import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
-import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
-import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
@@ -483,169 +481,33 @@ class _OnlineStoreSetupScreenState
       _saving = true;
       _imgFailedNames = [];
     });
-    int imgSuccess = 0;
-    int imgFailed = 0;
     try {
       final db = ref.read(databaseProvider);
-      final products = await ProductRepository(db).getProducts();
-      final online = products.where((p) => p.isOnline).toList();
-      final client = Supabase.instance.client;
-      // Login Google dipakai GoogleAuthService (google_sign_in) → ID tersimpan
-      // di SecureStore, BUKAN Supabase Auth session (currentUser selalu null).
-      final uid = await GoogleAuthService.getStoredUserId();
-      final storeId = await OnlineOrderService(client).storeId;
-      if (storeId == null) {
-        if (mounted) setState(() => _saving = false);
-        debugPrint('[OnlineStoreSetup] ⚠ No storeId (activation key)');
-        return;
-      }
-
-      debugPrint(
-        '[OnlineStoreSetup] Syncing ${online.length} products for store $storeId, uid=$uid',
-      );
-
-      // Phase 1: Upload all images + collect product data
-      final rows = <Map<String, dynamic>>[];
-      for (final prod in online) {
-        String? imageUrl;
-
-        if (prod.imagePath != null &&
-            prod.imagePath!.isNotEmpty &&
-            uid != null) {
-          try {
-            final file = File(prod.imagePath!);
-            if (await file.exists()) {
-              final filename = p.basename(prod.imagePath!);
-              // Try upload with retry — pakai detail supaya ALASAN kegagalan
-              // terlihat (MIME 415 / RLS 403 / jaringan), bukan senyap.
-              bool uploaded = false;
-              String failReason = 'upload gagal';
-              for (int attempt = 0; attempt < 3; attempt++) {
-                try {
-                  if (attempt > 0) {
-                    debugPrint(
-                      '[OnlineStoreSetup] Retry upload ${prod.name} attempt $attempt',
-                    );
-                    await Future.delayed(Duration(seconds: attempt));
-                  }
-                  final svc = ImageStorageService(client, uid);
-                  final r = await svc.uploadImageDetailed(
-                    'products',
-                    prod.imagePath!,
-                  );
-                  uploaded = r.ok;
-                  failReason = r.message;
-                  if (uploaded) break;
-                } catch (e) {
-                  failReason = '$e';
-                  debugPrint(
-                    '[OnlineStoreSetup] Upload attempt $attempt failed: $e',
-                  );
-                }
-              }
-
-              if (uploaded) {
-                imageUrl = client.storage
-                    .from('nusa-images')
-                    .getPublicUrl(
-                      '$uid/${NusaConfig.productId}/products/$filename',
-                    );
-                imgSuccess++;
-                debugPrint(
-                  '[OnlineStoreSetup] 📸 Uploaded: ${prod.name} → $imageUrl',
-                );
-              } else {
-                imgFailed++;
-                _imgFailedNames.add(prod.name);
-                _imgFailReasons[prod.name] = failReason;
-                debugPrint(
-                  '[OnlineStoreSetup] ⚠ Upload gagal ${prod.name}: $failReason',
-                );
-              }
-            } else {
-              debugPrint(
-                '[OnlineStoreSetup] ⚠ File not found: ${prod.imagePath}',
-              );
-              imgFailed++;
-              _imgFailedNames.add(prod.name);
-              _imgFailReasons[prod.name] = 'file gambar tidak ada di HP';
-            }
-          } catch (e) {
-            imgFailed++;
-            _imgFailedNames.add(prod.name);
-            _imgFailReasons[prod.name] = '$e';
-            debugPrint(
-              '[OnlineStoreSetup] ⚠ Image skipped for ${prod.name}: $e',
-            );
-          }
-        } else if (prod.imagePath != null && uid == null) {
-          imgFailed++;
-          _imgFailedNames.add(prod.name);
-          _imgFailReasons[prod.name] = 'belum login Google (tidak bisa upload)';
-          debugPrint('[OnlineStoreSetup] ⚠ No user ID — cannot upload images');
-        }
-
-        rows.add({
-          'product_id': prod.id,
-          'name': prod.name,
-          'category': prod.category,
-          // Harga final yang dibayar = setelah diskon standalone.
-          'price': prod.effectivePrice,
-          // Harga ASLI (sebelum diskon) — untuk tampilan coret di web.
-          'original_price': prod.hasDiscount ? prod.sellPrice : null,
-          'stock': prod.stock,
-          'image': imageUrl ?? '',
-          'description': '',
-          'is_published': true,
-        });
-      }
-
-      // Phase 2: Send ALL products in ONE batch to edge function
-      String? syncError;
-      if (rows.isNotEmpty) {
-        debugPrint(
-          '[OnlineStoreSetup] Sending ${rows.length} products to edge function',
-        );
-        final res = await client.functions.invoke(
-          'online-store',
-          body: {
-            'action': 'sync_products',
-            'store_id': storeId,
-            'products': rows,
-          },
-        );
-        debugPrint(
-          '[OnlineStoreSetup] Edge function response: status=${res.status}',
-        );
-        if (res.status >= 400) {
-          syncError = 'Server: ${res.data ?? 'status ${res.status}'}'.trim();
-          debugPrint('[OnlineStoreSetup] Edge function error: ${res.data}');
-        }
-      } else {
-        syncError =
-            'Belum ada produk yang ditandai tampil online. '
-            'Centang "Online" saat edit produk.';
-      }
-
+      final online = OnlineOrderService(Supabase.instance.client);
+      final result = await online.syncOnlineProducts(db);
+      _imgFailedNames
+        ..clear()
+        ..addAll(result.failedNames);
+      _imgFailReasons
+        ..clear()
+        ..addAll(result.imgFailReasons);
       if (mounted) {
-        setState(() => _onlineProductCount = online.length);
-        if (syncError != null) {
-          TopToast.error(context, 'Sinkron gagal — $syncError');
+        setState(() => _onlineProductCount = result.count);
+        if (result.error != null) {
+          TopToast.error(context, 'Sinkron gagal — ${result.error}');
           return;
         }
         final msg =
-            '${online.length} produk disinkronkan'
-            '${imgSuccess > 0 ? " ($imgSuccess gambar)" : ""}'
-            '${imgFailed > 0 ? " — $imgFailed gambar gagal" : ""}';
-        if (imgFailed > 0 && _imgFailedNames.isNotEmpty) {
-          // Nama produk yang gagal + ALASAN — dipakai banner peringatan.
-          final reason = _imgFailReasons[_imgFailedNames.first] ?? '';
-          setState(() {});
+            '${result.count} produk disinkronkan'
+            '${result.imgSuccess > 0 ? " (${result.imgSuccess} gambar)" : ""}'
+            '${result.imgFailed > 0 ? " — ${result.imgFailed} gambar gagal" : ""}';
+        if (result.imgFailed > 0 && result.failedNames.isNotEmpty) {
+          final reason = result.imgFailReasons[result.failedNames.first] ?? '';
           TopToast.info(
             context,
-            '${_imgFailedNames.length} produk gagal upload gambar: '
-            '${_imgFailedNames.take(3).join(', ')}'
-            '${_imgFailedNames.length > 3 ? ', dll.' : ''}'
+            '${result.failedNames.length} produk gagal upload gambar: '
+            '${result.failedNames.take(3).join(', ')}'
+            '${result.failedNames.length > 3 ? ', dll.' : ''}'
             '${reason.isNotEmpty ? ' — $reason' : ''}',
           );
         }

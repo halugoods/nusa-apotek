@@ -8,11 +8,13 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/data/repositories/refund_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/services/auto_sync_service.dart';
+import 'package:nusa_kasir/core/services/online_product_sync_service.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
 
@@ -42,6 +44,11 @@ final productRepoProvider = Provider(
   (ref) => ProductRepository(ref.watch(databaseProvider)),
 );
 
+/// F&B: bahan baku + resep + HPP. Hanya dipakai varian F&B.
+final recipeRepoProvider = Provider(
+  (ref) => RecipeRepository(ref.watch(databaseProvider)),
+);
+
 final activationRepoProvider = Provider<ActivationRepository>((ref) {
   try {
     return ActivationRepository(Supabase.instance.client);
@@ -64,6 +71,19 @@ final autoSyncProvider = Provider<AutoSyncService>((ref) {
 final onlineOrderRepoProvider = Provider(
   (ref) => OnlineOrderRepository(ref.watch(databaseProvider)),
 );
+
+/// Auto-sync produk online (v2.2.43) — debounce tableUpdates → syncOnlineProducts.
+/// Kept alive for the whole app lifetime (autoDispose would kill the watcher).
+final onlineProductSyncProvider = Provider<OnlineProductSyncService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final svc = OnlineProductSyncService(
+    db: db,
+    client: Supabase.instance.client,
+  );
+  ref.onDispose(svc.dispose);
+  svc.start();
+  return svc;
+});
 
 /// Role permissions (RBAC) — per-role menu access map.
 /// Loaded from the SQLite Roles table on startup and refreshed whenever an

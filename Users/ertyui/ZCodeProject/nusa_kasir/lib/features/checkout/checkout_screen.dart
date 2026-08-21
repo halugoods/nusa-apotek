@@ -23,6 +23,7 @@ import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
 import 'package:nusa_kasir/data/repositories/print_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/tab_repository.dart';
@@ -1056,11 +1057,29 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Wrap all DB writes (stock, transaction, loyalty, promo) in a single transaction.
       // If any step fails, it all rolls back — no partial state.
       int pointsEarned = 0;
+      // v2.2.43 (F&B): bahan baku yang stoknya menipis setelah checkout —
+      // ditampilkan sebagai PERINGATAN (transaksi tetap jalan).
+      final materialWarnings = <String>[];
+      final recipeRepo = NusaConfig.isFnbVariant
+          ? RecipeRepository(db)
+          : null;
       await db.transaction(() async {
-        // Deduct stock for each item (item manual tidak punya stok)
+        // Deduct stock for each item (item manual tidak punya stok).
+        // Stok selalu dalam satuan dasar → pakai qtyInBase (qty × qtyPerBase).
         for (final item in cart) {
           if (item.isManual) continue;
-          await productRepo.adjustStock(item.productId, -item.qty);
+          await productRepo.adjustStock(item.productId, -item.qtyInBase);
+          // Varian (v2.2.43): kurangi stok varian spesifik bila item memilih varian.
+          if (item.variantName != null && item.variantName!.isNotEmpty) {
+            await productRepo.adjustVariantStock(
+                item.productId, item.variantName, -item.qtyInBase);
+          }
+          // F&B: produk ber-resep → kurangi stok bahan. Kurang = PERINGATAN saja.
+          if (recipeRepo != null && item.productId >= 0) {
+            materialWarnings.addAll(
+              await recipeRepo.consumeRecipe(item.productId, item.qtyInBase),
+            );
+          }
         }
 
         // Save transaction
@@ -1260,6 +1279,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       }
 
       ref.read(cartProvider.notifier).clear();
+
+      // ── F&B: peringatan stok bahan menipis (transaksi tetap jalan) ──
+      if (materialWarnings.isNotEmpty && mounted) {
+        TopToast.warning(
+          context,
+          'Stok bahan menipis: ${materialWarnings.join(', ')}',
+        );
+      }
 
       if (!mounted) return;
 

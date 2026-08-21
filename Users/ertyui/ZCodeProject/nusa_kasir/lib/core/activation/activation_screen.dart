@@ -8,6 +8,7 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
+import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
@@ -60,6 +61,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   String? _pinError;
   bool _nfcAvailable = false;
   final _keypadKey = GlobalKey<PinKeypadState>();
+  // v2.2.43: panjang PIN dari settings (4/6) — jangan hardcode 6, supaya user
+  // yang PIN-nya 4 digit tidak stuck selamanya.
+  int _pinLength = 6;
 
   // Screen state: 'welcome' | 'google_loading' | 'decision' | 'pin' | 'key'
   String _screen = 'welcome';
@@ -70,6 +74,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     _initAutoSignIn();
     NfcTagService.isAvailable().then((ok) {
       if (mounted) setState(() => _nfcAvailable = ok);
+    });
+    ref.read(settingsRepoProvider).getPinLength().then((len) {
+      if (mounted && len != _pinLength) setState(() => _pinLength = len);
     });
   }
 
@@ -146,6 +153,20 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         ref.invalidate(databaseProvider);
         final restored = await _autoRestoreIfNeeded();
         if (restored) return; // app akan restart / pindah ke login
+        // v2.2.43: backup ADA tapi isinya varian lain → JANGAN langsung
+        // /setup (impresi "dipaksa setup ulang"). Tampilkan dialog jelas;
+        // user bisa kembali atau lanjut setup secara eksplisit.
+        final actRepo = ref.read(activationRepoProvider);
+        final variantStatus = await actRepo.checkBackupVariant();
+        if (variantStatus == BackupVariantStatus.wrongVariant && mounted) {
+          final goSetup = await _showWrongVariantDialog();
+          if (goSetup == true && mounted) {
+            context.go('/setup');
+          }
+          // Kembali → tetap di decision (bukan setup ulang paksa).
+          if (mounted) setState(() => _screen = 'decision');
+          return;
+        }
         // Tidak ada backup atau restore gagal — setup dari nol.
         if (mounted) context.go('/setup');
         return;
@@ -293,6 +314,93 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       TopToast.error(context, 'Gagal memulihkan data dari cloud');
     }
     return false;
+  }
+
+    /// Dialog "backup milik varian lain" — v2.2.43. Folder cloud bisa tercemar
+  /// (mis. folder nusa-fnb berisi data servis). JANGAN diam-diam paksa setup
+  /// ulang: tampilkan pesan jelas, user memilih kembali (ke decision) atau
+  /// lanjut setup baru secara eksplisit. Return true = user pilih Setup Baru.
+  Future<bool?> _showWrongVariantDialog() async {
+    final actRepo = ref.read(activationRepoProvider);
+    final meta = await actRepo.getBackupMetadata();
+    final otherVariant = meta?['variantKey'] as String? ?? 'varian lain';
+    if (!mounted) return null;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.orange.shade700, size: 26),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Data Cloud Beda Varian',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Backup cloud untuk aplikasi ini berisi data dari "$otherVariant", '
+                'bukan "${NusaConfig.appName}".',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Data Anda tidak akan rusak atau terhapus. Anda bisa kembali '
+                'atau memulai setup baru (data cloud lama tetap aman).',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor:
+                    isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                side: BorderSide(
+                    color:
+                        isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Kembali'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Lanjut Setup Baru'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _metaRow(String label, String value, bool isDark) {
@@ -458,11 +566,36 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       return;
     }
 
-    // Activation success → go to setup
-    if (mounted) {
-      TopToast.success(context, 'Aktivasi berhasil! 🎉');
-      context.go('/setup');
+    // Activation success → go to setup (atau restore cloud bila ada)
+    // v2.2.43: JANGAN langsung /setup — akun yang sudah punya data cloud
+    // varian ini harus di-restore DULU (dialog Data Ditemukan), bukan dibuat
+    // setup dari nol. Kalau ada backup valid → preview → restoreDirect →
+    // /login. Tidak ada backup → /setup (seperti sebelumnya).
+    if (!mounted) return;
+    TopToast.success(context, 'Aktivasi berhasil! 🎉');
+    final actRepo = ref.read(activationRepoProvider);
+    final variantStatus = await actRepo.checkBackupVariant();
+    if (!mounted) return;
+    if (variantStatus == BackupVariantStatus.matches) {
+      // Backup valid varian ini → tutup DB lalu restore langsung (aman,
+      // drift belum dibuka di titik activation; _autoRestoreIfNeeded sudah
+      // menutup). Setelah sukses arahkan ke /login (PIN data restore).
+      final restored = await _autoRestoreIfNeeded();
+      if (restored || !mounted) return;
+      // Restore gagal → tetap ke setup (data tidak hilang, cuma tidak dipakai).
+      if (mounted) context.go('/setup');
+      return;
     }
+    if (variantStatus == BackupVariantStatus.wrongVariant && mounted) {
+      final goSetup = await _showWrongVariantDialog();
+      if (goSetup == true && mounted) {
+        context.go('/setup');
+      }
+      if (mounted) setState(() => _screen = 'decision');
+      return;
+    }
+    // none → setup dari nol.
+    if (mounted) context.go('/setup');
   }
 
   // ── Scan / NFC ─────────────────────────────────────────────────────
@@ -1098,7 +1231,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     SizedBox(height: 16),
                     PinKeypad(
                       key: _keypadKey,
-                      length: 6,
+                      length: _pinLength,
                       error: _pinError,
                       showFingerprint: true,
                       showNfc: _nfcAvailable,

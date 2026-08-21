@@ -8,7 +8,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 /// Usage:
 ///   TopToast.show(context, 'Pesan sukses', type: ToastType.success);
 ///   TopToast.error(context, 'Error message');
-enum ToastType { success, error, info }
+enum ToastType { success, error, info, warning }
 
 class TopToast {
   /// Uses a WeakReference so we don't hold dead BuildContexts.
@@ -63,6 +63,11 @@ class TopToast {
 
   static void info(BuildContext context, String message) =>
       show(context, message, type: ToastType.info, icon: Icons.info_outline);
+
+  /// Peringatan ringan (bukan error fatal) — dipakai peringatan stok bahan
+  /// menipis saat checkout F&B (transaksi tetap jalan).
+  static void warning(BuildContext context, String message) =>
+      show(context, message, type: ToastType.warning, icon: Icons.warning_amber_rounded);
 }
 
 class _TopToastWidget extends StatefulWidget {
@@ -127,6 +132,8 @@ class _TopToastWidgetState extends State<_TopToastWidget>
         return NusaConfig.activePrimary;
       case ToastType.info:
         return Color(0xFF3B82F6);
+      case ToastType.warning:
+        return Color(0xFFF59E0B);
     }
   }
 
@@ -136,6 +143,7 @@ class _TopToastWidgetState extends State<_TopToastWidget>
         ToastType.success => Icons.check_circle_outline,
         ToastType.error => Icons.error_outline,
         ToastType.info => Icons.info_outline,
+        ToastType.warning => Icons.warning_amber_rounded,
       };
 
   @override

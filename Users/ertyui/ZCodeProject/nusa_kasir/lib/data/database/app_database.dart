@@ -51,6 +51,11 @@ part 'app_database.g.dart';
     MaterialPrices,
     InstallmentOptions,
     EstimateOptions,
+    Units,
+    ProductUnits,
+    RawMaterials,
+    Recipes,
+    IngredientStocks,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -63,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.at(String path) : super(_openConnectionAt(path));
 
   @override
-  int get schemaVersion => 44;
+  int get schemaVersion => 45;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -639,6 +644,64 @@ class AppDatabase extends _$AppDatabase {
             m, 'print_service_types', 'fields_json', 'TEXT');
         await _addColumnIfMissing(m, 'print_orders', 'custom_fields_json', 'TEXT');
       }
+      if (from < 45) {
+        // v2.2.43: Satuan dinamis (kamus CRUD) + konversi per produk
+        // + F&B bahan baku / resep / mutasi stok bahan.
+        await _createTableIfMissing(
+          m,
+          'units',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'name TEXT NOT NULL UNIQUE, '
+              'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
+        );
+        // Seed satuan dasar — pcs (hanya jika kamus kosong; user bebas
+        // tambah/rename/hapus lewat "Kelola Satuan").
+        final unitCount = await m.database
+            .customSelect('SELECT COUNT(*) AS c FROM units')
+            .getSingle();
+        if ((unitCount.read<int>('c') ?? 0) == 0) {
+          await customStatement("INSERT INTO units (name) VALUES ('pcs')");
+        }
+        await _createTableIfMissing(
+          m,
+          'product_units',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'product_id INTEGER NOT NULL, '
+              'unit_id INTEGER NOT NULL, '
+              'qty_per_base REAL NOT NULL DEFAULT 1, '
+              'is_base INTEGER NOT NULL DEFAULT 0',
+        );
+        await _createTableIfMissing(
+          m,
+          'raw_materials',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'name TEXT NOT NULL, '
+              'unit_id INTEGER, '
+              'stock INTEGER NOT NULL DEFAULT 0, '
+              'min_stock INTEGER NOT NULL DEFAULT 0, '
+              'cost_price INTEGER NOT NULL DEFAULT 0, '
+              'supplier_id INTEGER, '
+              'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
+        );
+        await _createTableIfMissing(
+          m,
+          'recipes',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'product_id INTEGER NOT NULL, '
+              'material_id INTEGER NOT NULL, '
+              'qty REAL NOT NULL DEFAULT 1',
+        );
+        await _createTableIfMissing(
+          m,
+          'ingredient_stocks',
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'material_id INTEGER NOT NULL, '
+              'type TEXT NOT NULL, '
+              'qty REAL NOT NULL, '
+              'note TEXT, '
+              'date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
+        );
+      }
     },
   );
 }
@@ -719,6 +782,11 @@ Future<void> _repairNullDefaults(AppDatabase db) async {
   await _createTableIfMissingSafe(db, 'recurring_expenses');
   await _createTableIfMissingSafe(db, 'waste');
   await _createTableIfMissingSafe(db, 'sync_queue');
+  await _createTableIfMissingSafe(db, 'units');
+  await _createTableIfMissingSafe(db, 'product_units');
+  await _createTableIfMissingSafe(db, 'raw_materials');
+  await _createTableIfMissingSafe(db, 'recipes');
+  await _createTableIfMissingSafe(db, 'ingredient_stocks');
 }
 
 /// CREATE TABLE IF NOT EXISTS untuk tabel yang mungkin hilang di backup lama
@@ -796,6 +864,41 @@ Future<void> _createTableIfMissingSafe(AppDatabase db, String table) async {
         'CREATE TABLE IF NOT EXISTS sync_queue ('
         'id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT, payload TEXT, '
         'status TEXT, retry_count INTEGER, error_message TEXT, created_at INTEGER)',
+      );
+    case 'units':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS units ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, '
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+      );
+    case 'product_units':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS product_units ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, '
+        'unit_id INTEGER NOT NULL, qty_per_base REAL NOT NULL DEFAULT 1, '
+        'is_base INTEGER NOT NULL DEFAULT 0)',
+      );
+    case 'raw_materials':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS raw_materials ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, '
+        'unit_id INTEGER, stock INTEGER NOT NULL DEFAULT 0, '
+        'min_stock INTEGER NOT NULL DEFAULT 0, '
+        'cost_price INTEGER NOT NULL DEFAULT 0, supplier_id INTEGER, '
+        'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+      );
+    case 'recipes':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS recipes ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, '
+        'material_id INTEGER NOT NULL, qty REAL NOT NULL DEFAULT 1)',
+      );
+    case 'ingredient_stocks':
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS ingredient_stocks ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, material_id INTEGER NOT NULL, '
+        'type TEXT NOT NULL, qty REAL NOT NULL, note TEXT, '
+        'date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)',
       );
   }
 }

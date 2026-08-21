@@ -287,6 +287,64 @@ class MaterialPrices extends Table {
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
 
+// ── v2.2.43: Satuan dinamis (CRUD kamus) + konversi per produk ────────────
+
+/// Kamus satuan global (CRUD user): pcs, dus, karton, botol, strip, bebas.
+/// gram/kg/ml/liter sebagai NAMA satuan boleh — mode timbang tetap lewat
+/// `Products.priceType` ('pcs'/'kg'), TERPISAH dari kamus hitung ini.
+class Units extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().unique()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Konversi satuan per produk (v2.2.43): tiap produk punya tepat 1 satuan
+/// dasar (isBase=1, qtyPerBase=1) + N satuan jual (mis. dus=12, karton=6).
+/// Produk tanpa baris di tabel ini = fallback 'pcs' (kompatibel data lama).
+class ProductUnits extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get productId => integer()();
+  IntColumn get unitId => integer()();
+  RealColumn get qtyPerBase => real().withDefault(const Constant(1))();
+  BoolColumn get isBase => boolean().withDefault(const Constant(false))();
+}
+
+// ── v2.2.43: F&B Bahan Baku + Resep + HPP (hanya dipakai F&B) ─────────────
+
+/// Bahan baku (raw material) — punya stok sendiri + harga modal (HPP).
+/// Stok berkurang saat checkout produk yang punya resep (PERINGATAN saja
+/// bila kurang — transaksi tetap jalan). 1 bahan = 1 satuan (keputusan user).
+class RawMaterials extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  IntColumn get unitId => integer().nullable()();
+  IntColumn get stock => integer().withDefault(const Constant(0))();
+  IntColumn get minStock => integer().withDefault(const Constant(0))();
+  IntColumn get costPrice => integer().withDefault(const Constant(0))();
+  IntColumn get supplierId => integer().nullable()();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Resep produk: 1 produk → N bahan, tiap bahan dengan qty REAL (mis. 1.5).
+/// `getRecipeCost(productId)` = Σ qty × costPrice → HPP resep di laporan.
+class Recipes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get productId => integer()();
+  IntColumn get materialId => integer()();
+  RealColumn get qty => real().withDefault(const Constant(1))();
+}
+
+/// Riwayat mutasi stok bahan ('in' | 'out') — untuk stok masuk cepat,
+/// pembelian bahan, dan pengurangan otomatis saat checkout.
+class IngredientStocks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get materialId => integer()();
+  TextColumn get type => text()(); // 'in' | 'out'
+  RealColumn get qty => real()();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+}
+
 /// Opsi cicilan piutang (v2.2.34): paket jumlah bulan yang bisa dipilih
 /// kasir saat checkout dengan DP. CRUD hanya Owner (di layar Piutang).
 /// months = berapa bulan sisa dibagi rata; label contoh "3× bulanan".

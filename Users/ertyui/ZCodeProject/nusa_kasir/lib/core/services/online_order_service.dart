@@ -6,7 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:functions_client/functions_client.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Klasifikasi kegagalan edge function — dipakai UI untuk menampilkan
@@ -239,6 +244,13 @@ class OnlineOrderService {
   /// Product Sync
   /// ---------------------------------------------------------------
 
+  /// Kunci penyimpanan timestamp sinkron terakhir (per-varian isolasi).
+  static String get _lastSyncKey =>
+      'nusa_online_last_sync_${NusaConfig.productId}';
+
+  /// Kirim daftar produk (row online) ke edge function. v2.2.43: edge fn
+  /// UPSERT per key (store_id, product_id) — produk non-online di web TIDAK
+  /// dihapus. return true bila ok.
   Future<bool> syncProducts(List<Map<String, dynamic>> products) async {
     final sid = await storeId;
     if (sid == null) return false;
@@ -251,6 +263,129 @@ class OnlineOrderService {
       return res.status < 400;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Sinkron produk online dari DB lokal → server.
+  ///
+  /// v2.2.43: pindah dari online_store_setup_screen. Kirim hanya produk
+  /// `isOnline=true`; gambar di-upload (skipped bila belum/perlu), lalu panggil
+  /// edge fn (UPSERT), lalu simpan `nusa_online_last_sync`. Error polling +
+  /// gambar tetap dilaporkan via callback agar UI setup bisa menampilkan banner.
+  ///
+  /// Returns (count, imgSuccess, imgFailed, failedNames, imgFailReasons,
+  /// error). `error == null` berarti sukses setidaknya mengirim row produk.
+  Future<({
+    int count,
+    int imgSuccess,
+    int imgFailed,
+    List<String> failedNames,
+    Map<String, String> imgFailReasons,
+    String? error,
+  })> syncOnlineProducts(
+    AppDatabase db,
+  ) async {
+    final failReasons = <String, String>{};
+    final failedNames = <String>[];
+    int imgSuccess = 0;
+    int imgFailed = 0;
+    String? syncError;
+    try {
+      final products = await ProductRepository(db).getProducts();
+      final online = products.where((p) => p.isOnline).toList();
+      final uid = await GoogleAuthService.getStoredUserId();
+      final storeId = await this.storeId;
+      if (storeId == null) return (count: 0, imgSuccess: 0, imgFailed: 0, failedNames: failedNames, imgFailReasons: failReasons, error: 'Belum ada toko online (activation key)');
+
+      final rows = <Map<String, dynamic>>[];
+      for (final prod in online) {
+        String? imageUrl;
+        // v2.2.43: upload gambar setiap penuh (edge fn upsert bukan dedupe
+        // gambar) — hanya bila produk memakai gambar.
+        final knownImage = prod.imagePath;
+        if (knownImage != null && knownImage.isNotEmpty && uid != null) {
+          try {
+            final file = File(knownImage);
+            if (await file.exists()) {
+              final filename = p.basename(knownImage);
+              bool uploaded = false;
+              String failReason = 'upload gagal';
+              for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                  if (attempt > 0) {
+                    debugPrint('[OnlineOrderService] Retry upload ${prod.name} attempt $attempt');
+                    await Future.delayed(Duration(seconds: attempt));
+                  }
+                  final svc = ImageStorageService(supabase, uid);
+                  final r = await svc.uploadImageDetailed('products', knownImage);
+                  uploaded = r.ok;
+                  failReason = r.message;
+                  if (uploaded) break;
+                } catch (e) {
+                  failReason = '$e';
+                }
+              }
+              if (uploaded) {
+                imageUrl = supabase.storage
+                    .from('nusa-images')
+                    .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
+                imgSuccess++;
+              } else {
+                imgFailed++;
+                failedNames.add(prod.name);
+                failReasons[prod.name] = failReason;
+              }
+            } else {
+              imgFailed++;
+              failedNames.add(prod.name);
+              failReasons[prod.name] = 'file gambar tidak ada di HP';
+            }
+          } catch (e) {
+            imgFailed++;
+            failedNames.add(prod.name);
+            failReasons[prod.name] = '$e';
+          }
+        } else if (knownImage != null && knownImage.isNotEmpty && uid == null) {
+          imgFailed++;
+          failedNames.add(prod.name);
+          failReasons[prod.name] = 'belum login Google (tidak bisa upload)';
+        }
+
+        rows.add({
+          'product_id': prod.id,
+          'name': prod.name,
+          'category': prod.category,
+          'price': prod.effectivePrice,
+          'original_price': prod.hasDiscount ? prod.sellPrice : null,
+          'stock': prod.stock,
+          'image': imageUrl ?? '',
+          'description': '',
+          // v2.2.43: is_published dipertahankan server; kirim default true.
+          'is_published': true,
+        });
+      }
+
+      if (rows.isNotEmpty) {
+        final ok = await syncProducts(rows);
+        if (!ok) syncError = 'Sinkron produk gagal dikirim';
+      } else {
+        syncError = 'Belum ada produk yang ditandai tampil online';
+      }
+
+      if (rows.isNotEmpty && syncError == null) {
+        await SecureStore.write(
+          key: _lastSyncKey,
+          value: DateTime.now()
+              .toUtc()
+              .millisecondsSinceEpoch
+              .toString(),
+        );
+      }
+
+      return (count: online.length, imgSuccess: imgSuccess, imgFailed: imgFailed, failedNames: failedNames, imgFailReasons: failReasons, error: syncError);
+    } catch (e) {
+      debugPrint('[OnlineOrderService] syncOnlineProducts error: $e');
+      return (count: 0, imgSuccess: imgSuccess, imgFailed: imgFailed, failedNames: failedNames, imgFailReasons: failReasons, error: '$e');
     }
   }
 

@@ -15,6 +15,7 @@ import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
+import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -121,6 +122,18 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   bool _hasVarian = false;
   bool _hasGrosir = false;
 
+  // F&B: Resep / Komposisi (bahan baku + qty). Hanya varian F&B.
+  bool _hasResep = false;
+  List<({int materialId, String name, double qty, int costPrice})>
+      _recipeItems = [];
+  List<RawMaterial> _recipeMaterials = [];
+
+  // Satuan dinamis (v2.2.43): kamus global + konversi per produk.
+  bool _hasUnit = false;
+  int? _baseUnitId; // satuan dasar produk (qtyPerBase = 1)
+  final List<({int unitId, String name, double qtyPerBase})> _sellingUnits = [];
+  List<Unit> _unitKamus = [];
+
   // Dynamic lists
   List<_ProductVariant> _variants = [];
   List<_WholesaleTier> _wholesaleTiers = [];
@@ -175,6 +188,26 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   Future<void> _init() async {
     await _loadCategories();
     await _loadSuppliers();
+    // Kamus satuan (semua varian — dipakai produk & bahan).
+    try {
+      final units = await RecipeRepository(
+        ref.read(databaseProvider),
+      ).getUnits();
+      if (mounted) setState(() => _unitKamus = units);
+    } catch (_) {}
+    // F&B: kamus bahan untuk form resep (di-load sekali, bukan tiap build).
+    if (NusaConfig.isFnbVariant) {
+      try {
+        final mats = await RecipeRepository(
+          ref.read(databaseProvider),
+        ).getMaterials();
+        if (mounted) {
+          setState(() {
+            _recipeMaterials = mats;
+          });
+        }
+      } catch (_) {}
+    }
     // C6: dibuka dari Catat Pembelian → toggle supplier ON + terisi
     // (via constructor supplierId/supplierName — sheet tidak punya GoRouter).
     final fromSupplierId = widget.supplierId;
@@ -249,6 +282,44 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
               .toList();
           _hasGrosir = _wholesaleTiers.isNotEmpty;
         } catch (_) {}
+      }
+
+      // F&B: load resep produk (bahan + qty).
+      if (NusaConfig.isFnbVariant) {
+        final recipeRepo = RecipeRepository(ref.read(databaseProvider));
+        final items = await recipeRepo.getRecipeWithNames(p.id);
+        if (mounted) {
+          _recipeItems = items;
+          _hasResep = items.isNotEmpty;
+        }
+      }
+
+      // Load satuan produk (kamus + konversi per produk).
+      final recipeRepo = RecipeRepository(ref.read(databaseProvider));
+      final productUnits = await recipeRepo.getProductUnits(p.id);
+      if (mounted && productUnits.isNotEmpty) {
+        final baseRow = productUnits
+            .where((pu) => pu.isBase)
+            .firstOrNull;
+        final baseId = baseRow?.unitId;
+        setState(() {
+          _hasUnit = true;
+          _baseUnitId = baseId;
+          _sellingUnits
+            ..clear()
+            ..addAll([
+              for (final pu in productUnits)
+                if (pu.unitId != baseId)
+                  (
+                    unitId: pu.unitId,
+                    name:
+                        _unitKamus.where((u) => u.id == pu.unitId).firstOrNull
+                            ?.name ??
+                        '',
+                    qtyPerBase: pu.qtyPerBase,
+                  ),
+            ]);
+        });
       }
 
       if (p.barcode != null && p.barcode!.isNotEmpty) {
@@ -498,6 +569,40 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                 supplierId: supplierVal,
               ),
             );
+      }
+      // Satuan dinamis (v2.2.43): simpan konversi per produk bila aktif.
+      final recipeRepoForUnits = RecipeRepository(db);
+      if (_hasUnit && _baseUnitId != null) {
+        await recipeRepoForUnits.setProductUnits(
+          _isEdit ? widget.productId! : createdId!,
+          _baseUnitId,
+          [
+            for (final su in _sellingUnits)
+              if (su.qtyPerBase > 0) (su.unitId, su.qtyPerBase),
+          ],
+        );
+      } else {
+        await recipeRepoForUnits.setProductUnits(
+          _isEdit ? widget.productId! : createdId!,
+          null,
+          const [],
+        );
+      }
+      // F&B: simpan resep (bahan + qty) — gated, non-F&B tidak tersentuh.
+      if (NusaConfig.isFnbVariant) {
+        final recipeRepo = RecipeRepository(db);
+        final pid = _isEdit ? widget.productId! : createdId!;
+        if (_hasResep) {
+          await recipeRepo.setRecipe(
+            pid,
+            [
+              for (final it in _recipeItems)
+                if (it.qty > 0) (it.materialId, it.qty),
+            ],
+          );
+        } else {
+          await recipeRepo.setRecipe(pid, const []);
+        }
       }
       // Upload image to cloud in background
       if (_imagePath != null) _uploadToCloud(_imagePath!);
@@ -759,6 +864,28 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
 
+                  // ── Toggle: Satuan (dinamis, v2.2.43) ──
+                  _buildToggleCard(
+                    title: 'Satuan',
+                    icon: Icons.straighten_outlined,
+                    value: _hasUnit,
+                    onChanged: (v) => setState(() {
+                      _hasUnit = v;
+                      if (!v) {
+                        _baseUnitId = null;
+                        _sellingUnits.clear();
+                      } else if (_baseUnitId == null) {
+                        // Default satuan dasar = pcs bila ada di kamus.
+                        final pcs = _unitKamus
+                            .where((u) => u.name.toLowerCase() == 'pcs')
+                            .firstOrNull;
+                        _baseUnitId = pcs?.id ?? _unitKamus.firstOrNull?.id;
+                      }
+                    }),
+                    expandedChild: _hasUnit ? _buildUnitSection(isDark) : null,
+                  ),
+                  SizedBox(height: NusaConfig.spaceSM),
+
                   // ── Toggle: Grosir ──
                   _buildToggleCard(
                     title: 'Harga Grosir',
@@ -773,6 +900,23 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                         : null,
                   ),
                   SizedBox(height: NusaConfig.spaceSM),
+
+                  // ── Toggle: Resep / Komposisi (F&B only) ──
+                  if (NusaConfig.isFnbVariant) ...[
+                    _buildToggleCard(
+                      title: 'Resep / Komposisi',
+                      icon: Icons.restaurant_menu_outlined,
+                      value: _hasResep,
+                      onChanged: (v) => setState(() {
+                        _hasResep = v;
+                        if (!v) _recipeItems.clear();
+                      }),
+                      expandedChild: _hasResep
+                          ? _buildRecipeList(isDark)
+                          : null,
+                    ),
+                    SizedBox(height: NusaConfig.spaceSM),
+                  ],
 
                   // ── Toggle: Barcode ──
                   _buildToggleCard(
@@ -2011,6 +2155,851 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── F&B: Resep / Komposisi ──
+
+  int get _recipeHpp => _recipeItems.fold(
+        0,
+        (s, it) => s + (it.qty * it.costPrice).round(),
+      );
+
+  /// Buka sheet pilih bahan + qty untuk ditambah ke resep.
+  Future<void> _addRecipeItem() async {
+    if (_recipeMaterials.isEmpty) {
+      TopToast.info(
+        context,
+        'Tambah bahan baku dulu di menu Produk → Bahan Baku',
+      );
+      return;
+    }
+    // Hanya bahan yang belum ada di resep.
+    final used = _recipeItems.map((it) => it.materialId).toSet();
+    final available = _recipeMaterials.where((m) => !used.contains(m.id)).toList();
+    if (available.isEmpty) {
+      TopToast.info(context, 'Semua bahan sudah ada di resep');
+      return;
+    }
+    final picked = await showModalBottomSheet<
+        ({int materialId, String name, double qty})>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RecipeItemPickerSheet(materials: available),
+    );
+    if (picked == null || !mounted) return;
+    final cost = _recipeMaterials
+        .where((m) => m.id == picked.materialId)
+        .firstOrNull
+        ?.costPrice ?? 0;
+    setState(() {
+      _recipeItems.add((
+        materialId: picked.materialId,
+        name: picked.name,
+        qty: picked.qty,
+        costPrice: cost,
+      ));
+    });
+  }
+
+  Widget _buildRecipeList(bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ..._recipeItems.asMap().entries.map((e) {
+            final i = e.key;
+            final it = e.value;
+            return Container(
+              margin: EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          it.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          '${_fmtQty(it.qty)} × ${formatRupiah(it.costPrice)}'
+                          ' = ${formatRupiah((it.qty * it.costPrice).round())}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.remove_circle_outline,
+                      size: 18,
+                      color: NusaConfig.error,
+                    ),
+                    onPressed: () => setState(() => _recipeItems.removeAt(i)),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // Estimasi HPP live
+          Container(
+            margin: EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: NusaConfig.accentGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.calculate_outlined,
+                    size: 16, color: NusaConfig.accentGreen),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Estimasi HPP',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                ),
+                Text(
+                  formatRupiah(_recipeHpp),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: NusaConfig.accentGreen,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_recipeMaterials.isEmpty)
+            Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Belum ada bahan baku. Tambah dulu di menu Produk → Bahan Baku.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ),
+          TextButton.icon(
+            onPressed: _addRecipeItem,
+            icon: Icon(Icons.add, size: 18),
+            label: Text('Tambah Bahan'),
+            style: TextButton.styleFrom(
+              foregroundColor: NusaConfig.activePrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtQty(double q) =>
+      q == q.roundToDouble() ? q.round().toString() : q.toString();
+
+  // ── Satuan (dinamis, v2.2.43) ──
+
+  String _unitNameById(int? id) =>
+      _unitKamus.where((u) => u.id == id).firstOrNull?.name ?? '';
+
+  Widget _buildUnitSection(bool isDark) {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Satuan dasar
+          Text(
+            'Satuan Dasar',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color:
+                  isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+            ),
+          ),
+          SizedBox(height: 6),
+          DropdownButtonFormField<int>(
+            initialValue: _baseUnitId,
+            decoration: _unitInputDecor('Pilih satuan dasar'),
+            items: [
+              for (final u in _unitKamus)
+                DropdownMenuItem(value: u.id, child: Text(u.name)),
+            ],
+            onChanged: (v) => setState(() {
+              _baseUnitId = v;
+              // Satuan dasar tidak boleh jadi satuan jual.
+              _sellingUnits.removeWhere((s) => s.unitId == v);
+            }),
+          ),
+          SizedBox(height: 12),
+          // Satuan jual
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Satuan Jual',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _addSellingUnit,
+                icon: Icon(Icons.add, size: 16),
+                label: Text('Tambah'),
+                style: TextButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  minimumSize: Size(0, 30),
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+            ],
+          ),
+          ..._sellingUnits.asMap().entries.map((e) {
+            final i = e.key;
+            final su = e.value;
+            return Container(
+              margin: EdgeInsets.only(bottom: 8),
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      su.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? NusaConfig.darkTextPrimary
+                            : NusaConfig.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '1 ${su.name} = ${_fmtQty(su.qtyPerBase)} ${_unitNameById(_baseUnitId)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.remove_circle_outline,
+                        size: 18, color: NusaConfig.error),
+                    onPressed: () =>
+                        setState(() => _sellingUnits.removeAt(i)),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // Kelola kamus satuan
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openUnitManager,
+              icon: Icon(Icons.settings_outlined, size: 16),
+              label: Text('Kelola Satuan'),
+              style: TextButton.styleFrom(
+                foregroundColor: NusaConfig.activePrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _unitInputDecor(String hint) => InputDecoration(
+        hintText: hint,
+        isDense: true,
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
+        ),
+      );
+
+  Future<void> _addSellingUnit() async {
+    if (_unitKamus.isEmpty) {
+      TopToast.info(context, 'Tambah satuan dulu lewat "Kelola Satuan"');
+      return;
+    }
+    final used = {
+      for (final s in _sellingUnits) s.unitId,
+      if (_baseUnitId != null) _baseUnitId!,
+    };
+    final available = _unitKamus.where((u) => !used.contains(u.id)).toList();
+    if (available.isEmpty) {
+      TopToast.info(context, 'Semua satuan sudah dipakai');
+      return;
+    }
+    final picked = await showModalBottomSheet<
+        ({int unitId, String name, double qtyPerBase})>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SellingUnitPickerSheet(units: available),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _sellingUnits.add(picked));
+  }
+
+  /// "Kelola Satuan" — CRUD kamus satuan global (tambah/rename/hapus).
+  Future<void> _openUnitManager() async {
+    final repo = RecipeRepository(ref.read(databaseProvider));
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _UnitManagerSheet(repo: repo),
+    );
+    if (result == true && mounted) {
+      // Kamus berubah → reload + pertahankan pilihan lama kalau masih ada.
+      final units = await repo.getUnits();
+      if (mounted) {
+        setState(() {
+          final oldBase = _baseUnitId;
+          _unitKamus = units;
+          if (oldBase != null && !units.any((u) => u.id == oldBase)) {
+            _baseUnitId = null;
+          }
+          _sellingUnits.removeWhere(
+            (s) => !units.any((u) => u.id == s.unitId),
+          );
+        });
+      }
+    }
+  }
+}
+
+/// Bottom-sheet picker bahan + qty untuk resep produk (F&B).
+class _RecipeItemPickerSheet extends StatefulWidget {
+  final List<RawMaterial> materials;
+  const _RecipeItemPickerSheet({required this.materials});
+
+  @override
+  State<_RecipeItemPickerSheet> createState() => _RecipeItemPickerSheetState();
+}
+
+class _RecipeItemPickerSheetState extends State<_RecipeItemPickerSheet> {
+  RawMaterial? _selected;
+  final _qty = TextEditingController(text: '1');
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.materials.isNotEmpty) _selected = widget.materials.first;
+  }
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(NusaConfig.radiusXL)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? NusaConfig.darkBorder
+                        : NusaConfig.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tambah Bahan ke Resep',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<RawMaterial>(
+                value: _selected,
+                decoration: InputDecoration(
+                  labelText: 'Bahan baku',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: widget.materials
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(
+                          '${m.name} (stok ${m.stock}, '
+                          'modal ${formatRupiah(m.costPrice)})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _selected = v),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _qty,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Jumlah untuk 1 porsi (qty)',
+                  hintText: 'cth: 0.25 (250 gram)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final qty = double.tryParse(_qty.text) ?? 0;
+                    if (_selected == null || qty <= 0) {
+                      TopToast.error(context, 'Pilih bahan & isi qty');
+                      return;
+                    }
+                    Navigator.pop(
+                      context,
+                      (
+                        materialId: _selected!.id,
+                        name: _selected!.name,
+                        qty: qty,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Tambah'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Picker satuan jual (dari kamus) + qty per satuan dasar (v2.2.43).
+class _SellingUnitPickerSheet extends StatefulWidget {
+  final List<Unit> units;
+  const _SellingUnitPickerSheet({required this.units});
+
+  @override
+  State<_SellingUnitPickerSheet> createState() => _SellingUnitPickerSheetState();
+}
+
+class _SellingUnitPickerSheetState extends State<_SellingUnitPickerSheet> {
+  Unit? _selected;
+  final _qty = TextEditingController(text: '12');
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.units.isNotEmpty) _selected = widget.units.first;
+  }
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      child: Container(
+        padding: EdgeInsets.all(20),
+        margin: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Satuan Jual',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
+              ),
+            ),
+            SizedBox(height: 16),
+            DropdownButtonFormField<Unit>(
+              initialValue: _selected,
+              decoration: InputDecoration(labelText: 'Pilih satuan'),
+              items: [
+                for (final u in widget.units)
+                  DropdownMenuItem(value: u, child: Text(u.name)),
+              ],
+              onChanged: (v) => setState(() => _selected = v),
+            ),
+            SizedBox(height: 12),
+            TextField(
+              controller: _qty,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '1 satuan = berapa satuan dasar?',
+                hintText: 'cth: 12 (dus = 12 pcs)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  final qty = double.tryParse(_qty.text) ?? 0;
+                  if (_selected == null || qty <= 0) {
+                    TopToast.error(context, 'Pilih satuan & isi konversi');
+                    return;
+                  }
+                  Navigator.pop(
+                    context,
+                    (
+                      unitId: _selected!.id,
+                      name: _selected!.name,
+                      qtyPerBase: qty,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Tambah'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// CRUD kamus satuan global (tambah/rename/hapus) — dibuka dari form produk.
+/// Return true bila kamus diubah (biar pemanggil reload).
+class _UnitManagerSheet extends StatefulWidget {
+  final RecipeRepository repo;
+  const _UnitManagerSheet({required this.repo});
+
+  @override
+  State<_UnitManagerSheet> createState() => _UnitManagerSheetState();
+}
+
+class _UnitManagerSheetState extends State<_UnitManagerSheet> {
+  late Future<List<Unit>> _future;
+  final _newCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.repo.getUnits();
+  }
+
+  @override
+  void dispose() {
+    _newCtrl.dispose();
+    super.dispose();
+  }
+
+  void _reload() {
+    setState(() => _future = widget.repo.getUnits());
+  }
+
+  Future<void> _add() async {
+    final name = _newCtrl.text.trim();
+    if (name.isEmpty) {
+      TopToast.error(context, 'Isi nama satuan');
+      return;
+    }
+    try {
+      await widget.repo.addUnit(name);
+      _newCtrl.clear();
+      _reload();
+    } catch (_) {
+      TopToast.error(context, 'Satuan "$name" sudah ada');
+    }
+  }
+
+  Future<void> _rename(Unit u) async {
+    final newCtrl = TextEditingController(text: u.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Ubah Satuan'),
+        content: TextField(
+          controller: newCtrl,
+          autofocus: true,
+          decoration: InputDecoration(labelText: 'Nama satuan'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, newCtrl.text.trim()),
+            child: Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    newCtrl.dispose();
+    if (result == null || result.isEmpty || result == u.name) return;
+    try {
+      await widget.repo.renameUnit(u.id, result);
+      _reload();
+    } catch (_) {
+      TopToast.error(context, 'Nama satuan sudah ada');
+    }
+  }
+
+  Future<void> _delete(Unit u) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus Satuan "${u.name}"?'),
+        content: Text(
+          'Satuan yang dipakai bahan/produk akan dilepas (tidak dihapus datanya).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Hapus'),
+            style: TextButton.styleFrom(foregroundColor: NusaConfig.error),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await widget.repo.deleteUnit(u.id);
+    _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      child: Container(
+        margin: EdgeInsets.all(12),
+        padding: EdgeInsets.all(20),
+        height: MediaQuery.of(context).size.height * 0.7,
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Kelola Satuan',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: NusaConfig.textSecondary),
+                  onPressed: () {
+                    // Tutup dengan hasil "diubah" bila ada — simpel: selalu true
+                    // karena pemanggil reload kamus sendiri.
+                    Navigator.pop(context, true);
+                  },
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            // Tambah baru
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Nama satuan baru (cth: dus)',
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onSubmitted: (_) => _add(),
+                  ),
+                ),
+                SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _add,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: Text('Tambah'),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Expanded(
+              child: FutureBuilder<List<Unit>>(
+                future: _future,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                  final units = snap.data ?? const [];
+                  if (units.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'Belum ada satuan. Tambah di atas.',
+                        style: TextStyle(
+                          color: NusaConfig.textSecondary,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    itemCount: units.length,
+                    separatorBuilder: (_, __) => Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final u = units[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          u.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.edit_outlined, size: 20),
+                              color: NusaConfig.activePrimary,
+                              onPressed: () => _rename(u),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.delete_outline, size: 20),
+                              color: NusaConfig.error,
+                              onPressed: () => _delete(u),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

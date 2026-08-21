@@ -16,9 +16,11 @@ import 'package:nusa_kasir/data/repositories/cashier_session_repository.dart';
 import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/data/repositories/tab_repository.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
@@ -53,6 +55,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   List<Product>? _allProducts;
   List<String> _allCats = [];
+
+  // Satuan dinamis (v2.2.43): productId → daftar satuan jual produk.
+  // Empty list = belum atur satuan → fallback 'pcs'.
+  Map<int, List<({int unitId, String name, int? unitStock, double qtyPerBase, bool isBase})>>
+      _productUnits = {};
 
   List<String> get _chips => ['Semua', ..._allCats];
 
@@ -160,6 +167,27 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       // Also load real categories for the filter chips.
       final catRepo = CategoryRepository(ref.read(databaseProvider));
       cats = await catRepo.getAll();
+      // Satuan dinamis (v2.2.43): kamus konversi per produk untuk dropdown
+      // satuan jual di keranjang. Gagal → fallback kosong (pcs).
+      try {
+        final unitRepo = RecipeRepository(ref.read(databaseProvider));
+        final map = <int,
+            List<
+                ({
+                  int unitId,
+                  String name,
+                  int? unitStock,
+                  double qtyPerBase,
+                  bool isBase
+                })>>{};
+        for (final p in all) {
+          final labels = await unitRepo.getProductUnitLabels(p.id);
+          if (labels.isNotEmpty) map[p.id] = labels;
+        }
+        _productUnits = map;
+      } catch (e) {
+        debugPrint('[POS] load product units error: $e');
+      }
     } catch (e) {
       // Jangan pernah menggantung: DB rusak/kosong → tampilkan list kosong
       // (bukan spinner abadi). Produk tetap bisa di-scan via byBarcode.
@@ -253,6 +281,17 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     _search.clear();
     if (mounted) setState(() {});
     _searchFocus.requestFocus();
+  }
+
+  /// Barcode eksternal (HID) yang ditangkap HidBarcodeListener — scan dari
+  /// mana pun di layar kasir tanpa tap kolom cari dulu. Reuse logika
+  /// _handleSearchSubmit (byBarcode ternormalisasi + addToCart).
+  Future<void> _onExternalBarcode(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    _search.text = norm;
+    if (mounted) setState(() {});
+    await _handleSearchSubmit();
   }
 
   // ── Barcode scanner ──
@@ -415,18 +454,31 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   /// Guard stok: produk stok 0 TIDAK masuk cart (toast), dan qty tidak boleh
   /// melebihi stok — scan barcode, search, dan tap grid semua lewat sini.
   void _addToCart(Product product) {
-    if (product.stock <= 0) {
+    // Stok guard: produk ber-varian pakai Σ stok semua varian; reguler pakai
+    // stok produk langsung.
+    final variants = ProductRepository.parseVariants(product);
+    final totalStock = variants.isEmpty
+        ? product.stock
+        : variants.fold<int>(0, (s, v) => s + v.stock);
+    if (totalStock <= 0) {
       TopToast.error(context, 'Stok "${product.name}" habis');
       return;
     }
+    // Satuan dinamis (v2.2.43): default = satuan dasar produk bila ada.
+    // Stok guard pakai qtyInBase (= qty × qtyPerBase) di dalam keranjang.
+    final units = _productUnits[product.id] ?? const [];
+    final baseUnit = units.where((u) => u.isBase).firstOrNull;
+    final defaultUnitName = baseUnit?.name ?? 'pcs';
+    final defaultQtyPerBase = baseUnit?.qtyPerBase ?? 1;
     final inCartNow = ref
         .read(cartProvider)
         .cast<CartItem?>()
         .firstWhere((c) => c?.productId == product.id, orElse: () => null);
-    if (product.stock > 0 && (inCartNow?.qty ?? 0) >= product.stock) {
+    final inCartBase = inCartNow == null ? 0 : inCartNow.qtyInBase;
+    if (totalStock > 0 && inCartBase >= totalStock) {
       TopToast.error(
         context,
-        'Stok "${product.name}" tidak cukup (tersedia: ${product.stock})',
+        'Stok "${product.name}" tidak cukup (tersedia: $totalStock)',
       );
       return;
     }
@@ -449,6 +501,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 ? product.sellPrice
                 : null,
             qty: 1,
+            variantStock: variants.isEmpty ? null : totalStock,
+            unitName: baseUnit != null ? defaultUnitName : null,
+            unitQtyPerBase: baseUnit != null ? defaultQtyPerBase : 1,
           );
     }
   }
@@ -597,9 +652,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             ? NusaConfig.darkBackground
             : NusaConfig.backgroundColor,
         body: SafeArea(
-          child: isWide
-              ? _buildWideLayout(isDark, cart, totalItems, totalPrice)
-              : _buildNarrowLayout(isDark, cart, totalItems, totalPrice),
+          // v2.2.43: barcode eksternal (HID) jalan tanpa tap field pencarian
+          // di SEMUA layar scan. Listener ini menangkap scan di level Focus
+          // TANPA membuka keyboard layar. Field pencarian tetap dipakai kalau
+          // user men-tap-nya (scan lalu fokus balik ke kolom cari).
+          child: HidBarcodeListener(
+            onBarcode: _onExternalBarcode,
+            child: isWide
+                ? _buildWideLayout(isDark, cart, totalItems, totalPrice)
+                : _buildNarrowLayout(isDark, cart, totalItems, totalPrice),
+          ),
         ),
       ),
     );
@@ -1484,65 +1546,106 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   builder: (_, ref, __) => ListView.builder(
                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: cart.length,
-                    itemBuilder: (_, i) => _CartItemTile(
-                      item: cart[i],
-                      isDark: isDark,
-                      onDecrement: () => ref
-                          .read(cartProvider.notifier)
-                          .changeQty(cart[i].productId, -1),
-                      onIncrement: () {
-                        final notifier = ref.read(cartProvider.notifier);
-                        final item = cart[i];
-                        final nextQty = item.qty + 1;
-                        // Re-apply wholesale tier when qty crosses a threshold.
-                        Product? prod;
-                        final all = _allProducts ?? const <Product>[];
-                        for (final p in all) {
-                          if (p.id == item.productId) {
-                            prod = p;
-                            break;
+                    itemBuilder: (_, i) {
+                      final item = cart[i];
+                      final prod = (_allProducts ?? const <Product>[])
+                          .where((p) => p.id == item.productId)
+                          .firstOrNull;
+                      final hasProd = prod != null;
+                      final hasVariants =
+                          hasProd &&
+                          ProductRepository.parseVariants(prod).isNotEmpty;
+                      final units = _productUnits[item.productId] ?? const [];
+                      return _CartItemTile(
+                        item: item,
+                        isDark: isDark,
+                        hasVariants: hasVariants,
+                        onSelectVariant: hasVariants
+                            ? () => _pickVariant(item, prod)
+                            : null,
+                        units: units,
+                        onSelectUnit: (name, qtyPerBase) => ref
+                            .read(cartProvider.notifier)
+                            .setUnit(
+                              item.productId,
+                              name,
+                              qtyPerBase,
+                              variantName: item.variantName,
+                            ),
+                        onDecrement: () => ref
+                            .read(cartProvider.notifier)
+                            .changeQty(
+                              item.productId,
+                              -1,
+                              variantName: item.variantName,
+                            ),
+                        onIncrement: () {
+                          final notifier = ref.read(cartProvider.notifier);
+                          // Satuan: naikkan qty dalam satuan jual; stok guard
+                          // pakai qtyInBase (qty × qtyPerBase).
+                          final nextQty = item.qty + 1;
+                          final nextBase = (nextQty * item.unitQtyPerBase).round();
+                          // Re-apply wholesale tier when qty crosses a threshold.
+                          // Guard stok: jangan biarkan qty melebihi stok yang ada
+                          // (produk ber-varian: Σ stok varian).
+                          if (prod != null) {
+                            final variants =
+                                ProductRepository.parseVariants(prod);
+                            final totalStock = variants.isEmpty
+                                ? prod.stock
+                                : variants.fold<int>(
+                                    0,
+                                    (s, v) => s + v.stock,
+                                  );
+                            if (totalStock > 0 && nextBase > totalStock) {
+                              TopToast.error(
+                                context,
+                                'Stok "${item.name}" tidak cukup (tersedia: $totalStock)',
+                              );
+                              return;
+                            }
+                            final wPrice = prod.wholesalePriceFor(nextQty);
+                            notifier.addProduct(
+                              item.productId,
+                              item.name,
+                              wPrice ?? item.price,
+                              originalPrice: (prod.hasDiscount ||
+                                      wPrice != null)
+                                  ? prod.sellPrice
+                                  : item.originalPrice,
+                              note: item.note,
+                              weightKg: item.weightKg,
+                              variantName: item.variantName,
+                              variantPriceAdjustment:
+                                  item.variantPriceAdjustment,
+                              variantStock: item.variantStock,
+                              unitName: item.unitName,
+                              unitQtyPerBase: item.unitQtyPerBase,
+                            );
+                            return;
                           }
-                        }
-                        // Guard stok: jangan biarkan qty melebihi stok yang ada.
-                        if (prod != null &&
-                            prod.stock > 0 &&
-                            nextQty > prod.stock) {
-                          TopToast.error(
-                            context,
-                            'Stok "${item.name}" tidak cukup (tersedia: ${prod.stock})',
-                          );
-                          return;
-                        }
-                        if (prod != null) {
-                          final wPrice = prod.wholesalePriceFor(nextQty);
                           notifier.addProduct(
                             item.productId,
                             item.name,
-                            wPrice ?? item.price,
-                            originalPrice: (prod.hasDiscount || wPrice != null)
-                                ? prod.sellPrice
-                                : item.originalPrice,
+                            item.price,
+                            originalPrice: item.originalPrice,
                             note: item.note,
                             weightKg: item.weightKg,
+                            variantName: item.variantName,
+                            variantPriceAdjustment: item.variantPriceAdjustment,
+                            variantStock: item.variantStock,
+                            unitName: item.unitName,
+                            unitQtyPerBase: item.unitQtyPerBase,
                           );
-                          return;
-                        }
-                        notifier.addProduct(
-                          item.productId,
-                          item.name,
-                          item.price,
-                          originalPrice: item.originalPrice,
-                          note: item.note,
-                          weightKg: item.weightKg,
-                        );
-                      },
-                      onTap:
-                          (NusaConfig.isFnbVariant ||
-                              NusaConfig.isLaundryVariant ||
-                              NusaConfig.isSalonVariant)
-                          ? () => _showNoteDialog(cart[i])
-                          : null,
-                    ),
+                        },
+                        onTap:
+                            (NusaConfig.isFnbVariant ||
+                                NusaConfig.isLaundryVariant ||
+                                NusaConfig.isSalonVariant)
+                            ? () => _showNoteDialog(item)
+                            : null,
+                      );
+                    },
                   ),
                 ),
         ),
@@ -1855,6 +1958,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                       .setNote(
                         item.productId,
                         ctrl.text.trim().isEmpty ? null : ctrl.text.trim(),
+                        variantName: item.variantName,
                       );
                   Navigator.pop(ctx);
                 },
@@ -1866,6 +1970,35 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         ),
       ),
     );
+  }
+
+  /// Pilih varian produk dari keranjang (v2.2.43): modal daftar varian →
+  /// nama, harga final (harga dasar + adjustment), stok varian.
+  Future<void> _pickVariant(CartItem item, Product product) async {
+    final variants = ProductRepository.parseVariants(product);
+    if (variants.isEmpty) return;
+    final selected = await showModalBottomSheet<({String name, int price, int stock})>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _VariantPickerSheet(
+        product: product,
+        variants: variants,
+        current: item.variantName,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final notifier = ref.read(cartProvider.notifier);
+    // Harga final = harga jual efektif + adjustment varian.
+    final newPrice = product.effectivePrice + selected.price;
+    notifier.setVariant(
+      item.productId,
+      selected.name,
+      newPrice,
+      selected.price,
+      selected.stock,
+    );
+    TopToast.success(context, 'Varian: ${item.name} — ${selected.name}');
   }
 
   // ── FnB: Order type chips ──
@@ -2574,13 +2707,124 @@ class _PosQtyField extends StatelessWidget {
   );
 }
 
+/// Dropdown satuan jual di baris keranjang (satuan dinamis v2.2.43).
+class _UnitDropdown extends StatelessWidget {
+  final List<
+      ({
+        int unitId,
+        String name,
+        int? unitStock,
+        double qtyPerBase,
+        bool isBase
+      })> units;
+  final String currentName;
+  final void Function(String name, double qtyPerBase) onSelected;
+  const _UnitDropdown({
+    required this.units,
+    required this.currentName,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final current = units
+        .where((u) => u.name == currentName)
+        .firstOrNull;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        onSelected: (name) {
+          final u = units.where((e) => e.name == name).firstOrNull;
+          if (u != null) onSelected(u.name, u.qtyPerBase);
+        },
+        itemBuilder: (_) => [
+          for (final u in units)
+            PopupMenuItem(
+              value: u.name,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.straighten_outlined,
+                    size: 14,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    u.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : NusaConfig.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.straighten_outlined,
+              size: 12,
+              color: NusaConfig.activePrimary,
+            ),
+            SizedBox(width: 4),
+            Text(
+              current?.name ?? currentName,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 14,
+              color: NusaConfig.activePrimary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CartItemTile extends StatelessWidget {
   final CartItem item;
   final bool isDark;
+
+  /// Produk punya varian → tampilkan tombol "Pilih Varian" di baris.
+  final bool hasVariants;
+  final VoidCallback? onSelectVariant;
+
+  /// Satuan jual produk (v2.2.43 dinamis). Kosong = fallback 'pcs'.
+  final List<
+      ({
+        int unitId,
+        String name,
+        int? unitStock,
+        double qtyPerBase,
+        bool isBase
+      })> units;
+  final void Function(String name, double qtyPerBase)? onSelectUnit;
   final VoidCallback? onDecrement, onIncrement, onTap;
   _CartItemTile({
     required this.item,
     required this.isDark,
+    this.hasVariants = false,
+    this.onSelectVariant,
+    this.units = const [],
+    this.onSelectUnit,
     this.onDecrement,
     this.onIncrement,
     this.onTap,
@@ -2614,7 +2858,7 @@ class _CartItemTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        item.name,
+                        item.displayName,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -2675,6 +2919,56 @@ class _CartItemTile extends StatelessWidget {
                                     : NusaConfig.textSecondary,
                               ),
                             ),
+                      // Varian: chip "Pilih Varian" / nama varian terpilih.
+                      if (hasVariants) ...[
+                        SizedBox(height: 4),
+                        GestureDetector(
+                          onTap: onSelectVariant,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.activePrimary.withValues(
+                                alpha: 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.layers_outlined,
+                                  size: 12,
+                                  color: NusaConfig.activePrimary,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  item.variantName == null
+                                      ? 'Pilih Varian'
+                                      : item.variantName!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: NusaConfig.activePrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      // Satuan jual (v2.2.43): dropdown bila produk atur satuan.
+                      if (units.isNotEmpty && onSelectUnit != null) ...[
+                        SizedBox(height: 4),
+                        _UnitDropdown(
+                          units: units,
+                          currentName: item.unitName ?? 'pcs',
+                          onSelected: (name, qtyPerBase) =>
+                              onSelectUnit!(name, qtyPerBase),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -3001,6 +3295,134 @@ class _ProductListCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet daftar varian produk — pilih varian untuk item keranjang.
+class _VariantPickerSheet extends StatelessWidget {
+  final Product product;
+  final List<({String name, int priceAdjustment, int stock})> variants;
+  final String? current;
+  const _VariantPickerSheet({
+    required this.product,
+    required this.variants,
+    this.current,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 24),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(NusaConfig.radiusXL),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Pilih Varian — ${product.name}',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 14),
+            ...variants.map(
+              (v) => GestureDetector(
+                onTap: () => Navigator.pop(
+                  context,
+                  (
+                    name: v.name,
+                    price: v.priceAdjustment,
+                    stock: v.stock,
+                  ),
+                ),
+                child: Container(
+                  margin: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: v.name == current
+                        ? NusaConfig.activePrimary.withValues(alpha: 0.1)
+                        : isDark
+                            ? NusaConfig.darkSurface2
+                            : NusaConfig.backgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: v.name == current
+                          ? NusaConfig.activePrimary
+                          : isDark
+                              ? NusaConfig.darkBorder
+                              : NusaConfig.dividerColor,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              v.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              v.stock > 0
+                                  ? 'Stok ${v.stock}'
+                                  : 'Stok habis',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: v.stock > 0
+                                    ? NusaConfig.accentGreen
+                                    : NusaConfig.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        formatRupiah(product.effectivePrice + v.priceAdjustment),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (v.name == current) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.check_circle,
+                          size: 18,
+                          color: NusaConfig.activePrimary,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

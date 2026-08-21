@@ -174,6 +174,21 @@ class PurchaseRepository {
                   date: Value(DateTime.now()),
                 ),
               );
+          // v2.2.43 (F&B): kalau bahan ini TERDAFTAR di RawMaterials (bahan
+          // baku tab ke-3 menu Produk) → stok bahan bertambah + costPrice
+          // (HPP) mengikuti harga beli terbaru. Nama dicocokkan case-insensitive.
+          final rm = await (db.select(db.rawMaterials)
+                ..where((t) => t.name.lower().equals(item.name.trim().toLowerCase())))
+              .getSingleOrNull();
+          if (rm != null) {
+            final nextStock = rm.stock + item.qty;
+            await (db.update(db.rawMaterials)..where((t) => t.id.equals(rm.id)))
+                .write(RawMaterialsCompanion(
+              stock: Value(nextStock),
+              costPrice: Value(unitPrice),
+              updatedAt: Value(DateTime.now()),
+            ));
+          }
           continue;
         }
 

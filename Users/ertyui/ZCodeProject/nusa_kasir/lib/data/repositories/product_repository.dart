@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -44,10 +45,66 @@ class ProductRepository {
   Future<Product?> byId(int id) =>
     (db.select(db.products)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<Product?> byBarcode(String barcode) =>
-    (db.select(db.products)..where((t) => t.barcode.equals(barcode))).getSingleOrNull();
+  /// Varian produk (dari variantsJson): nama + selisih harga + stok.
+  static List<({String name, int priceAdjustment, int stock})> parseVariants(
+    Product p,
+  ) {
+    final raw = p.variantsJson;
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return [
+        for (final e in list)
+          if (e is Map<String, dynamic>)
+            (
+              name: (e['name'] ?? '').toString(),
+              priceAdjustment:
+                  (e['priceAdjustment'] as num?)?.toInt() ?? 0,
+              stock: (e['stock'] as num?)?.toInt() ?? 0,
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
 
-  /// Search by name OR barcode (case-insensitive substring).
+  /// Normalisasi barcode untuk pencocokan alfanumerik yang konsisten:
+  /// trim + UPPERCASE + buang semua karakter non [A-Z0-9].
+  /// Akar "kode berhuruf tidak ditemukan" = `byBarcode` membandingkan dengan
+  /// `equals` mentah, jadi kode 'ABC-123' tidak cocok dengan 'abc 123' hasil
+  /// scan. SEMUA call site (POS, kamera, produk/stok/pembelian, form) wajib
+  /// lewat fungsi ini supaya kode berhuruf & simbol yang di-scan scanner
+  /// eksternal (HID) selalu ketemu produk.
+  static String normalizeBarcode(String raw) {
+    final b = raw.trim().toUpperCase();
+    final sb = StringBuffer();
+    for (final c in b.codeUnits) {
+      if ((c >= 0x30 && c <= 0x39) || // 0-9
+          (c >= 0x41 && c <= 0x5A) || // A-Z
+          c == 0x2D || c == 0x2B || c == 0x2F || c == 0x5F) { // - + / _
+        sb.writeCharCode(c);
+      }
+    }
+    return sb.toString();
+  }
+
+  /// Lookup by normalized barcode. Menangani kode berhuruf/simbol dan data
+  /// lama yang belum ternormalisasi (mis. 'ABC-123' vs 'abc_123').
+  Future<Product?> byBarcode(String barcode) {
+    final norm = normalizeBarcode(barcode);
+    if (norm.isEmpty) return Future.value(null);
+    final q = db.select(db.products);
+    final all = q.get();
+    return all.then((list) {
+      for (final p in list) {
+        if (normalizeBarcode(p.barcode ?? '') == norm) return p;
+      }
+      return null;
+    });
+  }
+
+  /// Search by name OR barcode (case-insensitive substring) — barcode juga
+  /// dinormalisasi agar kode berhuruf ikut cocok.
   Future<List<Product>> searchProducts(String query) {
     final q = db.select(db.products);
     final pattern = '%$query%';
@@ -78,6 +135,33 @@ class ProductRepository {
     final next = (p.stock + delta).clamp(0, 1000000000);
     await (db.update(db.products)..where((t) => t.id.equals(id)))
         .write(ProductsCompanion(stock: Value(next)));
+  }
+
+  /// Adjust stock of ONE variant (inside variantsJson) by [delta].
+  /// No-op when [variantName] is null/empty or not found in the JSON list.
+  Future<void> adjustVariantStock(int id, String? variantName, int delta) async {
+    if (variantName == null || variantName.isEmpty) return;
+    final p = await byId(id);
+    if (p == null) return;
+    final variants = parseVariants(p);
+    if (variants.isEmpty) return;
+    var changed = false;
+    final list = <Map<String, dynamic>>[];
+    for (final v in variants) {
+      var stock = v.stock;
+      if (v.name == variantName) {
+        stock = (stock + delta).clamp(0, 1000000000);
+        changed = true;
+      }
+      list.add({
+        'name': v.name,
+        'priceAdjustment': v.priceAdjustment,
+        'stock': stock,
+      });
+    }
+    if (!changed) return;
+    await (db.update(db.products)..where((t) => t.id.equals(id)))
+        .write(ProductsCompanion(variantsJson: Value(jsonEncode(list))));
   }
 
   Future<void> updateProduct(int id,

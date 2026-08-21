@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 
 class ReportRepository {
@@ -166,19 +167,51 @@ class ReportRepository {
     )..where((p) => p.id.isIn(productIds))).get();
     final priceMap = {for (final p in products) p.id: p.buyPrice};
 
+    // v2.2.43 (F&B): HPP resep — produk ber-resep memakai biaya bahan
+    // (Σ qty × costPrice), bukan buyPrice. Untuk varian non-F&B map kosong
+    // → tidak ada efek (perf ringan, satu query per laporan ini).
+    final recipeCostMap = <int, int>{};
+    if (NusaConfig.isFnbVariant && productIds.isNotEmpty) {
+      final recipes = await (db.select(db.recipes)).get();
+      if (recipes.isNotEmpty) {
+        final materialIds = recipes.map((r) => r.materialId).toSet();
+        final mats = await (db.select(db.rawMaterials)
+              ..where((m) => m.id.isIn(materialIds)))
+            .get();
+        final costById = {for (final m in mats) m.id: m.costPrice};
+        final byProduct = <int, List<Recipe>>{};
+        for (final r in recipes) {
+          byProduct.putIfAbsent(r.productId, () => []).add(r);
+        }
+        for (final entry in byProduct.entries) {
+          int total = 0;
+          for (final r in entry.value) {
+            total += (r.qty * (costById[r.materialId] ?? 0)).round();
+          }
+          recipeCostMap[entry.key] = total;
+        }
+      }
+    }
+
     for (final tx in normalTx) {
       final items = _parseItems(tx.items);
       for (final it in items) {
         final pid = it['productId'] as int?;
         final qty = it['qty'] as int? ?? 0;
-        if (pid == null || qty <= 0) continue;
+        // v2.2.43 (satuan dinamis): qty tercatat dalam satuan jual; konversi
+        // ke satuan dasar untuk HPP (stok & modal selalu satuan dasar).
+        final perBase = (it['unitQtyPerBase'] as num?)?.toDouble() ?? 1;
+        final qtyInBase = perBase > 0 ? (qty * perBase).round() : qty;
+        if (pid == null || qtyInBase <= 0) continue;
         if (pid < 0) {
           // Item manual (id negatif): HPP dari harga modal per item (costPrice),
           // bukan dari tabel produk. Tanpa costPrice → tidak menambah HPP.
           final cost = (it['costPrice'] as num?)?.toInt() ?? 0;
-          hpp += cost * qty;
+          hpp += cost * qtyInBase;
         } else {
-          hpp += (priceMap[pid] ?? 0) * qty;
+          // F&B: prioritas HPP resep (biaya bahan), fallback buyPrice.
+          final unitCost = recipeCostMap[pid] ?? (priceMap[pid] ?? 0);
+          hpp += unitCost * qtyInBase;
         }
       }
     }

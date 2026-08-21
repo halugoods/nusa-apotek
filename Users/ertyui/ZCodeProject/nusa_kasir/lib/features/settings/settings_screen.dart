@@ -301,7 +301,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       subtitle: 'Masukkan PIN $name untuk mengakses pengaturan keamanan',
       employeeName: name,
       correctPin: correctPin,
-      pinLength: 6,
       showRemember: false,
       showFingerprint: true,
       showNfc: true,

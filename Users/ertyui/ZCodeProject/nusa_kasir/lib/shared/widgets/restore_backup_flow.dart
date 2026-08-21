@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -43,7 +44,17 @@ class RestoreBackupFlow {
     // 2. Probe backup cloud (anon auth ensured inside repo).
     final repo = ref.read(activationRepoProvider);
     final hasBak = await repo.hasBackup();
-    if (!hasBak) return false;
+    if (!hasBak) {
+      // v2.2.43: backup ADA tapi isinya varian LAIN (folder tercemar) →
+      // tampilkan pesan jelas, JANGAN diam-diam anggap "tidak ada" lalu paksa
+      // setup. Caller (login) meneruskan ke alur biasa; user diberi tahu.
+      final variantStatus = await repo.checkBackupVariant();
+      if (variantStatus == BackupVariantStatus.wrongVariant &&
+          context.mounted) {
+        await _showWrongVariantDialog(ref, context);
+      }
+      return false;
+    }
 
     // 3. Preview metadata (nama toko / pemilik / waktu backup).
     final meta = await repo.getBackupMetadata();
@@ -168,6 +179,82 @@ class RestoreBackupFlow {
       TopToast.error(context, 'Gagal memulihkan data dari cloud');
     }
     return false;
+  }
+
+  /// Dialog "backup milik varian lain" (v2.2.43) — dipakai saat hasBackup()
+  /// false tapi checkBackupVariant() == wrongVariant. Pesan jelas + tidak
+  /// memaksa apa pun; caller melanjutkan alur normal (login/setup fallback).
+  static Future<void> _showWrongVariantDialog(
+    WidgetRef ref,
+    BuildContext context,
+  ) async {
+    final actRepo = ref.read(activationRepoProvider);
+    final meta = await actRepo.getBackupMetadata();
+    final otherVariant = meta?['variantKey'] as String? ?? 'varian lain';
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.orange.shade700, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Data Cloud Beda Varian',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Backup cloud untuk aplikasi ini berisi data dari "$otherVariant", '
+                'bukan "${NusaConfig.appName}".',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Data Anda tidak akan rusak atau terhapus. Anda bisa kembali '
+                'atau memulai setup baru (data cloud lama tetap aman).',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: NusaConfig.activePrimary,
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Mengerti'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   static Widget _metaRow(String label, String value, bool isDark) {

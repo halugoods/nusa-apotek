@@ -92,15 +92,9 @@ async function syncProducts(sb: any, b: any) {
     return json({ error: "store_id and products required" }, 400);
   }
 
-  const { error: deleteError } = await sb
-    .from("online_products")
-    .delete()
-    .eq("store_id", store_id);
-  if (deleteError) {
-    console.error("syncProducts delete error:", deleteError);
-    return json({ error: "product_delete_failed" }, 500);
-  }
-
+  // v2.2.43: UPSERT per produk (key store_id+product_id) — TIDAK hapus
+  // produk non-online di web. Produk yang tidak dikirim (non-online) tetap
+  // ada; is_published dipertahankan.
   if (products.length === 0) return json({ ok: true, count: 0 });
 
   const rows = products.map((p: any) => ({
@@ -115,11 +109,15 @@ async function syncProducts(sb: any, b: any) {
     image_url: p.image || "",
     description: p.description || "",
     is_published: p.is_published ?? true,
+    // v2.2.43: updated_at ikut ter-update tiap upsert.
+    updated_at: new Date().toISOString(),
   }));
 
-  const { error } = await sb.from("online_products").insert(rows);
+  const { error } = await sb
+    .from("online_products")
+    .upsert(rows, { onConflict: "store_id,product_id" });
   if (error) {
-    console.error("syncProducts insert error:", error);
+    console.error("syncProducts upsert error:", error);
     return json({ error: error.message }, 500);
   }
   return json({ ok: true, count: rows.length });

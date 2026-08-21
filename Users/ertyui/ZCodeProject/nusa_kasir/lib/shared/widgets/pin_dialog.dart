@@ -55,6 +55,9 @@ class PinDialog extends StatelessWidget {
   });
 
   /// Show the dialog. Returns [PinResult] (success/failure) or null if cancelled.
+  /// [pinLength] defaults to the PIN length stored in Settings (4 or 6) — callers
+  /// that hardcode 6 would leave 4-digit PIN users stuck. Pass an explicit value
+  /// only to override.
   static Future<PinResult?> show({
     required BuildContext context,
     String? title,
@@ -65,12 +68,22 @@ class PinDialog extends StatelessWidget {
     Future<bool> Function(String pin)? onVerify,
     bool allowOverride = true,
     bool showRemember = true,
-    int pinLength = 6,
+    int? pinLength,
     bool showFingerprint = false,
     bool showNfc = false,
     Future<bool> Function()? onFingerprint,
     Future<String?> Function()? onNfc,
   }) async {
+    // Resolve stored PIN length (4/6) — never hardcode 6.
+    var resolvedLength = pinLength ?? 6;
+    if (pinLength == null) {
+      try {
+        final container = ProviderScope.containerOf(context, listen: false);
+        resolvedLength = await container.read(settingsRepoProvider).getPinLength();
+      } catch (_) {
+        resolvedLength = 6;
+      }
+    }
     return showDialog<PinResult>(
       context: context,
       barrierDismissible: true,
@@ -168,7 +181,7 @@ class PinDialog extends StatelessWidget {
                     SizedBox(height: 12),
                     _PinDialogKeypad(
                       key: keypadKey,
-                      pinLength: pinLength,
+                      pinLength: resolvedLength,
                       error: error,
                       showFingerprint: showFingerprint,
                       showNfc: showNfc,

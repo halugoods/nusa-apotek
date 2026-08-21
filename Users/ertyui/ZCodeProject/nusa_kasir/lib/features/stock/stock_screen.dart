@@ -167,7 +167,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   }
 
   // ── Stok Masuk/Keluar — bottom sheet + search + scan barcode ──
-  void _openAdjustSheet(String mode) {
+  void _openAdjustSheet(String mode, {String? initialBarcode}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -176,6 +176,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
         mode: mode,
         products: _products,
         onSubmit: _submitAdjust,
+        initialBarcode: initialBarcode,
       ),
     );
   }
@@ -268,7 +269,17 @@ class _StockScreenState extends ConsumerState<StockScreen> {
           ),
         ],
       ),
+      onBarcode: _onExternalBarcode,
     );
+  }
+
+  /// Barcode eksternal (HID) — v2.2.43: scan di layar utama Stok membuka
+  /// sheet "Stok Masuk" dengan barcode di-pre-fill agar langsung resolve
+  /// produk tanpa tap kolom cari / scan ulang.
+  Future<void> _onExternalBarcode(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    _openAdjustSheet('in', initialBarcode: norm);
   }
 
   Widget _segBtn(String label, int idx, {bool isDark = false}) {
@@ -1242,10 +1253,15 @@ class _AdjustSheet extends StatefulWidget {
   final List<Product> products;
   final Future<void> Function(String mode, int productId, int qty) onSubmit;
 
+  /// v2.2.43: barcode dari scan HID di layar utama Stok — di-pre-fill ke kolom
+  /// cari sheet agar langsung resolve produk tanpa scan ulang.
+  final String? initialBarcode;
+
   _AdjustSheet({
     required this.mode,
     required this.products,
     required this.onSubmit,
+    this.initialBarcode,
   });
 
   @override
@@ -1266,8 +1282,19 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     super.initState();
     for (final p in widget.products) {
       _qtyCs[p.id] = TextEditingController(text: '1');
-      final bc = (p.barcode ?? '').trim();
+      // v2.2.43: key dinormalisasi (trim+UPPERCASE+buang simbol) supaya kode
+      // barcode berhuruf/simbol cocok dengan hasil scan HID.
+      final bc = ProductRepository.normalizeBarcode(p.barcode ?? '');
       if (bc.isNotEmpty) _byBarcode[bc] = p;
+    }
+    // Scan HID dari layar utama: pre-fill kolom cari lalu submit.
+    final init = widget.initialBarcode;
+    if (init != null && init.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _searchC.text = init;
+        _submitScanHid();
+      });
     }
   }
 
@@ -1313,7 +1340,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
       _searchFocus.requestFocus();
       return;
     }
-    final found = _byBarcode[raw];
+    final found = _byBarcode[ProductRepository.normalizeBarcode(raw)];
     if (found == null) {
       _searchC.clear();
       setState(() {});
@@ -1359,7 +1386,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                 final raw = codes.first.rawValue ?? '';
                 final code = raw.trim();
                 if (code.isEmpty) return;
-                final found = _byBarcode[code];
+                final found = _byBarcode[ProductRepository.normalizeBarcode(code)];
                 if (found == null) {
                   TopToast.error(ctx, 'Barcode tidak terdaftar. Cari manual.');
                   Navigator.pop(ctx);
