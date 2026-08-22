@@ -667,45 +667,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                   SizedBox(width: 8),
                 ],
-                // v2.2.44 (B4)+v2.2.45: "Kelola Satuan" → TOMBOL TEKS (bukan
-                // icon polos) biar jelas fungsinya. Hanya di tab Produk.
-                if (_tabIndex == 0)
-                  GestureDetector(
-                    onTap: _openUnitManager,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? NusaConfig.darkSurface
-                            : NusaConfig.surfaceColor,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isDark
-                              ? NusaConfig.darkBorder
-                              : NusaConfig.borderColor,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.straighten_outlined,
-                            size: 16,
-                            color: NusaConfig.activePrimary,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            'Satuan',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: NusaConfig.activePrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                // v2.2.46: icon "Satuan" (penggaris) di kanan grid filter
+                // DIHAPUS — kelola satuan kini via icon pengaturan kecil di
+                // atas FAB Tambah Bahan (tab Bahan Baku) + tetap ada di form
+                // produk. Baris header jadi lebih lega & filter grid tidak
+                // menempel ke tab switch.
                 SizedBox(width: 8),
                 // Export/Import button
                 GestureDetector(
@@ -915,46 +881,69 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ],
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: NusaConfig.activePrimary,
-        foregroundColor: Colors.white,
-        icon: Icon(_tabIndex == 1
-            ? Icons.create_new_folder
-            : _tabIndex == 3
-                ? Icons.handyman_outlined
-                : Icons.add),
-        label: Text(_tabIndex == 1
-            ? 'Tambah Kategori'
-            : _tabIndex == 3
-                ? 'Tambah Layanan'
-                : _tabIndex == 2
-                    ? 'Tambah Bahan'
-                    : 'Tambah Produk'),
-        onPressed: () async {
-          if (_tabIndex == 1) {
-            await showAddCategoryDialog(
-              context,
-              ref.read(databaseProvider),
-              onChanged: () {
-                if (mounted) setState(() => _kategoriTick++);
-              },
-            );
-          } else if (_tabIndex == 3) {
-            final saved = await showProductFormSheet(
-              context,
-              isService: true,
-            );
-            if (saved != null && mounted) {
-              TopToast.success(context, 'Layanan disimpan');
-              setState(() => _kategoriTick++);
-            }
-          } else if (_tabIndex == 2) {
-            await showAddBahanSheet(context, ref.read(databaseProvider));
-            if (mounted) setState(() => _bahanTick++);
-          } else {
-            _openProductForm();
-          }
-        },
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // v2.2.46: tab Bahan Baku — "Kelola Satuan" jadi icon pengaturan
+          // kecil DI ATAS tombol "+ Tambah Bahan" (bukan lagi tombol teks di
+          // tengah layar / header list).
+          if (_tabIndex == 2 && NusaConfig.isFnbVariant)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FloatingActionButton.small(
+                heroTag: 'kelola_satuan',
+                backgroundColor: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                foregroundColor: NusaConfig.activePrimary,
+                tooltip: 'Kelola Satuan',
+                onPressed: _openUnitManager,
+                child: const Icon(Icons.straighten_outlined, size: 20),
+              ),
+            ),
+          FloatingActionButton.extended(
+            backgroundColor: NusaConfig.activePrimary,
+            foregroundColor: Colors.white,
+            icon: Icon(_tabIndex == 1
+                ? Icons.create_new_folder
+                : _tabIndex == 3
+                    ? Icons.handyman_outlined
+                    : Icons.add),
+            label: Text(_tabIndex == 1
+                ? 'Tambah Kategori'
+                : _tabIndex == 3
+                    ? 'Tambah Layanan'
+                    : _tabIndex == 2
+                        ? 'Tambah Bahan'
+                        : 'Tambah Produk'),
+            onPressed: () async {
+              if (_tabIndex == 1) {
+                await showAddCategoryDialog(
+                  context,
+                  ref.read(databaseProvider),
+                  onChanged: () {
+                    if (mounted) setState(() => _kategoriTick++);
+                  },
+                );
+              } else if (_tabIndex == 3) {
+                final saved = await showProductFormSheet(
+                  context,
+                  isService: true,
+                );
+                if (saved != null && mounted) {
+                  TopToast.success(context, 'Layanan disimpan');
+                  setState(() => _kategoriTick++);
+                }
+              } else if (_tabIndex == 2) {
+                await showAddBahanSheet(context, ref.read(databaseProvider));
+                if (mounted) setState(() => _bahanTick++);
+              } else {
+                _openProductForm();
+              }
+            },
+          ),
+        ],
       ),
       onBarcode: _onExternalBarcode,
     );
@@ -1813,14 +1802,6 @@ class _BahanViewState extends ConsumerState<_BahanView> {
     }
   }
 
-  /// v2.2.44 (B4): "Kelola Satuan" dari tab Bahan Baku (F&B) — kamus satuan
-  /// dinamis reusable UnitManagerSheet.
-  Future<void> _openUnitManager() async {
-    final repo = ref.read(recipeRepoProvider);
-    final changed = await UnitManagerSheet.show(context: context, repo: repo);
-    if (changed == true && mounted) await _load();
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1856,15 +1837,6 @@ class _BahanViewState extends ConsumerState<_BahanView> {
                     : NusaConfig.textTertiary,
               ),
             ),
-            const SizedBox(height: 12),
-            // Kelola Satuan tetap bisa diakses meski bahan belum ada
-            // (kamus satuan global untuk resep/HPP).
-            TextButton.icon(
-              onPressed: _openUnitManager,
-              icon: Icon(Icons.straighten_outlined, size: 18),
-              style: TextButton.styleFrom(foregroundColor: NusaConfig.activePrimary),
-              label: Text('Kelola Satuan'),
-            ),
           ],
         ),
       );
@@ -1873,53 +1845,10 @@ class _BahanViewState extends ConsumerState<_BahanView> {
       onRefresh: _load,
       child: ListView.separated(
         padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
-        itemCount: _materials.length + 1, // +1 header Kelola Satuan
+        itemCount: _materials.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, i) {
-          if (i == 0) {
-            // v2.2.44 (B4): akses kamus satuan global dari tab Bahan Baku.
-            return GestureDetector(
-              onTap: _openUnitManager,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: NusaConfig.activePrimary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-                  border: Border.all(
-                    color: NusaConfig.activePrimary.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.straighten_outlined,
-                      size: 18,
-                      color: NusaConfig.activePrimary,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Kelola Satuan',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 20,
-                      color: NusaConfig.textSecondary,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          final m = _materials[i - 1];
+          final m = _materials[i];
           return _BahanCard(
             material: m,
             unitName: _unitNames[m.unitId] ?? '',

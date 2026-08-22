@@ -40,8 +40,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   int _gridColumns = 2; // 1 = list, 2 = grid, 3 = grid padat
   int _tabIndex = 0; // 0 = Stok, 1 = Opname
 
-  /// B6: key untuk memanggil handleBarcode di opname (embedded).
-  final _opnameKey = GlobalKey<StockOpnameScreenState>();
+  /// v2.2.46: referensi State opname (embedded) — diisi via onStateReady.
+  /// Dipakai _onExternalBarcode untuk scan HID di tab Opname.
+  StockOpnameScreenState? _opnameState;
 
   @override
   void initState() {
@@ -273,8 +274,8 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                 ? (_loading ? SkeletonList() : _buildBody())
                 : StockOpnameScreen(
                     key: ValueKey('opname_$_tabIndex'),
-                    screenKey: _opnameKey,
                     embedded: true,
+                    onStateReady: (state) => _opnameState = state,
                   ),
           ),
         ],
@@ -292,7 +293,10 @@ class _StockScreenState extends ConsumerState<StockScreen> {
     final norm = ProductRepository.normalizeBarcode(code);
     if (norm.isEmpty) return;
     if (_tabIndex == 1) {
-      final op = _opnameKey.currentState;
+      // v2.2.46: pakai _opnameState (via onStateReady) — GlobalKey lama tak
+      // pernah terisi, akibatnya scan HID di tab Opname justru membuka
+      // "Stok Masuk". Sekarang benar-benar diteruskan ke opname.
+      final op = _opnameState;
       if (op != null) {
         await op.handleBarcode(norm);
         return;

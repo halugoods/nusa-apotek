@@ -1,12 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:barcode_widget/barcode_widget.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/services/id_card_renderer.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -274,13 +273,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   child: Switch(
                                     value: barcodeOn,
                                     activeTrackColor: NusaConfig.activePrimary,
+                                    // v2.2.46: pola produk — toggle ON field
+                                    // KOSONG (user scan/ketik/Generate manual).
                                     onChanged: (v) => setSt(() {
                                       barcodeOn = v;
-                                      if (v &&
-                                          barcodeCtrl.text.trim().isEmpty) {
-                                        barcodeCtrl.text =
-                                            _generateBarcode();
-                                      }
                                     }),
                                   ),
                                 ),
@@ -332,7 +328,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                           color: NusaConfig.activePrimary,
                                         ),
                                         label: Text(
-                                          'Generate',
+                                          'Generate Barcode',
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
@@ -359,6 +355,29 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                     ),
                                   ],
                                 ),
+                                // v2.2.46: preview barcode langsung di bawah
+                                // toggle (pola form produk).
+                                if (barcodeCtrl.text.trim().isNotEmpty) ...[
+                                  SizedBox(height: 6),
+                                  BarcodeWidget(
+                                    data: barcodeCtrl.text.trim(),
+                                    barcode: Barcode.code128(),
+                                    width: double.infinity,
+                                    height: 60,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    barcodeCtrl.text.trim(),
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -536,40 +555,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     onResult(norm);
   }
 
-  /// Cetak kartu member (PDF siap cetak 85.6×54mm) + share.
-  Future<void> _printMemberCard(Customer c) async {
-    try {
-      final db = ref.read(databaseProvider);
-      final store = await SettingsRepository(db).getStoreName();
-      final barcode = c.barcode != null && c.barcode!.isNotEmpty
-          ? c.barcode
-          : _generateBarcode();
-      final file = await IdCardRenderer.renderSingle(
-        card: IdCardRenderer.memberCard(
-          storeName: store.isEmpty ? 'NUSA Kasir' : store,
-          name: c.name,
-          level: c.level,
-          points: c.points,
-          barcode: barcode,
-          phone: c.phone,
-        ),
-        fileName: 'kartu_member_${c.name}',
-      );
-      if (!mounted) return;
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path)],
-          subject: 'Kartu Member ${c.name}',
-        ),
-      );
-    } catch (e) {
-      debugPrint('[Member Card] error: $e');
-      if (mounted) {
-        TopToast.error(context, 'Gagal membuat kartu: $e');
-      }
-    }
-  }
-
   void _showDetail(Customer c) {
     final phone = c.phone ?? '';
     final db = ref.read(databaseProvider);
@@ -587,7 +572,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           customer: c,
           phone: phone,
           db: db,
-          onPrintCard: () => _printMemberCard(c),
         ),
       ),
     );
@@ -986,13 +970,11 @@ class _CustomerDetailSheet extends StatelessWidget {
   final Customer customer;
   final String phone;
   final AppDatabase db;
-  final VoidCallback? onPrintCard;
 
   _CustomerDetailSheet({
     required this.customer,
     required this.phone,
     required this.db,
-    this.onPrintCard,
   });
 
   @override
@@ -1096,24 +1078,6 @@ class _CustomerDetailSheet extends StatelessWidget {
           if (c.barcode != null && c.barcode!.isNotEmpty)
             _detailRow(
                 Icons.qr_code_2, 'Barcode Member', c.barcode!, isDark),
-          if (onPrintCard != null) ...[
-            SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onPrintCard,
-                icon: Icon(Icons.badge_outlined, size: 18),
-                label: Text('Cetak Kartu Member'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: NusaConfig.activePrimary,
-                  side: BorderSide(color: NusaConfig.activePrimary),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ],
           SizedBox(height: 8),
           // ── Riwayat Poin ──
           FutureBuilder<List<PointHistory>>(

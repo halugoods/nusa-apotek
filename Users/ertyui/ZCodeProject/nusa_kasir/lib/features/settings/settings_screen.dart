@@ -1831,6 +1831,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── Receipt Settings ──────────────────────────────────────
 
+  /// Dialog "Dalam Pengembangan" — dipakai fitur yang masih draft (v2.2.46:
+  /// Kartu ID). Memberi tahu user fitur lagi dikerjakan, bukan hilang.
+  void _showUnderDevelopment(BuildContext ctx, String featureName) {
+    showDialog<void>(
+      context: ctx,
+      builder: (dctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.construction, color: NusaConfig.accentGold, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                featureName,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Fitur ini masih dalam pengembangan.\n'
+          'Desain sedang disiapkan — nantikan di update berikutnya.',
+          style: TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dctx),
+            child: const Text('Oke'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showReceiptSettings() async {
     final db = ref.read(databaseProvider);
     final repo = ref.read(settingsRepoProvider);
@@ -3417,6 +3454,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: 'Aktifkan & atur toko online (Vercel)',
               isDark: isDark,
               onTap: () => context.push('/toko_online_setup'),
+            ),
+            const SizedBox(height: 12),
+            // Kartu ID (v2.2.46: draft — desain masih berjalan)
+            _menuRow(
+              icon: Icons.badge_outlined,
+              iconColor: const Color(0xFFEC4899),
+              title: 'Kartu ID',
+              subtitle: 'Cetak kartu member & karyawan (segera hadir)',
+              isDark: isDark,
+              onTap: () => _showUnderDevelopment(context, 'Kartu ID'),
             ),
             const SizedBox(height: 12),
             // Pembayaran

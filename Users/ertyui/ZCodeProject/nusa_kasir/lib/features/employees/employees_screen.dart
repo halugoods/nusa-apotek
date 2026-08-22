@@ -6,12 +6,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:barcode_widget/barcode_widget.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
-import 'package:nusa_kasir/core/services/id_card_renderer.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -19,17 +18,15 @@ import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
-import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
-import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -461,41 +458,94 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                 crossAxisAlignment:
                                     CrossAxisAlignment.stretch,
                                 children: [
-                                  TextField(
-                                    controller: barcodeC,
-                                    autofocus: false,
-                                    style: TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontSize: 14,
-                                      color: isDark
-                                          ? NusaConfig.darkTextPrimary
-                                          : NusaConfig.textPrimary,
-                                    ),
-                                    decoration: InputDecoration(
-                                      labelText: 'Kode barcode',
-                                      hintText: 'Scan id-card atau ketik manual',
-                                      isDense: true,
-                                      border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                  // Scan kamera + input manual (pola form produk)
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: barcodeC,
+                                          autofocus: false,
+                                          style: TextStyle(
+                                            fontFamily: 'monospace',
+                                            fontSize: 14,
+                                            color: isDark
+                                                ? NusaConfig.darkTextPrimary
+                                                : NusaConfig.textPrimary,
+                                          ),
+                                          decoration: InputDecoration(
+                                            labelText: 'Kode barcode',
+                                            hintText:
+                                                'Scan id-card atau ketik manual',
+                                            isDense: true,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          onChanged: (_) => setSt(() {}),
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      IconButton.filledTonal(
+                                        tooltip: 'Scan kamera',
+                                        onPressed: () => _scanBarcodeFromCamera(
+                                          ctx,
+                                          setSt,
+                                          (norm) => barcodeC.text = norm,
+                                        ),
+                                        icon: Icon(
+                                          Icons.qr_code_scanner,
+                                          size: 20,
+                                          color: NusaConfig.activePrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // Generate barcode acak (pola form produk)
+                                  SizedBox(height: 6),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                      onPressed: () => setSt(() {
+                                        barcodeC.text = _generateBarcode();
+                                      }),
+                                      icon: Icon(
+                                        Icons.casino_outlined,
+                                        size: 16,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                      label: Text(
+                                        'Generate Barcode',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: NusaConfig.activePrimary,
+                                        ),
                                       ),
                                     ),
-                                    onChanged: (_) => setSt(() {}),
                                   ),
+                                  // v2.2.46: preview barcode langsung di bawah
+                                  // toggle (pola form produk).
                                   SizedBox(height: 6),
-                                  IconButton.filledTonal(
-                                    tooltip: 'Scan kamera',
-                                    onPressed: () => _scanBarcodeFromCamera(
-                                      ctx,
-                                      setSt,
-                                      (norm) => barcodeC.text = norm,
+                                  if (barcodeC.text.trim().isNotEmpty) ...[
+                                    BarcodeWidget(
+                                      data: barcodeC.text.trim(),
+                                      barcode: Barcode.code128(),
+                                      width: double.infinity,
+                                      height: 60,
                                     ),
-                                    icon: Icon(
-                                      Icons.qr_code_scanner,
-                                      size: 20,
-                                      color: NusaConfig.activePrimary,
+                                    SizedBox(height: 4),
+                                    Text(
+                                      barcodeC.text.trim(),
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? NusaConfig.darkTextSecondary
+                                            : NusaConfig.textSecondary,
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -1289,6 +1339,19 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     );
   }
 
+  /// Generate kode id-card acak (alfanumerik aman untuk code128 + mudah
+  /// diketik manual) — pola sama dengan generate barcode member/produk.
+  String _generateBarcode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final seed = DateTime.now().microsecondsSinceEpoch.toString().codeUnits;
+    final buf = StringBuffer();
+    for (var i = 0; i < 8; i++) {
+      buf.write(alphabet[(seed[i % seed.length] ^ (i * 31 + 7)) %
+          alphabet.length]);
+    }
+    return 'KRY-$buf';
+  }
+
   /// Scan barcode id-card via kamera (pola sama dengan scanner POS/produk).
   /// Hasil dipakai [onResult] — biasanya isi [barcodeC] di form karyawan.
   Future<void> _scanBarcodeFromCamera(
@@ -1437,41 +1500,6 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     final uri = waLink(e.phone!);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  /// Cetak kartu ID karyawan (PDF siap cetak 85.6×54mm) + share (B11).
-  Future<void> _printEmployeeCard(Employee e) async {
-    try {
-      final db = ref.read(databaseProvider);
-      final store = await SettingsRepository(db).getStoreName();
-      final barcode = e.barcode != null && e.barcode!.isNotEmpty
-          ? e.barcode
-          : null;
-      final file = await IdCardRenderer.renderSingle(
-        card: IdCardRenderer.employeeCard(
-          storeName: store.isEmpty ? 'NUSA Kasir' : store,
-          name: e.name,
-          role: e.role,
-          id: e.id,
-          barcode: barcode,
-          phone: e.phone,
-          photoBytes: photoToImage(e.photoPath),
-        ),
-        fileName: 'kartu_karyawan_${e.name}',
-      );
-      if (!mounted) return;
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path)],
-          subject: 'Kartu Karyawan ${e.name}',
-        ),
-      );
-    } catch (err) {
-      debugPrint('[Employee Card] error: $err');
-      if (mounted) {
-        TopToast.error(context, 'Gagal membuat kartu: $err');
-      }
     }
   }
 
@@ -2082,25 +2110,11 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                       onSelected: (v) {
                                         if (v == 'edit') _showForm(employee: e);
                                         if (v == 'delete') _delete(e);
-                                        if (v == 'print')
-                                          _printEmployeeCard(e);
                                       },
                                       itemBuilder: (_) => [
                                         PopupMenuItem(
                                           value: 'edit',
                                           child: Text('Edit'),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'print',
-                                          child: Row(children: [
-                                            Icon(
-                                              Icons.badge_outlined,
-                                              size: 18,
-                                              color: NusaConfig.activePrimary,
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Cetak Kartu'),
-                                          ]),
                                         ),
                                         PopupMenuItem(
                                           value: 'delete',

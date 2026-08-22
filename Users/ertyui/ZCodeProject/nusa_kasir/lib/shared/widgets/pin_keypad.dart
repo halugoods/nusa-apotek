@@ -371,43 +371,6 @@ class PinKeypadState extends State<PinKeypad>
 
           SizedBox(height: 24),
 
-          // ── NFC scanning indicator ─────────────────
-          if (widget.showNfc && _nfcScanning) ...[
-            Container(
-              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              margin: EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: NusaConfig.accentPurple.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: NusaConfig.accentPurple.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: NusaConfig.accentPurple,
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Dekatkan kartu NFC...',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: NusaConfig.accentPurple,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
           // ── Keypad grid ─────────────────────────────
           _buildKeypadRow(['1', '2', '3'], isDark),
           _buildKeypadRow(['4', '5', '6'], isDark),
@@ -476,26 +439,15 @@ class PinKeypadState extends State<PinKeypad>
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _barcodeScanning
-                                  ? SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: NusaConfig.accentPurple,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.qr_code_2,
-                                      size: 16,
-                                      color: NusaConfig.accentPurple,
-                                    ),
+                              Icon(
+                                Icons.qr_code_2,
+                                size: 16,
+                                color: NusaConfig.accentPurple,
+                              ),
                               SizedBox(width: 6),
                               Flexible(
                                 child: Text(
-                                  _barcodeScanning
-                                      ? 'Memproses…'
-                                      : 'Scan Barcode ID',
+                                  'Scan Barcode ID',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -534,26 +486,15 @@ class PinKeypadState extends State<PinKeypad>
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                _nfcScanning
-                                    ? SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: NusaConfig.accentPurple,
-                                        ),
-                                      )
-                                    : Icon(
-                                        Icons.nfc,
-                                        size: 16,
-                                        color: NusaConfig.accentPurple,
-                                      ),
+                                Icon(
+                                  Icons.nfc,
+                                  size: 16,
+                                  color: NusaConfig.accentPurple,
+                                ),
                                 SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    _nfcScanning
-                                        ? 'Dekatkan kartu…'
-                                        : 'Tap Kartu NFC',
+                                    'Dekatkan kartu NFC',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(

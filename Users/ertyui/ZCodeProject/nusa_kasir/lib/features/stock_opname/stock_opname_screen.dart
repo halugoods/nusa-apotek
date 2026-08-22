@@ -19,12 +19,21 @@ import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 
 class StockOpnameScreen extends ConsumerStatefulWidget {
   final bool embedded;
-  final GlobalKey<StockOpnameScreenState>? screenKey;
+
+  /// v2.2.46: callback saat State siap — dipakai layar induk (Stok) untuk
+  /// memegang referensi State opname agar scan HID di tab Opname bisa
+  /// diteruskan (handleBarcode). Sebelumnya GlobalKey via `screenKey` TIDAK
+  /// pernah terisi (GlobalKey.currentState hanya jalan kalau key dipakai
+  /// sebagai widget key) → scan HID di tab Opname jatuh ke "Stok Masuk".
+  final ValueChanged<StockOpnameScreenState>? onStateReady;
 
   /// v2.2.44 (B6): callback ke layar induk (Stok) agar scan barcode dari
   /// Stok tab bisa diferuskan ke opname saat tab Opname aktif.
   StockOpnameScreen(
-      {super.key, this.embedded = false, this.screenKey, this.onBarcodeHandled});
+      {super.key,
+      this.embedded = false,
+      this.onStateReady,
+      this.onBarcodeHandled});
 
   /// Callback dipanggil layar induk saat barcode HID diteruskan.
   final ValueChanged<String>? onBarcodeHandled;
@@ -51,6 +60,9 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
   @override
   void initState() {
     super.initState();
+    // v2.2.46: daftarkan State ke layar induk via callback (fix routing
+    // scan HID di tab Opname yang jatuh ke "Stok Masuk").
+    widget.onStateReady?.call(this);
     _load();
   }
 
@@ -288,6 +300,17 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
         _items[idx] = old.copyWith(physicalStock: Value<int?>(physical), difference: physical - old.systemStock);
       }
     });
+  }
+
+  /// v2.2.46: naikkan / turunkan hitungan fisik lewat tombol −/＋ (stepper),
+  /// sinkron dengan controller agar tampilan qty ikut. Scan HID memakai jalur
+  /// +1 beruntun terpisah (handleBarcode).
+  void _adjustPhysical(StockCountItem item, int delta) {
+    final current = item.physicalStock ?? item.systemStock;
+    final next = (current + delta).clamp(0, 999999);
+    // Sinkronkan controller dulu, lalu persist.
+    _physicalControllers[item.id]?.text = '$next';
+    _updatePhysicalCount(item, '$next');
   }
 
   Future<void> _finalize() async {
@@ -620,6 +643,8 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
                       item: item,
                       controller: _getController(item),
                       onChanged: (v) => _updatePhysicalCount(item, v),
+                      onMinus: () => _adjustPhysical(item, -1),
+                      onPlus: () => _adjustPhysical(item, 1),
                     );
                   },
                 ),
@@ -840,15 +865,22 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
 
 // ── Product Count Row ──
 
+/// Baris produk opname — v2.2.46: kontrol hitung fisik pakai STEpper − qty ＋
+/// (bukan cuma TextField). Scan HID otomatis +1 beruntun (handleBarcode);
+/// tombol ± untuk koreksi manual cepat.
 class _ProductCountRow extends StatelessWidget {
   final StockCountItem item;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
 
   _ProductCountRow({
     required this.item,
     required this.controller,
     required this.onChanged,
+    required this.onMinus,
+    required this.onPlus,
   });
 
   @override
@@ -865,6 +897,30 @@ class _ProductCountRow extends StatelessWidget {
       accentColor = NusaConfig.accentGold;
     } else {
       accentColor = isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+    }
+
+    // Tombol − / ＋ — 44px tap target, warna netral.
+    Widget stepBtn(IconData icon, VoidCallback onTap) {
+      return Material(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? NusaConfig.darkBorder : NusaConfig.inputBorder,
+              ),
+            ),
+            child: Icon(icon, size: 20, color: NusaConfig.activePrimary),
+          ),
+        ),
+      );
     }
 
     return Container(
@@ -909,35 +965,49 @@ class _ProductCountRow extends StatelessWidget {
             ),
           ),
 
-          // Physical count input
+          // ── Stepper − qty ＋ ──
           Expanded(
             flex: 2,
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              onChanged: onChanged,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: accentColor,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Fisik',
-                hintStyle: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                ),
-                filled: true,
-                fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                stepBtn(Icons.remove_rounded, onMinus),
+                SizedBox(width: 6),
+                // Qty display (editable) — 56px lebar agar angka besar muat.
+                SizedBox(
+                  width: 56,
+                  child: TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    onChanged: onChanged,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: accentColor,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Fisik',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                      ),
+                      filled: true,
+                      fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
+                        ),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                      isDense: true,
+                    ),
                   ),
                 ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              ),
+                SizedBox(width: 6),
+                stepBtn(Icons.add_rounded, onPlus),
+              ],
             ),
           ),
 
