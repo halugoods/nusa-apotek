@@ -12,6 +12,7 @@ import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -1363,9 +1364,14 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       error: _pinError,
                       showFingerprint: true,
                       showNfc: _nfcAvailable,
+                      showBarcode: true,
                       showCancel: false,
                       onFingerprint: () async => await _authFingerprint(),
                       onFingerprintSuccess: () => _fingerprintLogin(),
+                      onBarcode: (code) async {
+                        await _barcodeLogin(code);
+                        return null;
+                      },
                       onNfc: () async {
                         final id = await NfcTagService.readEmployeeTag();
                         if (id == null || !mounted) return null;
@@ -1546,6 +1552,43 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
     } catch (_) {
       // Fingerprint succeeded but employee lookup failed — fall through
+    }
+  }
+
+  /// Login via barcode id-card (B8) — jalur auth ke-4. Scan id-card karyawan
+  /// → lookup by barcode (status Aktif) → buat session → auto check-in → masuk.
+  Future<void> _barcodeLogin(String code) async {
+    final norm = ProductRepository.normalizeBarcode(code);
+    if (norm.isEmpty) return;
+    try {
+      final db = ref.read(databaseProvider);
+      final repo = AttendanceRepository(db);
+      final emp = await repo.getByBarcode(norm, status: 'Aktif');
+      if (emp == null) {
+        if (mounted) {
+          setState(() => _pinError = 'Barcode tidak terdaftar');
+          _keypadKey.currentState?.clear();
+        }
+        return;
+      }
+      if (!mounted) return;
+      final session = EmployeeSession(
+        employeeId: emp.id,
+        name: emp.name,
+        role: emp.role,
+        remember: false,
+      );
+      ref.read(employeeSessionProvider.notifier).login(session, remember: false);
+      ref.read(authProvider.notifier).state = emp.role;
+      try { await AttendanceRepository(db).checkIn(emp.id); } catch (_) {}
+      final settingsRepo = SettingsRepository(db);
+      final storeName = await settingsRepo.getStoreName();
+      if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _pinError = 'Gagal verifikasi barcode');
+        _keypadKey.currentState?.clear();
+      }
     }
   }
 

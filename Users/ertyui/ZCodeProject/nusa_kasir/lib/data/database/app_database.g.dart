@@ -3114,6 +3114,17 @@ class $CustomersTable extends Customers
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _barcodeMeta = const VerificationMeta(
+    'barcode',
+  );
+  @override
+  late final GeneratedColumn<String> barcode = GeneratedColumn<String>(
+    'barcode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _pointsMeta = const VerificationMeta('points');
   @override
   late final GeneratedColumn<int> points = GeneratedColumn<int>(
@@ -3164,6 +3175,7 @@ class $CustomersTable extends Customers
     name,
     phone,
     address,
+    barcode,
     points,
     totalSpent,
     level,
@@ -3202,6 +3214,12 @@ class $CustomersTable extends Customers
       context.handle(
         _addressMeta,
         address.isAcceptableOrUnknown(data['address']!, _addressMeta),
+      );
+    }
+    if (data.containsKey('barcode')) {
+      context.handle(
+        _barcodeMeta,
+        barcode.isAcceptableOrUnknown(data['barcode']!, _barcodeMeta),
       );
     }
     if (data.containsKey('points')) {
@@ -3253,6 +3271,10 @@ class $CustomersTable extends Customers
         DriftSqlType.string,
         data['${effectivePrefix}address'],
       ),
+      barcode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}barcode'],
+      ),
       points: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}points'],
@@ -3283,6 +3305,7 @@ class Customer extends DataClass implements Insertable<Customer> {
   final String name;
   final String? phone;
   final String? address;
+  final String? barcode;
   final int points;
   final int totalSpent;
   final String level;
@@ -3292,6 +3315,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     required this.name,
     this.phone,
     this.address,
+    this.barcode,
     required this.points,
     required this.totalSpent,
     required this.level,
@@ -3307,6 +3331,9 @@ class Customer extends DataClass implements Insertable<Customer> {
     }
     if (!nullToAbsent || address != null) {
       map['address'] = Variable<String>(address);
+    }
+    if (!nullToAbsent || barcode != null) {
+      map['barcode'] = Variable<String>(barcode);
     }
     map['points'] = Variable<int>(points);
     map['total_spent'] = Variable<int>(totalSpent);
@@ -3325,6 +3352,9 @@ class Customer extends DataClass implements Insertable<Customer> {
       address: address == null && nullToAbsent
           ? const Value.absent()
           : Value(address),
+      barcode: barcode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(barcode),
       points: Value(points),
       totalSpent: Value(totalSpent),
       level: Value(level),
@@ -3342,6 +3372,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       name: serializer.fromJson<String>(json['name']),
       phone: serializer.fromJson<String?>(json['phone']),
       address: serializer.fromJson<String?>(json['address']),
+      barcode: serializer.fromJson<String?>(json['barcode']),
       points: serializer.fromJson<int>(json['points']),
       totalSpent: serializer.fromJson<int>(json['totalSpent']),
       level: serializer.fromJson<String>(json['level']),
@@ -3356,6 +3387,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       'name': serializer.toJson<String>(name),
       'phone': serializer.toJson<String?>(phone),
       'address': serializer.toJson<String?>(address),
+      'barcode': serializer.toJson<String?>(barcode),
       'points': serializer.toJson<int>(points),
       'totalSpent': serializer.toJson<int>(totalSpent),
       'level': serializer.toJson<String>(level),
@@ -3368,6 +3400,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     String? name,
     Value<String?> phone = const Value.absent(),
     Value<String?> address = const Value.absent(),
+    Value<String?> barcode = const Value.absent(),
     int? points,
     int? totalSpent,
     String? level,
@@ -3377,6 +3410,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     name: name ?? this.name,
     phone: phone.present ? phone.value : this.phone,
     address: address.present ? address.value : this.address,
+    barcode: barcode.present ? barcode.value : this.barcode,
     points: points ?? this.points,
     totalSpent: totalSpent ?? this.totalSpent,
     level: level ?? this.level,
@@ -3388,6 +3422,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       name: data.name.present ? data.name.value : this.name,
       phone: data.phone.present ? data.phone.value : this.phone,
       address: data.address.present ? data.address.value : this.address,
+      barcode: data.barcode.present ? data.barcode.value : this.barcode,
       points: data.points.present ? data.points.value : this.points,
       totalSpent: data.totalSpent.present
           ? data.totalSpent.value
@@ -3404,6 +3439,7 @@ class Customer extends DataClass implements Insertable<Customer> {
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('address: $address, ')
+          ..write('barcode: $barcode, ')
           ..write('points: $points, ')
           ..write('totalSpent: $totalSpent, ')
           ..write('level: $level, ')
@@ -3418,6 +3454,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     name,
     phone,
     address,
+    barcode,
     points,
     totalSpent,
     level,
@@ -3431,6 +3468,7 @@ class Customer extends DataClass implements Insertable<Customer> {
           other.name == this.name &&
           other.phone == this.phone &&
           other.address == this.address &&
+          other.barcode == this.barcode &&
           other.points == this.points &&
           other.totalSpent == this.totalSpent &&
           other.level == this.level &&
@@ -3442,6 +3480,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
   final Value<String> name;
   final Value<String?> phone;
   final Value<String?> address;
+  final Value<String?> barcode;
   final Value<int> points;
   final Value<int> totalSpent;
   final Value<String> level;
@@ -3451,6 +3490,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.name = const Value.absent(),
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
+    this.barcode = const Value.absent(),
     this.points = const Value.absent(),
     this.totalSpent = const Value.absent(),
     this.level = const Value.absent(),
@@ -3461,6 +3501,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     required String name,
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
+    this.barcode = const Value.absent(),
     this.points = const Value.absent(),
     this.totalSpent = const Value.absent(),
     this.level = const Value.absent(),
@@ -3471,6 +3512,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Expression<String>? name,
     Expression<String>? phone,
     Expression<String>? address,
+    Expression<String>? barcode,
     Expression<int>? points,
     Expression<int>? totalSpent,
     Expression<String>? level,
@@ -3481,6 +3523,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       if (name != null) 'name': name,
       if (phone != null) 'phone': phone,
       if (address != null) 'address': address,
+      if (barcode != null) 'barcode': barcode,
       if (points != null) 'points': points,
       if (totalSpent != null) 'total_spent': totalSpent,
       if (level != null) 'level': level,
@@ -3493,6 +3536,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Value<String>? name,
     Value<String?>? phone,
     Value<String?>? address,
+    Value<String?>? barcode,
     Value<int>? points,
     Value<int>? totalSpent,
     Value<String>? level,
@@ -3503,6 +3547,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       name: name ?? this.name,
       phone: phone ?? this.phone,
       address: address ?? this.address,
+      barcode: barcode ?? this.barcode,
       points: points ?? this.points,
       totalSpent: totalSpent ?? this.totalSpent,
       level: level ?? this.level,
@@ -3524,6 +3569,9 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     }
     if (address.present) {
       map['address'] = Variable<String>(address.value);
+    }
+    if (barcode.present) {
+      map['barcode'] = Variable<String>(barcode.value);
     }
     if (points.present) {
       map['points'] = Variable<int>(points.value);
@@ -3547,6 +3595,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('address: $address, ')
+          ..write('barcode: $barcode, ')
           ..write('points: $points, ')
           ..write('totalSpent: $totalSpent, ')
           ..write('level: $level, ')
@@ -4362,6 +4411,17 @@ class $EmployeesTable extends Employees
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _photoBase64Meta = const VerificationMeta(
+    'photoBase64',
+  );
+  @override
+  late final GeneratedColumn<String> photoBase64 = GeneratedColumn<String>(
+    'photo_base64',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _workStartMeta = const VerificationMeta(
     'workStart',
   );
@@ -4454,6 +4514,7 @@ class $EmployeesTable extends Employees
     startDate,
     nfcTag,
     barcode,
+    photoBase64,
     workStart,
     workEnd,
     requiresAttendance,
@@ -4546,6 +4607,15 @@ class $EmployeesTable extends Employees
       context.handle(
         _barcodeMeta,
         barcode.isAcceptableOrUnknown(data['barcode']!, _barcodeMeta),
+      );
+    }
+    if (data.containsKey('photo_base64')) {
+      context.handle(
+        _photoBase64Meta,
+        photoBase64.isAcceptableOrUnknown(
+          data['photo_base64']!,
+          _photoBase64Meta,
+        ),
       );
     }
     if (data.containsKey('work_start')) {
@@ -4650,6 +4720,10 @@ class $EmployeesTable extends Employees
         DriftSqlType.string,
         data['${effectivePrefix}barcode'],
       ),
+      photoBase64: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}photo_base64'],
+      ),
       workStart: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}work_start'],
@@ -4696,6 +4770,7 @@ class Employee extends DataClass implements Insertable<Employee> {
   final DateTime? startDate;
   final String? nfcTag;
   final String? barcode;
+  final String? photoBase64;
   final String? workStart;
   final String? workEnd;
   final bool requiresAttendance;
@@ -4715,6 +4790,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     this.startDate,
     this.nfcTag,
     this.barcode,
+    this.photoBase64,
     this.workStart,
     this.workEnd,
     required this.requiresAttendance,
@@ -4752,6 +4828,9 @@ class Employee extends DataClass implements Insertable<Employee> {
     }
     if (!nullToAbsent || barcode != null) {
       map['barcode'] = Variable<String>(barcode);
+    }
+    if (!nullToAbsent || photoBase64 != null) {
+      map['photo_base64'] = Variable<String>(photoBase64);
     }
     if (!nullToAbsent || workStart != null) {
       map['work_start'] = Variable<String>(workStart);
@@ -4796,6 +4875,9 @@ class Employee extends DataClass implements Insertable<Employee> {
       barcode: barcode == null && nullToAbsent
           ? const Value.absent()
           : Value(barcode),
+      photoBase64: photoBase64 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(photoBase64),
       workStart: workStart == null && nullToAbsent
           ? const Value.absent()
           : Value(workStart),
@@ -4827,6 +4909,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       startDate: serializer.fromJson<DateTime?>(json['startDate']),
       nfcTag: serializer.fromJson<String?>(json['nfcTag']),
       barcode: serializer.fromJson<String?>(json['barcode']),
+      photoBase64: serializer.fromJson<String?>(json['photoBase64']),
       workStart: serializer.fromJson<String?>(json['workStart']),
       workEnd: serializer.fromJson<String?>(json['workEnd']),
       requiresAttendance: serializer.fromJson<bool>(json['requiresAttendance']),
@@ -4851,6 +4934,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       'startDate': serializer.toJson<DateTime?>(startDate),
       'nfcTag': serializer.toJson<String?>(nfcTag),
       'barcode': serializer.toJson<String?>(barcode),
+      'photoBase64': serializer.toJson<String?>(photoBase64),
       'workStart': serializer.toJson<String?>(workStart),
       'workEnd': serializer.toJson<String?>(workEnd),
       'requiresAttendance': serializer.toJson<bool>(requiresAttendance),
@@ -4873,6 +4957,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     Value<DateTime?> startDate = const Value.absent(),
     Value<String?> nfcTag = const Value.absent(),
     Value<String?> barcode = const Value.absent(),
+    Value<String?> photoBase64 = const Value.absent(),
     Value<String?> workStart = const Value.absent(),
     Value<String?> workEnd = const Value.absent(),
     bool? requiresAttendance,
@@ -4892,6 +4977,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     startDate: startDate.present ? startDate.value : this.startDate,
     nfcTag: nfcTag.present ? nfcTag.value : this.nfcTag,
     barcode: barcode.present ? barcode.value : this.barcode,
+    photoBase64: photoBase64.present ? photoBase64.value : this.photoBase64,
     workStart: workStart.present ? workStart.value : this.workStart,
     workEnd: workEnd.present ? workEnd.value : this.workEnd,
     requiresAttendance: requiresAttendance ?? this.requiresAttendance,
@@ -4915,6 +5001,9 @@ class Employee extends DataClass implements Insertable<Employee> {
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
       nfcTag: data.nfcTag.present ? data.nfcTag.value : this.nfcTag,
       barcode: data.barcode.present ? data.barcode.value : this.barcode,
+      photoBase64: data.photoBase64.present
+          ? data.photoBase64.value
+          : this.photoBase64,
       workStart: data.workStart.present ? data.workStart.value : this.workStart,
       workEnd: data.workEnd.present ? data.workEnd.value : this.workEnd,
       requiresAttendance: data.requiresAttendance.present
@@ -4945,6 +5034,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           ..write('startDate: $startDate, ')
           ..write('nfcTag: $nfcTag, ')
           ..write('barcode: $barcode, ')
+          ..write('photoBase64: $photoBase64, ')
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
@@ -4969,6 +5059,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     startDate,
     nfcTag,
     barcode,
+    photoBase64,
     workStart,
     workEnd,
     requiresAttendance,
@@ -4992,6 +5083,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           other.startDate == this.startDate &&
           other.nfcTag == this.nfcTag &&
           other.barcode == this.barcode &&
+          other.photoBase64 == this.photoBase64 &&
           other.workStart == this.workStart &&
           other.workEnd == this.workEnd &&
           other.requiresAttendance == this.requiresAttendance &&
@@ -5013,6 +5105,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
   final Value<DateTime?> startDate;
   final Value<String?> nfcTag;
   final Value<String?> barcode;
+  final Value<String?> photoBase64;
   final Value<String?> workStart;
   final Value<String?> workEnd;
   final Value<bool> requiresAttendance;
@@ -5032,6 +5125,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.startDate = const Value.absent(),
     this.nfcTag = const Value.absent(),
     this.barcode = const Value.absent(),
+    this.photoBase64 = const Value.absent(),
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
@@ -5052,6 +5146,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.startDate = const Value.absent(),
     this.nfcTag = const Value.absent(),
     this.barcode = const Value.absent(),
+    this.photoBase64 = const Value.absent(),
     this.workStart = const Value.absent(),
     this.workEnd = const Value.absent(),
     this.requiresAttendance = const Value.absent(),
@@ -5074,6 +5169,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Expression<DateTime>? startDate,
     Expression<String>? nfcTag,
     Expression<String>? barcode,
+    Expression<String>? photoBase64,
     Expression<String>? workStart,
     Expression<String>? workEnd,
     Expression<bool>? requiresAttendance,
@@ -5094,6 +5190,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       if (startDate != null) 'start_date': startDate,
       if (nfcTag != null) 'nfc_tag': nfcTag,
       if (barcode != null) 'barcode': barcode,
+      if (photoBase64 != null) 'photo_base64': photoBase64,
       if (workStart != null) 'work_start': workStart,
       if (workEnd != null) 'work_end': workEnd,
       if (requiresAttendance != null) 'requires_attendance': requiresAttendance,
@@ -5116,6 +5213,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Value<DateTime?>? startDate,
     Value<String?>? nfcTag,
     Value<String?>? barcode,
+    Value<String?>? photoBase64,
     Value<String?>? workStart,
     Value<String?>? workEnd,
     Value<bool>? requiresAttendance,
@@ -5136,6 +5234,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       startDate: startDate ?? this.startDate,
       nfcTag: nfcTag ?? this.nfcTag,
       barcode: barcode ?? this.barcode,
+      photoBase64: photoBase64 ?? this.photoBase64,
       workStart: workStart ?? this.workStart,
       workEnd: workEnd ?? this.workEnd,
       requiresAttendance: requiresAttendance ?? this.requiresAttendance,
@@ -5184,6 +5283,9 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     if (barcode.present) {
       map['barcode'] = Variable<String>(barcode.value);
     }
+    if (photoBase64.present) {
+      map['photo_base64'] = Variable<String>(photoBase64.value);
+    }
     if (workStart.present) {
       map['work_start'] = Variable<String>(workStart.value);
     }
@@ -5220,6 +5322,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
           ..write('startDate: $startDate, ')
           ..write('nfcTag: $nfcTag, ')
           ..write('barcode: $barcode, ')
+          ..write('photoBase64: $photoBase64, ')
           ..write('workStart: $workStart, ')
           ..write('workEnd: $workEnd, ')
           ..write('requiresAttendance: $requiresAttendance, ')
@@ -27012,6 +27115,7 @@ typedef $$CustomersTableCreateCompanionBuilder =
       required String name,
       Value<String?> phone,
       Value<String?> address,
+      Value<String?> barcode,
       Value<int> points,
       Value<int> totalSpent,
       Value<String> level,
@@ -27023,6 +27127,7 @@ typedef $$CustomersTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> phone,
       Value<String?> address,
+      Value<String?> barcode,
       Value<int> points,
       Value<int> totalSpent,
       Value<String> level,
@@ -27055,6 +27160,11 @@ class $$CustomersTableFilterComposer
 
   ColumnFilters<String> get address => $composableBuilder(
     column: $table.address,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get barcode => $composableBuilder(
+    column: $table.barcode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -27108,6 +27218,11 @@ class $$CustomersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get barcode => $composableBuilder(
+    column: $table.barcode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get points => $composableBuilder(
     column: $table.points,
     builder: (column) => ColumnOrderings(column),
@@ -27149,6 +27264,9 @@ class $$CustomersTableAnnotationComposer
 
   GeneratedColumn<String> get address =>
       $composableBuilder(column: $table.address, builder: (column) => column);
+
+  GeneratedColumn<String> get barcode =>
+      $composableBuilder(column: $table.barcode, builder: (column) => column);
 
   GeneratedColumn<int> get points =>
       $composableBuilder(column: $table.points, builder: (column) => column);
@@ -27197,6 +27315,7 @@ class $$CustomersTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
+                Value<String?> barcode = const Value.absent(),
                 Value<int> points = const Value.absent(),
                 Value<int> totalSpent = const Value.absent(),
                 Value<String> level = const Value.absent(),
@@ -27206,6 +27325,7 @@ class $$CustomersTableTableManager
                 name: name,
                 phone: phone,
                 address: address,
+                barcode: barcode,
                 points: points,
                 totalSpent: totalSpent,
                 level: level,
@@ -27217,6 +27337,7 @@ class $$CustomersTableTableManager
                 required String name,
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
+                Value<String?> barcode = const Value.absent(),
                 Value<int> points = const Value.absent(),
                 Value<int> totalSpent = const Value.absent(),
                 Value<String> level = const Value.absent(),
@@ -27226,6 +27347,7 @@ class $$CustomersTableTableManager
                 name: name,
                 phone: phone,
                 address: address,
+                barcode: barcode,
                 points: points,
                 totalSpent: totalSpent,
                 level: level,
@@ -27590,6 +27712,7 @@ typedef $$EmployeesTableCreateCompanionBuilder =
       Value<DateTime?> startDate,
       Value<String?> nfcTag,
       Value<String?> barcode,
+      Value<String?> photoBase64,
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
@@ -27611,6 +27734,7 @@ typedef $$EmployeesTableUpdateCompanionBuilder =
       Value<DateTime?> startDate,
       Value<String?> nfcTag,
       Value<String?> barcode,
+      Value<String?> photoBase64,
       Value<String?> workStart,
       Value<String?> workEnd,
       Value<bool> requiresAttendance,
@@ -27685,6 +27809,11 @@ class $$EmployeesTableFilterComposer
 
   ColumnFilters<String> get barcode => $composableBuilder(
     column: $table.barcode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get photoBase64 => $composableBuilder(
+    column: $table.photoBase64,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -27788,6 +27917,11 @@ class $$EmployeesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get photoBase64 => $composableBuilder(
+    column: $table.photoBase64,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get workStart => $composableBuilder(
     column: $table.workStart,
     builder: (column) => ColumnOrderings(column),
@@ -27866,6 +28000,11 @@ class $$EmployeesTableAnnotationComposer
   GeneratedColumn<String> get barcode =>
       $composableBuilder(column: $table.barcode, builder: (column) => column);
 
+  GeneratedColumn<String> get photoBase64 => $composableBuilder(
+    column: $table.photoBase64,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get workStart =>
       $composableBuilder(column: $table.workStart, builder: (column) => column);
 
@@ -27931,6 +28070,7 @@ class $$EmployeesTableTableManager
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<String?> nfcTag = const Value.absent(),
                 Value<String?> barcode = const Value.absent(),
+                Value<String?> photoBase64 = const Value.absent(),
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
@@ -27950,6 +28090,7 @@ class $$EmployeesTableTableManager
                 startDate: startDate,
                 nfcTag: nfcTag,
                 barcode: barcode,
+                photoBase64: photoBase64,
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,
@@ -27971,6 +28112,7 @@ class $$EmployeesTableTableManager
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<String?> nfcTag = const Value.absent(),
                 Value<String?> barcode = const Value.absent(),
+                Value<String?> photoBase64 = const Value.absent(),
                 Value<String?> workStart = const Value.absent(),
                 Value<String?> workEnd = const Value.absent(),
                 Value<bool> requiresAttendance = const Value.absent(),
@@ -27990,6 +28132,7 @@ class $$EmployeesTableTableManager
                 startDate: startDate,
                 nfcTag: nfcTag,
                 barcode: barcode,
+                photoBase64: photoBase64,
                 workStart: workStart,
                 workEnd: workEnd,
                 requiresAttendance: requiresAttendance,

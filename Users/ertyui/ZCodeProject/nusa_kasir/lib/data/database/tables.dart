@@ -114,6 +114,9 @@ class Customers extends Table {
   TextColumn get name => text()();
   TextColumn get phone => text().nullable()();
   TextColumn get address => text().nullable()();
+  // v2.2.45 (B11): barcode member — scan HID/kamera untuk pilih pelanggan &
+  // cetak kartu member. Bisa diisi manual atau di-generate.
+  TextColumn get barcode => text().nullable()();
   IntColumn get points => integer().withDefault(const Constant(0))();
   IntColumn get totalSpent => integer().withDefault(const Constant(0))();
   TextColumn get level => text().withDefault(const Constant('Silver'))();
@@ -163,6 +166,11 @@ class Employees extends Table {
   // v2.2.44 (B8): barcode karyawan — jalur auth ke-4 (PIN/FP/NFC/barcode).
   // Owner bisa cetak id-card ber-barcode → scan HID untuk login/presensi.
   TextColumn get barcode => text().nullable()();
+  // v2.2.45 (B1): foto profil karyawan ikut backup cloud — BASE64 di kolom DB.
+  // photoPath cuma path file lokal yang TIDAK ikut backup; setelah restore di
+  // device baru file-nya tidak ada. photoBase64 mengembalikan foto setelah
+  // restore (di-hydrate ke disk lalu photoPath diperbarui).
+  TextColumn get photoBase64 => text().nullable()();
   TextColumn get workStart => text().nullable()(); // "HH:mm" default "08:00"
   TextColumn get workEnd => text().nullable()(); // "HH:mm" default "17:00"
   BoolColumn get requiresAttendance =>

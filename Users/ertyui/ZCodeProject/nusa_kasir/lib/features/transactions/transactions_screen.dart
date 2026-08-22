@@ -27,6 +27,7 @@ import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/shared/services/auth_methods.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -582,11 +583,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       showRemember: false,
       showFingerprint: true,
       showNfc: true,
+      showBarcode: true,
       onFingerprint: () async => await _authFingerprint(),
       onNfc: () async {
         final id = await NfcTagService.readEmployeeTag();
         return id?.toString();
       },
+      onBarcode: AuthMethods.barcode(ref, expectedEmployeeId: emp.id),
     );
     return result?.success ?? false;
   }

@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.at(String path) : super(_openConnectionAt(path));
 
   @override
-  int get schemaVersion => 46;
+  int get schemaVersion => 47;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -714,6 +714,13 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'UPDATE products SET is_service = 0 WHERE is_service IS NULL',
         );
+      }
+      if (from < 47) {
+        // v2.2.45 (B11): barcode member/pelanggan — scan HID/kamera untuk
+        // pilih pelanggan + cetak kartu member.
+        await _addColumnIfMissing(m, 'customers', 'barcode', 'TEXT');
+        // v2.2.45 (B1): foto profil karyawan ikut backup cloud (BASE64).
+        await _addColumnIfMissing(m, 'employees', 'photo_base64', 'TEXT');
       }
     },
   );

@@ -108,7 +108,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   final _min = TextEditingController();
   String _category = '';
   List<String> _availableCategories = [];
-  late String _barcode;
+  late String? _barcode;
   Product? _existing;
   bool _loading = true;
   bool _saving = false;
@@ -154,8 +154,10 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   @override
   void initState() {
     super.initState();
-    _barcode = ActivationKey.generateSerial();
-    _barcodeCtrl.text = _barcode;
+    // v2.2.45: barcode TIDAK auto-generate saat form dibuka — user yang
+    // memutuskan lewat tombol "Generate Barcode" (lihat toggle Barcode).
+    _barcode = null;
+    _barcodeCtrl.text = '';
     // B10: preset layanan dari tab Layanan (add mode).
     _isService = widget.isService ?? false;
     _init();
@@ -356,11 +358,18 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
       _barcodeOn = v;
       if (v && _existing?.barcode != null && _existing!.barcode!.isNotEmpty) {
         _barcode = _existing!.barcode!;
-        _barcodeCtrl.text = _barcode;
-      } else if (v && _barcodeCtrl.text.trim().isEmpty) {
-        _barcode = ActivationKey.generateSerial();
-        _barcodeCtrl.text = _barcode;
+        _barcodeCtrl.text = _barcode!;
       }
+      // v2.2.45: toggle ON → field KOSONG (jangan auto-generate). User bisa
+      // scan/ketik manual atau tekan "Generate Barcode".
+    });
+  }
+
+  /// Generate barcode acak (pola serial aktivasi) untuk produk baru.
+  void _generateBarcode() {
+    setState(() {
+      _barcode = ActivationKey.generateSerial();
+      _barcodeCtrl.text = _barcode!;
     });
   }
 
@@ -527,6 +536,18 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
       final supplierVal = _hasSupplier && _supplier != null
           ? Value<int?>(_supplier!.id)
           : const Value<int?>(null);
+      // B1 (v2.2.45): simpan image sebagai BASE64 DARI file lokal supaya ikut
+      // backup cloud (kolom image_base64). File lokal (imagePath) TIDAK ikut
+      // backup DB → kalau cuma path, foto hilang setelah restore ke device baru.
+      // Kalau gambar diganti/ada, encode ulang; kalau tidak ada gambar → null.
+      String? imageBase64;
+      if (_imagePath != null && File(_imagePath!).existsSync()) {
+        try {
+          imageBase64 = base64Encode(File(_imagePath!).readAsBytesSync());
+        } catch (_) {
+          imageBase64 = null; // jangan sampai gagal menyimpan karena foto
+        }
+      }
       int? createdId;
       if (_isEdit) {
         await (db.update(
@@ -555,6 +576,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
             ),
             supplierId: supplierVal,
             isService: Value(_isService),
+            imageBase64: Value(imageBase64),
           ),
         );
       } else {
@@ -584,6 +606,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                 ),
                 supplierId: supplierVal,
                 isService: Value(_isService),
+                imageBase64: Value(imageBase64),
               ),
             );
       }
@@ -1032,6 +1055,28 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                                       ),
                                     ),
                                   ],
+                                ),
+                                // v2.2.45: Generate barcode acak — pengganti
+                                // auto-generate saat toggle ON.
+                                SizedBox(height: 6),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: _generateBarcode,
+                                    icon: Icon(
+                                      Icons.casino_outlined,
+                                      size: 16,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                    label: Text(
+                                      'Generate Barcode',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                                 SizedBox(height: 6),
                                 if (_barcodeCtrl.text.trim().isNotEmpty) ...[

@@ -31,6 +31,9 @@ import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 
 /// Shared section card style used across all checkout cards.
@@ -949,6 +952,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               TopToast.success(context, 'Pelanggan: ${created.name}');
           }
         },
+        byBarcode: (code) => repo.byBarcode(code),
+        scanBarcode: (onResult) => _scanMemberBarcode(ctx, onResult),
       ),
     );
 
@@ -961,6 +966,120 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       });
       TopToast.success(context, 'Pelanggan: ${result.name}');
     }
+  }
+
+  /// Scan barcode member via kamera (pola sama customer_screen B11) —
+  /// hasil diteruskan ke callback untuk dicari & auto-pilih.
+  Future<void> _scanMemberBarcode(
+    BuildContext ctx,
+    ValueChanged<String> onResult,
+  ) async {
+    String? scannedCode;
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? errorMsg;
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, dSet) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              const SizedBox(width: 8),
+              const Text('Pindai Barcode Member'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final raw = capture.barcodes.isNotEmpty
+                        ? capture.barcodes.first.rawValue
+                        : null;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(dctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Checkout] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      dSet(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode diisi manual atau scan HID.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: const Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scannedCode == null || !ctx.mounted) return;
+    final norm = scannedCode!.replaceAll(RegExp(r'[\s\-]'), '').trim();
+    if (norm.isEmpty) return;
+    onResult(norm);
   }
 
   Future<void> _confirmPayment() async {
@@ -3639,88 +3758,204 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 }
 
-/// Customer picker dialog with "Tambah Baru" option.
-class _CustomerPickerDialog extends StatelessWidget {
+/// Customer/member picker dialog with "Tambah Baru" option — B11.
+/// Mendukung: cari nama, scan barcode member via kamera, dan auto-scan HID
+/// (scanner eksternal) — pakai STREAM employee_session_provider via callback.
+class _CustomerPickerDialog extends StatefulWidget {
   final List<Customer> customers;
   final VoidCallback onAddNew;
+  final Future<Customer?> Function(String barcode) byBarcode;
+  final Future<void> Function(ValueChanged<String> onResult) scanBarcode;
 
   const _CustomerPickerDialog({
     required this.customers,
     required this.onAddNew,
+    required this.byBarcode,
+    required this.scanBarcode,
   });
+
+  @override
+  State<_CustomerPickerDialog> createState() => _CustomerPickerDialogState();
+}
+
+class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _normQuery = '';
+
+  List<Customer> get _filtered {
+    final all = widget.customers;
+    if (_normQuery.isEmpty) return all;
+    return all.where((c) {
+      final name = c.name.toLowerCase();
+      if (_normQuery.length < 3) {
+        return name.contains(_query.toLowerCase());
+      }
+      return name.contains(_query.toLowerCase()) ||
+          (c.barcode?.replaceAll(RegExp(r'[\s\-]'), '').contains(_normQuery) ??
+              false) ||
+          (c.phone ?? '').contains(_query);
+    }).toList();
+  }
+
+  /// Normalisasi barcode member — konsisten dgn capture lain (B11).
+  String _norm(String code) => code.replaceAll(RegExp(r'[\s\-]'), '').trim();
+
+  /// Tangani scan (HID / kamera) → cari member by barcode → pilih/langsung
+  /// tutup bila ketemu, kalau tidak toast.
+  Future<void> _onScan(String raw) async {
+    final code = _norm(raw);
+    if (code.isEmpty) return;
+    if (!mounted) return;
+    final matched = await widget.byBarcode(code);
+    if (!mounted) return;
+    if (matched != null) {
+      Navigator.pop(context, matched);
+    } else {
+      TopToast.error(context, 'Member "$code" tidak ditemukan');
+      if (mounted) setState(() => _query = code);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AlertDialog(
-      title: const Text('Pilih Pelanggan'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // "Tambah Baru" button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onAddNew,
-                icon: const Icon(Icons.person_add_outlined, size: 18),
-                label: const Text('Daftar Pelanggan Baru'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: NusaConfig.activePrimary,
-                  side: BorderSide(
-                    color: NusaConfig.activePrimary.withValues(alpha: 0.4),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-            if (customers.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Divider(color: Colors.grey.withValues(alpha: 0.2)),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: customers.length,
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text(
-                      customers[i].name,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+    final filtered = _filtered;
+    return HidBarcodeListener(
+      onBarcode: _onScan,
+      autofocus: false,
+      child: AlertDialog(
+        title: const Text('Pilih Pelanggan'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Search + scan camera ──
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) {
+                        setState(() {
+                          _query = v;
+                          _normQuery = _norm(v);
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Cari nama / barcode / telp',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: isDark
+                            ? NusaConfig.darkSurface2
+                            : Colors.grey.shade100,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 8),
+                      ),
                     ),
-                    subtitle: Text(
-                      '${formatRupiah(customers[i].totalSpent)} • ${customers[i].level}',
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.pop(context, customers[i]),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'Pindai barcode member',
+                    onPressed: () => widget.scanBarcode(
+                      (code) => _onScan(code),
+                    ),
+                    icon: const Icon(Icons.qr_code_scanner, size: 20),
+                  ),
+                ],
               ),
-            ] else
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
                 child: Text(
-                  'Belum ada pelanggan',
+                  'Scan barcode member (kamera / scanner HID) untuk auto-pilih',
                   style: TextStyle(
                     color: isDark
                         ? NusaConfig.darkTextTertiary
                         : NusaConfig.textTertiary,
-                    fontSize: 13,
+                    fontSize: 11,
                   ),
                 ),
               ),
-          ],
+              const SizedBox(height: 12),
+              // "Tambah Baru" button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: widget.onAddNew,
+                  icon: const Icon(Icons.person_add_outlined, size: 18),
+                  label: const Text('Daftar Pelanggan Baru'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: NusaConfig.activePrimary,
+                    side: BorderSide(
+                      color: NusaConfig.activePrimary.withValues(alpha: 0.4),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              if (filtered.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Divider(color: Colors.grey.withValues(alpha: 0.2)),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) => ListTile(
+                      title: Text(
+                        filtered[i].name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        '${formatRupiah(filtered[i].totalSpent)} • ${filtered[i].level}'
+                        '${filtered[i].barcode != null && filtered[i].barcode!.isNotEmpty ? ' • ${filtered[i].barcode}' : ''}',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.pop(context, filtered[i]),
+                    ),
+                  ),
+                ),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    widget.customers.isEmpty
+                        ? 'Belum ada pelanggan'
+                        : 'Tidak ada hasil untuk "$_query"',
+                    style: TextStyle(
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-      ],
     );
   }
 }

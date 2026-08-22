@@ -627,7 +627,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                 ),
                 Spacer(),
-                // Grid toggle (only when in Produk mode)
+                // Grid toggle (only when in Produk mode) — dipisah jelas dari
+                // tab switch (Spacer + jarak) supaya 3 filter list/grid tidak
+                // menempel pada 3-4 tab di kiri (v2.2.45).
                 if (_tabIndex == 0) ...[
                   Container(
                     height: 36,
@@ -665,14 +667,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                   SizedBox(width: 8),
                 ],
-                // v2.2.44 (B4): "Kelola Satuan" — kamus satuan dinamis bisa
-                // dikelola dari tab Produk, tidak hanya di form produk.
+                // v2.2.44 (B4)+v2.2.45: "Kelola Satuan" → TOMBOL TEKS (bukan
+                // icon polos) biar jelas fungsinya. Hanya di tab Produk.
                 if (_tabIndex == 0)
                   GestureDetector(
                     onTap: _openUnitManager,
                     child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
                       height: 36,
-                      width: 36,
                       decoration: BoxDecoration(
                         color: isDark
                             ? NusaConfig.darkSurface
@@ -684,13 +686,27 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                               : NusaConfig.borderColor,
                         ),
                       ),
-                      child: Icon(
-                        Icons.straighten_outlined,
-                        size: 18,
-                        color: NusaConfig.activePrimary,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.straighten_outlined,
+                            size: 16,
+                            color: NusaConfig.activePrimary,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Satuan',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                SizedBox(width: 8),
                 // Export/Import button
                 GestureDetector(
                   onTap: _showExportImportSheet,

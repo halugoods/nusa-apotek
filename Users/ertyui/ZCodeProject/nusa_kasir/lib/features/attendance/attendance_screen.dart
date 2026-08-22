@@ -15,6 +15,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/shared/services/auth_methods.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -331,11 +332,13 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                         showRemember: false,
                         showFingerprint: true,
                         showNfc: true,
+                        showBarcode: true,
                         onFingerprint: () async => await _authFingerprint(),
                         onNfc: () async {
                           final id = await NfcTagService.readEmployeeTag();
                           return id?.toString();
                         },
+                        onBarcode: AuthMethods.barcode(ref, expectedEmployeeId: e.id),
                       );
                       if (pinOk?.success != true) return;
 

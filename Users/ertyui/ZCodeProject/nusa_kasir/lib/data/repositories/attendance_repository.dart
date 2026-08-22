@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:drift/drift.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 
 class AttendanceRepository {
@@ -35,6 +38,7 @@ class AttendanceRepository {
     int? branchId,
     String? phone,
     String? photoPath,
+    String? photoBase64,
     int? baseSalary,
     DateTime? startDate,
     String? status,
@@ -54,6 +58,7 @@ class AttendanceRepository {
             branchId: Value(branchId),
             phone: Value(phone),
             photoPath: Value(photoPath),
+            photoBase64: Value(photoBase64),
             baseSalary: Value(baseSalary),
             startDate: Value(startDate),
             status: Value(status),
@@ -74,6 +79,7 @@ class AttendanceRepository {
     int? branchId,
     String? phone,
     String? photoPath,
+    String? photoBase64,
     int? baseSalary,
     DateTime? startDate,
     String? status,
@@ -90,6 +96,7 @@ class AttendanceRepository {
       branchId: Value(branchId),
       phone: Value(phone),
       photoPath: Value(photoPath),
+      photoBase64: Value(photoBase64),
       baseSalary: Value(baseSalary),
       startDate: Value(startDate),
       status: Value(status),
@@ -174,6 +181,40 @@ class AttendanceRepository {
       (db.update(db.employees)..where((t) => t.id.equals(employeeId))).write(
         EmployeesCompanion(nfcTag: const Value.absent()),
       );
+
+  /// B1 (v2.2.45): pulihkan file foto profil karyawan dari BASE64 (kolom
+  /// photo_base64) ke disk. photoPath cuma path lokal yang TIDAK ikut backup
+  /// cloud — setelah restore di device baru file-nya tidak ada. Di sini foto
+  /// ditulis ulang ke documents dir lalu photoPath diperbarui supaya SEMUA UI
+  /// (list karyawan, detail, presensi, kartu ID) langsung tampil.
+  /// Dipanggil sekali setelah restore / saat app buka. Idempoten.
+  Future<int> hydratePhotos() async {
+    final emps = await getEmployees();
+    var restored = 0;
+    for (final e in emps) {
+      final b64 = e.photoBase64;
+      if (b64 == null || b64.isEmpty) continue;
+      final path = e.photoPath;
+      final exists = path != null &&
+          path.isNotEmpty &&
+          File(path).existsSync();
+      if (exists) continue;
+      try {
+        final bytes = base64Decode(b64);
+        final name =
+            'photo_${e.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final dir = await getApplicationDocumentsDirectory();
+        final dest = File('${dir.path}/$name');
+        await dest.writeAsBytes(bytes, flush: true);
+        await (db.update(db.employees)..where((t) => t.id.equals(e.id)))
+            .write(EmployeesCompanion(photoPath: Value(dest.path)));
+        restored++;
+      } catch (_) {
+        // foto rusak → skip, jangan sampai hydrate gagal total
+      }
+    }
+    return restored;
+  }
 
   // ---- Attendance ----
   Future<AttendanceData?> getToday(int employeeId) async {

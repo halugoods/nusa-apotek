@@ -5,9 +5,17 @@ class CustomerRepository {
   final AppDatabase db;
   CustomerRepository(this.db);
 
-  Future<int> addCustomer({required String name, String? phone, String? address}) =>
-    db.into(db.customers).insert(CustomersCompanion.insert(
-      name: name, phone: Value(phone), address: Value(address)));
+  Future<int> addCustomer({
+    required String name,
+    String? phone,
+    String? address,
+    String? barcode,
+  }) => db.into(db.customers).insert(CustomersCompanion.insert(
+        name: name,
+        phone: Value(phone),
+        address: Value(address),
+        barcode: Value(barcode),
+      ));
 
   Future<Customer?> byId(int id) =>
     (db.select(db.customers)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -16,6 +24,41 @@ class CustomerRepository {
 
   Future<Customer?> byPhone(String phone) =>
       (db.select(db.customers)..where((t) => t.phone.equals(phone))).getSingleOrNull();
+
+  /// v2.2.45 (B11): cari member lewat barcode id-card (scan HID/kamera).
+  /// Normalisasi barcode dulu (spasi/dash dibuang) supaya scan konsisten.
+  Future<Customer?> byBarcode(String barcode) {
+    final norm = barcode.replaceAll(RegExp(r'[\s\-]'), '');
+    if (norm.isEmpty) return Future.value(null);
+    return (db.select(db.customers)
+          ..where((t) => t.barcode.equals(norm)))
+        .getSingleOrNull();
+  }
+
+  /// v2.2.45 (B11): update data member (termasuk barcode).
+  Future<void> updateCustomer(
+    int id, {
+    String? name,
+    String? phone,
+    String? address,
+    String? barcode,
+    bool clearBarcode = false,
+  }) async {
+    final c = await byId(id);
+    if (c == null) return;
+    await (db.update(db.customers)..where((t) => t.id.equals(id))).write(
+      CustomersCompanion(
+        name: name != null ? Value(name) : Value.absent(),
+        phone: phone != null ? Value(phone) : Value.absent(),
+        address: address != null ? Value(address) : Value.absent(),
+        barcode: clearBarcode
+            ? const Value(null)
+            : barcode != null
+                ? Value(barcode)
+                : Value.absent(),
+      ),
+    );
+  }
 
   Future<void> addSpent(int id, int amount, {int pointsPerRupiah = 100, int goldThreshold = 1000, int platinumThreshold = 5000, int? transactionId}) async {
     final c = await byId(id);

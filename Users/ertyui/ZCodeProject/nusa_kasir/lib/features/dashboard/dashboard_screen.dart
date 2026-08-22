@@ -34,6 +34,7 @@ import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/providers/update_progress_provider.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/shared/services/auth_methods.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1501,11 +1502,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       showRemember: false,
       showFingerprint: true,
       showNfc: true,
+      showBarcode: true,
       onFingerprint: () async => await _authFingerprint(),
       onNfc: () async {
         final id = await NfcTagService.readEmployeeTag();
         return id?.toString();
       },
+      onBarcode: AuthMethods.barcode(ref, expectedEmployeeId: emp.id),
     );
 
     if (result == null || !result.success) {
@@ -1922,6 +1925,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   showRemember: false,
                                   showFingerprint: true,
                                   showNfc: true,
+                                  showBarcode: true,
                                   onFingerprint: () async =>
                                       await _authFingerprint(),
                                   onNfc: () async {
@@ -1929,6 +1933,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         await NfcTagService.readEmployeeTag();
                                     return id?.toString();
                                   },
+                                  onBarcode: AuthMethods.barcode(
+                                    ref,
+                                    expectedEmployeeId: owner.id,
+                                  ),
                                 );
                                 return result?.success ?? false;
                               }

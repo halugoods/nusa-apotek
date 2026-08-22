@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,10 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/services/id_card_renderer.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -16,13 +19,17 @@ import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/role_repository.dart';
+import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -188,6 +195,9 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     String workEnd = employee?.workEnd ?? '17:00';
     bool requiresCashOpen = employee?.requiresCashOpen ?? false;
     bool requiresCashClose = employee?.requiresCashClose ?? false;
+    // v2.2.45: barcode id-card jadi TOGGLE (mirip form produk) — OFF default
+    // supaya form lebih ringkas; scan HID tetap isi field saat ON.
+    bool barcodeOn = employee?.barcode != null && employee!.barcode!.isNotEmpty;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
@@ -200,7 +210,12 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
             onBarcode: (code) {
               final norm = ProductRepository.normalizeBarcode(code);
               if (norm.isEmpty) return;
-              setSt(() => barcodeC.text = norm);
+              // Scan datang → toggle ON + isi field (id-card dulu, baru
+              // inputan lain).
+              setSt(() {
+                barcodeOn = true;
+                barcodeC.text = norm;
+              });
             },
             child: Container(
               decoration: BoxDecoration(
@@ -368,25 +383,124 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                       hint: 'Cth: 123456',
                     ),
                     SizedBox(height: 12),
-                    // Barcode id-card (B8) — input manual + scan HID otomatis.
-                    TextField(
-                      controller: barcodeC,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 14,
+                    // Barcode id-card (B8) — TOGGLE (v2.2.45), mirip form produk.
+                    // OFF default supaya form ringkas; saat ON scan HID + kamera
+                    // otomatis isi field.
+                    Container(
+                      decoration: BoxDecoration(
                         color: isDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Barcode ID (opsional)',
-                        hintText: 'Scan id-card atau ketik manual',
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
+                            ? NusaConfig.darkSurface
+                            : NusaConfig.surfaceColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark
+                              ? NusaConfig.darkBorder
+                              : NusaConfig.dividerColor,
                         ),
                       ),
-                      onChanged: (_) => setSt(() {}),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.qr_code_2,
+                                  size: 18,
+                                  color: isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Barcode ID (id-card)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                Text(barcodeOn ? 'ON' : 'OFF',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: barcodeOn
+                                          ? NusaConfig.accentGreen
+                                          : isDark
+                                          ? NusaConfig.darkTextTertiary
+                                          : NusaConfig.textTertiary,
+                                    )),
+                                SizedBox(width: 8),
+                                SizedBox(
+                                  height: 24,
+                                  child: FittedBox(
+                                    child: Switch(
+                                      value: barcodeOn,
+                                      activeTrackColor: NusaConfig.activePrimary,
+                                      onChanged: (v) =>
+                                          setSt(() => barcodeOn = v),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (barcodeOn)
+                            Padding(
+                              padding: EdgeInsets.fromLTRB(12, 2, 12, 12),
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.stretch,
+                                children: [
+                                  TextField(
+                                    controller: barcodeC,
+                                    autofocus: false,
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 14,
+                                      color: isDark
+                                          ? NusaConfig.darkTextPrimary
+                                          : NusaConfig.textPrimary,
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: 'Kode barcode',
+                                      hintText: 'Scan id-card atau ketik manual',
+                                      isDense: true,
+                                      border: OutlineInputBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    onChanged: (_) => setSt(() {}),
+                                  ),
+                                  SizedBox(height: 6),
+                                  IconButton.filledTonal(
+                                    tooltip: 'Scan kamera',
+                                    onPressed: () => _scanBarcodeFromCamera(
+                                      ctx,
+                                      setSt,
+                                      (norm) => barcodeC.text = norm,
+                                    ),
+                                    icon: Icon(
+                                      Icons.qr_code_scanner,
+                                      size: 20,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     SizedBox(height: 12),
                     NusaInput(
@@ -924,13 +1038,15 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                 );
                                 return;
                               }
-                              // Barcode id-card (B8): juga harus unik kalau diisi.
-                              final barcode =
-                                  barcodeC.text.trim().isEmpty
-                                  ? null
-                                  : ProductRepository.normalizeBarcode(
-                                      barcodeC.text.trim(),
-                                    );
+                              // Barcode id-card (B8): juga harus unik kalau
+                              // diisi. Toggle OFF → tidak disimpan.
+                              final barcode = barcodeOn
+                                  ? (barcodeC.text.trim().isEmpty
+                                        ? null
+                                        : ProductRepository.normalizeBarcode(
+                                            barcodeC.text.trim(),
+                                          ))
+                                  : null;
                               if (barcode != null) {
                                 final sameBarcode = all.cast<Employee?>()
                                     .firstWhere(
@@ -948,6 +1064,20 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   return;
                                 }
                               }
+                              // B1 (v2.2.45): simpan foto sebagai BASE64 supaya
+                              // ikut backup cloud (kolom photo_base64). File
+                              // lokal (photoPath) TIDAK ikut backup DB.
+                              String? photoBase64;
+                              if (photoPath != null &&
+                                  File(photoPath!).existsSync()) {
+                                try {
+                                  photoBase64 = base64Encode(
+                                    File(photoPath!).readAsBytesSync(),
+                                  );
+                                } catch (_) {
+                                  photoBase64 = null;
+                                }
+                              }
                               if (employee == null) {
                                 await repo.addEmployee(
                                   name: name,
@@ -955,6 +1085,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   role: role,
                                   phone: phone.isNotEmpty ? phone : null,
                                   photoPath: photoPath,
+                                  photoBase64: photoBase64,
                                   baseSalary: salary,
                                   startDate: startDate,
                                   status: status,
@@ -973,6 +1104,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   role: role,
                                   phone: phone.isNotEmpty ? phone : null,
                                   photoPath: photoPath,
+                                  photoBase64: photoBase64,
                                   baseSalary: salary,
                                   startDate: startDate,
                                   status: status,
@@ -1157,6 +1289,120 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     );
   }
 
+  /// Scan barcode id-card via kamera (pola sama dengan scanner POS/produk).
+  /// Hasil dipakai [onResult] — biasanya isi [barcodeC] di form karyawan.
+  Future<void> _scanBarcodeFromCamera(
+    BuildContext ctx,
+    StateSetter setSt,
+    ValueChanged<String> onResult,
+  ) async {
+    String? scannedCode;
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? errorMsg;
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, dSet) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Text('Pindai Barcode ID'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(dctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Karyawan] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      dSet(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode diisi manual atau scan HID.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scannedCode == null || !ctx.mounted) return;
+    final norm = ProductRepository.normalizeBarcode(scannedCode!);
+    if (norm.isEmpty) return;
+    onResult(norm);
+  }
+
   Future<void> _delete(Employee e) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -1191,6 +1437,41 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     final uri = waLink(e.phone!);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// Cetak kartu ID karyawan (PDF siap cetak 85.6×54mm) + share (B11).
+  Future<void> _printEmployeeCard(Employee e) async {
+    try {
+      final db = ref.read(databaseProvider);
+      final store = await SettingsRepository(db).getStoreName();
+      final barcode = e.barcode != null && e.barcode!.isNotEmpty
+          ? e.barcode
+          : null;
+      final file = await IdCardRenderer.renderSingle(
+        card: IdCardRenderer.employeeCard(
+          storeName: store.isEmpty ? 'NUSA Kasir' : store,
+          name: e.name,
+          role: e.role,
+          id: e.id,
+          barcode: barcode,
+          phone: e.phone,
+          photoBytes: photoToImage(e.photoPath),
+        ),
+        fileName: 'kartu_karyawan_${e.name}',
+      );
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          subject: 'Kartu Karyawan ${e.name}',
+        ),
+      );
+    } catch (err) {
+      debugPrint('[Employee Card] error: $err');
+      if (mounted) {
+        TopToast.error(context, 'Gagal membuat kartu: $err');
+      }
     }
   }
 
@@ -1566,7 +1847,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 if (name.isEmpty) return;
                 if (isEdit) {
                   await roleRepo.updateRole(
-                    existing!['name'] as String,
+                    existing['name'] as String,
                     name,
                     selectedColor,
                     accessList,
@@ -1801,11 +2082,25 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                       onSelected: (v) {
                                         if (v == 'edit') _showForm(employee: e);
                                         if (v == 'delete') _delete(e);
+                                        if (v == 'print')
+                                          _printEmployeeCard(e);
                                       },
                                       itemBuilder: (_) => [
                                         PopupMenuItem(
                                           value: 'edit',
                                           child: Text('Edit'),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'print',
+                                          child: Row(children: [
+                                            Icon(
+                                              Icons.badge_outlined,
+                                              size: 18,
+                                              color: NusaConfig.activePrimary,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Cetak Kartu'),
+                                          ]),
                                         ),
                                         PopupMenuItem(
                                           value: 'delete',

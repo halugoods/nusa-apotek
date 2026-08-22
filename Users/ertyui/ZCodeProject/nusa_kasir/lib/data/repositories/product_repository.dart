@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:drift/drift.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 
@@ -141,6 +143,42 @@ class ProductRepository {
 
   /// Semua produk layanan (isService == true) — dipakai tab Layanan (B10).
   Future<List<Product>> getServices() => getProducts(isService: true);
+
+  /// B1 (v2.2.45): pulihkan file foto produk dari BASE64 (kolom image_base64)
+  /// ke disk. File lokal (imagePath) TIDAK ikut backup cloud — yang ikut
+  /// backup cuma DB. Setelah restore di device baru, imagePath mengarah ke
+  /// file yang tidak ada; di sini foto ditulis ulang ke documents dir lalu
+  /// imagePath diperbarui supaya SEMUA UI (list/grid/detail) langsung tampil.
+  /// Dipanggil sekali setelah restore / saat app buka. Idempoten: produk tanpa
+  /// base64 atau file sudah ada di-skip.
+  Future<int> hydrateImages() async {
+    final all = await db.select(db.products).get();
+    final dir = await getApplicationDocumentsDirectory();
+    var restored = 0;
+    for (final p in all) {
+      final b64 = p.imageBase64;
+      if (b64 == null || b64.isEmpty) continue;
+      final path = p.imagePath;
+      final exists = path != null &&
+          path.isNotEmpty &&
+          File(path).existsSync();
+      if (exists) continue;
+      try {
+        final bytes = base64Decode(b64);
+        final name =
+            'product_${p.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final dest = File('${dir.path}/$name');
+        await dest.writeAsBytes(bytes, flush: true);
+        await (db.update(db.products)..where((t) => t.id.equals(p.id)))
+            .write(ProductsCompanion(imagePath: Value(dest.path)));
+        restored++;
+      } catch (_) {
+        // foto rusak → skip, jangan sampai restore gagal total
+      }
+    }
+    return restored;
+  }
+
 
   /// Semua produk biasa (isService == false) — dipakai POS segmen Produk.
   Future<List<Product>> getRegularProducts() => getProducts(isService: false);

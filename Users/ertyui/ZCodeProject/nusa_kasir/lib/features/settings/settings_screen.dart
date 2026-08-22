@@ -35,6 +35,7 @@ import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
+import 'package:nusa_kasir/shared/services/auth_methods.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -305,11 +306,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       showRemember: false,
       showFingerprint: true,
       showNfc: true,
+      showBarcode: true,
       onFingerprint: () async => await _authFingerprint(),
       onNfc: () async {
         final id = await NfcTagService.readEmployeeTag();
         return id?.toString();
       },
+      onBarcode: AuthMethods.barcode(ref),
     );
 
     return result?.success == true;
@@ -3425,6 +3428,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               isDark: isDark,
               onTap: () => context.push('/pengaturan_pembayaran'),
             ),
+            const SizedBox(height: 12),
+            // Pengaturan Struk (v2.2.45: naik setelah Pembayaran)
+            _menuRow(
+              icon: Icons.receipt_long,
+              iconColor: const Color(0xFF10B981),
+              title: 'Pengaturan Struk',
+              subtitle: 'Atur footer struk & upload logo toko',
+              isDark: isDark,
+              onTap: _showReceiptSettings,
+            ),
             // Alur Pembayaran — FnB only
             if (NusaConfig.isFnbVariant) ...[
               const SizedBox(height: 12),
@@ -3524,16 +3537,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
 
             const SizedBox(height: 12),
-            // Pengaturan Struk
-            _menuRow(
-              icon: Icons.receipt_long,
-              iconColor: const Color(0xFF10B981),
-              title: 'Pengaturan Struk',
-              subtitle: 'Atur footer struk & upload logo toko',
-              isDark: isDark,
-              onTap: _showReceiptSettings,
-            ),
-
             // Biometrik (fingerprint / Face ID) — Owner only, direct toggle
             if (session?.role == 'Owner') ...[
               const SizedBox(height: 12),

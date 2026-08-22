@@ -1,9 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/id_card_renderer.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -11,6 +14,8 @@ import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -98,6 +103,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final addressCtrl = TextEditingController();
+    final barcodeCtrl = TextEditingController();
+    // v2.2.45 (B11): barcode member jadi toggle + generate/scan HID/kamera.
+    bool barcodeOn = false;
     bool saving = false;
 
     showModalBottomSheet(
@@ -107,7 +115,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSt) {
-            return Container(
+            return HidBarcodeListener(
+              onBarcode: (code) {
+                final norm = _normBarcode(code);
+                if (norm.isEmpty) return;
+                setSt(() {
+                  barcodeOn = true;
+                  barcodeCtrl.text = norm;
+                });
+              },
+              child: Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? NusaConfig.darkSurface
@@ -196,6 +213,158 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ),
                   SizedBox(height: 12),
                   NusaInput('Alamat (opsional)', controller: addressCtrl, hint: 'Cth: Jl. Merdeka No.1'),
+                  SizedBox(height: 12),
+                  // ── Barcode member (B11) — toggle + scan/generate ──
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? NusaConfig.darkSurface
+                          : NusaConfig.surfaceColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? NusaConfig.darkBorder
+                            : NusaConfig.dividerColor,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          child: Row(
+                            children: [
+                              Icon(Icons.qr_code_2,
+                                  size: 18,
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Barcode Member (kartu)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? NusaConfig.darkTextSecondary
+                                        : NusaConfig.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              Text(barcodeOn ? 'ON' : 'OFF',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: barcodeOn
+                                        ? NusaConfig.accentGreen
+                                        : Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                  )),
+                              SizedBox(width: 8),
+                              SizedBox(
+                                height: 24,
+                                child: FittedBox(
+                                  child: Switch(
+                                    value: barcodeOn,
+                                    activeTrackColor: NusaConfig.activePrimary,
+                                    onChanged: (v) => setSt(() {
+                                      barcodeOn = v;
+                                      if (v &&
+                                          barcodeCtrl.text.trim().isEmpty) {
+                                        barcodeCtrl.text =
+                                            _generateBarcode();
+                                      }
+                                    }),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (barcodeOn)
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(12, 2, 12, 12),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  controller: barcodeCtrl,
+                                  autofocus: false,
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 14,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? NusaConfig.darkTextPrimary
+                                        : NusaConfig.textPrimary,
+                                  ),
+                                  decoration: InputDecoration(
+                                    labelText: 'Kode barcode',
+                                    hintText: 'Scan kartu member atau ketik manual',
+                                    isDense: true,
+                                    border: OutlineInputBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  onChanged: (_) => setSt(() {}),
+                                ),
+                                SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextButton.icon(
+                                        onPressed: () => setSt(() {
+                                          barcodeCtrl.text =
+                                              _generateBarcode();
+                                        }),
+                                        icon: Icon(
+                                          Icons.casino_outlined,
+                                          size: 16,
+                                          color: NusaConfig.activePrimary,
+                                        ),
+                                        label: Text(
+                                          'Generate',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: NusaConfig.activePrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    IconButton.filledTonal(
+                                      tooltip: 'Scan kamera',
+                                      onPressed: () => _scanMemberBarcode(
+                                        ctx,
+                                        (norm) => setSt(() {
+                                          barcodeOn = true;
+                                          barcodeCtrl.text = norm;
+                                        }),
+                                      ),
+                                      icon: Icon(
+                                        Icons.qr_code_scanner,
+                                        size: 20,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   SizedBox(height: 20),
                   NusaButton(
                     'Simpan',
@@ -215,19 +384,190 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               name: name,
                               phone: phoneCtrl.text.trim(),
                               address: addressCtrl.text.trim(),
+                              barcode: barcodeOn
+                                  ? (barcodeCtrl.text.trim().isEmpty
+                                        ? null
+                                        : _normBarcode(
+                                            barcodeCtrl.text.trim()))
+                                  : null,
                             );
                             if (mounted) Navigator.pop(ctx);
-                            _load();
-                          },
-                  ),
-                  SizedBox(height: 4),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                                            _load();
+                                          },
+                                  ),
+                                  SizedBox(height: 4),
+                                ],
+                              ),
+                            ),
+                        );
+                      },
+                    );
+                  },
     );
+  }
+
+  /// Normalisasi barcode member — buang spasi/dash supaya konsisten dengan
+  /// scan HID (B11).
+  String _normBarcode(String code) =>
+      code.replaceAll(RegExp(r'[\s\-]'), '').trim();
+
+  /// Generate kode member acak (alfanumerik aman untuk code128 + mudah
+  /// diketik manual).
+  String _generateBarcode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final seed = DateTime.now().microsecondsSinceEpoch.toString().codeUnits;
+    final buf = StringBuffer();
+    for (var i = 0; i < 8; i++) {
+      buf.write(alphabet[(seed[i % seed.length] ^ (i * 31 + 7)) %
+          alphabet.length]);
+    }
+    return 'MBR-$buf';
+  }
+
+  /// Scan barcode member via kamera (pola sama dengan scanner POS/produk).
+  Future<void> _scanMemberBarcode(
+    BuildContext ctx,
+    ValueChanged<String> onResult,
+  ) async {
+    String? scannedCode;
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? errorMsg;
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, dSet) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Text('Pindai Barcode Member'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(dctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Pelanggan] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      dSet(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode diisi manual atau scan HID.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dctx),
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scannedCode == null || !ctx.mounted) return;
+    final norm = _normBarcode(scannedCode!);
+    if (norm.isEmpty) return;
+    onResult(norm);
+  }
+
+  /// Cetak kartu member (PDF siap cetak 85.6×54mm) + share.
+  Future<void> _printMemberCard(Customer c) async {
+    try {
+      final db = ref.read(databaseProvider);
+      final store = await SettingsRepository(db).getStoreName();
+      final barcode = c.barcode != null && c.barcode!.isNotEmpty
+          ? c.barcode
+          : _generateBarcode();
+      final file = await IdCardRenderer.renderSingle(
+        card: IdCardRenderer.memberCard(
+          storeName: store.isEmpty ? 'NUSA Kasir' : store,
+          name: c.name,
+          level: c.level,
+          points: c.points,
+          barcode: barcode,
+          phone: c.phone,
+        ),
+        fileName: 'kartu_member_${c.name}',
+      );
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          subject: 'Kartu Member ${c.name}',
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Member Card] error: $e');
+      if (mounted) {
+        TopToast.error(context, 'Gagal membuat kartu: $e');
+      }
+    }
   }
 
   void _showDetail(Customer c) {
@@ -243,7 +583,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               : NusaConfig.surfaceColor,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: _CustomerDetailSheet(customer: c, phone: phone, db: db),
+        child: _CustomerDetailSheet(
+          customer: c,
+          phone: phone,
+          db: db,
+          onPrintCard: () => _printMemberCard(c),
+        ),
       ),
     );
   }
@@ -641,11 +986,13 @@ class _CustomerDetailSheet extends StatelessWidget {
   final Customer customer;
   final String phone;
   final AppDatabase db;
+  final VoidCallback? onPrintCard;
 
   _CustomerDetailSheet({
     required this.customer,
     required this.phone,
     required this.db,
+    this.onPrintCard,
   });
 
   @override
@@ -744,6 +1091,29 @@ class _CustomerDetailSheet extends StatelessWidget {
               formatRupiah(c.totalSpent), isDark),
           SizedBox(height: 8),
           _detailRow(Icons.star_rounded, 'Poin', '${c.points}', isDark),
+          SizedBox(height: 8),
+          // ── Barcode member (B11) ──
+          if (c.barcode != null && c.barcode!.isNotEmpty)
+            _detailRow(
+                Icons.qr_code_2, 'Barcode Member', c.barcode!, isDark),
+          if (onPrintCard != null) ...[
+            SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onPrintCard,
+                icon: Icon(Icons.badge_outlined, size: 18),
+                label: Text('Cetak Kartu Member'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  side: BorderSide(color: NusaConfig.activePrimary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: 8),
           // ── Riwayat Poin ──
           FutureBuilder<List<PointHistory>>(

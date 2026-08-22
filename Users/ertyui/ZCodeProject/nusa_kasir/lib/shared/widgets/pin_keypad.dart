@@ -258,7 +258,10 @@ class PinKeypadState extends State<PinKeypad>
 
     return Focus(
       focusNode: _kbFocus,
-      autofocus: true,
+      // Physical keyboard digits jalan via ANCESTOR path saat listener barcode
+      // (autofocus=true) memegang primary focus — jadi supaya tidak berebut,
+      // autofocus di sini hanya dipakai ketika TIDAK ada scan barcode aktif.
+      autofocus: !widget.showBarcode,
       // Physical / Bluetooth keyboard: 0-9 → digit, Backspace → delete,
       // Enter → submit what's typed. The soft keyboard never opens because
       // this Focus node has no TextInput connection — safe on Android.
@@ -290,7 +293,11 @@ class PinKeypadState extends State<PinKeypad>
       },
       // Barcode scan (B8): HidBarcodeListener di level Focus TANPA TextInput
       // → scanner HID jalan tanpa membuka keypad layar, cocok untuk id-card.
+      // autofocus=true hanya di sini: pinpad tidak punya TextField, jadi aman
+      // merebut fokus agar scan tertangkap dari detik pertama. Form sheet lain
+      // memakai default false (jangan rebut fokus → typing tetap jalan).
       child: HidBarcodeListener(
+        autofocus: widget.showBarcode,
         onBarcode: (code) {
           if (widget.showBarcode && widget.onBarcode != null) {
             _onBarcodeScan(code);
@@ -428,125 +435,144 @@ class PinKeypadState extends State<PinKeypad>
             ],
           ),
 
-          // ── NFC: static hint card (below keypad) ───
-          // Always visible when NFC is enabled — serves as a persistent
-          // reminder. Tappable only when NOT scanning (retry after timeout).
-          // The scanning indicator is above the keypad (spinner + "Dekatkan...").
-          if (widget.showNfc) ...[
+          // ── Unified auth hint (below keypad) ───
+          // v2.2.45: SATU kartu hint ringkas untuk jalur alternatif
+          // (barcode ID + NFC tap) — bukan dua kartu terpisah. Chip NFC
+          // tappable (retry setelah timeout); chip barcode informatif
+          // (capture otomatis via HidBarcodeListener). Animasi "Dekatkan
+          // kartu NFC..." tetap di atas keypad saat scanning aktif.
+          if (widget.showNfc || widget.showBarcode) ...[
             SizedBox(height: 10),
-            AbsorbPointer(
-              absorbing: _nfcScanning,
-              child: GestureDetector(
-                onTap: _nfcScanning ? null : _onNfcTap,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark
-                          ? NusaConfig.darkBorder
-                          : NusaConfig.borderColor,
-                    ),
-                    color: isDark
-                        ? NusaConfig.darkSurface
-                        : NusaConfig.surfaceColor,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: NusaConfig.accentPurple.withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.nfc,
-                          size: 18,
-                          color: NusaConfig.accentPurple,
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        'Tap Kartu NFC',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-
-          // ── Barcode: static hint card (below keypad) ───
-          // B8 — jalur auth ke-4: scan id-card ber-barcode. HidBarcodeListener
-          // di atas sudah mengambil fokus; kartu ini hanya hint + status.
-          if (widget.showBarcode) ...[
-            SizedBox(height: 10),
-            AbsorbPointer(
-              absorbing: _barcodeScanning,
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? NusaConfig.darkBorder
-                        : NusaConfig.borderColor,
-                  ),
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
                   color: isDark
-                      ? NusaConfig.darkSurface
-                      : NusaConfig.surfaceColor,
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: _barcodeScanning
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: NusaConfig.accentPurple,
-                              ),
-                            )
-                          : Icon(
-                              Icons.qr_code_2,
-                              size: 18,
-                              color: NusaConfig.accentPurple,
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+              ),
+              child: Row(
+                children: [
+                  if (widget.showBarcode) ...[
+                    Expanded(
+                      child: AbsorbPointer(
+                        absorbing: _barcodeScanning,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.accentPurple.withValues(
+                              alpha: 0.06,
                             ),
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      _barcodeScanning
-                          ? 'Memproses barcode…'
-                          : 'Scan Barcode ID',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _barcodeScanning
+                                  ? SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: NusaConfig.accentPurple,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.qr_code_2,
+                                      size: 16,
+                                      color: NusaConfig.accentPurple,
+                                    ),
+                              SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  _barcodeScanning
+                                      ? 'Memproses…'
+                                      : 'Scan Barcode ID',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark
+                                        ? NusaConfig.darkTextSecondary
+                                        : NusaConfig.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
-                ),
+                  if (widget.showNfc) ...[
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: AbsorbPointer(
+                        absorbing: _nfcScanning,
+                        child: GestureDetector(
+                          onTap: _nfcScanning ? null : _onNfcTap,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.accentPurple.withValues(
+                                alpha: 0.06,
+                              ),
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _nfcScanning
+                                    ? SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: NusaConfig.accentPurple,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.nfc,
+                                        size: 16,
+                                        color: NusaConfig.accentPurple,
+                                      ),
+                                SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _nfcScanning
+                                        ? 'Dekatkan kartu…'
+                                        : 'Tap Kartu NFC',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

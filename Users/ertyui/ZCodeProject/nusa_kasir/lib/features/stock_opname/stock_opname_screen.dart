@@ -15,6 +15,7 @@ import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 
 class StockOpnameScreen extends ConsumerStatefulWidget {
   final bool embedded;
@@ -46,7 +47,6 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
 
   /// productId → barcode ternormalisasi (untuk scan opname, B6).
   final Map<int, String> _barcodeByProductId = {};
-  MobileScannerController? _scanner;
 
   @override
   void initState() {
@@ -61,7 +61,6 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
     for (final c in _physicalControllers.values) {
       c.dispose();
     }
-    _scanner?.dispose();
     super.dispose();
   }
 
@@ -146,47 +145,115 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
     return true;
   }
 
-  /// Kamera scanner — dialog kecil (pola POS/stok).
+  /// Kamera scanner — dialog konsisten dg POS/stok (AlertDialog +
+  /// AnimatedScannerOverlay + errorBuilder), bukan dialog hitam polos.
   Future<void> _scanCamera() async {
-    if (_scanner == null) {
-      _scanner = MobileScannerController(
-        detectionSpeed: DetectionSpeed.noDuplicates,
-        formats: const [
-          BarcodeFormat.ean13,
-          BarcodeFormat.ean8,
-          BarcodeFormat.upcA,
-          BarcodeFormat.upcE,
-          BarcodeFormat.code128,
-          BarcodeFormat.code39,
-          BarcodeFormat.qrCode,
-        ],
-      );
-    }
+    String? scannedCode;
+    final controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? errorMsg;
+    if (!mounted) return;
+
     await showDialog<void>(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: EdgeInsets.all(24),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            width: 280,
-            height: 280,
-            child: MobileScanner(
-              controller: _scanner,
-              onDetect: (capture) {
-                final codes = capture.barcodes;
-                if (codes.isEmpty) return;
-                final raw = codes.first.rawValue ?? '';
-                if (raw.trim().isEmpty) return;
-                Navigator.pop(ctx);
-                handleBarcode(raw.trim());
-              },
-            ),
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              SizedBox(width: 8),
+              Text('Pindai Barcode'),
+            ],
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(ctx);
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[Opname] scanner error: $error');
+                    if (errorMsg == null) {
+                      errorMsg =
+                          'Kamera tidak tersedia atau izin kamera ditolak.';
+                      setSt(() {});
+                    }
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nScan manual via barcode fisik / kolom cari.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (errorMsg != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Batal'),
+            ),
+          ],
         ),
       ),
     );
+    await controller.dispose();
+    if (scannedCode == null || !mounted) return;
+    await handleBarcode(scannedCode!);
   }
 
   int get _countedProducts {

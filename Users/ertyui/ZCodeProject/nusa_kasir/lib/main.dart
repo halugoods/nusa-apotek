@@ -22,6 +22,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/core/services/backup_crypto.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:drift/drift.dart';
 
 /// Ensure PIN length in the database is always 6 digits.
@@ -191,8 +192,8 @@ Future<void> _receiveAtLaunch() async {
     if (!cloudTime.isAfter(lastSeen)) return;
 
     // Local un-uploaded changes → don't overwrite local; leave for upload.
-    if (lastLocalChange != null &&
-        (lastSeen == null || lastLocalChange.isAfter(lastSeen))) {
+    // lastSeen sudah non-null di sini (guard line 181).
+    if (lastLocalChange != null && lastLocalChange.isAfter(lastSeen)) {
       return;
     }
 
@@ -283,6 +284,26 @@ void _syncImagesFromCloud() {
   });
 }
 
+/// B1 (v2.2.45): pulihkan file foto dari BASE64 yang tersimpan di kolom DB
+/// (products.image_base64 + employees.photo_base64). Setelah restore cloud di
+/// device baru, path file lokal hasil backup LAMA tidak ada — sini menulis
+/// ulang ke disk lalu perbarui path di DB supaya UI langsung tampil.
+Future<void> _hydrateImagesFromDb() async {
+  try {
+    final db = AppDatabase();
+    final products = ProductRepository(db);
+    final employees = AttendanceRepository(db);
+    final p = await products.hydrateImages();
+    final e = await employees.hydratePhotos();
+    await db.close();
+    if (p > 0 || e > 0) {
+      debugPrint('[Hydrate] Restored product images=$p, employee photos=$e');
+    }
+  } catch (err) {
+    debugPrint('[Hydrate] error: $err');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _setupErrorHandlers();
@@ -347,6 +368,14 @@ void main() async {
       if (!await SecureStore.hasPendingRestore()) {
         await _receiveAtLaunch();
       }
+    } catch (_) {}
+
+    // B1 (v2.2.45): hydrate foto produk + karyawan dari BASE64 (kolom DB)
+    // ke disk. Setelah restore cloud di device baru, imagePath/photoPath
+    // menunjuk ke file yang tidak ada — di sini ditulis ulang supaya SEMUA
+    // UI langsung tampil. Idempoten: hanya yang file-nya hilang diproses.
+    try {
+      await _hydrateImagesFromDb();
     } catch (_) {}
 
     // Register background tasks
