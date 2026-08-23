@@ -23,7 +23,7 @@ class PinResult {
 ///
 /// Also supports fingerprint (`onFingerprint`), NFC (`onNfc`), and barcode.
 ///
-/// **v2.2.47**: Restructured to fullscreen card layout matching login pinpad.
+/// **v2.2.47 revisi**: popup dialog (bukan fullscreen), animasi pop-up.
 /// `showRemember` defaults to `false` (no "Ingat PIN selama 8 jam").
 class PinDialog extends StatelessWidget {
   final String? title;
@@ -61,9 +61,8 @@ class PinDialog extends StatelessWidget {
     this.onBarcode,
   });
 
-  /// Show the dialog. Returns [PinResult] (success/failure) or null if cancelled.
-  /// [pinLength] defaults to the PIN length stored in Settings (4 or 6).
-  /// [showRemember] defaults to `false` -- no "Ingat PIN selama 8 jam" in dialogs.
+  /// Show the dialog (popup animation). Returns [PinResult] or null if cancelled.
+  /// `showNfc` and `showBarcode` default to `true` so NFC/barcode hints selalu muncul.
   static Future<PinResult?> show({
     required BuildContext context,
     String? title,
@@ -76,8 +75,8 @@ class PinDialog extends StatelessWidget {
     bool showRemember = false,
     int? pinLength,
     bool showFingerprint = false,
-    bool showNfc = false,
-    bool showBarcode = false,
+    bool showNfc = true,
+    bool showBarcode = true,
     Future<bool> Function()? onFingerprint,
     Future<String?> Function()? onNfc,
     Future<String?> Function(String code)? onBarcode,
@@ -93,9 +92,10 @@ class PinDialog extends StatelessWidget {
       }
     }
 
-    return Navigator.of(context).push<PinResult>(
-      MaterialPageRoute<PinResult>(
-        builder: (_) => _PinPadFullScreen(
+    return showDialog<PinResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _PinDialogContent(
         title: title,
         subtitle: subtitle,
         employeeName: employeeName,
@@ -111,7 +111,6 @@ class PinDialog extends StatelessWidget {
         onFingerprint: onFingerprint,
         onNfc: onNfc,
         onBarcode: onBarcode,
-        ),
       ),
     );
   }
@@ -120,9 +119,9 @@ class PinDialog extends StatelessWidget {
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
-/// Fullscreen card pinpad -- EXACT same layout as login_screen.dart pinpad.
-/// Lock icon 72px gradient OUTSIDE card, card radius 20, title "Masuk" font 20.
-class _PinPadFullScreen extends StatefulWidget {
+/// Popup dialog content -- card layout matching login pinpad.
+/// v2.2.47 revisi: popup (bukan fullscreen), NFC/barcode hints stacked vertikal.
+class _PinDialogContent extends StatefulWidget {
   final String? title;
   final String? subtitle;
   final String? employeeName;
@@ -139,7 +138,7 @@ class _PinPadFullScreen extends StatefulWidget {
   final Future<String?> Function()? onNfc;
   final Future<String?> Function(String code)? onBarcode;
 
-  const _PinPadFullScreen({
+  const _PinDialogContent({
     this.title,
     this.subtitle,
     this.employeeName,
@@ -150,26 +149,24 @@ class _PinPadFullScreen extends StatefulWidget {
     this.showRemember = false,
     required this.pinLength,
     this.showFingerprint = false,
-    this.showNfc = false,
-    this.showBarcode = false,
+    this.showNfc = true,
+    this.showBarcode = true,
     this.onFingerprint,
     this.onNfc,
     this.onBarcode,
   });
 
   @override
-  State<_PinPadFullScreen> createState() => _PinPadFullScreenState();
+  State<_PinDialogContent> createState() => _PinDialogContentState();
 }
 
-class _PinPadFullScreenState extends State<_PinPadFullScreen> {
+class _PinDialogContentState extends State<_PinDialogContent> {
   String? _error;
   bool _remember = false;
   final _keypadKey = GlobalKey<_PinDialogKeypadState>();
 
-  /// Title text -- defaults to "Masuk" when employeeName is provided.
   String get _displayTitle => widget.title ?? 'Masuk';
 
-  /// Subtitle text -- falls back to login-style subtitle when only employeeName provided.
   String? get _displaySubtitle {
     if (widget.subtitle != null) return widget.subtitle;
     if (widget.employeeName != null) {
@@ -180,25 +177,19 @@ class _PinPadFullScreenState extends State<_PinPadFullScreen> {
 
   Future<void> _verify(String pin) async {
     if (pin.isEmpty) return;
-
     bool ok = false;
 
-    // Mode 1: direct PIN match
     if (widget.correctPin != null) {
       ok = pin == widget.correctPin;
-    }
-    // Mode 2: verify callback
-    else if (widget.onVerify != null) {
+    } else if (widget.onVerify != null) {
       ok = await widget.onVerify!(pin);
     }
 
-    // Owner/Manager override
     if (!ok && widget.allowOverride) {
       try {
         final container = ProviderScope.containerOf(context, listen: false);
         final db = container.read(databaseProvider);
-        final overrideEmp =
-            await AttendanceRepository(db).findOverrideEmployee();
+        final overrideEmp = await AttendanceRepository(db).findOverrideEmployee();
         if (overrideEmp != null && pin == overrideEmp.pin) {
           ok = true;
         }
@@ -207,8 +198,7 @@ class _PinPadFullScreenState extends State<_PinPadFullScreen> {
 
     if (ok) {
       if (mounted) {
-        Navigator.of(context).pop(
-            PinResult(success: true, remember: _remember));
+        Navigator.of(context).pop(PinResult(success: true, remember: _remember));
       }
     } else {
       setState(() {
@@ -222,167 +212,142 @@ class _PinPadFullScreenState extends State<_PinPadFullScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? NusaConfig.darkBackground : const Color(0xFFF5F5F5),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 40),
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 40),
 
-                // -- Lock icon (gradient circle, depth) -- EXACT like login
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        NusaConfig.activePrimary,
-                        NusaConfig.activeDark,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.lock_rounded,
-                      color: Colors.white, size: 34),
+            // Lock icon — gradient circle
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
                 ),
-                const SizedBox(height: 32),
-
-                // -- Card container (depth) -- EXACT like login
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkSurface : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black
-                            .withValues(alpha: isDark ? 0.2 : 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                boxShadow: [
+                  BoxShadow(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Title
-                      Text(
-                        _displayTitle,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : const Color(0xFF151717),
-                        ),
-                      ),
-                      if (_displaySubtitle != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          _displaySubtitle!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ],
-                      if (widget.employeeRole != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.employeeRole!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-
-                      // -- Keypad --
-                      _PinDialogKeypad(
-                        key: _keypadKey,
-                        pinLength: widget.pinLength,
-                        error: _error,
-                        showFingerprint: widget.showFingerprint,
-                        showNfc: widget.showNfc,
-                        showBarcode: widget.showBarcode,
-                        onFingerprint: widget.onFingerprint,
-                        onNfc: widget.onNfc,
-                        onNfcSuccess: (id) {
-                          Navigator.of(context).pop(PinResult(
-                              success: true,
-                              remember: _remember,
-                              nfcEmployeeId: int.tryParse(id)));
-                        },
-                        onBarcode: widget.onBarcode,
-                        onBarcodeSuccess: (id) {
-                          Navigator.of(context).pop(PinResult(
-                              success: true,
-                              remember: _remember,
-                              nfcEmployeeId: id));
-                        },
-                        onComplete: _verify,
-                      ),
-
-                      // -- Remember checkbox --
-                      if (widget.showRemember) ...[
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () =>
-                              setState(() => _remember = !_remember),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Checkbox(
-                                  value: _remember,
-                                  onChanged: (v) =>
-                                      setState(() => _remember = v ?? false),
-                                  activeColor: NusaConfig.activePrimary,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Ingat PIN selama 8 jam',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark
-                                      ? NusaConfig.darkTextSecondary
-                                      : NusaConfig.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
+              child: const Icon(Icons.lock_rounded, color: Colors.white, size: 34),
             ),
-          ),
+            const SizedBox(height: 28),
+
+            // Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Title
+                  Text(
+                    _displayTitle,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF151717),
+                    ),
+                  ),
+                  if (_displaySubtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _displaySubtitle!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                  if (widget.employeeRole != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.employeeRole!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+
+                  // Keypad — dengan NFC + barcode hints stacked vertikal
+                  _PinDialogKeypad(
+                    key: _keypadKey,
+                    pinLength: widget.pinLength,
+                    error: _error,
+                    showFingerprint: widget.showFingerprint,
+                    showNfc: widget.showNfc,
+                    showBarcode: widget.showBarcode,
+                    onFingerprint: widget.onFingerprint,
+                    onNfc: widget.onNfc,
+                    onNfcSuccess: (id) {
+                      Navigator.of(context).pop(PinResult(
+                          success: true, remember: _remember, nfcEmployeeId: int.tryParse(id)));
+                    },
+                    onBarcode: widget.onBarcode,
+                    onBarcodeSuccess: (id) {
+                      Navigator.of(context).pop(PinResult(
+                          success: true, remember: _remember, nfcEmployeeId: id));
+                    },
+                    onComplete: _verify,
+                  ),
+
+                  // Remember checkbox
+                  if (widget.showRemember) ...[
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => setState(() => _remember = !_remember),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: Checkbox(
+                              value: _remember,
+                              onChanged: (v) => setState(() => _remember = v ?? false),
+                              activeColor: NusaConfig.activePrimary,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Ingat PIN selama 8 jam',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -411,8 +376,8 @@ class _PinDialogKeypad extends StatefulWidget {
     required this.pinLength,
     this.error,
     this.showFingerprint = false,
-    this.showNfc = false,
-    this.showBarcode = false,
+    this.showNfc = true,
+    this.showBarcode = true,
     this.onFingerprint,
     this.onNfc,
     this.onBarcode,

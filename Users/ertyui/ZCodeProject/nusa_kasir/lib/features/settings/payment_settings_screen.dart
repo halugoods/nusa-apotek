@@ -435,6 +435,62 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
                 ],
               ),
             ),
+
+            // ── EDC / Kartu Debit-Kredit — Segera Hadir ──
+            SizedBox(height: 24),
+            _sectionHeader('EDC / KARTU', Icons.credit_card, Color(0xFF0D9488), isDark),
+            Container(
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Color(0xFF0D9488).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Color(0xFF0D9488).withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: Color(0xFF0D9488).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.credit_card, size: 24, color: Color(0xFF0D9488)),
+                  ),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text('EDC / Kartu Debit-Kredit',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                                    color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                            SizedBox(width: 8),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFF59E0B),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text('Segera Hadir',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                                      color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 4),
+                        Text('Pembayaran via mesin EDC (debit/kredit) sedang dalam pengembangan.',
+                            style: TextStyle(fontSize: 12,
+                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

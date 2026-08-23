@@ -1360,6 +1360,71 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     return 'KRY-$buf';
   }
 
+  /// Scan barcode ke search field — populates search + filters list.
+  /// v2.2.47 revisi: scanner icon di search bar karyawan.
+  Future<void> _scanBarcodeToSearch(BuildContext ctx) async {
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? scannedCode;
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, dSet) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+              SizedBox(width: 8),
+              Text('Pindai Barcode'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(dctx);
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                controller.dispose();
+                Navigator.pop(dctx);
+              },
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (scannedCode != null && mounted) {
+      _searchCtrl.text = scannedCode!;
+      setState(() => _query = scannedCode!);
+    }
+  }
+
   /// Scan barcode id-card via kamera (pola sama dengan scanner POS/produk).
   /// Hasil dipakai [onResult] — biasanya isi [barcodeC] di form karyawan.
   Future<void> _scanBarcodeFromCamera(
@@ -1920,6 +1985,12 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
     return ScreenScaffold(
       'Karyawan',
+      onBarcode: (code) {
+        final norm = ProductRepository.normalizeBarcode(code);
+        if (norm.isEmpty) return;
+        _searchCtrl.text = norm;
+        if (mounted) setState(() => _query = norm);
+      },
       Column(
         children: [
           // Search bar — placeholder style
@@ -1958,14 +2029,32 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         ? NusaConfig.darkTextSecondary
                         : NusaConfig.textSecondary,
                   ),
-                  suffixIcon: _query.isNotEmpty
-                      ? GestureDetector(
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Barcode scanner — v2.2.47 revisi
+                      GestureDetector(
+                        onTap: () => _scanBarcodeToSearch(context),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(
+                            Icons.qr_code_scanner,
+                            size: 22,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                      // Clear
+                      if (_query.isNotEmpty)
+                        GestureDetector(
                           onTap: () {
                             _searchCtrl.clear();
                             setState(() => _query = '');
                           },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4),
                             child: Icon(
                               Icons.clear_rounded,
                               size: 20,
@@ -1974,8 +2063,9 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   : NusaConfig.textSecondary,
                             ),
                           ),
-                        )
-                      : null,
+                        ),
+                    ],
+                  ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 16,

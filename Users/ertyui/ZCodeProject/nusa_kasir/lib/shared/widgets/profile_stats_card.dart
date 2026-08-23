@@ -178,8 +178,8 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
             children: [
               // Avatar
               Container(
-                width: 60,
-                height: 60,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: Colors.white.withValues(alpha: 0.22),
@@ -263,7 +263,7 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
                       borderRadius: BorderRadius.circular(10),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.flip_to_back,
+                    child: Icon(Icons.flip,
                         size: 18, color: Colors.white.withValues(alpha: 0.9)),
                   ),
                 ),
@@ -304,7 +304,7 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(10),
             color: Colors.white.withValues(alpha: 0.2),
           ),
           alignment: Alignment.center,
@@ -357,17 +357,10 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
           _backHeader(Icons.point_of_sale, 'Aksi Cepat'),
           SizedBox(height: 16),
           _bigActionBtn('Absen Masuk', Icons.login_rounded,
-              NusaConfig.accentGreen, widget.onAbsenMasuk),
+              Colors.white, widget.onAbsenMasuk),
           SizedBox(height: 12),
           _bigActionBtn('Absen Keluar', Icons.logout_rounded,
-              NusaConfig.activePrimary, widget.onAbsenKeluar),
-          if (widget.onLogout != null) ...[
-            SizedBox(height: 16),
-            Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
-            SizedBox(height: 16),
-            _smallActionBtn(
-                'Ganti Pengguna', Icons.switch_account, widget.onLogout),
-          ],
+              Colors.white, widget.onAbsenKeluar),
         ],
       ),
     );
@@ -384,10 +377,10 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
           _backHeader(Icons.person_outline, 'Aksi Cepat'),
           SizedBox(height: 16),
           _bigActionBtn('Absen Masuk', Icons.login_rounded,
-              NusaConfig.accentGreen, widget.onAbsenMasuk),
+              Colors.white, widget.onAbsenMasuk),
           SizedBox(height: 12),
           _bigActionBtn('Absen Keluar', Icons.logout_rounded,
-              NusaConfig.activePrimary, widget.onAbsenKeluar),
+              Colors.white, widget.onAbsenKeluar),
           SizedBox(height: 16),
           Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
           SizedBox(height: 16),
@@ -526,7 +519,7 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
               borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
-            child: Icon(Icons.flip_to_front,
+            child: Icon(Icons.flip,
                 size: 16, color: Colors.white.withValues(alpha: 0.85)),
           ),
         ),

@@ -1542,7 +1542,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           if (_paymentMethod == 'Tunai') _buildTunaiCard(isDark),
           if (_paymentMethod == 'QRIS') _buildQrisCard(isDark),
           if (_paymentMethod == 'Transfer') _buildTransferCard(isDark),
-          if (_paymentMethod == 'EDC / Kartu') _buildEdcCard(isDark),
 
           SizedBox(height: 24),
 
@@ -2427,12 +2426,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
-  /// Daftar metode pembayaran aktif (4 item sekarang).
+  /// Daftar metode pembayaran aktif (3 item — EDC "Segera Hadir").
   List<(String, IconData)> _paymentMethods() => [
         ('Tunai', Icons.money),
         ('QRIS', Icons.qr_code_2),
         ('Transfer', Icons.account_balance),
-        ('EDC / Kartu', Icons.credit_card),
       ];
 
   Widget _payCard(String method, IconData icon, bool isDark,

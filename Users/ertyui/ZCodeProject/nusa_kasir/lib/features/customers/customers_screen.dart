@@ -599,6 +599,71 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     );
   }
 
+  /// Scan barcode ke search field — populates search + filters list.
+  /// v2.2.47 revisi: scanner icon di search bar pelanggan.
+  Future<void> _scanBarcodeToSearch(BuildContext ctx) async {
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? scannedCode;
+    await showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, dSet) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.qr_code_scanner, size: 22, color: NusaConfig.activePrimary),
+              SizedBox(width: 8),
+              Text('Pindai Barcode'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    if (scannedCode != null) return;
+                    final barcode = capture.barcodes.firstOrNull;
+                    final raw = barcode?.rawValue;
+                    if (raw == null || raw.isEmpty) return;
+                    scannedCode = raw;
+                    Navigator.pop(dctx);
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                controller.dispose();
+                Navigator.pop(dctx);
+              },
+              child: Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (scannedCode != null && mounted) {
+      _search.text = _normBarcode(scannedCode!);
+      if (mounted) setState(() {});
+    }
+  }
+
   void _showPointSettings() {
     final repo = SettingsRepository(ref.read(databaseProvider));
     showModalBottomSheet(
@@ -614,6 +679,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
       'Pelanggan',
+      onBarcode: (code) {
+        final norm = _normBarcode(code);
+        if (norm.isEmpty) return;
+        _search.text = norm;
+        if (mounted) setState(() {});
+      },
       Column(
         children: [
           SizedBox(height: 8),
@@ -659,6 +730,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ),
                   prefixIcon: Icon(Icons.search_rounded,
                       color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, size: 22),
+                  suffixIcon: IconButton(
+                    icon: Icon(Icons.qr_code_scanner, size: 22,
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    onPressed: () => _scanBarcodeToSearch(context),
+                  ),
                   border: InputBorder.none,
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 16, vertical: 14),
