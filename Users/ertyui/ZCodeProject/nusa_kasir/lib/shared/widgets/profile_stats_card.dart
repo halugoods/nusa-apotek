@@ -5,7 +5,7 @@ import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/shared/widgets/animated_builder.dart'
     show NusaAnimatedBuilder;
 
-/// EmployeeCardData — pre-fetched data for the flip card back side.
+/// EmployeeCardData -- pre-fetched data for the flip card back side.
 class EmployeeCardData {
   final int penjualan;
   final int laba;
@@ -38,29 +38,32 @@ class EmployeeCardData {
 
 /// Red gradient profile card with 3D flip.
 ///
-/// **Front:** Same layout as before — avatar, name, role, branch, attendance,
-/// and 4 sales KPI stats (PENJUALAN, TRANSAKSI, RATA-RATA, TERLARIS).
+/// **Front:** Avatar + name/role/jam hadir/cabang beside photo,
+/// 3 KPI stats (PENJUALAN, TRANSAKSI, JAM SHIFT),
+/// flip icon on the right edge.
 ///
-/// **Back:** Role-adaptive data:
-///   - Owner → live sales + profit + pending items
-///   - Manager → monthly performance + attendance
-///   - Kasir → cash drawer reconciliation
+/// **Back:** Role-adaptive:
+///   - Owner  -> Laba + Penjualan + Transaksi + hubungi karyawan + pending alert
+///   - Kasir/Manager -> 2 big quick-action attendance buttons
 ///
-/// Tap to flip. Non-Owner / non-self viewers cannot see the back.
+/// v2.2.47: Redesign per user request.
 class ProfileStatsCard extends StatefulWidget {
-  // ── Front display fields (unchanged) ────────────────
+  // -- Front display fields --
   final String? photoPath;
   final String initials;
   final String userName;
   final String role;
   final String branch;
+  /// e.g. "09:00" or "Belum absen"
   final String attendanceStatus;
   final String salesValue;
   final String transactionCount;
+  /// e.g. "3j 45m" -- shift duration
+  final String shiftDuration;
   final String avgValue;
   final String topProduct;
 
-  // ── Flip / back-side fields ────────────────────────
+  // -- Flip / back-side fields --
   final String viewerRole;
   final int? viewerEmployeeId;
   final int? employeeId;
@@ -71,7 +74,7 @@ class ProfileStatsCard extends StatefulWidget {
   final VoidCallback? onKontakWa;
   final VoidCallback? onLogout;
 
-  ProfileStatsCard({
+  const ProfileStatsCard({
     super.key,
     this.photoPath,
     this.initials = '?',
@@ -81,8 +84,9 @@ class ProfileStatsCard extends StatefulWidget {
     this.attendanceStatus = 'Buka Kasir untuk memulai',
     this.salesValue = 'Rp 0',
     this.transactionCount = '0',
+    this.shiftDuration = '0j 0m',
     this.avgValue = 'Rp 0',
-    this.topProduct = '—',
+    this.topProduct = '--',
     this.viewerRole = 'Kasir',
     this.viewerEmployeeId,
     this.employeeId,
@@ -132,16 +136,12 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
 
   Future<void> _toggleFlip() async {
     if (_isFlipped) {
-      // Flip back to front — always allowed
       _ctrl.reverse();
       setState(() => _isFlipped = false);
       return;
     }
+    if (!_canFlip) return;
 
-    // Flip to back — check access
-    if (!_canFlip) return; // silently blocked
-
-    // Owner in non-Owner session must authenticate
     if (widget.viewerRole == 'Owner' &&
         widget.onAuthOwner != null &&
         !_isSelf) {
@@ -153,303 +153,227 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
     setState(() => _isFlipped = true);
   }
 
-  // ────────────────────────────────────────────────────
-  // FRONT SIDE (unchanged from original)
-  // ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────
+  // FRONT SIDE
+  // ─────────────────────────────────────────────────
 
   Widget _buildFront() {
     final hasPhoto = widget.photoPath != null &&
         widget.photoPath!.isNotEmpty &&
         File(widget.photoPath!).existsSync();
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         color: NusaConfig.activePrimary,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Flip hint (top-right corner)
-          if (_canFlip)
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                width: 28,
-                height: 28,
+          // Row 1: Photo + info + flip icon
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Avatar
+              Container(
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withValues(alpha: 0.22),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                  image: hasPhoto
+                      ? DecorationImage(
+                          image: FileImage(File(widget.photoPath!), scale: 1.0),
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.low)
+                      : null,
                 ),
                 alignment: Alignment.center,
-                child: Icon(Icons.flip_to_back,
-                    size: 14, color: Colors.white.withValues(alpha: 0.8)),
+                child: hasPhoto
+                    ? null
+                    : Text(widget.initials,
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
               ),
-            ),
+              SizedBox(width: 14),
 
-          Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              children: [
-                _buildTopRow(hasPhoto),
-                Container(
-                  margin: EdgeInsets.symmetric(vertical: 16),
-                  height: 1,
-                  color: Colors.white.withValues(alpha: 0.18),
+              // Name + role + jam hadir + cabang
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.userName,
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.2,
+                          color: Colors.white,
+                          height: 1.3),
+                    ),
+                    SizedBox(height: 2),
+                    Text(widget.role,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.white.withValues(alpha: 0.9))),
+                    SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.access_time,
+                            size: 12, color: Colors.white.withValues(alpha: 0.7)),
+                        SizedBox(width: 4),
+                        Text(widget.attendanceStatus,
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.white.withValues(alpha: 0.95))),
+                      ],
+                    ),
+                    if (widget.branch.isNotEmpty) ...[
+                      SizedBox(height: 3),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.store_outlined,
+                              size: 12, color: Colors.white.withValues(alpha: 0.7)),
+                          SizedBox(width: 4),
+                          Text(widget.branch,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.white.withValues(alpha: 0.8))),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
-                _buildStatsGrid(),
-              ],
-            ),
+              ),
+
+              // Flip icon -- right edge, visible hint
+              if (_canFlip)
+                GestureDetector(
+                  onTap: _toggleFlip,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.flip_to_back,
+                        size: 18, color: Colors.white.withValues(alpha: 0.9)),
+                  ),
+                ),
+            ],
           ),
+
+          SizedBox(height: 18),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+          SizedBox(height: 18),
+
+          // Row 2: 3 KPI stats -- PENJUALAN, TRANSAKSI, JAM SHIFT
+          _buildFrontStats(),
         ],
       ),
     );
   }
 
-  Widget _buildTopRow(bool hasPhoto) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Avatar
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.white.withValues(alpha: 0.22),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.25),
-            ),
-            image: hasPhoto
-                ? DecorationImage(
-                    image: FileImage(File(widget.photoPath!), scale: 1.0),
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low)
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: hasPhoto
-              ? null
-              : Text(
-                  widget.initials,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-        ),
-        SizedBox(width: 12),
-
-        // Name + role + attendance
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.userName,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.2,
-                  color: Colors.white,
-                  height: 1.3,
-                ),
-              ),
-              Text(
-                '${widget.role}${widget.branch.isNotEmpty ? ' • ${widget.branch}' : ''}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.9),
-                  height: 1.4,
-                ),
-              ),
-              SizedBox(height: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.access_time,
-                    size: 12,
-                    color: Colors.white.withValues(alpha: 0.7),
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    widget.attendanceStatus,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.95),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsGrid() {
+  Widget _buildFrontStats() {
     final stats = [
-      _Stat(
-        icon: Icons.monetization_on_outlined,
-        iconBg: NusaConfig.accentGold.withValues(alpha: 0.95),
-        iconColor: Colors.white,
-        value: widget.salesValue,
-        label: 'PENJUALAN',
-      ),
-      _Stat(
-        icon: Icons.shopping_cart_outlined,
-        iconBg: Colors.white.withValues(alpha: 0.22),
-        iconColor: Colors.white,
-        value: widget.transactionCount,
-        label: 'TRANSAKSI',
-      ),
-      _Stat(
-        icon: Icons.trending_up,
-        iconBg: Colors.white.withValues(alpha: 0.22),
-        iconColor: Colors.white,
-        value: widget.avgValue,
-        label: 'RATA-RATA',
-      ),
-      _Stat(
-        icon: Icons.star_outline,
-        iconBg: Colors.white.withValues(alpha: 0.22),
-        iconColor: Colors.white,
-        value: widget.topProduct,
-        label: 'TERLARIS',
-      ),
+      _StatData(icon: Icons.monetization_on_outlined,
+          value: widget.salesValue, label: 'PENJUALAN'),
+      _StatData(icon: Icons.shopping_cart_outlined,
+          value: widget.transactionCount, label: 'TRANSAKSI'),
+      _StatData(icon: Icons.access_time_rounded,
+          value: widget.shiftDuration.isEmpty ? '--' : widget.shiftDuration,
+          label: 'JAM SHIFT'),
     ];
-
     return Row(
-      children: stats.map((s) => Expanded(child: _statItem(s))).toList(),
+      children: stats.map((s) => Expanded(child: _frontStatItem(s))).toList(),
     );
   }
 
-  Widget _statItem(_Stat s) {
+  Widget _frontStatItem(_StatData s) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 32,
-          height: 32,
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: s.iconBg,
+            color: Colors.white.withValues(alpha: 0.2),
           ),
           alignment: Alignment.center,
-          child: Icon(s.icon, size: 16, color: s.iconColor),
+          child: Icon(s.icon, size: 17, color: Colors.white),
         ),
-        SizedBox(height: 6),
-        Text(
-          s.value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.2,
-            color: Colors.white,
-            height: 1.2,
-          ),
-        ),
-        Text(
-          s.label,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.8,
-            color: Colors.white.withValues(alpha: 0.85),
-          ),
-        ),
+        SizedBox(height: 7),
+        Text(s.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.2,
+                color: Colors.white,
+                height: 1.2)),
+        SizedBox(height: 3),
+        Text(s.label,
+            style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: Colors.white.withValues(alpha: 0.85))),
       ],
     );
   }
 
-  // ────────────────────────────────────────────────────
-  // BACK CONTENT (role-adaptive, inside same red gradient card)
-  // ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────
+  // BACK CONTENT
+  // ─────────────────────────────────────────────────
 
   Widget _buildBackContent() {
-    final data = widget.cardData;
-
     switch (widget.viewerRole) {
       case 'Kasir':
-        return _buildKasirBack(data);
+        return _buildKasirBack(widget.cardData);
       case 'Manager':
-        return _buildManagerBack(data);
+        return _buildManagerBack(widget.cardData);
       default:
-        return _buildOwnerBack(data);
+        return _buildOwnerBack(widget.cardData);
     }
   }
 
-  // ── Kasir: Cash Drawer ────────────────────────────
+  // -- Kasir: quick-action attendance --
 
   Widget _buildKasirBack(EmployeeCardData? data) {
-    final isRed = (data?.selisihLaci ?? 0) < 0;
-
     return Padding(
       padding: EdgeInsets.all(20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
-          _backHeader(Icons.point_of_sale, 'Shift Saya'),
-          SizedBox(height: 14),
-          _statRowW('Modal Awal', formatRupiah(data?.modalAwal ?? 0)),
-          _statRowW('Penjualan', formatRupiah(data?.penjualan ?? 0)),
-          Container(
-            margin: EdgeInsets.symmetric(vertical: 10),
-            height: 1,
-            color: Colors.white.withValues(alpha: 0.18),
-          ),
-          _statRowW('Total di Laci', formatRupiah(data?.totalLaci ?? 0),
-              bold: true),
-          _statRowW(
-            'Selisih',
-            formatRupiah(data?.selisihLaci.abs() ?? 0),
-            valueColor: isRed
-                ? NusaConfig.accentGold
-                : Color(0xFF4ADE80),
-            suffix: isRed ? ' (kurang)' : '',
-          ),
-          if (data?.shiftHours != null) ...[
-            SizedBox(height: 8),
-            Text('Shift: ${data!.shiftHours}',
-                style: TextStyle(
-                    fontSize: 12, color: Colors.white.withValues(alpha: 0.75))),
-          ],
+          _backHeader(Icons.point_of_sale, 'Aksi Cepat'),
           SizedBox(height: 16),
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: _backButton('Absen Masuk', Icons.login,
-                    Colors.white.withValues(alpha: 0.9), widget.onAbsenMasuk),
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: _backButton('Absen Keluar', Icons.logout,
-                    Colors.white.withValues(alpha: 0.9), widget.onAbsenKeluar),
-              ),
-            ],
-          ),
+          _bigActionBtn('Absen Masuk', Icons.login_rounded,
+              NusaConfig.accentGreen, widget.onAbsenMasuk),
+          SizedBox(height: 12),
+          _bigActionBtn('Absen Keluar', Icons.logout_rounded,
+              NusaConfig.activePrimary, widget.onAbsenKeluar),
           if (widget.onLogout != null) ...[
-            SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: _backButton('Ganti Pengguna', Icons.switch_account,
-                  Colors.white.withValues(alpha: 0.9), widget.onLogout),
-            ),
+            SizedBox(height: 16),
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+            SizedBox(height: 16),
+            _smallActionBtn(
+                'Ganti Pengguna', Icons.switch_account, widget.onLogout),
           ],
         ],
       ),
     );
   }
 
-  // ── Manager: Performance ──────────────────────────
+  // -- Manager: quick-action attendance --
 
   Widget _buildManagerBack(EmployeeCardData? data) {
     return Padding(
@@ -457,58 +381,98 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _backHeader(Icons.trending_up, 'Performa Bulan Ini'),
-          SizedBox(height: 14),
-          _statRowW('Omzet', formatRupiah(data?.omzet ?? 0)),
-          _statRowW('Transaksi', '${data?.transaksiBulan ?? 0}'),
-          _statRowW(
-              'Hadir', '${data?.hadirDays ?? 0}/${data?.totalDays ?? 0} hari'),
+          _backHeader(Icons.person_outline, 'Aksi Cepat'),
           SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: _backButton('Hubungi WA', Icons.chat,
-                Colors.white.withValues(alpha: 0.9), widget.onKontakWa),
-          ),
+          _bigActionBtn('Absen Masuk', Icons.login_rounded,
+              NusaConfig.accentGreen, widget.onAbsenMasuk),
+          SizedBox(height: 12),
+          _bigActionBtn('Absen Keluar', Icons.logout_rounded,
+              NusaConfig.activePrimary, widget.onAbsenKeluar),
+          SizedBox(height: 16),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+          SizedBox(height: 16),
+          _smallActionBtn('Hubungi WA', Icons.chat_rounded, widget.onKontakWa),
         ],
       ),
     );
   }
 
-  // ── Owner: Command Center ─────────────────────────
+  // -- Owner: Laba + hubungi karyawan --
 
   Widget _buildOwnerBack(EmployeeCardData? data) {
+    final isRed = (data?.selisihLaci ?? 0) < 0;
+
     return Padding(
       padding: EdgeInsets.all(20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _backHeader(Icons.insights, 'Live Hari Ini'),
+          _backHeader(Icons.insights, 'Ringkasan Hari Ini'),
+          SizedBox(height: 16),
+
+          // Laba penjualan -- hero stat
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                Text('LABA PENJUALAN',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.0,
+                        color: Colors.white.withValues(alpha: 0.75))),
+                SizedBox(height: 6),
+                Text(formatRupiah(data?.laba ?? 0),
+                    style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                        color: Colors.white)),
+              ],
+            ),
+          ),
+
           SizedBox(height: 14),
-          // Mini stats row
+
+          // Penjualan + Transaksi row
           Row(
             children: [
-              _ownerMiniStatW(
-                  'Penjualan', formatRupiah(data?.penjualan ?? 0)),
-              _ownerMiniStatW('Laba', formatRupiah(data?.laba ?? 0)),
-              _ownerMiniStatW('Trx', '${data?.trxCount ?? 0}'),
+              Expanded(child: _backMiniStat('Penjualan', formatRupiah(data?.penjualan ?? 0))),
+              SizedBox(width: 10),
+              Expanded(child: _backMiniStat('Transaksi', '${data?.trxCount ?? 0}')),
             ],
           ),
-          SizedBox(height: 12),
-          // Pending alert
-          if ((data?.pendingItems ?? 0) > 0)
+
+          // Selisih laci
+          if ((data?.selisihLaci ?? 0) != 0) ...[
+            SizedBox(height: 10),
+            _backMiniStat('Selisih Laci', formatRupiah(data!.selisihLaci.abs()),
+                valueColor: isRed ? NusaConfig.accentGold : Color(0xFF4ADE80),
+                suffix: isRed ? ' (kurang)' : ' (lebih)'),
+          ],
+
+          // Pending items alert
+          if ((data?.pendingItems ?? 0) > 0) ...[
+            SizedBox(height: 12),
             Container(
+              width: double.infinity,
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.notifications_active,
-                      size: 16, color: NusaConfig.accentGold),
+                      size: 15, color: NusaConfig.accentGold),
                   SizedBox(width: 6),
-                  Text('${data!.pendingItems} item perlu tindakan',
+                  Text('${data!.pendingItems} pesanan perlu diproses',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -516,18 +480,21 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
                 ],
               ),
             ),
-          SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: _backButton('Hubungi WA', Icons.chat,
-                Colors.white.withValues(alpha: 0.9), widget.onKontakWa),
-          ),
+          ],
+
+          SizedBox(height: 16),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+          SizedBox(height: 16),
+
+          // Hubungi karyawan button
+          _bigActionBtn('Hubungi Karyawan', Icons.chat_rounded,
+              Colors.white.withValues(alpha: 0.9), widget.onKontakWa),
         ],
       ),
     );
   }
 
-  // ── Shared back-side helpers (white-on-red theme) ──
+  // -- Shared back helpers --
 
   Widget _backHeader(IconData icon, String title) {
     return Row(
@@ -549,7 +516,6 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
                   fontWeight: FontWeight.w800,
                   color: Colors.white)),
         ),
-        // Flip-back hint
         GestureDetector(
           onTap: _toggleFlip,
           child: Container(
@@ -568,68 +534,28 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
     );
   }
 
-  Widget _statRowW(String label, String value,
-      {bool bold = false, String suffix = '', Color? valueColor}) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style:
-                  TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.8))),
-          Text(
-            '$value$suffix',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              color: valueColor ?? Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _ownerMiniStatW(String label, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(value,
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.3)),
-          SizedBox(height: 2),
-          Text(label,
-              style:
-                  TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.7))),
-        ],
-      ),
-    );
-  }
-
-  Widget _backButton(
+  /// Big rounded button -- quick-action attendance & hubungi karyawan.
+  Widget _bigActionBtn(
       String label, IconData icon, Color color, VoidCallback? onTap) {
     return Material(
       color: Colors.white.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 13),
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(vertical: 16),
           alignment: Alignment.center,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: color),
-              SizedBox(width: 6),
+              Icon(icon, size: 22, color: color),
+              SizedBox(width: 10),
               Text(label,
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                       color: color)),
             ],
           ),
@@ -638,9 +564,68 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
     );
   }
 
-  // ────────────────────────────────────────────────────
-  // BACK WRAPPER (same red gradient card as front)
-  // ────────────────────────────────────────────────────
+  /// Small secondary button.
+  Widget _smallActionBtn(
+      String label, IconData icon, VoidCallback? onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 17,
+                    color: Colors.white.withValues(alpha: 0.85)),
+                SizedBox(width: 7),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.9))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _backMiniStat(String label, String value,
+      {Color? valueColor, String suffix = ''}) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style:
+                  TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.75))),
+          Text('$value$suffix',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: valueColor ?? Colors.white,
+              )),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────
+  // BACK WRAPPER
+  // ─────────────────────────────────────────────────
 
   Widget _buildBack() {
     return Container(
@@ -649,17 +634,13 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
         color: NusaConfig.activePrimary,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          _buildBackContent(),
-        ],
-      ),
+      child: _buildBackContent(),
     );
   }
 
-  // ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────
   // 3D FLIP BUILD
-  // ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -691,17 +672,10 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
   }
 }
 
-class _Stat {
+class _StatData {
   final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
   final String value;
   final String label;
-  _Stat({
-    required this.icon,
-    required this.iconBg,
-    required this.iconColor,
-    required this.value,
-    required this.label,
-  });
+  _StatData(
+      {required this.icon, required this.value, required this.label});
 }

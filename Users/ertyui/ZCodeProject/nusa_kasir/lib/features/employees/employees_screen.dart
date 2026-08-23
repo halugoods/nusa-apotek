@@ -401,8 +401,8 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         children: [
                           Padding(
                             padding: EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
+                              horizontal: 16,
+                              vertical: 12,
                             ),
                             child: Row(
                               children: [
@@ -439,21 +439,29 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                 SizedBox(width: 8),
                                 SizedBox(
                                   height: 24,
-                                  child: FittedBox(
-                                    child: Switch(
-                                      value: barcodeOn,
-                                      activeTrackColor: NusaConfig.activePrimary,
-                                      onChanged: (v) =>
-                                          setSt(() => barcodeOn = v),
-                                    ),
+                                  width: 44,
+                                  child: Switch(
+                                    value: barcodeOn,
+                                    activeColor: NusaConfig.activePrimary,
+                                    onChanged: (v) =>
+                                        setSt(() => barcodeOn = v),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           if (barcodeOn)
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(12, 2, 12, 12),
+                            Container(
+                              padding: EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? NusaConfig.darkSurface2
+                                    : NusaConfig.inputFill,
+                                borderRadius: BorderRadius.only(
+                                  bottomLeft: Radius.circular(12),
+                                  bottomRight: Radius.circular(12),
+                                ),
+                              ),
                               child: Column(
                                 crossAxisAlignment:
                                     CrossAxisAlignment.stretch,

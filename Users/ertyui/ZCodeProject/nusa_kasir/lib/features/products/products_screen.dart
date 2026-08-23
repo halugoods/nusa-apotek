@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/core/providers.dart';
@@ -18,16 +16,13 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/unit_manager_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:csv/csv.dart';
 
 /// Sort options.
 enum _SortBy { nameAsc, nameDesc, priceHigh, priceLow }
@@ -170,240 +165,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         list.sort((a, b) => a.sellPrice.compareTo(b.sellPrice));
     }
     return list;
-  }
-
-  // ── Export / Import bottom sheet ──
-
-  void _showExportImportSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(NusaConfig.spaceLG),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Ekspor / Impor Produk',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              SizedBox(height: NusaConfig.spaceMD),
-              _exportTile(
-                Icons.table_chart_outlined,
-                NusaConfig.accentGreen,
-                'Ekspor CSV (Excel)',
-                'File spreadsheet, bisa dibuka di Excel',
-                _exportCSV,
-              ),
-              SizedBox(height: NusaConfig.spaceXS),
-              _exportTile(
-                Icons.picture_as_pdf_outlined,
-                NusaConfig.activePrimary,
-                'Ekspor',
-                'Dokumen siap cetak',
-                _exportPDF,
-              ),
-              SizedBox(height: NusaConfig.spaceXS),
-              _exportTile(
-                Icons.upload_file_outlined,
-                NusaConfig.info,
-                'Impor CSV',
-                'Impor produk dari file CSV',
-                _importCSV,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _exportTile(
-    IconData icon,
-    Color color,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(title),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 12)),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-      ),
-      tileColor: color.withValues(alpha: 0.06),
-      onTap: () {
-        Navigator.pop(context);
-        onTap();
-      },
-    );
-  }
-
-  Future<void> _exportCSV() async {
-    try {
-      final rows = <List<String>>[
-        [
-          'Nama',
-          'SKU',
-          'Barcode',
-          'Kategori',
-          'Harga Beli',
-          'Harga Jual',
-          'Diskon',
-          'Tipe Diskon',
-          'Stok',
-          'Tipe',
-          'Kadaluarsa',
-        ],
-      ];
-      for (final p in _products) {
-        rows.add([
-          p.name,
-          p.sku ?? '',
-          p.barcode ?? '',
-          p.category,
-          p.buyPrice.toString(),
-          p.sellPrice.toString(),
-          p.discountPercent.toString(),
-          p.discountType,
-          p.stock.toString(),
-          p.productType ?? 'Regular',
-          p.expiryDate != null
-              ? DateFormat('dd/MM/yyyy').format(p.expiryDate!)
-              : '',
-        ]);
-      }
-      final csv = ListToCsvConverter().convert(rows);
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/produk_nusa_${DateTime.now().millisecondsSinceEpoch}.csv',
-      );
-      await file.writeAsString(csv);
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Daftar Produk NUSA Kasir');
-    } catch (e) {
-      if (mounted) TopToast.error(context, 'Gagal ekspor CSV');
-    }
-  }
-
-  Future<void> _exportPDF() async {
-    try {
-      final buf = StringBuffer('DAFTAR PRODUK - NUSA KASIR\n');
-      buf.writeln('=' * 60);
-      buf.writeln(
-        'Nama | SKU | Kategori | Harga Jual | Stok | Tipe | Kadaluarsa',
-      );
-      buf.writeln('-' * 60);
-      for (final p in _products) {
-        buf.writeln(
-          '${p.name} | ${p.sku ?? '-'} | ${p.category} | ${formatRupiah(p.sellPrice)} | ${p.stock} | ${p.productType ?? 'Regular'} | ${p.expiryDate != null ? DateFormat('dd/MM/yyyy').format(p.expiryDate!) : '-'}',
-        );
-      }
-      buf.writeln('=' * 60);
-      buf.writeln('Total: ${_products.length} produk');
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/produk_nusa_${DateTime.now().millisecondsSinceEpoch}.txt',
-      );
-      await file.writeAsString(buf.toString());
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Daftar Produk NUSA Kasir');
-    } catch (e) {
-      if (mounted) TopToast.error(context, 'Gagal ekspor');
-    }
-  }
-
-  Future<void> _importCSV() async {
-    try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.single.bytes;
-      if (bytes == null) return;
-      final contents = utf8.decode(bytes);
-      final rows = CsvToListConverter().convert(contents);
-      if (rows.isEmpty) {
-        if (mounted) TopToast.error(context, 'File CSV kosong');
-        return;
-      }
-      // Skip header row
-      int imported = 0;
-      final repo = ref.read(productRepoProvider);
-      // Header-aware column mapping: format lama (10 kolom) → 'Diskon %' di idx 6,
-      // format baru (11 kolom) → 'Diskon' idx 6 + 'Tipe Diskon' idx 7.
-      final header = rows.first
-          .map((h) => h.toString().trim().toLowerCase())
-          .toList();
-      final hasTypeCol =
-          header.length > 7 &&
-          (header[7].contains('tipe') || header[7].contains('jenis'));
-      for (int i = 1; i < rows.length; i++) {
-        final row = rows[i];
-        if (row.isEmpty ||
-            (row.length >= 1 && row[0].toString().trim().isEmpty))
-          continue;
-        try {
-          final name = row.length > 0 ? row[0].toString().trim() : '';
-          final sku = row.length > 1 ? row[1].toString().trim() : '';
-          final barcode = row.length > 2 ? row[2].toString().trim() : '';
-          final category = row.length > 3
-              ? row[3].toString().trim()
-              : 'Lainnya';
-          final buyPrice = row.length > 4
-              ? int.tryParse(row[4].toString().trim()) ?? 0
-              : 0;
-          final sellPrice = row.length > 5
-              ? int.tryParse(row[5].toString().trim()) ?? 0
-              : 0;
-          final typeIdx = hasTypeCol ? 7 : null;
-          final stockIdx = hasTypeCol ? 8 : 7;
-          final discountTypeRaw = typeIdx != null && row.length > typeIdx
-              ? row[typeIdx].toString().trim().toLowerCase()
-              : '';
-          final isNominal = discountTypeRaw == 'nominal';
-          final rawDiscount = row.length > 6
-              ? (int.tryParse(row[6].toString().trim()) ?? 0)
-              : 0;
-          // Nominal tidak di-clamp 0–100; persen di-clamp 0–100.
-          final discountPercent = isNominal
-              ? rawDiscount.clamp(0, sellPrice)
-              : rawDiscount.clamp(0, 100);
-          final stock = row.length > stockIdx
-              ? int.tryParse(row[stockIdx].toString().trim()) ?? 0
-              : 0;
-          if (name.isEmpty || sellPrice == 0) continue;
-          await repo.addProduct(
-            name: name,
-            category: category,
-            buyPrice: buyPrice,
-            sellPrice: sellPrice,
-            stock: stock,
-            minStock: 0,
-            discountPercent: discountPercent,
-            discountType: isNominal ? 'nominal' : 'persen',
-            sku: sku.isEmpty ? null : sku,
-            barcode: barcode.isEmpty ? null : barcode,
-          );
-          imported++;
-        } catch (_) {}
-      }
-      if (mounted) {
-        TopToast.success(context, '$imported produk berhasil diimpor');
-        _load();
-      }
-    } catch (e) {
-      if (mounted) TopToast.error(context, 'Gagal impor CSV');
-    }
   }
 
   // ── Barcode scan ──
@@ -667,38 +428,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                   SizedBox(width: 8),
                 ],
-                // v2.2.46: icon "Satuan" (penggaris) di kanan grid filter
-                // DIHAPUS — kelola satuan kini via icon pengaturan kecil di
-                // atas FAB Tambah Bahan (tab Bahan Baku) + tetap ada di form
-                // produk. Baris header jadi lebih lega & filter grid tidak
-                // menempel ke tab switch.
-                SizedBox(width: 8),
-                // Export/Import button
-                GestureDetector(
-                  onTap: _showExportImportSheet,
-                  child: Container(
-                    height: 36,
-                    width: 36,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? NusaConfig.darkSurface
-                          : NusaConfig.surfaceColor,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isDark
-                            ? NusaConfig.darkBorder
-                            : NusaConfig.borderColor,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.file_download_outlined,
-                      size: 18,
-                      color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -885,8 +614,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // v2.2.46: tab Bahan Baku — "Kelola Satuan" jadi icon pengaturan
-          // kecil DI ATAS tombol "+ Tambah Bahan" (bukan lagi tombol teks di
+          // v2.2.47: tab Bahan Baku — "Kelola Satuan" jadi icon gear (settings) kecil
+          // DI ATAS tombol "+ Tambah Bahan" (bukan lagi tombol teks di
           // tengah layar / header list).
           if (_tabIndex == 2 && NusaConfig.isFnbVariant)
             Padding(
@@ -899,7 +628,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 foregroundColor: NusaConfig.activePrimary,
                 tooltip: 'Kelola Satuan',
                 onPressed: _openUnitManager,
-                child: const Icon(Icons.straighten_outlined, size: 20),
+                child: const Icon(Icons.settings, size: 20),
               ),
             ),
           FloatingActionButton.extended(
@@ -2648,10 +2377,6 @@ class _ProductGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final outOfStock = product.stock <= 0;
-    final hasImage =
-        product.imagePath != null &&
-        product.imagePath!.isNotEmpty &&
-        File(product.imagePath!).existsSync();
     final gradient = NusaConfig.catGradientFor(product.category);
 
     return Material(
@@ -2686,15 +2411,13 @@ class _ProductGridCard extends StatelessWidget {
                   aspectRatio: 1,
                   child: Stack(
                     children: [
-                      if (hasImage)
-                        Image.file(
-                          File(product.imagePath!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          cacheWidth: 400,
-                        )
-                      else
-                        Container(
+                      NusaProductImage(
+                        imagePath: product.imagePath,
+                        imageBase64: product.imageBase64,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -2713,6 +2436,7 @@ class _ProductGridCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ),
                       // Stock badge top-left
                       Positioned(
                         top: 6,
@@ -2915,10 +2639,6 @@ class _ProductListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final outOfStock = product.stock <= 0;
-    final hasImage =
-        product.imagePath != null &&
-        product.imagePath!.isNotEmpty &&
-        File(product.imagePath!).existsSync();
     final gradient = NusaConfig.catGradientFor(product.category);
 
     return GestureDetector(
@@ -2940,30 +2660,29 @@ class _ProductListCard extends StatelessWidget {
               child: SizedBox(
                 width: 60,
                 height: 60,
-                child: hasImage
-                    ? Image.file(
-                        File(product.imagePath!),
-                        fit: BoxFit.cover,
-                        cacheWidth: 200,
-                      )
-                    : Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: gradient,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          _initials(product.name),
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
+                child: NusaProductImage(
+                  imagePath: product.imagePath,
+                  imageBase64: product.imageBase64,
+                  fit: BoxFit.cover,
+                  placeholder: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gradient,
                       ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _initials(product.name),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             SizedBox(width: 12),

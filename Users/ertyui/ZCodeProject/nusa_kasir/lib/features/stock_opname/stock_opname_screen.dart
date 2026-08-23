@@ -16,6 +16,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class StockOpnameScreen extends ConsumerStatefulWidget {
   final bool embedded;
@@ -924,10 +925,10 @@ class _ProductCountRow extends StatelessWidget {
     }
 
     return Container(
-      padding: EdgeInsets.all(12),
+      padding: EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(14),
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+        borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
         border: Border.all(
           color: isDiff
               ? NusaConfig.accentGold.withValues(alpha: 0.3)
@@ -938,6 +939,26 @@ class _ProductCountRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Thumbnail — copas dari _AdjustProductCard
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                item.productName.isNotEmpty ? item.productName[0].toUpperCase() : '?',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: NusaConfig.activePrimary,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 10),
           // Product info
           Expanded(
             flex: 3,
@@ -947,8 +968,8 @@ class _ProductCountRow extends StatelessWidget {
                 Text(
                   item.productName,
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -957,7 +978,7 @@ class _ProductCountRow extends StatelessWidget {
                 Text(
                   'Stok sistem: ${item.systemStock}',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
                   ),
                 ),

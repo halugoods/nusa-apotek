@@ -56,6 +56,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       employeeId: emp.id, name: emp.name, role: emp.role);
     ref.read(employeeSessionProvider.notifier).login(s, remember: remember);
     ref.read(authProvider.notifier).state = emp.role;
+    // v2.2.47: pulihkan file foto produk dari BASE64 (kolom DB) setelah login.
+    // hydrateImages() di main() hanya jalan sekali saat cold start; kalau user
+    // logout→login lagi (app tidak restart) atau restore cloud baru selesai,
+    // path file lokal bisa hilang walau base64 masih ada — sini menulis ulang
+    // supaya foto produk tampil di list/grid/POS.
+    try {
+      final db = ref.read(databaseProvider);
+      await ProductRepository(db).hydrateImages();
+    } catch (_) {}
     final name = await ref.read(settingsRepoProvider).getStoreName();
     if (mounted) context.go(name.isEmpty ? '/onboarding' : '/home');
   }

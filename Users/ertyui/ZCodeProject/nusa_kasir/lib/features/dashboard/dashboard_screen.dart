@@ -51,6 +51,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _omzet = 'Rp 0';
   String _trxCount = '0';
   String _avg = 'Rp 0';
+  String _shiftDuration = '0j 0m';
   final String _topProduct = '—';
   List<Branche> _branches = [];
   Branche? _activeBranch;
@@ -1172,6 +1173,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
       if (mounted) {
         setState(() {
+          _shiftDuration = shiftHours ?? '0j 0m';
           _cardData = EmployeeCardData(
             penjualan: penjualan,
             laba: laba,
@@ -1896,6 +1898,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         attendanceStatus: attendanceText,
                         salesValue: _omzet,
                         transactionCount: _trxCount,
+                        shiftDuration: _shiftDuration,
                         avgValue: _avg,
                         topProduct: _topProduct,
                         // Flip card params

@@ -232,7 +232,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       children: [
                         Padding(
                           padding: EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 6),
+                              horizontal: 16, vertical: 12),
                           child: Row(
                             children: [
                               Icon(Icons.qr_code_2,
@@ -269,24 +269,30 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               SizedBox(width: 8),
                               SizedBox(
                                 height: 24,
-                                child: FittedBox(
-                                  child: Switch(
-                                    value: barcodeOn,
-                                    activeTrackColor: NusaConfig.activePrimary,
-                                    // v2.2.46: pola produk — toggle ON field
-                                    // KOSONG (user scan/ketik/Generate manual).
-                                    onChanged: (v) => setSt(() {
-                                      barcodeOn = v;
-                                    }),
-                                  ),
+                                width: 44,
+                                child: Switch(
+                                  value: barcodeOn,
+                                  activeColor: NusaConfig.activePrimary,
+                                  onChanged: (v) => setSt(() {
+                                    barcodeOn = v;
+                                  }),
                                 ),
                               ),
                             ],
                           ),
                         ),
                         if (barcodeOn)
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(12, 2, 12, 12),
+                          Container(
+                            padding: EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(ctx).brightness == Brightness.dark
+                                  ? NusaConfig.darkSurface2
+                                  : NusaConfig.inputFill,
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(12),
+                                bottomRight: Radius.circular(12),
+                              ),
+                            ),
                             child: Column(
                               crossAxisAlignment:
                                   CrossAxisAlignment.stretch,
@@ -296,7 +302,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   autofocus: false,
                                   style: TextStyle(
                                     fontFamily: 'monospace',
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     color: Theme.of(context).brightness ==
                                             Brightness.dark
                                         ? NusaConfig.darkTextPrimary

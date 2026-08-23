@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +22,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
@@ -2624,11 +2624,6 @@ class _ProductCard extends StatelessWidget {
     final outOfStock = product.stock <= 0 && !product.isService;
     final lowStock = !outOfStock && product.stock <= product.minStock;
     final gradient = NusaConfig.catGradientFor(product.category);
-    final hasImage =
-        product.imagePath != null &&
-        product.imagePath!.isNotEmpty &&
-        File(product.imagePath!).existsSync();
-
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
@@ -2665,15 +2660,13 @@ class _ProductCard extends StatelessWidget {
                   aspectRatio: 1,
                   child: Stack(
                     children: [
-                      if (hasImage)
-                        Image.file(
-                          File(product.imagePath!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          cacheWidth: 400,
-                        )
-                      else
-                        Container(
+                      NusaProductImage(
+                        imagePath: product.imagePath,
+                        imageBase64: product.imageBase64,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -2692,6 +2685,7 @@ class _ProductCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ),
                       // Stock badge top-left
                       Positioned(
                         top: 6,
@@ -3425,11 +3419,6 @@ class _ProductListCard extends StatelessWidget {
     final outOfStock = product.stock <= 0 && !product.isService;
     final lowStock = !outOfStock && product.stock <= product.minStock;
     final gradient = NusaConfig.catGradientFor(product.category);
-    final hasImage =
-        product.imagePath != null &&
-        product.imagePath!.isNotEmpty &&
-        File(product.imagePath!).existsSync();
-
     return Padding(
       padding: EdgeInsets.only(bottom: 8),
       child: Material(
@@ -3459,30 +3448,31 @@ class _ProductListCard extends StatelessWidget {
                   child: SizedBox(
                     width: 56,
                     height: 56,
-                    child: hasImage
-                        ? Image.file(
-                            File(product.imagePath!),
-                            fit: BoxFit.cover,
-                            cacheWidth: 200,
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: gradient,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              _initials(product.name),
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
+                    child: NusaProductImage(
+                      imagePath: product.imagePath,
+                      imageBase64: product.imageBase64,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      placeholder: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: gradient,
                           ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _initials(product.name),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(width: 12),

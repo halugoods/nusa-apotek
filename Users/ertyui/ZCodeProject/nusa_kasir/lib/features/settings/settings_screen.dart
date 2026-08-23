@@ -3402,6 +3402,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (_) {}
   }
 
+  // v2.2.47: tutorial video link
+  void _openTutorial() {
+    _launch('https://youtube.com/shorts/ElvYpqUIRpE?si=qe1qmUQRfStCGBv1');
+  }
+
   // ═══════════════════════════════════════════════════════════
   //  BUILD
   // ═══════════════════════════════════════════════════════════
@@ -3474,6 +3479,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: 'Atur QRIS & rekening bank untuk transfer',
               isDark: isDark,
               onTap: () => context.push('/pengaturan_pembayaran'),
+            ),
+            const SizedBox(height: 12),
+            // Tutorial Video
+            _menuRow(
+              icon: Icons.play_circle_outlined,
+              iconColor: const Color(0xFFFF5722),
+              title: 'Tutorial',
+              subtitle: 'Video panduan penggunaan NUSA Kasir',
+              isDark: isDark,
+              onTap: () => _openTutorial(),
             ),
             const SizedBox(height: 12),
             // Pengaturan Struk (v2.2.45: naik setelah Pembayaran)

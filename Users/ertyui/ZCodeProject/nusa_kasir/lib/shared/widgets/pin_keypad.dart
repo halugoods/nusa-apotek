@@ -398,16 +398,12 @@ class PinKeypadState extends State<PinKeypad>
             ],
           ),
 
-          // ── Unified auth hint (below keypad) ───
-          // v2.2.45: SATU kartu hint ringkas untuk jalur alternatif
-          // (barcode ID + NFC tap) — bukan dua kartu terpisah. Chip NFC
-          // tappable (retry setelah timeout); chip barcode informatif
-          // (capture otomatis via HidBarcodeListener). Animasi "Dekatkan
-          // kartu NFC..." tetap di atas keypad saat scanning aktif.
+          // ── Auth hint (below keypad) — VERTIKAL (stacked) ──
+          // v2.2.47: hint vertikal biar estetik, horizontal terlalu sempit.
           if (widget.showNfc || widget.showBarcode) ...[
             SizedBox(height: 10),
             Container(
-              padding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
@@ -419,95 +415,77 @@ class PinKeypadState extends State<PinKeypad>
                     ? NusaConfig.darkSurface
                     : NusaConfig.surfaceColor,
               ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  // v2.2.47: hint barcode — full width
                   if (widget.showBarcode) ...[
-                    Expanded(
-                      child: AbsorbPointer(
-                        absorbing: _barcodeScanning,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            vertical: 8,
-                            horizontal: 8,
+                    AbsorbPointer(
+                      absorbing: _barcodeScanning,
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.symmetric(vertical: 9, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: NusaConfig.accentPurple.withValues(
+                            alpha: 0.08,
                           ),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.accentPurple.withValues(
-                              alpha: 0.06,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.qr_code_2,
+                                size: 17, color: NusaConfig.accentPurple),
+                            SizedBox(width: 8),
+                            Text(
+                              'Scan Barcode ID',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? NusaConfig.darkTextSecondary
+                                    : NusaConfig.textSecondary,
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.qr_code_2,
-                                size: 16,
-                                color: NusaConfig.accentPurple,
-                              ),
-                              SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Scan Barcode ID',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: isDark
-                                        ? NusaConfig.darkTextSecondary
-                                        : NusaConfig.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
                   ],
+                  if (widget.showBarcode && widget.showNfc)
+                    SizedBox(height: 6),
+                  // NFC hint — full width, tappable
                   if (widget.showNfc) ...[
-                    SizedBox(width: 6),
-                    Expanded(
-                      child: AbsorbPointer(
-                        absorbing: _nfcScanning,
-                        child: GestureDetector(
-                          onTap: _nfcScanning ? null : _onNfcTap,
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 8,
+                    AbsorbPointer(
+                      absorbing: _nfcScanning,
+                      child: GestureDetector(
+                        onTap: _nfcScanning ? null : _onNfcTap,
+                        child: Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.symmetric(vertical: 9, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: NusaConfig.accentPurple.withValues(
+                              alpha: 0.08,
                             ),
-                            decoration: BoxDecoration(
-                              color: NusaConfig.accentPurple.withValues(
-                                alpha: 0.06,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.nfc,
+                                  size: 17, color: NusaConfig.accentPurple),
+                              SizedBox(width: 8),
+                              Text(
+                                'Dekatkan kartu NFC',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? NusaConfig.darkTextSecondary
+                                      : NusaConfig.textSecondary,
+                                ),
                               ),
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.nfc,
-                                  size: 16,
-                                  color: NusaConfig.accentPurple,
-                                ),
-                                SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    'Dekatkan kartu NFC',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark
-                                          ? NusaConfig.darkTextSecondary
-                                          : NusaConfig.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                            ],
                           ),
                         ),
                       ),

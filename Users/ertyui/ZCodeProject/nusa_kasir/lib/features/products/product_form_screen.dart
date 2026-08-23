@@ -20,6 +20,7 @@ import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/unit_manager_sheet.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -116,6 +117,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   final _barcodeCtrl = TextEditingController();
   bool _isOnline = false;
   String? _imagePath;
+  /// Fallback base64 untuk render foto saat file lokal hilang.
+  String? _imageBase64;
   DateTime? _expiryDate;
   // B10 (v2.2.44): produk = LAYANAN (jasa). Tanpa wajib stok, kategori default
   // 'Layanan'. Barcode tetap boleh (keputusan user: jangan dihilangkan).
@@ -269,6 +272,7 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
           ? p.category
           : (_availableCategories.isNotEmpty ? _availableCategories.first : '');
       _imagePath = p.imagePath;
+      _imageBase64 = p.imageBase64;
       _isOnline = p.isOnline;
       _expiryDate = p.expiryDate;
       // B10: flag layanan produk (edit mode) — override preset awal.
@@ -1438,10 +1442,25 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: Image.file(
-                        File(_imagePath!),
+                      child: NusaProductImage(
+                        imagePath: _imagePath,
+                        imageBase64: _imageBase64,
                         fit: BoxFit.cover,
-                        cacheWidth: 600,
+                        placeholder: Container(
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? NusaConfig.darkSurface
+                                : Color(0xFFF3F4F6),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 48,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : Color(0xFF9CA3AF),
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
