@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:restart_app/restart_app.dart';
 import 'package:nusa_kasir/core/providers.dart';
+import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/receipt/receipt_config.dart';
@@ -348,7 +349,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final db = ref.read(databaseProvider);
         final repo = AttendanceRepository(db);
         final emps = await repo.getEmployees();
-        final owner = emps.cast<Employee?>().firstWhere((Employee? e) => e!.role == 'Owner' || e.role == 'Manager', orElse: () => null);
+        final owner = emps.cast<Employee?>().firstWhere((e) => e!.role == 'Owner' || e!.role == 'Manager', orElse: () => null);
         if (owner == null) return;
         final newPin = await _promptNewPinDialog();
         if (!mounted || newPin == null) return;
