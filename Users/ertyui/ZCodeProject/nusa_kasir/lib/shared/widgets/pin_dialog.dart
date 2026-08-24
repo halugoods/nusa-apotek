@@ -41,6 +41,8 @@ class PinDialog extends StatelessWidget {
   final Future<bool> Function()? onFingerprint;
   final Future<String?> Function()? onNfc;
   final Future<String?> Function(String code)? onBarcode;
+  /// v2.2.50 (A5): "Lupa PIN?" button — dipanggil dari 5 tempat.
+  final VoidCallback? onForgotPin;
 
   const PinDialog({
     super.key,
@@ -59,6 +61,7 @@ class PinDialog extends StatelessWidget {
     this.onFingerprint,
     this.onNfc,
     this.onBarcode,
+    this.onForgotPin,
   });
 
   /// Show the dialog (popup animation). Returns [PinResult] or null if cancelled.
@@ -80,6 +83,7 @@ class PinDialog extends StatelessWidget {
     Future<bool> Function()? onFingerprint,
     Future<String?> Function()? onNfc,
     Future<String?> Function(String code)? onBarcode,
+    VoidCallback? onForgotPin,
   }) async {
     // Resolve stored PIN length (4/6) -- never hardcode 6.
     var resolvedLength = pinLength ?? 6;
@@ -111,6 +115,7 @@ class PinDialog extends StatelessWidget {
         onFingerprint: onFingerprint,
         onNfc: onNfc,
         onBarcode: onBarcode,
+        onForgotPin: onForgotPin,
       ),
     );
   }
@@ -137,6 +142,7 @@ class _PinDialogContent extends StatefulWidget {
   final Future<bool> Function()? onFingerprint;
   final Future<String?> Function()? onNfc;
   final Future<String?> Function(String code)? onBarcode;
+  final VoidCallback? onForgotPin;
 
   const _PinDialogContent({
     this.title,
@@ -154,6 +160,7 @@ class _PinDialogContent extends StatefulWidget {
     this.onFingerprint,
     this.onNfc,
     this.onBarcode,
+    this.onForgotPin,
   });
 
   @override
@@ -341,6 +348,22 @@ class _PinDialogContentState extends State<_PinDialogContent> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ],
+
+                  // v2.2.50 (A5): "Lupa PIN?" — muncul di bawah keypad
+                  if (widget.onForgotPin != null) ...[
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: widget.onForgotPin,
+                      child: Text(
+                        'Lupa PIN?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: NusaConfig.activePrimary,
+                        ),
                       ),
                     ),
                   ],

@@ -7,14 +7,14 @@ import 'package:nusa_kasir/core/dev/variant_data.dart';
 abstract class NusaConfig {
   static const String appName = "NUSA";
   static const String brandName = "NUSA";
-		static String _productId = "nusa-laundry";
-		static String _appSubtitle = "Aplikasi Kasir untuk Usaha Laundry";
+		static String _productId = "nusa-fnb";
+		static String _appSubtitle = "Aplikasi Kasir untuk Rumah Makan & Kafe";
   static const String appVersion = "2.2.50";
   static const int appBuildNumber = 103;
-		static String _githubRepo = "halugoods/nusa-laundry";
+		static String _githubRepo = "halugoods/nusa-fnb";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
-		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Laundry";
-		static String _applicationId = "com.nusa.laundry";
+		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20F%26B";
+		static String _applicationId = "com.nusa.fnb";
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 
@@ -137,9 +137,9 @@ abstract class NusaConfig {
   // ── Brand colors (build-time defaults, patched by _build_all.py) ──
   // These remain const for broad compatibility with const constructors
   // across 50+ widget files. Theme switching uses overrides below.
-  static const Color primaryColor = const Color(0xFFEC4899);
-  static const Color primaryDark = const Color(0xFFDB2777);
-  static const Color primarySoft = const Color(0xFFFDF2F8);
+  static const Color primaryColor = const Color(0xFFDC2626);
+  static const Color primaryDark = const Color(0xFF991B1B);
+  static const Color primarySoft = const Color(0xFFFEF2F2);
   static const Color backgroundColor = const Color(0xFFF7F7F9);
 
   // ── Runtime theme override (set by user via Settings → Tema Warna) ──
@@ -315,25 +315,25 @@ abstract class NusaConfig {
   // ── Category maps (single source across all screens) ──
   // Build-time defaults (patched by _build_all.py)
 		static Map<String, String> _catEmoji = {
-		  'Cuci Kering': '👕',
-		  'Cuci Setrika': '✨',
-		  'Setrika Only': '🔥',
-		  'Express': '⚡',
+		  'Makanan': '🍜',
+		  'Minuman': '🥤',
+		  'Snack': '🍿',
+		  'Menu Utama': '🍽️',
 		  'Lainnya': '📦',
 		};
 		  static Map<String, List<Color>> _catGradients = {
-		    'Cuci Kering': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
-		    'Cuci Setrika': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
-		    'Setrika Only': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
-		    'Express': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
+		    'Makanan': [Color(0xFFFEE2E2), Color(0xFFFECACA), Color(0xFFFEF2F2)],
+		    'Minuman': [Color(0xFFDBEAFE), Color(0xFFBFDBFE), Color(0xFFEFF6FF)],
+		    'Snack': [Color(0xFFFEF3C7), Color(0xFFFDE68A), Color(0xFFFEF9C3)],
+		    'Menu Utama': [Color(0xFFDCFCE7), Color(0xFFBBF7D0), Color(0xFFF0FDF4)],
 		    'Lainnya': [Color(0xFFF3E8FF), Color(0xFFE9D5FF), Color(0xFFFAF5FF)],
 		  };
 		  static Map<String, IconData> _catIcons = {
 		    'Semua': Icons.grid_view_rounded,
-		    'Cuci Kering': Icons.local_laundry_service_rounded,
-		    'Cuci Setrika': Icons.auto_awesome_rounded,
-		    'Setrika Only': Icons.whatshot_rounded,
-		    'Express': Icons.bolt_rounded,
+		    'Makanan': Icons.restaurant_rounded,
+		    'Minuman': Icons.local_drink_rounded,
+		    'Snack': Icons.bakery_dining_rounded,
+		    'Menu Utama': Icons.dinner_dining_rounded,
 		    'Lainnya': Icons.category_rounded,
 		  };
 
@@ -404,9 +404,9 @@ abstract class NusaConfig {
 
   /// Build-time hints (patched by _build_all.py per variant).
   static Map<String, dynamic> variantHints = {
-    'productName': 'Cth: Cuci Kering Lipat',
-    'productCategory': 'Cth: Layanan',
-    'employeeName': 'Cth: Tika',
+    'productName': 'Cth: Nasi Goreng Spesial',
+    'productCategory': 'Cth: Makanan',
+    'employeeName': 'Cth: Koki Joko',
   };
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).

@@ -1482,6 +1482,90 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 ),
               ),
               SizedBox(height: 12),
+              // v2.2.50 (A5): "Lupa PIN?"
+              GestureDetector(
+                onTap: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('Lupa PIN?'),
+                      content: const Text(
+                        'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
+                        style: TextStyle(fontSize: 14, height: 1.5),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+                        FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: NusaConfig.activePrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Lanjut'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true || !mounted) return;
+                  final currentUid = await GoogleAuthService.getStoredUserId();
+                  final newUid = await GoogleAuthService().signIn();
+                  if (!mounted || newUid == null) return;
+                  if (currentUid != null && newUid != currentUid) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akun Google berbeda.')));
+                    return;
+                  }
+                  await GoogleAuthService.ensureStored(newUid);
+                  final db = ref.read(databaseProvider);
+                  final repo = AttendanceRepository(db);
+                  final emps = await repo.getEmployees();
+                  final owner = emps.cast<Employee?>().firstWhere((e) => e!.role == 'Owner' || e!.role == 'Manager', orElse: () => null);
+                  if (owner == null) return;
+                  // Show PIN prompt dialog
+                  final ctrl = TextEditingController();
+                  final newPin = await showDialog<String>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('PIN Baru'),
+                      content: TextField(
+                        controller: ctrl,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        obscureText: true,
+                        autofocus: true,
+                        decoration: const InputDecoration(hintText: 'Masukkan PIN baru (4–6 digit)', counterText: ''),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+                        FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: NusaConfig.activePrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          onPressed: () {
+                            final v = ctrl.text.trim();
+                            if (v.length < 4 || !RegExp(r'^\d+$').hasMatch(v)) return;
+                            Navigator.pop(ctx, v);
+                          },
+                          child: const Text('Simpan'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (!mounted || newPin == null) return;
+                  await repo.updateEmployee(id: owner.id, name: owner.name, pin: newPin, role: owner.role, status: owner.status);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
+                    setState(() => _pinError = null);
+                    _keypadKey.currentState?.clear();
+                  }
+                },
+                child: Text(
+                  'Lupa PIN?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: NusaConfig.activePrimary,
+                  ),
+                ),
+              ),
+              SizedBox(height: 8),
               TextButton(
                 onPressed: _startGoogleSignIn,
                 child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),

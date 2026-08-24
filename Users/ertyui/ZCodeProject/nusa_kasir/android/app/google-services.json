@@ -7,17 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:116430341615:android:13f6f4c2a2293d4b34e21a",
+        "mobilesdk_app_id": "1:116430341615:android:670e95df4b09363634e21a",
         "android_client_info": {
-          "package_name": "com.nusa.laundry"
+          "package_name": "com.nusa.fnb"
         }
       },
       "oauth_client": [
         {
-          "client_id": "116430341615-batjibjl65inq9lrms5cc1re9660000s.apps.googleusercontent.com",
+          "client_id": "116430341615-03563isut76eh5sme8gh5f9l1fmlm7gp.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.nusa.laundry",
+            "package_name": "com.nusa.fnb",
             "certificate_hash": "551bf088ef620c486e7f18ddddd7c8305b234838"
           }
         },

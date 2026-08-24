@@ -19,7 +19,7 @@ if (!isDevBuild) {
 }
 
 android {
-    namespace = if (isDevBuild) "com.nusa.dev" else "com.nusa.laundry"
+    namespace = if (isDevBuild) "com.nusa.dev" else "com.nusa.fnb"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -30,7 +30,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = if (isDevBuild) "com.nusa.dev" else "com.nusa.laundry"
+        applicationId = if (isDevBuild) "com.nusa.dev" else "com.nusa.fnb"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
