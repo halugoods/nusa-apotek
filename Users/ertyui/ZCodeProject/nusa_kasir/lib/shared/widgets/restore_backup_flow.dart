@@ -171,7 +171,7 @@ class RestoreBackupFlow {
     if (ok && context.mounted) {
       TopToast.success(context, 'Data berhasil dipulihkan');
       // Repair PIN length SEBELUM navigasi — fix PIN lama (4-digit) ke 6-digit
-      // supaya user bisa login setelah restore (v2.2.48).
+      // supaya user bisa login setelah restore.
       await _repairPinLengthAfterRestore();
       // Tidak perlu Restart.restartApp() lagi — DB sudah live. Cukup kembali
       // ke layar login supaya user masuk dengan PIN dari data hasil restore.
