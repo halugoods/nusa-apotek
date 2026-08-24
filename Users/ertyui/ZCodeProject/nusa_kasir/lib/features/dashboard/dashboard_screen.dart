@@ -2078,7 +2078,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                     final db = ref.read(databaseProvider);
                                     final repo = AttendanceRepository(db);
                                     final emps = await repo.getEmployees();
-                                    final o = emps.cast<Employee?>().firstWhere((e) => e!.role == 'Owner' || e!.role == 'Manager', orElse: () => null);
+                                    final o = emps.cast<Employee?>().firstWhere((Employee? e) => e!.role == 'Owner' || e.role == 'Manager', orElse: () => null);
                                     if (o == null) return;
                                     final newPin = await _promptNewPinDialog();
                                     if (!mounted || newPin == null) return;

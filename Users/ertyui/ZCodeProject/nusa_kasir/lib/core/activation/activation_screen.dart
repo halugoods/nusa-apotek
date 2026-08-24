@@ -1516,7 +1516,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   final db = ref.read(databaseProvider);
                   final repo = AttendanceRepository(db);
                   final emps = await repo.getEmployees();
-                  final owner = emps.cast<Employee?>().firstWhere((e) => e!.role == 'Owner' || e!.role == 'Manager', orElse: () => null);
+                  final owner = emps.cast<Employee?>().firstWhere((Employee? e) => e!.role == 'Owner' || e.role == 'Manager', orElse: () => null);
                   if (owner == null) return;
                   // Show PIN prompt dialog
                   final ctrl = TextEditingController();
