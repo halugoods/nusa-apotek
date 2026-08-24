@@ -219,9 +219,15 @@ class ActivationRepository {
   ) async {
     try {
       // Cek metadata variantKey dulu (kalau ada — backup versi baru).
+      // v2.2.48: Jika null (old backup pre-v2.2.42), TOLAK — tidak bisa
+      // diverifikasi aman karena sqlite inspection only checks image_path yang
+      // bisa NULL/empty → false positive (restore varian lain).
       final meta = await getBackupMetadata();
       final metaVariant = meta?['variantKey'] as String?;
-      if (metaVariant != null && metaVariant != NusaConfig.productId) {
+      if (metaVariant == null) {
+        return false; // old backup cannot be verified — reject
+      }
+      if (metaVariant != NusaConfig.productId) {
         return false;
       }
 

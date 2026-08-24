@@ -6,6 +6,9 @@ import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'package:nusa_kasir/data/repositories/settings_repository.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:drift/drift.dart' hide Column;
 
 /// Unified "restore from cloud backup" flow shared by LoginScreen and
 /// ActivationScreen.
@@ -167,6 +170,9 @@ class RestoreBackupFlow {
     final ok = await repo.restoreDirect();
     if (ok && context.mounted) {
       TopToast.success(context, 'Data berhasil dipulihkan');
+      // Repair PIN length SEBELUM navigasi — fix PIN lama (4-digit) ke 6-digit
+      // supaya user bisa login setelah restore (v2.2.48).
+      await _repairPinLengthAfterRestore();
       // Tidak perlu Restart.restartApp() lagi — DB sudah live. Cukup kembali
       // ke layar login supaya user masuk dengan PIN dari data hasil restore.
       if (context.canPop()) {
@@ -255,6 +261,37 @@ class RestoreBackupFlow {
         );
       },
     );
+  }
+
+  /// Repair PIN length after restore — force 6 digits + fix employee PINs.
+  /// Mirrors _repairPinLength() from main.dart but called AFTER restoreDirect()
+  /// so the repaired data comes from the restored DB.
+  static Future<void> _repairPinLengthAfterRestore() async {
+    try {
+      final db = AppDatabase();
+      final settingsRepo = SettingsRepository(db);
+      final pinLen = await settingsRepo.getPinLength();
+      if (pinLen != 6) {
+        await settingsRepo.setPinLength(6);
+      }
+      final attRepo = AttendanceRepository(db);
+      final emps = await attRepo.getEmployees();
+      for (final e in emps) {
+        if (e.pin.length == 6) continue;
+        String fixed;
+        if (e.pin.length > 6) {
+          fixed = e.pin.substring(0, 6);
+        } else {
+          fixed = e.pin.padRight(6, '0');
+        }
+        await (db.update(db.employees)..where((t) => t.id.equals(e.id))).write(
+          EmployeesCompanion(pin: Value(fixed)),
+        );
+      }
+      await db.close();
+    } catch (_) {
+      // Non-fatal
+    }
   }
 
   static Widget _metaRow(String label, String value, bool isDark) {
