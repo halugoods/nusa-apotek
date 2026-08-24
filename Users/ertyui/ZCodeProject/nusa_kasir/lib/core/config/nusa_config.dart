@@ -403,11 +403,10 @@ abstract class NusaConfig {
   static String hintsFor(String key) => (_devHints ?? variantHints)[key] ?? '';
 
   /// Build-time hints (patched by _build_all.py per variant).
-  static Map<String, String> variantHints = {
-    'productName': 'Cth: Indomie Goreng',
-    'productCategory': 'Cth: Sembako',
-    'barcode': 'contoh: 8991002101234',
-    'employeeName': 'Cth: Budi Santoso',
+  static Map<String, dynamic> variantHints = {
+    'productName': 'Cth: Cuci Kering Lipat',
+    'productCategory': 'Cth: Layanan',
+    'employeeName': 'Cth: Tika',
   };
 
   /// Menu tambahan spesifik domain (bersifat aditif ke dashboard grid).

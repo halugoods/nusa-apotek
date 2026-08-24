@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Tutorial — panduan cara pakai tiap menu, dibuka dari Pengaturan → Bantuan.
 ///
@@ -32,6 +33,7 @@ class TutorialScreen extends StatelessWidget {
           'Tambahkan produk baru dengan nama, harga jual, harga beli, dan '
           'minimal stok. Aktifkan "Catat supplier" untuk menghubungkan produk '
           'ke pemasok — memudahkan beli cepat saat stok menipis.',
+      videoUrl: 'https://youtube.com/shorts/ElvYpqUIRpE',
     ),
     TutorialItem(
       key: 'stok',
@@ -246,69 +248,79 @@ class TutorialScreen extends StatelessWidget {
               .map(
                 (item) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: NusaCard(
-                    Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: item.color.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
+                  child: GestureDetector(
+                    onTap: item.videoUrl != null
+                        ? () => launchUrl(
+                              Uri.parse(item.videoUrl!),
+                              mode: LaunchMode.externalApplication,
+                            )
+                        : null,
+                    child: NusaCard(
+                      Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: item.color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(item.icon, size: 22, color: item.color),
                             ),
-                            child: Icon(item.icon, size: 22, color: item.color),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.text,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    height: 1.5,
-                                    color: isDark
-                                        ? NusaConfig.darkTextSecondary
-                                        : NusaConfig.textSecondary,
-                                  ),
-                                ),
-                                if (item.videoUrl != null) ...[
-                                  const SizedBox(height: 8),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Row(
                                     children: [
-                                      Icon(
-                                        Icons.play_circle_fill,
-                                        size: 16,
-                                        color: NusaConfig.activePrimary,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Tonton video panduan',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: NusaConfig.activePrimary,
+                                      Expanded(
+                                        child: Text(
+                                          item.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15,
+                                          ),
                                         ),
                                       ),
+                                      if (item.videoUrl != null)
+                                        Icon(
+                                          Icons.play_circle_fill,
+                                          size: 20,
+                                          color: NusaConfig.activePrimary,
+                                        ),
                                     ],
                                   ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.text,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      height: 1.5,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                  if (item.videoUrl != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Tonton video panduan',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
