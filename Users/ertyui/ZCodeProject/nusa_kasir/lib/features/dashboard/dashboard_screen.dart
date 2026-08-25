@@ -1890,7 +1890,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 alignment: Alignment.center,
                                 child: Text(
                                   e.name[0].toUpperCase(),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     color: NusaConfig.activePrimary,
                                   ),
