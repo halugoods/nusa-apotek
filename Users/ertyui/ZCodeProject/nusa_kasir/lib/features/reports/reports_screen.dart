@@ -2607,7 +2607,7 @@ class _TxCard extends StatelessWidget {
                     style: TextStyle(fontSize: 13, color: textSec),
                   ),
                   // v2.2.54: nama karyawan/kasir yang melakukan transaksi.
-                  if (tx.cashierName.isNotEmpty)
+                  if ((tx.cashierName ?? '').isNotEmpty)
                     Padding(
                       padding: EdgeInsets.only(top: 2),
                       child: Row(
@@ -2619,7 +2619,7 @@ class _TxCard extends StatelessWidget {
                           ),
                           SizedBox(width: 3),
                           Text(
-                            tx.cashierName,
+                            tx.cashierName ?? '',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,

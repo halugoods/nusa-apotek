@@ -97,7 +97,7 @@ class CallService {
     }
     _sending = true;
     try {
-      await _channel!.sendBroadcastMessage(event: 'ring', message: {
+      await _channel!.sendBroadcastMessage(event: 'ring', payload: {
         'employeeId': employeeId,
         'employeeName': employeeName,
         'by': by,

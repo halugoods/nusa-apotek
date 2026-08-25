@@ -1659,7 +1659,7 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                   ),
                                 ),
                                 // v2.2.54: nama karyawan yang melakukan trx.
-                                if (tx.cashierName.isNotEmpty) ...[
+                                if ((tx.cashierName ?? '').isNotEmpty) ...[
                                   SizedBox(width: 10),
                                   Icon(
                                     Icons.person_rounded,
@@ -1671,7 +1671,7 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                   SizedBox(width: 3),
                                   Flexible(
                                     child: Text(
-                                      tx.cashierName,
+                                      tx.cashierName ?? '',
                                       overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,

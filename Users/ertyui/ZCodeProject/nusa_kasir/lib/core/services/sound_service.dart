@@ -56,7 +56,7 @@ class SoundService {
     for (final entry in _files.entries) {
       try {
         _pools[entry.key] = await AudioPool.create(
-          assetSource: AssetSource(entry.value),
+          source: AssetSource(entry.value),
           maxPlayers: 2,
         );
       } catch (_) {
