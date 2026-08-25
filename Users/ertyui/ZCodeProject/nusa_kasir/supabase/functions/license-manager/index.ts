@@ -9,6 +9,7 @@
 //   action: 'detail'     — get single license with its activations
 //   action: 'revoke'     — revoke a license key
 //   action: 'delete'     — delete an unused license
+//   action: 'update'     — admin repair: set status/uid/owner/expires_at/tier
 //   action: 'stats'      — summary stats
 //
 // Env vars required for keygen:
@@ -145,6 +146,8 @@ serve(async (req: Request) => {
         return handleRevoke(supabase, params);
       case "delete":
         return handleDelete(supabase, params);
+      case "update":
+        return handleUpdate(supabase, params);
       case "stats":
         return handleStats(supabase);
       default:
@@ -528,6 +531,53 @@ async function handleRevoke(supabase: any, params: any) {
   if (error) return json({ error: error.message }, 500);
 
   return json({ ok: true, message: "License cancelled" });
+}
+
+// ─── Update license fields (admin repair) ────────────────────────────
+// Fix v2.2.53: lisensi yang terpakai di app tapi tidak ter-link (uid/owner
+// kosong — aktivasi gagal diam-diam sebelum fix register_activation) bisa
+// diperbaiki manual dari dashboard: set google_user_id / owner_email /
+// status / expires_at / tier. Semua perubahan masuk license_events (audit).
+
+async function handleUpdate(supabase: any, params: any) {
+  const { license_id, status, google_user_id, owner_email, expires_at, tier } =
+    params;
+  if (!license_id) return json({ error: "license_id required" }, 400);
+
+  const updates: Record<string, unknown> = {};
+  if (status !== undefined) updates.status = String(status);
+  if (google_user_id !== undefined)
+    updates.google_user_id = google_user_id === null ? null : String(google_user_id);
+  if (owner_email !== undefined)
+    updates.owner_email = owner_email === null ? null : String(owner_email);
+  if (expires_at !== undefined) updates.expires_at = expires_at; // null clears
+  if (tier !== undefined) {
+    if (!["trial", "1month", "lifetime"].includes(String(tier))) {
+      return json({ error: "Invalid tier (trial | 1month | lifetime)" }, 400);
+    }
+    updates.tier = String(tier);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return json({ error: "Nothing to update" }, 400);
+  }
+
+  const { data, error } = await supabase
+    .from("licenses")
+    .update(updates)
+    .eq("id", license_id)
+    .select()
+    .single();
+
+  if (error) return json({ error: error.message }, 500);
+
+  await supabase.from("license_events").insert({
+    license_id,
+    event: "admin_update",
+    detail: JSON.stringify(updates),
+  });
+
+  return json({ ok: true, license: data });
 }
 
 // ─── Delete an unused license ────────────────────────────────────────

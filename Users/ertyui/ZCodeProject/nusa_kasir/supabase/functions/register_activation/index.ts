@@ -258,6 +258,10 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4. Link Google ID to license + set status to Active
+    // v2.2.53 fix: update ini dulu diam-diam gagal (tanpa error check) —
+    // lisensi terpakai di app tapi tetap Generated + uid/owner kosong, jadi
+    // revoke tidak pernah bisa memblokir device manapun (server tidak tahu
+    // pemiliknya). Sekarang kegagalan update = db_error eksplisit.
     const updates: Record<string, string> = { status: "Active" };
     if (!lic.google_user_id) {
       updates.google_user_id = verifiedGoogleId;
@@ -265,10 +269,13 @@ Deno.serve(async (req: Request) => {
     if (!lic.owner_email && ownerEmail) {
       updates.owner_email = ownerEmail;
     }
-    await supabase
+    const { error: linkErr } = await supabase
       .from("licenses")
       .update(updates)
       .eq("id", lic.id);
+    if (linkErr) {
+      return json({ error: "db_error", message: linkErr.message }, 500);
+    }
 
     // 5. Insert activation record
     const { error: insertErr } = await supabase.from("activations").insert({
@@ -278,6 +285,16 @@ Deno.serve(async (req: Request) => {
     });
 
     if (insertErr && insertErr.code === "23505") {
+      // Sudah pernah aktivasi dari device yang sama — pastikan ownership
+      // tetap terisi (row lama bisa dibuat sebelum fix linking).
+      if (!lic.google_user_id || !lic.owner_email) {
+        const backfill: Record<string, string> = {};
+        if (!lic.google_user_id) backfill.google_user_id = verifiedGoogleId;
+        if (!lic.owner_email && ownerEmail) backfill.owner_email = ownerEmail;
+        if (Object.keys(backfill).length > 0) {
+          await supabase.from("licenses").update(backfill).eq("id", lic.id);
+        }
+      }
       return json(
         {
           success: true,
