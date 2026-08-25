@@ -219,17 +219,17 @@ class ActivationRepository {
   ) async {
     try {
       // Cek metadata variantKey dulu (kalau ada — backup versi baru).
-      // v2.2.48: Jika null (old backup pre-v2.2.42), TOLAK — tidak bisa
-      // diverifikasi aman karena sqlite inspection only checks image_path yang
-      // bisa NULL/empty → false positive (restore varian lain).
+      // v2.2.51: Jika metadata null (upload gagal / backup lama), JANGAN
+      // langsung reject — fallback ke sqlite inspection. Backup valid tapi
+      // tanpa metadata masih bisa diverifikasi lewat package name di image_path.
+      // Kalau metadata ADA tapi variantKey beda → tetap reject.
       final meta = await getBackupMetadata();
       final metaVariant = meta?['variantKey'] as String?;
-      if (metaVariant == null) {
-        return false; // old backup cannot be verified — reject
+      if (metaVariant != null && metaVariant != NusaConfig.productId) {
+        return false; // metadata says wrong variant → reject
       }
-      if (metaVariant != NusaConfig.productId) {
-        return false;
-      }
+      // metaVariant == null → metadata missing, fall through to sqlite check
+      // metaVariant == NusaConfig.productId → metadata matches, continue
 
       // Unpack arsip → sqlite (atau raw sqlite kalau format lama).
       final files = BackupCrypto.unpackFiles(Uint8List.fromList(archive));
@@ -480,8 +480,11 @@ class ActivationRepository {
           contentType: 'application/json',
         ),
       );
-    } catch (_) {
-      // Non-critical — the encrypted backup already succeeded
+    } catch (e) {
+      // v2.2.51: log error supaya ketahuan kenapa metadata gagal upload.
+      // Backup sudah berhasil — metadata non-critical tapi penting untuk
+      // verifikasi varian saat restore.
+      debugPrint('[Backup] _uploadMetadata FAILED: $e');
     }
   }
 
