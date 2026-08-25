@@ -3487,9 +3487,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (_) {}
   }
 
-  // v2.2.47: tutorial video link
+  // v2.2.53: buka daftar tutorial dari cloud (tabel `tutorials`, via dashboard).
   void _openTutorial() {
-    _launch('https://youtube.com/shorts/ElvYpqUIRpE?si=qe1qmUQRfStCGBv1');
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TutorialScreen()),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -3930,109 +3932,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             //  BANTUAN
             // ════════════════════════════════════════
             _sectionHeader('BANTUAN', isDark),
-            // v2.2.47 revisi: YouTube video thumbnail preview, tap → buka YouTube
-            GestureDetector(
+            // v2.2.53: Tutorial kini membuka daftar panduan dari cloud (tabel
+            // `tutorials`) — dikelola via nusa-online /dashboard → tab Tutorial.
+            _menuRow(
+              icon: Icons.school_outlined,
+              iconColor: NusaConfig.activePrimary,
+              title: 'Tutorial',
+              subtitle: 'Panduan video cara pakai tiap menu',
+              isDark: isDark,
               onTap: _openTutorial,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: isDark ? NusaConfig.darkSurface : Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // YouTube thumbnail
-                    Stack(
-                      children: [
-                        Image.network(
-                          'https://img.youtube.com/vi/ElvYpqUIRpE/hqdefault.jpg',
-                          height: 180,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: 180,
-                            color: Colors.grey[300],
-                            child: Icon(Icons.play_circle_outline,
-                                size: 48, color: Colors.grey[600]),
-                          ),
-                        ),
-                        // Dark overlay + play button
-                        Positioned.fill(
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            child: Center(
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
-                                child: Icon(Icons.play_arrow_rounded,
-                                    size: 36, color: Color(0xFFE63946)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Title bar
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      color: isDark
-                          ? NusaConfig.darkSurface
-                          : Colors.white,
-                      child: Row(
-                        children: [
-                          Icon(Icons.play_circle_fill,
-                              size: 20, color: Color(0xFFE63946)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Tutorial NUSA Kasir',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark
-                                        ? NusaConfig.darkTextPrimary
-                                        : NusaConfig.textPrimary,
-                                  ),
-                                ),
-                                Text(
-                                  'Tap untuk menonton di YouTube',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isDark
-                                        ? NusaConfig.darkTextSecondary
-                                        : NusaConfig.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.open_in_new,
-                              size: 18,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
             const SizedBox(height: 12),
             _menuRow(

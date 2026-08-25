@@ -220,7 +220,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
           'Tambahkan produk baru dengan nama, harga jual, harga beli, dan '
           'minimal stok. Aktifkan "Catat supplier" untuk menghubungkan produk '
           'ke pemasok — memudahkan beli cepat saat stok menipis.',
-      launchUrl: 'https://youtube.com/shorts/ElvYpqUIRpE',
     ),
     TutorialItem(
       key: 'stok',

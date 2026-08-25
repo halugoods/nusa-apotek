@@ -129,6 +129,19 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     }
   }
 
+  /// v2.2.53: Ganti akun Google. google_sign_in menyimpan sesi akun lama di OS,
+  /// jadi signIn() biasa hanya mengembalikan akun yang sama tanpa memunculkan
+  /// pemilih akun. Untuk beneran ganti: disconnect dulu, lalu sign in ulang.
+  Future<void> _switchGoogleAccount() async {
+    if (_googleLoading) return;
+    try {
+      await GoogleAuthService().signOut();
+    } catch (_) {
+      // disconnect bisa gagal kalau belum pernah login — abaikan, lanjut login.
+    }
+    await _startGoogleSignIn();
+  }
+
   Future<void> _openLandingPage() async {
     final uri = Uri.parse(NusaConfig.landingPageUrl);
     if (await canLaunchUrl(uri)) {
@@ -1101,7 +1114,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
-                          onPressed: _startGoogleSignIn,
+                          onPressed: _switchGoogleAccount,
                           style: OutlinedButton.styleFrom(
                             foregroundColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
                             side: BorderSide(color: Color(0xFFEDEDEF)),
