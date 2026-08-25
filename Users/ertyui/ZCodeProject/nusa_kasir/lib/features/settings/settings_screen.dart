@@ -3908,8 +3908,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ? 'Update Tersedia!'
                   : 'Riwayat Update',
               subtitle: _updateInfo?.hasUpdate == true
-                  ? 'Versi ${_updateInfo!.latestVersion} (build ${_updateInfo!.latestBuildNumber})'
-                  : 'Daftar versi & perubahan terbaru',
+                  ? 'Terpasang v${NusaConfig.appVersion} · Tersedia v${_updateInfo!.latestVersion}'
+                  : 'Terpasang v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber} (terbaru)',
               isDark: isDark,
               onTap: _updateInfo?.hasUpdate == true
                   ? _showUpdateDialog

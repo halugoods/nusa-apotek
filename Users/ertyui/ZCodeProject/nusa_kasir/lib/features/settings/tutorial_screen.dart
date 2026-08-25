@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -6,14 +7,200 @@ import 'package:url_launcher/url_launcher.dart';
 
 /// Tutorial — panduan cara pakai tiap menu, dibuka dari Pengaturan → Bantuan.
 ///
-/// Struktur data sudah siap untuk video YouTube nanti: tiap [TutorialItem]
-/// punya [videoUrl] (opsional) yang bisa diisi dan ditambahkan tombol tonton.
-class TutorialScreen extends StatelessWidget {
+/// v2.2.52: konten diambil DARI CLOUD (tabel `tutorials` di Supabase, dikelola
+/// via nusa-online /dashboard → tab Tutorial) dan difilter sesuai varian app ini
+/// (NusaConfig.productId). Kalau gagal/offline/DB belum ada, fallback ke daftar
+/// statis bawaan (_staticItems) supaya menu Bantuan tetap berguna.
+class TutorialScreen extends StatefulWidget {
   const TutorialScreen({super.key});
 
-  /// Satu kartu panduan per fitur/menu.
-  /// [key] dipakai untuk filter varian (menu tersembunyi tidak ditampilkan).
-  static const List<TutorialItem> _items = [
+  @override
+  State<TutorialScreen> createState() => _TutorialScreenState();
+}
+
+class _TutorialScreenState extends State<TutorialScreen> {
+  /// Tutorial dari cloud. null = belum selesai memuat / tidak tersedia.
+  List<TutorialItem>? _cloudItems;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCloud();
+  }
+
+  Future<void> _fetchCloud() async {
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('tutorials')
+          .select()
+          .contains('variants', [NusaConfig.productId])
+          .order('sort_order', ascending: true)
+          .order('created_at', ascending: false);
+      if (!mounted) return;
+      setState(() {
+        _cloudItems = (rows as List)
+            .map((r) => TutorialItem.fromRow(r as Map<String, dynamic>))
+            .toList();
+      });
+    } catch (_) {
+      // Supabase tidak bisa dibaca (offline / tabel belum dibuat) → fallback
+      // ke daftar statis bawaan. Gagal diam-diam, jangan ganggu user.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hidden = NusaConfig.hiddenMenus;
+
+    // Prioritas: cloud kalau tersedia & ada isinya; kalau tidak, statis.
+    final source = (_cloudItems != null && _cloudItems!.isNotEmpty)
+        ? _cloudItems!
+        : _staticItems;
+
+    final items = source
+        .where((item) => !hidden.contains(item.key))
+        .toList();
+
+    return ScreenScaffold(
+      'Tutorial',
+      RefreshIndicator(
+        onRefresh: _fetchCloud,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                'Panduan singkat cara pakai menu. Ketuk kartu untuk '
+                'membaca atau menonton video panduannya.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+            ),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: GestureDetector(
+                  onTap: item.openable
+                      ? () => launchUrl(
+                            Uri.parse(item.launchUrl!),
+                            mode: LaunchMode.externalApplication,
+                          )
+                      : null,
+                  child: NusaCard(
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (item.thumbnailUrl != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: item.thumbnailUrl!.isNotEmpty
+                                  ? Image.network(
+                                      item.thumbnailUrl!,
+                                      width: 64,
+                                      height: 64,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) =>
+                                          _thumbFallback(item),
+                                    )
+                                  : _thumbFallback(item),
+                            )
+                          else
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: item.color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child:
+                                  Icon(item.icon, size: 22, color: item.color),
+                            ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ),
+                                    if (item.openable)
+                                      Icon(
+                                        Icons.play_circle_fill,
+                                        size: 20,
+                                        color: NusaConfig.activePrimary,
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.text,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.5,
+                                    color: isDark
+                                        ? NusaConfig.darkTextSecondary
+                                        : NusaConfig.textSecondary,
+                                  ),
+                                ),
+                                if (item.openable) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Tonton video panduan',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: NusaConfig.activePrimary,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _thumbFallback(TutorialItem item) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: item.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(item.icon, size: 24, color: item.color),
+    );
+  }
+
+  static const List<TutorialItem> _staticItems = [
     TutorialItem(
       key: 'kasir',
       icon: Icons.point_of_sale_rounded,
@@ -33,7 +220,7 @@ class TutorialScreen extends StatelessWidget {
           'Tambahkan produk baru dengan nama, harga jual, harga beli, dan '
           'minimal stok. Aktifkan "Catat supplier" untuk menghubungkan produk '
           'ke pemasok — memudahkan beli cepat saat stok menipis.',
-      videoUrl: 'https://youtube.com/shorts/ElvYpqUIRpE',
+      launchUrl: 'https://youtube.com/shorts/ElvYpqUIRpE',
     ),
     TutorialItem(
       key: 'stok',
@@ -204,9 +391,7 @@ class TutorialScreen extends StatelessWidget {
           'Untuk percetakan/fotocopy: terima order cetak, pilih jenis layanan '
           '(bisa custom), isi jumlah lembar, copy, ukuran kertas, dimensi '
           '(P×L cm) dan estimasi selesai. Update status pengerjaan: Baru → '
-          'Diproses → Selesai → Diambil. Statistik hari ini tampil di '
-          'dashboard, dan order otomatis tercatat saat kasir checkout produk '
-          'percetakan.',
+          'Diproses → Selesai → Diambil.',
     ),
     TutorialItem(
       key: 'ai_chat',
@@ -218,128 +403,17 @@ class TutorialScreen extends StatelessWidget {
           'langsung dari data toko, lengkap dengan grafik.',
     ),
   ];
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hidden = NusaConfig.hiddenMenus;
-
-    return ScreenScaffold(
-      'Tutorial',
-      ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Text(
-              'Panduan singkat cara pakai tiap menu. Ketuk kartu untuk '
-              'membaca cara kerjanya.',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.5,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-          ),
-          ..._items
-              .where((item) => !hidden.contains(item.key))
-              .map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: GestureDetector(
-                    onTap: item.videoUrl != null
-                        ? () => launchUrl(
-                              Uri.parse(item.videoUrl!),
-                              mode: LaunchMode.externalApplication,
-                            )
-                        : null,
-                    child: NusaCard(
-                      Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: item.color.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(item.icon, size: 22, color: item.color),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          item.title,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      if (item.videoUrl != null)
-                                        Icon(
-                                          Icons.play_circle_fill,
-                                          size: 20,
-                                          color: NusaConfig.activePrimary,
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.text,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      height: 1.5,
-                                      color: isDark
-                                          ? NusaConfig.darkTextSecondary
-                                          : NusaConfig.textSecondary,
-                                    ),
-                                  ),
-                                  if (item.videoUrl != null) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Tonton video panduan',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: NusaConfig.activePrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-        ],
-      ),
-    );
-  }
 }
 
-/// Data satu kartu tutorial.
+/// Data satu kartu tutorial — bisa dari statis atau cloud (tabel tutorials).
 class TutorialItem {
   final String key;
   final IconData icon;
   final Color color;
   final String title;
   final String text;
-  final String? videoUrl; // opsional — siap untuk video YouTube nanti
+  final String? launchUrl;      // link yang dibuka saat kartu diketuk (video)
+  final String? thumbnailUrl;   // gambar preview (opsional, dari cloud)
 
   const TutorialItem({
     required this.key,
@@ -347,6 +421,22 @@ class TutorialItem {
     required this.color,
     required this.title,
     required this.text,
-    this.videoUrl,
+    this.launchUrl,
+    this.thumbnailUrl,
   });
+
+  bool get openable => launchUrl != null && launchUrl!.isNotEmpty;
+
+  /// Bangun item dari baris tabel `tutorials` (supabase).
+  factory TutorialItem.fromRow(Map<String, dynamic> r) {
+    return TutorialItem(
+      key: (r['id'] as String?) ?? '',
+      icon: Icons.play_circle_rounded,
+      color: NusaConfig.primaryColor,
+      title: (r['title'] as String?) ?? 'Tutorial',
+      text: (r['description'] as String?) ?? 'Tonton video panduan singkat.',
+      launchUrl: r['yt_url'] as String?,
+      thumbnailUrl: r['thumbnail_url'] as String?,
+    );
+  }
 }

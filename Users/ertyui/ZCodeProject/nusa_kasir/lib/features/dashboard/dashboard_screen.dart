@@ -1052,8 +1052,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     }
 
+    // Refresh current user's card photo from the resolved employee list so a
+    // photo change (or cloud restore) shows immediately on pull-to-refresh,
+    // instead of keeping the stale path captured at initState.
+    String? resolvedCurPhoto;
+    if (session != null) {
+      for (final e in resolvedEmps) {
+        if (e.id == session.employeeId) {
+          resolvedCurPhoto = e.photoPath;
+          break;
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
+        if (session != null) _currentPhotoPath = resolvedCurPhoto;
         _storeName = name.isNotEmpty ? name : 'NUSA';
         _branches = branches;
         // Only auto-set first branch if session didn't already scope
