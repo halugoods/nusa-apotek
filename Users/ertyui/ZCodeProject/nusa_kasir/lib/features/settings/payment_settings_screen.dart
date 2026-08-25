@@ -12,6 +12,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 
 class PaymentSettingsScreen extends ConsumerStatefulWidget {
   PaymentSettingsScreen({super.key});
@@ -158,20 +159,9 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
                 Text('Pilih Bank', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               ]),
               SizedBox(height: 12),
-              TextField(
+              NusaSearchBar(
+                hint: 'Cari bank...',
                 onChanged: (v) => setSt(() => filter = v),
-                decoration: InputDecoration(
-                  hintText: 'Cari bank...',
-                  prefixIcon: Icon(Icons.search, size: 20,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                  filled: true,
-                  fillColor: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
               ),
               SizedBox(height: 8),
               Flexible(

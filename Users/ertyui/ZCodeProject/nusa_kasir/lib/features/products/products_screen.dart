@@ -16,6 +16,7 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/unit_manager_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -712,7 +713,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => _openProductForm(productId: _products[i].id),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
-        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -735,7 +735,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => _openProductForm(productId: _products[i].id),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
-        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -759,7 +758,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onEdit: () => _openProductForm(productId: _products[i].id),
         onDelete: () => _deleteProduct(_products[i]),
         onTogglePriceType: () => _togglePriceType(_products[i]),
-        onToggleProductType: () => _toggleProductType(_products[i]),
       ),
     );
   }
@@ -774,13 +772,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _load();
   }
 
-  Future<void> _toggleProductType(Product product) async {
-    final current = product.productType;
-    final newType = (current == 'jasa' || current == 'Jasa') ? null : 'jasa';
-    await ref.read(productRepoProvider).setProductType(product.id, newType);
-    TopToast.success(context, newType == 'jasa' ? 'Jasa' : 'Produk');
-    _load();
-  }
+// v2.2.54: toggle jasa<->produk di kartu DIHAPUS — penandaan layanan
+  // sekarang lewat flag isService di form produk (tab Layanan).
 }
 
 // ── Segment Tab ──
@@ -1205,11 +1198,23 @@ class _LayananView extends ConsumerStatefulWidget {
 class _LayananViewState extends ConsumerState<_LayananView> {
   List<Product> _services = [];
   bool _loading = true;
+  // v2.2.54: pendekatan SAMA dengan tab Produk — pencarian, filter kategori,
+  // dan toggle tampilan (list/grid), bukan sekadar list polos.
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _kategori = 'Semua';
+  int _gridColumns = 1;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -1222,6 +1227,23 @@ class _LayananViewState extends ConsumerState<_LayananView> {
         _loading = false;
       });
     }
+  }
+
+  List<String> get _kategoriList {
+    final cats = _services.map((p) => p.category).toSet().toList()..sort();
+    return ['Semua', ...cats];
+  }
+
+  List<Product> get _filtered {
+    var list = _services;
+    if (_kategori != 'Semua') {
+      list = list.where((p) => p.category == _kategori).toList();
+    }
+    if (_query.isNotEmpty) {
+      final q = _query.toLowerCase();
+      list = list.where((p) => p.name.toLowerCase().contains(q)).toList();
+    }
+    return list;
   }
 
   Future<void> _editService(Product p) async {
@@ -1237,7 +1259,9 @@ class _LayananViewState extends ConsumerState<_LayananView> {
           borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
         ),
         title: const Text('Hapus Layanan'),
-        content: Text('Hapus layanan "${p.name}"?\nTindakan ini tidak dapat dibatalkan.'),
+        content: Text(
+          'Hapus layanan "${p.name}"?\nTindakan ini tidak dapat dibatalkan.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1245,9 +1269,7 @@ class _LayananViewState extends ConsumerState<_LayananView> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: NusaConfig.error,
-            ),
+            style: TextButton.styleFrom(foregroundColor: NusaConfig.error),
             child: const Text('Hapus'),
           ),
         ],
@@ -1265,123 +1287,291 @@ class _LayananViewState extends ConsumerState<_LayananView> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_services.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.handyman_outlined,
-              size: 48,
-              color: isDark
-                  ? NusaConfig.darkTextTertiary
-                  : NusaConfig.textTertiary,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Belum ada layanan',
-              style: TextStyle(
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Tekan Tambah Layanan untuk mulai',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
+
+    final filtered = _filtered;
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        // ── Pencarian (widget standar, sama dgn menu Kasir) ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: NusaSearchBar(
+            controller: _searchCtrl,
+            hint: 'Cari layanan…',
+            onChanged: (v) => setState(() => _query = v),
+          ),
         ),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.separated(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 80),
-        itemCount: _services.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (_, i) {
-          final p = _services[i];
-          return GestureDetector(
-            onTap: () => _editService(p),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-                border: Border.all(
+        // ── Filter kategori ──
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            scrollDirection: Axis.horizontal,
+            itemCount: _kategoriList.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              final k = _kategoriList[i];
+              final active = k == _kategori;
+              return GestureDetector(
+                onTap: () => setState(() => _kategori = k),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? NusaConfig.activePrimary
+                        : (isDark
+                              ? NusaConfig.darkSurface2
+                              : NusaConfig.surfaceColor),
+                    borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
+                    border: active
+                        ? null
+                        : Border.all(
+                            color: isDark
+                                ? NusaConfig.darkBorder
+                                : NusaConfig.dividerColor,
+                          ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    k,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: active
+                          ? Colors.white
+                          : (isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // ── Jumlah + toggle tampilan ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                '${filtered.length} layanan',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                   color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.dividerColor,
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
                 ),
               ),
-              child: Row(
+              const Spacer(),
+              _layananGridBtn(1, Icons.view_list_rounded, isDark),
+              const SizedBox(width: 6),
+              _layananGridBtn(2, Icons.grid_view_rounded, isDark),
+            ],
+          ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.handyman_outlined,
+                        size: 48,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _services.isEmpty
+                            ? 'Belum ada layanan'
+                            : 'Tidak ada yang cocok',
+                        style: TextStyle(
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _services.isEmpty
+                            ? 'Tekan Tambah Layanan untuk mulai'
+                            : 'Coba kata kunci atau kategori lain',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: _gridColumns == 1
+                      ? ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, i) =>
+                              _layananCard(filtered[i], isDark),
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 0.95,
+                          ),
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) =>
+                              _layananCard(filtered[i], isDark, compact: true),
+                        ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _layananGridBtn(int cols, IconData icon, bool isDark) {
+    final active = _gridColumns == cols;
+    return GestureDetector(
+      onTap: () => setState(() => _gridColumns = cols),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: active
+              ? NusaConfig.activePrimary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(NusaConfig.radiusSM),
+          border: Border.all(
+            color: active
+                ? NusaConfig.activePrimary
+                : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 17,
+          color: active
+              ? NusaConfig.activePrimary
+              : (isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary),
+        ),
+      ),
+    );
+  }
+
+  /// Kartu layanan — mode list (horizontal) atau grid (compact vertikal).
+  Widget _layananCard(Product p, bool isDark, {bool compact = false}) {
+    final nameStyle = TextStyle(
+      fontSize: compact ? 13 : 14,
+      fontWeight: FontWeight.w700,
+      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+    );
+    final subStyle = TextStyle(
+      fontSize: 12,
+      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+    );
+    final price = p.sellPrice > 0 ? formatRupiah(p.sellPrice) : 'Gratis';
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: compact ? 34 : 40,
+          height: compact ? 34 : 40,
+          decoration: BoxDecoration(
+            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.handyman_outlined,
+            size: compact ? 18 : 20,
+            color: NusaConfig.activePrimary,
+          ),
+        ),
+        SizedBox(height: compact ? 8 : 0),
+        Flexible(
+          child: Text(
+            p.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: nameStyle,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          compact ? price : '${p.category} · $price',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: subStyle,
+        ),
+      ],
+    );
+
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () => _editService(p),
+          child: Icon(
+            Icons.edit_outlined,
+            size: 18,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: () => _deleteService(p),
+          child: Icon(Icons.delete_outline, size: 18, color: NusaConfig.error),
+        ),
+      ],
+    );
+
+    return GestureDetector(
+      onTap: () => _editService(p),
+      child: Container(
+        padding: EdgeInsets.all(compact ? 12 : 14),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+          ),
+        ),
+        child: compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.handyman_outlined,
-                      size: 20,
-                      color: NusaConfig.activePrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          p.name,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${p.category} · ${p.sellPrice > 0 ? formatRupiah(p.sellPrice) : 'Gratis'}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => _deleteService(p),
-                    child: Icon(
-                      Icons.delete_outline,
-                      size: 20,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
-                    ),
-                  ),
+                  body,
+                  const Spacer(),
+                  Align(alignment: Alignment.centerRight, child: actions),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: body),
+                  actions,
                 ],
               ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -2354,13 +2544,11 @@ class _ProductGridCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTogglePriceType;
-  final VoidCallback? onToggleProductType;
   _ProductGridCard({
     required this.product,
     required this.onEdit,
     required this.onDelete,
     this.onTogglePriceType,
-    this.onToggleProductType,
   });
 
   String _initials(String name) {
@@ -2552,25 +2740,6 @@ class _ProductGridCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (NusaConfig.isSalonVariant &&
-                      onToggleProductType != null) ...[
-                    _ActionButton(
-                      icon:
-                          (product.productType == 'jasa' ||
-                              product.productType == 'Jasa')
-                          ? Icons.design_services_rounded
-                          : Icons.inventory_2_rounded,
-                      color:
-                          (product.productType == 'jasa' ||
-                              product.productType == 'Jasa')
-                          ? NusaConfig.accentPurple
-                          : (isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary),
-                      onTap: onToggleProductType!,
-                    ),
-                    SizedBox(width: 6),
-                  ],
                   if (NusaConfig.isLaundryVariant &&
                       onTogglePriceType != null) ...[
                     _ActionButton(
@@ -2616,13 +2785,11 @@ class _ProductListCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTogglePriceType;
-  final VoidCallback? onToggleProductType;
   _ProductListCard({
     required this.product,
     required this.onEdit,
     required this.onDelete,
     this.onTogglePriceType,
-    this.onToggleProductType,
   });
 
   String _initials(String name) {
@@ -2797,25 +2964,6 @@ class _ProductListCard extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (NusaConfig.isSalonVariant &&
-                    onToggleProductType != null) ...[
-                  _ActionButton(
-                    icon:
-                        (product.productType == 'jasa' ||
-                            product.productType == 'Jasa')
-                        ? Icons.design_services_rounded
-                        : Icons.inventory_2_rounded,
-                    color:
-                        (product.productType == 'jasa' ||
-                            product.productType == 'Jasa')
-                        ? NusaConfig.accentPurple
-                        : (isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary),
-                    onTap: onToggleProductType!,
-                  ),
-                  SizedBox(width: 4),
-                ],
                 if (NusaConfig.isLaundryVariant &&
                     onTogglePriceType != null) ...[
                   _ActionButton(

@@ -47,6 +47,7 @@ class AttendanceRepository {
     bool requiresCashOpen = false,
     bool requiresCashClose = false,
     String? barcode,
+    bool isServiceStaff = true,
   }) {
     return db
         .into(db.employees)
@@ -67,6 +68,7 @@ class AttendanceRepository {
             requiresCashOpen: Value(requiresCashOpen),
             requiresCashClose: Value(requiresCashClose),
             barcode: Value(barcode),
+            isServiceStaff: Value(isServiceStaff),
           ),
         );
   }
@@ -88,6 +90,7 @@ class AttendanceRepository {
     bool requiresCashOpen = false,
     bool requiresCashClose = false,
     String? barcode,
+    bool isServiceStaff = true,
   }) => (db.update(db.employees)..where((t) => t.id.equals(id))).write(
     EmployeesCompanion(
       name: Value(name),
@@ -105,6 +108,7 @@ class AttendanceRepository {
       requiresCashOpen: Value(requiresCashOpen),
       requiresCashClose: Value(requiresCashClose),
       barcode: Value(barcode),
+      isServiceStaff: Value(isServiceStaff),
     ),
   );
 

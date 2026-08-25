@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.at(String path) : super(_openConnectionAt(path));
 
   @override
-  int get schemaVersion => 47;
+  int get schemaVersion => 48;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -721,6 +721,17 @@ class AppDatabase extends _$AppDatabase {
         await _addColumnIfMissing(m, 'customers', 'barcode', 'TEXT');
         // v2.2.45 (B1): foto profil karyawan ikut backup cloud (BASE64).
         await _addColumnIfMissing(m, 'employees', 'photo_base64', 'TEXT');
+      }
+      if (from < 48) {
+        // v2.2.54: staf layanan (picker capster/stylist booking) +
+        // stylistId pada appointment (link logis ke Employees).
+        await _addColumnIfMissing(m, 'employees', 'is_service_staff', 'INTEGER');
+        // ALTER tanpa DEFAULT → baris lama NULL; backfill 1 (default true —
+        // semua karyawan existing dianggap staf layanan sampai owner ubah).
+        await m.database.customStatement(
+          'UPDATE employees SET is_service_staff = 1 WHERE is_service_staff IS NULL',
+        );
+        await _addColumnIfMissing(m, 'appointments', 'stylist_id', 'INTEGER');
       }
     },
   );

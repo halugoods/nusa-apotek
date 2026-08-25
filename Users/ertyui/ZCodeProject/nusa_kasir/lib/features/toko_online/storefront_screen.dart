@@ -17,6 +17,7 @@ import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -439,62 +440,10 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                       // Search
                       Padding(
                         padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: TextField(
+                        child: NusaSearchBar(
                           controller: _search,
+                          hint: 'Cari produk...',
                           onChanged: (_) => setState(() {}),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Cari produk...',
-                            hintStyle: TextStyle(
-                              fontSize: 14,
-                              color: isDark
-                                  ? NusaConfig.darkTextTertiary
-                                  : NusaConfig.textTertiary,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              size: 20,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary,
-                            ),
-                            filled: true,
-                            fillColor: isDark
-                                ? NusaConfig.darkInputFill
-                                : NusaConfig.inputFill,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: isDark
-                                    ? NusaConfig.darkInputBorder
-                                    : NusaConfig.inputBorder,
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: isDark
-                                    ? NusaConfig.darkInputBorder
-                                    : NusaConfig.inputBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: NusaConfig.activePrimary,
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
                         ),
                       ),
                       // Category chips

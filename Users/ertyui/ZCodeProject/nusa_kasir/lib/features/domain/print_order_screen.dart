@@ -18,6 +18,7 @@ import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart'
 import 'package:nusa_kasir/data/repositories/estimate_option_repository.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
@@ -245,44 +246,10 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? NusaConfig.darkInputFill
-                      : NusaConfig.inputFill,
-                  borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                  border: Border.all(
-                    color: isDark
-                        ? NusaConfig.darkInputBorder
-                        : NusaConfig.inputBorder,
-                  ),
-                ),
-                child: TextField(
-                  controller: _search,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Cari pelanggan…',
-                    hintStyle: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
-                    ),
-                    prefixIcon: Icon(Icons.search_rounded,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                        size: 22),
-                    border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                ),
+              // Search bar standar (v2.2.54)
+              child: NusaSearchBar(
+                controller: _search,
+                hint: 'Cari pelanggan…',
               ),
             ),
             const SizedBox(width: 8),

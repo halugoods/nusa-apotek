@@ -5,10 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -345,9 +347,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                       final repo = AttendanceRepository(ref.read(databaseProvider));
                       if (isCheckIn) {
                         await repo.checkInWithCash(e.id, amount ?? 0);
+                        SoundService.I.play(NusaSound.presence);
                         if (mounted) TopToast.success(context, '${e.name} absen masuk ✅');
                       } else {
                         await repo.checkOutWithCash(e.id, amount ?? 0);
+                        SoundService.I.play(NusaSound.presence);
                         if (mounted) TopToast.success(context, '${e.name} absen pulang ✅');
                       }
                       _load();
@@ -823,41 +827,12 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
         ),
       ),
       SizedBox(height: 8),
-      // Search bar
+      // Search bar (search bar standar v2.2.54)
       Padding(
         padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-            borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-            border: Border.all(
-              color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
-            ),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            style: TextStyle(fontSize: 15,
-                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Cari nama karyawan...',
-              hintStyle: TextStyle(fontSize: 15,
-                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-              prefixIcon: Icon(Icons.search_rounded, size: 22,
-                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-              suffixIcon: _query.isNotEmpty
-                  ? GestureDetector(
-                      onTap: () { _searchCtrl.clear(); setState(() => _query = ''); },
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Icon(Icons.clear_rounded, size: 20,
-                            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                      ),
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
-          ),
+        child: NusaSearchBar(
+          controller: _searchCtrl,
+          hint: 'Cari nama karyawan...',
         ),
       ),
       SizedBox(height: 8),

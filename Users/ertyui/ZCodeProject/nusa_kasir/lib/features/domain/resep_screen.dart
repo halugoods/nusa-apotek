@@ -9,6 +9,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/prescription_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
@@ -119,18 +120,13 @@ class _ResepScreenState extends ConsumerState<ResepScreen> with SingleTickerProv
           ]))).toList(),
         ),
       ),
-      // Search
+      // Search — search bar standar (NusaSearchBar), filter tetap via
+      // listener `_search` di initState.
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: TextField(
+        child: NusaSearchBar(
           controller: _search,
-          decoration: InputDecoration(
-            hintText: 'Cari pasien atau dokter...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-            prefixIcon: const Icon(Icons.search, size: 20),
-            filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          ),
+          hint: 'Cari pasien atau dokter...',
         ),
       ),
       // List

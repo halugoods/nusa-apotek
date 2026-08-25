@@ -17,6 +17,7 @@ import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -698,48 +699,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ]),
           ),
           SizedBox(height: 8),
-          // ── Search ──
+          // ── Search (search bar standar v2.2.54) ──
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkInputFill
-                    : NusaConfig.inputFill,
-                borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkInputBorder
-                      : NusaConfig.inputBorder,
-                ),
-              ),
-              child: TextField(
-                controller: _search,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Cari nama atau telepon…',
-                  hintStyle: TextStyle(
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                  ),
-                  prefixIcon: Icon(Icons.search_rounded,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, size: 22),
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.qr_code_scanner, size: 22,
-                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
-                    onPressed: () => _scanBarcodeToSearch(context),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-              ),
+            child: NusaSearchBar(
+              controller: _search,
+              hint: 'Cari nama atau telepon…',
+              showScanner: true,
+              onScan: () => _scanBarcodeToSearch(context),
             ),
           ),
           SizedBox(height: 10),

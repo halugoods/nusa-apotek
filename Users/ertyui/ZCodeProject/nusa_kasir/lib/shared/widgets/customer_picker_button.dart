@@ -5,6 +5,7 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/contact_picker.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 
 /// Result of a customer picked via the customer picker sheet.
 /// [name] & [phone] come from the in-app customer list (or the device
@@ -65,19 +66,15 @@ class _CustomerPickerButtonState extends ConsumerState<CustomerPickerButton> {
               Text('Pilih Pelanggan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
               // Search
-              TextField(
+              // Search — search bar standar (NusaSearchBar) tanpa controller
+              // eksplisit; filter tetap via setSheet di onChanged.
+              NusaSearchBar(
                 autofocus: true,
+                hint: 'Cari nama atau telepon...',
                 onChanged: (v) => setSheet(() {
                   pickerQuery = v.toLowerCase();
                   filtered = customers.where((c) => c.name.toLowerCase().contains(pickerQuery) || (c.phone ?? '').contains(pickerQuery)).toList();
                 }),
-                decoration: InputDecoration(
-                  hintText: 'Cari nama atau telepon...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
               ),
               const SizedBox(height: 8),
               Expanded(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
@@ -208,6 +209,7 @@ class _PinDialogContentState extends State<_PinDialogContent> {
         Navigator.of(context).pop(PinResult(success: true, remember: _remember));
       }
     } else {
+      SoundService.I.play(NusaSound.error);
       setState(() {
         _error = 'PIN salah';
         _keypadKey.currentState?.clear();

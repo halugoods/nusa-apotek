@@ -5,6 +5,7 @@ import 'package:nusa_kasir/core/theme/nusa_theme.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/shared/widgets/call_receiver_overlay.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/core/activation/activation_screen.dart';
@@ -362,6 +363,9 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
       themeMode: _toThemeMode(themeModeStr),
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
+      // v2.2.54: overlay global penerima "Panggil Karyawan" (Realtime).
+      builder: (context, child) =>
+          CallReceiverOverlay(child: child ?? const SizedBox.shrink()),
     );
   }
 }

@@ -13,6 +13,7 @@ import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
@@ -548,64 +549,11 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Container(
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? NusaConfig.darkInputFill
-                          : NusaConfig.inputFill,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isDark
-                            ? NusaConfig.darkInputBorder
-                            : NusaConfig.inputBorder,
-                      ),
-                    ),
-                    child: TextField(
-                      controller: _searchC,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Cari supplier...',
-                        prefixIcon: Icon(
-                          Icons.search,
-                          size: 20,
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                        suffixIcon: _query.isNotEmpty
-                            ? GestureDetector(
-                                onTap: () => _searchC.clear(),
-                                child: Padding(
-                                  padding: EdgeInsets.only(right: 4),
-                                  child: Icon(
-                                    Icons.clear_rounded,
-                                    size: 18,
-                                    color: isDark
-                                        ? NusaConfig.darkTextSecondary
-                                        : NusaConfig.textSecondary,
-                                  ),
-                                ),
-                              )
-                            : null,
-                        hintStyle: TextStyle(
-                          color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
-                          fontSize: 14,
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 12,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                    ),
+                  // Filter via listener _searchC (lihat _onSearchChanged);
+                  // tombol clear bawaan NusaSearchBar ikut memicu listener.
+                  child: NusaSearchBar(
+                    controller: _searchC,
+                    hint: 'Cari supplier...',
                   ),
                 ),
               ],

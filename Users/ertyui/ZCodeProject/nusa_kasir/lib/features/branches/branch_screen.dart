@@ -8,6 +8,7 @@ import 'package:nusa_kasir/data/repositories/branch_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 
@@ -355,28 +356,12 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
       'Cabang',
       Column(
         children: [
+          // Search bar standar (NusaSearchBar) — konsisten dgn layar lain.
           Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: TextField(
+            child: NusaSearchBar(
               controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Cari cabang...',
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
-                filled: true,
-                fillColor: Theme.of(context).brightness == Brightness.dark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: EdgeInsets.symmetric(vertical: 14),
-              ),
+              hint: 'Cari cabang...',
             ),
           ),
           Expanded(

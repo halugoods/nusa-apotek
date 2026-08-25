@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/services/call_service.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -933,6 +935,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           .length;
       // Record low-stock notification in the in-app center (deduped by count).
       if (lowStockCount > 0) {
+        SoundService.I.play(NusaSound.lowStock);
         final lowNames = allProducts
             .where((p) => p.stock < p.minStock && p.minStock > 0)
             .take(3)
@@ -1759,15 +1762,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   /// Show employee list with WhatsApp chat buttons (Owner quick access).
+  /// v2.2.54: sheet "Hubungi Karyawan" diperbaiki total:
+  ///  - SEMUA karyawan tampil (dulu cuma yang punya nomor WA → kosong).
+  ///  - Sheet lebar penuh & scrollable setinggi ±70% layar (dulu nanggung).
+  ///  - Tiap baris ada tombol WA (kalau ada nomor) + PANGGIL (Realtime
+  ///    Broadcast → device yang login sebagai role/karyawan tsb berbunyi).
   void _showEmployeeWaList() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final list = [..._employees]..sort((a, b) => a.name.compareTo(b.name));
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.72,
+        ),
         decoration: BoxDecoration(
           color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1788,66 +1801,223 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Hubungi Karyawan',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            ..._employees
-                .where((e) => e.phone != null && e.phone!.isNotEmpty)
-                .map((e) {
-                  return ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        e.name[0].toUpperCase(),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: NusaConfig.activePrimary,
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      e.name,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: Text(
-                      e.role,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    trailing: const Icon(
-                      Icons.chat,
-                      color: NusaConfig.accentGreen,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _launchWa(e.phone!);
-                    },
-                  );
-                }),
-            if (_employees
-                .where((e) => e.phone != null && e.phone!.isNotEmpty)
-                .isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  'Tidak ada karyawan dengan nomor WA',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: NusaConfig.textSecondary,
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Hubungi Karyawan',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                 ),
+                Text(
+                  '${list.length} karyawan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Flexible(
+              child: list.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.group_off_rounded,
+                            size: 42,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Belum ada karyawan.\nTambahkan di menu Karyawan.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.only(top: 8),
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        final e = list[i];
+                        final hasWa =
+                            e.phone != null && e.phone!.trim().isNotEmpty;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? NusaConfig.darkSurface2
+                                : NusaConfig.backgroundColor,
+                            borderRadius: BorderRadius.circular(
+                              NusaConfig.radiusMD,
+                            ),
+                            border: Border.all(
+                              color: isDark
+                                  ? NusaConfig.darkBorder
+                                  : NusaConfig.borderColor,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: NusaConfig.activePrimary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  e.name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: NusaConfig.activePrimary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      e.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      e.role,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Tombol WA — hanya kalau karyawan punya nomor.
+                              if (hasWa)
+                                _contactActionBtn(
+                                  ctx,
+                                  isDark: isDark,
+                                  icon: Icons.chat_rounded,
+                                  label: 'WA',
+                                  color: NusaConfig.accentGreen,
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    _launchWa(e.phone!);
+                                  },
+                                ),
+                              const SizedBox(width: 8),
+                              // Tombol PANGGIL — selalu ada. Device yang login
+                              // sebagai karyawan tsb akan berbunyi (ringtone).
+                              _contactActionBtn(
+                                ctx,
+                                isDark: isDark,
+                                icon: Icons.notifications_active_rounded,
+                                label: 'Panggil',
+                                color: NusaConfig.info,
+                                keepOpen: true,
+                                onTap: () async {
+                                  try {
+                                    final session = ref.read(
+                                      employeeSessionProvider,
+                                    );
+                                    final ok = await CallService.I.call(
+                                      employeeId: e.id,
+                                      employeeName: e.name,
+                                      by: session?.name ?? 'Owner',
+                                    );
+                                    if (!ok) throw Exception();
+                                    if (ctx.mounted) {
+                                      TopToast.success(
+                                        ctx,
+                                        'Memanggil ${e.name}…',
+                                      );
+                                    }
+                                  } catch (_) {
+                                    if (ctx.mounted) {
+                                      TopToast.error(
+                                        ctx,
+                                        'Gagal memanggil (butuh internet)',
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _contactActionBtn(
+    BuildContext ctx, {
+    required bool isDark,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool keepOpen = false,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        if (!keepOpen) Navigator.pop(ctx);
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(NusaConfig.radiusSM),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
               ),
-            const SizedBox(height: 8),
+            ),
           ],
         ),
       ),

@@ -25,6 +25,7 @@ import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
@@ -192,6 +193,9 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     String workEnd = employee?.workEnd ?? '17:00';
     bool requiresCashOpen = employee?.requiresCashOpen ?? false;
     bool requiresCashClose = employee?.requiresCashClose ?? false;
+    // v2.2.54: flag Staf Layanan — bisa dipilih sebagai stylist/capster saat
+    // booking (checkout salon). Default true supaya karyawan lama tetap muncul.
+    bool isServiceStaff = employee?.isServiceStaff ?? true;
     // v2.2.45: barcode id-card jadi TOGGLE (mirip form produk) — OFF default
     // supaya form lebih ringkas; scan HID tetap isi field saat ON.
     bool barcodeOn = employee?.barcode != null && employee!.barcode!.isNotEmpty;
@@ -1004,6 +1008,70 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                       ),
                     ),
 
+                    // ── Staf Layanan (v2.2.54) ──
+                    GestureDetector(
+                      onTap: () =>
+                          setSt(() => isServiceStaff = !isServiceStaff),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isServiceStaff
+                                      ? NusaConfig.activePrimary
+                                      : (isDark
+                                            ? NusaConfig.darkDivider
+                                            : NusaConfig.dividerColor),
+                                  width: 2,
+                                ),
+                                color: isServiceStaff
+                                    ? NusaConfig.activePrimary
+                                    : Colors.transparent,
+                              ),
+                              child: isServiceStaff
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 14,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Staf Layanan',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Bisa dipilih sebagai stylist/capster saat booking layanan',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark
+                                          ? NusaConfig.darkTextTertiary
+                                          : NusaConfig.textTertiary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                     // ── NFC Tag Registration ──
                     _NfcRegisterButton(
                       isDark: isDark,
@@ -1153,6 +1221,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   requiresCashOpen: requiresCashOpen,
                                   requiresCashClose: requiresCashClose,
                                   barcode: barcode,
+                                  isServiceStaff: isServiceStaff,
                                 );
                               } else {
                                 await repo.updateEmployee(
@@ -1172,6 +1241,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   requiresCashOpen: requiresCashOpen,
                                   requiresCashClose: requiresCashClose,
                                   barcode: barcode,
+                                  isServiceStaff: isServiceStaff,
                                 );
                               }
                               // Upload photo to cloud in background
@@ -1993,86 +2063,14 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
       },
       Column(
         children: [
-          // Search bar — placeholder style
+          // Search bar standar (v2.2.54)
           Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkInputBorder
-                      : NusaConfig.inputBorder,
-                ),
-              ),
-              child: TextField(
-                controller: _searchCtrl,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Cari karyawan...',
-                  hintStyle: TextStyle(
-                    fontSize: 15,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    size: 22,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary,
-                  ),
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Barcode scanner — v2.2.47 revisi
-                      GestureDetector(
-                        onTap: () => _scanBarcodeToSearch(context),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Icon(
-                            Icons.qr_code_scanner,
-                            size: 22,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ),
-                      // Clear
-                      if (_query.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            _searchCtrl.clear();
-                            setState(() => _query = '');
-                          },
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4),
-                            child: Icon(
-                              Icons.clear_rounded,
-                              size: 20,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-              ),
+            child: NusaSearchBar(
+              controller: _searchCtrl,
+              hint: 'Cari karyawan...',
+              showScanner: true,
+              onScan: () => _scanBarcodeToSearch(context),
             ),
           ),
           // ── Role manager row (Owner only) ──

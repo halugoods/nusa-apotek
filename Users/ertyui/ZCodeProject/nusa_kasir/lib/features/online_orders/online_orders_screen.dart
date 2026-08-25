@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -14,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
@@ -210,6 +212,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
       duration: const Duration(seconds: 4),
     );
     HapticFeedback.mediumImpact();
+    SoundService.I.play(NusaSound.ding);
   }
 
   /// State machine transition buttons
@@ -709,50 +712,12 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
               onTap: (_) => setState(() {}),
             ),
           ),
-          // Search
+          // Search (search bar standar v2.2.54)
           Padding(
             padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkInputBorder
-                      : NusaConfig.inputBorder,
-                ),
-              ),
-              child: TextField(
-                controller: _search,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Cari invoice atau nama pelanggan…',
-                  hintStyle: TextStyle(
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    size: 20,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  isDense: false,
-                ),
-              ),
+            child: NusaSearchBar(
+              controller: _search,
+              hint: 'Cari invoice atau nama pelanggan…',
             ),
           ),
           SizedBox(height: 4),

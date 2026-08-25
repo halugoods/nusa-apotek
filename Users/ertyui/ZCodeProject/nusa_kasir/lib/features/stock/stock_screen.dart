@@ -15,6 +15,7 @@ import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
@@ -1579,47 +1580,18 @@ class _AdjustSheetState extends State<_AdjustSheet> {
           ),
           SizedBox(height: 16),
           // search + scan
-          TextField(
+          // Scan barcode EKSTERNAL (HID): ketik barcode + Enter → langsung
+          // naikkan qty keranjang. Fokus TETAP di kolom cari (newline tidak
+          // unfocus) supaya bisa scan beruntun tanpa tap ulang (v2.2.29).
+          // Catatan: NusaSearchBar kelola focus node-nya sendiri, jadi
+          // _searchFocus tak lagi menempel di field ini.
+          NusaSearchBar(
             controller: _searchC,
-            focusNode: _searchFocus,
+            hint: 'Cari produk atau barcode\u2026',
             onChanged: (_) => setState(() {}),
-            // Scan barcode EKSTERNAL (HID): ketik barcode + Enter → langsung
-            // naikkan qty keranjang. Fokus TETAP di kolom cari (newline tidak
-            // unfocus) supaya bisa scan beruntun tanpa tap ulang (v2.2.29).
-            textInputAction: TextInputAction.newline,
-            onSubmitted: (_) => _submitScanHid(),
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark
-                  ? NusaConfig.darkTextPrimary
-                  : NusaConfig.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Cari produk atau barcode\u2026',
-              hintStyle: TextStyle(
-                fontSize: 14,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-              prefixIcon: Icon(Icons.search, size: 20),
-              suffixIcon: IconButton(
-                icon: Icon(Icons.qr_code_scanner, size: 20),
-                onPressed: _scan,
-              ),
-              filled: true,
-              fillColor: isDark
-                  ? NusaConfig.darkInputFill
-                  : NusaConfig.inputFill,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-            ),
+            onSubmit: (_) => _submitScanHid(),
+            showScanner: true,
+            onScan: _scan,
           ),
           SizedBox(height: 12),
           // product list

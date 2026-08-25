@@ -18,6 +18,7 @@ import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/core/services/backup_crypto.dart';
@@ -453,6 +454,42 @@ void main() async {
       }
     } catch (_) {
       initialLocation = '/activation';
+    }
+
+    // ── v2.2.54: STARTUP LICENSE GATE ────────────────────────────────────
+    // Device yang sudah aktivasi tetap dicek ke cloud SETIAP buka app.
+    // Lisensi yang di-revoke admin (Cancelled/Suspended/Expired) → paksa
+    // lewat layar aktivasi (blokir) meski key lokal masih valid. Ini menutup
+    // celah: dulu activated device langsung masuk tanpa cek status terbaru.
+    // Fail-open: offline / lambat (>4s) → jangan blokir user yang sah.
+    if (initialLocation == '/home' || initialLocation == '/login') {
+      try {
+        final uid = await GoogleAuthService.getStoredUserId();
+        if (uid != null &&
+            uid.isNotEmpty &&
+            Supabase.instance.isInitialized) {
+          final res = await Supabase.instance.client.functions
+              .invoke(
+                'register_activation',
+                body: {
+                  'googleUserId': uid,
+                  'product': NusaConfig.productId,
+                },
+              )
+              .timeout(const Duration(seconds: 4));
+          final data = res.data as Map<String, dynamic>?;
+          final status = data?['status'] as String?;
+          final blocked = data != null &&
+              data['has_license'] == false &&
+              (data['is_expired'] == true ||
+                  status == 'Cancelled' ||
+                  status == 'Suspended' ||
+                  status == 'Expired');
+          if (blocked) initialLocation = '/activation';
+        }
+      } catch (_) {
+        // Offline / timeout / error → fail-open, biarkan masuk app.
+      }
     }
 
     // Background: sync images from cloud (first-time migration + download)

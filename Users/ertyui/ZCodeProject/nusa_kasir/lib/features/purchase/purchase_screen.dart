@@ -24,6 +24,7 @@ import 'package:nusa_kasir/features/products/product_form_screen.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_cart_controls.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
@@ -1696,10 +1697,11 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                 ],
               ),
               SizedBox(height: 14),
-              TextField(
-                // JANGAN autofocus — keyboard tidak muncul otomatis saat
-                // buka sheet (komplain user: "jangan auto munculin keyboard").
-                // User ketuk kolom cari hanya jika memang ingin mencari.
+              // JANGAN autofocus — keyboard tidak muncul otomatis saat
+              // buka sheet (komplain user: "jangan auto munculin keyboard").
+              // User ketuk kolom cari hanya jika memang ingin mencari.
+              NusaSearchBar(
+                hint: 'Cari nama supplier...',
                 onChanged: (v) => setSheet(() {
                   q = v.toLowerCase();
                   filtered = _suppliers
@@ -1710,28 +1712,6 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
                       )
                       .toList();
                 }),
-                decoration: InputDecoration(
-                  hintText: 'Cari nama supplier...',
-                  hintStyle: TextStyle(
-                    fontSize: 13,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
-                  ),
-                  prefixIcon: Icon(Icons.search, size: 20),
-                  filled: true,
-                  fillColor: isDark
-                      ? NusaConfig.darkInputFill
-                      : NusaConfig.inputFill,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                ),
               ),
               SizedBox(height: 8),
               Expanded(
@@ -2380,46 +2360,16 @@ class _PurchaseFormSheetState extends State<_PurchaseFormSheet> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              // Scan barcode EKSTERNAL (HID): ketik barcode + Enter →
+              // langsung masuk keranjang, fokus TETAP di kolom cari supaya
+              // bisa scan beruntun tanpa tap ulang (v2.2.29).
+              child: NusaSearchBar(
                 controller: _searchC,
+                hint: 'Cari produk atau barcode...',
                 onChanged: (v) => setState(() => _q = v),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary,
-                ),
-                // Scan barcode EKSTERNAL (HID): ketik barcode + Enter →
-                // langsung masuk keranjang, fokus TETAP di kolom cari supaya
-                // bisa scan beruntun tanpa tap ulang (v2.2.29).
-                textInputAction: TextInputAction.newline,
-                onSubmitted: (_) => _submitScanHid(),
-                decoration: InputDecoration(
-                  hintText: 'Cari produk atau barcode...',
-                  hintStyle: TextStyle(fontSize: 13, color: textTer),
-                  prefixIcon: Icon(Icons.search, size: 20, color: textTer),
-                  suffixIcon: IconButton(
-                    onPressed: _scanBarcode,
-                    tooltip: 'Pindai barcode',
-                    icon: Icon(
-                      Icons.qr_code_scanner,
-                      size: 20,
-                      color: NusaConfig.activePrimary,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDark
-                      ? NusaConfig.darkInputFill
-                      : NusaConfig.inputFill,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                ),
+                onSubmit: (_) => _submitScanHid(),
+                showScanner: true,
+                onScan: _scanBarcode,
               ),
             ),
             SizedBox(width: 8),

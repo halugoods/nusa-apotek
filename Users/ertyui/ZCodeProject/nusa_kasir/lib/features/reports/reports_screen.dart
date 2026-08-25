@@ -9,6 +9,7 @@ import 'package:nusa_kasir/core/utils/report_export.dart';
 import 'package:nusa_kasir/core/utils/report_pdf.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/report_repository.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -27,6 +28,27 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   int _tab = 0; // 0 = Penjualan, 1 = Laba Rugi
   int _refreshKey = 0;
   bool _exporting = false;
+
+  // v2.2.54: filter laporan per karyawan — owner bisa lihat penjualan kasir
+  // tertentu (mis. kasir A saja). Null = semua karyawan.
+  int? _employeeFilter;
+  List<Employee> _employees = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmployees();
+  }
+
+  Future<void> _loadEmployees() async {
+    try {
+      final emps = await AttendanceRepository(
+        ref.read(databaseProvider),
+      ).getEmployees();
+      if (!mounted) return;
+      setState(() => _employees = emps);
+    } catch (_) {}
+  }
 
   /// F: "Ringkas dulu, detail on-demand" — grafik & detail di balik tombol
   /// "Lihat Detail" supaya layar pertama selalu ringkas & cepat.
@@ -462,7 +484,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             // ── Comparison cards ──
             FutureBuilder<Map<String, dynamic>>(
               key: ValueKey('comp_$_refreshKey'),
-              future: repo.summaryWithPrevious(from, to),
+              future: repo.summaryWithPrevious(
+                from,
+                to,
+                onlyEmployee: _employeeFilter,
+              ),
               builder: (ctx, snap) {
                 if (snap.connectionState != ConnectionState.done) {
                   return Padding(
@@ -527,7 +553,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             // ── Bar Chart ──
             FutureBuilder<Map<String, int>>(
               key: ValueKey('chart_$_refreshKey'),
-              future: repo.dailyRevenue(from: from, to: to),
+              future: repo.dailyRevenue(
+                from: from,
+                to: to,
+                onlyEmployee: _employeeFilter,
+              ),
               builder: (ctx, snap) {
                 final daily = snap.data ?? {};
                 if (daily.isEmpty) return SizedBox.shrink();
@@ -630,7 +660,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               // ── Best-Seller ──
               FutureBuilder<List<Map<String, dynamic>>>(
                 key: ValueKey('top_$_refreshKey'),
-                future: repo.topProducts(from: from, to: to, limit: 5),
+                future: repo.topProducts(
+                  from: from,
+                  to: to,
+                  limit: 5,
+                  onlyEmployee: _employeeFilter,
+                ),
                 builder: (ctx, snap) {
                   final list = snap.data ?? [];
                   if (list.isEmpty) return SizedBox.shrink();
@@ -730,7 +765,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               // ── Pie: Kategori ──
               FutureBuilder<List<Map<String, dynamic>>>(
                 key: ValueKey('cat_$_refreshKey'),
-                future: repo.salesByCategory(from: from, to: to),
+                future: repo.salesByCategory(
+                  from: from,
+                  to: to,
+                  onlyEmployee: _employeeFilter,
+                ),
                 builder: (ctx, snap) {
                   final list = snap.data ?? [];
                   if (list.isEmpty) return SizedBox.shrink();
@@ -846,7 +885,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               // ── Pie: Metode Pembayaran ──
               FutureBuilder<Map<String, int>>(
                 key: ValueKey('pay_$_refreshKey'),
-                future: repo.salesByPaymentMethod(from: from, to: to),
+                future: repo.salesByPaymentMethod(
+                  from: from,
+                  to: to,
+                  onlyEmployee: _employeeFilter,
+                ),
                 builder: (ctx, snap) {
                   final pays = snap.data ?? {};
                   if (pays.isEmpty || pays.values.every((v) => v == 0)) {
@@ -1013,7 +1056,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             // ── Transaction list ──
             FutureBuilder<List<Transaction>>(
               key: ValueKey('list_$_refreshKey'),
-              future: repo.getTransactions(from: from, to: to),
+              future: repo.getTransactions(
+                from: from,
+                to: to,
+                onlyEmployee: _employeeFilter,
+              ),
               builder: (ctx, snap) {
                 if (snap.connectionState != ConnectionState.done) {
                   return Padding(
@@ -2205,6 +2252,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
           ),
           SizedBox(height: 2),
+          // v2.2.54: filter per karyawan (Penjualan tab) — dropdown chip di
+          // bawah tab & periode.
+          if (_tab == 0)
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _employeeFilterDropdown(isDark),
+            ),
+          SizedBox(height: 2),
           // Ringkasan Harian card (only for Penjualan tab)
           if (_tab == 0) _ringkasanHarianCard(),
           Expanded(
@@ -2215,6 +2270,76 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 : _pengeluaranTab(),
           ),
         ],
+      ),
+    );
+  }
+
+  /// v2.2.54: dropdown filter karyawan untuk tab Penjualan — "Semua Kasir"
+  /// default; pilih karyawan → semua kartu (omzet/grafik/daftar trx) hanya
+  /// menghitung transaksi karyawan tsb.
+  Widget _employeeFilterDropdown(bool isDark) {
+    return Container(
+      height: 38,
+      padding: EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _employeeFilter == null
+            ? (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor)
+            : NusaConfig.activePrimary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _employeeFilter == null
+              ? (isDark ? NusaConfig.darkBorder : NusaConfig.borderColor)
+              : NusaConfig.activePrimary.withValues(alpha: 0.5),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _employeeFilter,
+          isDense: true,
+          borderRadius: BorderRadius.circular(12),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+          icon: Icon(
+            Icons.expand_more_rounded,
+            size: 18,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+          items: [
+            DropdownMenuItem<int>(
+              value: null,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.groups_rounded,
+                    size: 15,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  SizedBox(width: 6),
+                  Text('Semua Kasir'),
+                ],
+              ),
+            ),
+            ..._employees.map(
+              (e) => DropdownMenuItem<int>(
+                value: e.id,
+                child: Text('${e.name} (${e.role})'),
+              ),
+            ),
+          ],
+          onChanged: (v) {
+            setState(() {
+              _employeeFilter = v;
+              _refreshKey++;
+            });
+          },
+        ),
       ),
     );
   }
@@ -2481,6 +2606,29 @@ class _TxCard extends StatelessWidget {
                     '$dateStr \u2022 ${tx.paymentMethod}',
                     style: TextStyle(fontSize: 13, color: textSec),
                   ),
+                  // v2.2.54: nama karyawan/kasir yang melakukan transaksi.
+                  if (tx.cashierName.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.person_rounded,
+                            size: 12,
+                            color: textSec,
+                          ),
+                          SizedBox(width: 3),
+                          Text(
+                            tx.cashierName,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: textSec,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),

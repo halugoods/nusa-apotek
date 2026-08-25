@@ -435,6 +435,21 @@ class SecureStore {
   static Future<void> setPermissionsAsked(bool v) =>
       SecureStore.write(key: 'nusa_permissions_asked', value: v.toString());
 
+  // ── Suara aplikasi (v2.2.54): default AKTIF ────────────────────────
+  static Future<bool> getSoundEnabled() async =>
+      (await SecureStore.read(key: 'nusa_sound_enabled')) != 'false';
+  static Future<void> setSoundEnabled(bool v) =>
+      SecureStore.write(key: 'nusa_sound_enabled', value: v.toString());
+
+  // ── Panggil karyawan (v2.2.54): default AKTIF ──────────────────────
+  static Future<bool> getCallFeatureEnabled() async =>
+      (await SecureStore.read(key: 'nusa_call_feature_enabled')) != 'false';
+  static Future<void> setCallFeatureEnabled(bool v) =>
+      SecureStore.write(
+        key: 'nusa_call_feature_enabled',
+        value: v.toString(),
+      );
+
   // ── Auto cloud sync state (per device) ────────────────────────────
   static Future<DateTime?> getLastCloudSeen() async {
     final v = await SecureStore.read(key: 'nusa_last_cloud_seen');

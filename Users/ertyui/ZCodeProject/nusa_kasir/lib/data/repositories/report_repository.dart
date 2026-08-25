@@ -12,6 +12,7 @@ class ReportRepository {
     DateTime? to,
     int? branchId,
     int? employeeId,
+    int? onlyEmployee,
   }) async {
     final q = db.select(db.transactions)
       ..where((t) => t.status.equals('Normal'));
@@ -23,6 +24,11 @@ class ReportRepository {
       q.where((t) =>
           t.employeeId.equals(employeeId) |
           t.employeeId.isNull());
+    }
+    if (onlyEmployee != null) {
+      // v2.2.54: filter KETAT per karyawan untuk laporan owner — HANYA trx
+      // yang dibuat karyawan tsb (tanpa trx bersama employeeId null).
+      q.where((t) => t.employeeId.equals(onlyEmployee));
     }
     if (from != null || to != null) {
       q.where((t) {
@@ -106,9 +112,14 @@ class ReportRepository {
     DateTime? to,
     int? branchId,
     int? employeeId,
+    int? onlyEmployee,
   }) async {
     final list = await getTransactions(
-        from: from, to: to, branchId: branchId, employeeId: employeeId);
+        from: from,
+        to: to,
+        branchId: branchId,
+        employeeId: employeeId,
+        onlyEmployee: onlyEmployee);
     // Retur parsial mengurangi omzet: uang yang sudah dikembalikan ke
     // pelanggan bukan lagi pendapatan. Refund dicatat per employee yang
     // memproses — jadi untuk scoping kasir dipakai employeeId refund-nya.
@@ -307,11 +318,13 @@ class ReportRepository {
     DateTime? to,
     int limit = 5,
     int? branchId,
+    int? onlyEmployee,
   }) async {
     final agg = await _aggregateByProduct(
       from: from,
       to: to,
       branchId: branchId,
+      onlyEmployee: onlyEmployee,
     );
     final list = agg.entries.map((e) {
       final p = e.value;
@@ -334,8 +347,10 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? onlyEmployee,
   }) async {
-    final txs = await getTransactions(from: from, to: to, branchId: branchId);
+    final txs = await getTransactions(
+        from: from, to: to, branchId: branchId, onlyEmployee: onlyEmployee);
     final byDay = <String, int>{};
     for (final t in txs) {
       final key =
@@ -357,11 +372,13 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? onlyEmployee,
   }) async {
     final agg = await _aggregateByProduct(
       from: from,
       to: to,
       branchId: branchId,
+      onlyEmployee: onlyEmployee,
     );
     final qtyByCat = <String, int>{};
     final revByCat = <String, int>{};
@@ -390,8 +407,10 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? onlyEmployee,
   }) async {
-    final txs = await getTransactions(from: from, to: to, branchId: branchId);
+    final txs = await getTransactions(
+        from: from, to: to, branchId: branchId, onlyEmployee: onlyEmployee);
     final totals = <String, int>{};
     for (final t in txs) {
       final m = _normalizeMethod(t.paymentMethod);
@@ -437,8 +456,13 @@ class ReportRepository {
     DateTime? from,
     DateTime? to, {
     int? branchId,
+    int? onlyEmployee,
   }) async {
-    final cur = await summary(from: from, to: to, branchId: branchId);
+    final cur = await summary(
+        from: from,
+        to: to,
+        branchId: branchId,
+        onlyEmployee: onlyEmployee);
     Map<String, dynamic>? prev;
     var hasPrev = false;
     if (from != null && to != null) {
@@ -449,6 +473,7 @@ class ReportRepository {
         from: prevFrom,
         to: prevTo,
         branchId: branchId,
+        onlyEmployee: onlyEmployee,
       );
       hasPrev = true;
     }
@@ -480,11 +505,13 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? onlyEmployee,
   }) async {
     final txs = await getTransactions(
       from: from,
       to: to,
       branchId: branchId,
+      onlyEmployee: onlyEmployee,
     );
     final qtyById = <int, int>{};
     final revById = <int, int>{};

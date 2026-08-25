@@ -17,6 +17,7 @@ import 'package:nusa_kasir/core/receipt/receipt_data.dart';
 import 'package:nusa_kasir/core/receipt/receipt_preview_widget.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/services/call_service.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart'
     show receiptHeaderMinPx, receiptHeaderMaxPx;
@@ -70,6 +71,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // Salon: estimasi & notifikasi
   int _salonDefaultDuration = 60;
   bool _salonNotifyBooking = true;
+
+  // v2.2.54: suara aplikasi (transaksi berhasil, scan, dsb) + fitur Panggil
+  // (Realtime Broadcast — owner bisa bunyikan device kasir/staf).
+  bool _soundEnabled = true;
+  bool _callFeatureEnabled = true;
 
   // Theme preset
   String _themePreset = NusaConfig.productId.replaceFirst('nusa-', '');
@@ -213,6 +219,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Load PIN pad kasir toggle
       _pinPadEnabled = await SecureStore.getPinPadEnabled();
+
+      // v2.2.54: suara aplikasi + fitur Panggil
+      _soundEnabled = await SecureStore.getSoundEnabled();
+      _callFeatureEnabled = await SecureStore.getCallFeatureEnabled();
 
       // Load FnB payment flow
       if (NusaConfig.isFnbVariant) {
@@ -3597,6 +3607,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
             // Laundry settings removed — now per-product via priceType toggle on product cards.
+
+            // ── Suara & Panggil (v2.2.54) ──
+            const SizedBox(height: 12),
+            _menuRow(
+              icon: Icons.volume_up_rounded,
+              iconColor: const Color(0xFF10B981),
+              title: 'Suara Aplikasi',
+              subtitle: _soundEnabled
+                  ? 'Aktif — bunyi transaksi berhasil, scan, presensi, dll.'
+                  : 'Dimatikan — app berjalan tanpa bunyi',
+              isDark: isDark,
+              onTap: null,
+              trailing: Switch(
+                value: _soundEnabled,
+                activeColor: NusaConfig.activePrimary,
+                onChanged: (v) async {
+                  await SecureStore.setSoundEnabled(v);
+                  setState(() => _soundEnabled = v);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            _menuRow(
+              icon: Icons.notifications_active_rounded,
+              iconColor: const Color(0xFF3B82F6),
+              title: 'Fitur Panggil',
+              subtitle: _callFeatureEnabled
+                  ? 'Aktif — owner bisa membunyikan device ini saat dibutuhkan'
+                  : 'Dimatikan — device tidak menerima panggilan',
+              isDark: isDark,
+              onTap: null,
+              trailing: Switch(
+                value: _callFeatureEnabled,
+                activeColor: NusaConfig.info,
+                onChanged: (v) async {
+                  await SecureStore.setCallFeatureEnabled(v);
+                  setState(() => _callFeatureEnabled = v);
+                  // Re-join / keluar channel Realtime sesuai toggle.
+                  try {
+                    if (v) {
+                      await CallService.I.start();
+                    } else {
+                      await CallService.I.stop();
+                    }
+                  } catch (_) {}
+                },
+              ),
+            ),
 
             // Salon settings
             if (NusaConfig.isSalonVariant) ...[

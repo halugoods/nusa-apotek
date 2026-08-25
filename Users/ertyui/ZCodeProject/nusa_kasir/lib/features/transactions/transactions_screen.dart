@@ -24,6 +24,7 @@ import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/pin_dialog.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
@@ -66,6 +67,25 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   int _refreshKey = 0;
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  // v2.2.54: filter transaksi per karyawan (null = semua).
+  int? _employeeFilter;
+  List<Employee> _employees = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmployees();
+  }
+
+  Future<void> _loadEmployees() async {
+    try {
+      final emps = await AttendanceRepository(
+        ref.read(databaseProvider),
+      ).getEmployees();
+      if (!mounted) return;
+      setState(() => _employees = emps);
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -117,6 +137,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     };
     if (_payFilter != 'Semua') {
       filtered = filtered.where((t) => t.paymentMethod == _payFilter).toList();
+    }
+    // v2.2.54: filter per karyawan — hanya transaksi yang dibuat karyawan tsb.
+    if (_employeeFilter != null) {
+      filtered = filtered
+          .where((t) => t.employeeId == _employeeFilter)
+          .toList();
     }
     if (_searchQuery.isNotEmpty) {
       filtered = filtered
@@ -648,6 +674,70 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
   }
 
+  /// v2.2.54: dropdown filter karyawan — "Semua Kasir" default; pilih
+  /// karyawan → daftar transaksi hanya menampilkan trx karyawan tsb.
+  Widget _employeeDropdown(bool isDark) {
+    return Container(
+      height: 38,
+      padding: EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _employeeFilter == null
+            ? (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor)
+            : NusaConfig.activePrimary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _employeeFilter == null
+              ? (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor)
+              : NusaConfig.activePrimary.withValues(alpha: 0.5),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _employeeFilter,
+          isDense: true,
+          borderRadius: BorderRadius.circular(12),
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+          icon: Icon(
+            Icons.expand_more_rounded,
+            size: 18,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+          items: [
+            DropdownMenuItem<int>(
+              value: null,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.groups_rounded,
+                    size: 15,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  SizedBox(width: 6),
+                  Text('Semua Kasir'),
+                ],
+              ),
+            ),
+            ..._employees.map(
+              (e) => DropdownMenuItem<int>(
+                value: e.id,
+                child: Text('${e.name} (${e.role})'),
+              ),
+            ),
+          ],
+          onChanged: (v) => setState(() => _employeeFilter = v),
+        ),
+      ),
+    );
+  }
+
   Widget _timeDropdown(bool isDark) {
     return Container(
       height: 36,
@@ -1117,70 +1207,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           // ── Search by invoice ──
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkInputBorder
-                      : NusaConfig.inputBorder,
-                ),
-              ),
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) =>
-                    setState(() => _searchQuery = v.toLowerCase()),
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark
-                      ? NusaConfig.darkTextPrimary
-                      : isDark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Cari nomor invoice…',
-                  hintStyle: TextStyle(
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary,
-                    size: 22,
-                  ),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? GestureDetector(
-                          onTap: () {
-                            _searchCtrl.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Icon(
-                              Icons.clear_rounded,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary,
-                              size: 20,
-                            ),
-                          ),
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: 14,
-                    horizontal: 14,
-                  ),
-                ),
-              ),
+            child: NusaSearchBar(
+              controller: _searchCtrl,
+              hint: 'Cari nomor invoice…',
+              onChanged: (v) =>
+                  setState(() => _searchQuery = v.toLowerCase()),
             ),
           ),
           SizedBox(height: 18),
@@ -1197,6 +1228,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 ),
               ],
             ),
+          ),
+          SizedBox(height: 8),
+          // ── Filter karyawan (v2.2.54) ──
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: _employeeDropdown(isDark),
           ),
           SizedBox(height: 8),
           Expanded(
@@ -1621,6 +1658,31 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                               : NusaConfig.textTertiary),
                                   ),
                                 ),
+                                // v2.2.54: nama karyawan yang melakukan trx.
+                                if (tx.cashierName.isNotEmpty) ...[
+                                  SizedBox(width: 10),
+                                  Icon(
+                                    Icons.person_rounded,
+                                    size: 13,
+                                    color: isDark
+                                        ? NusaConfig.darkTextTertiary
+                                        : NusaConfig.textTertiary,
+                                  ),
+                                  SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      tx.cashierName,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark
+                                            ? NusaConfig.darkTextSecondary
+                                            : NusaConfig.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             // ── Status piutang (v2.2.34): sinkron dengan

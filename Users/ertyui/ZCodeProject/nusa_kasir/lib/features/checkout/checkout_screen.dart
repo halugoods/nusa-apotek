@@ -20,6 +20,8 @@ import 'package:nusa_kasir/data/repositories/installment_option_repository.dart'
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/appointment_repository.dart';
+import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/data/repositories/print_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
@@ -32,6 +34,7 @@ import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
@@ -117,6 +120,29 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _salonTimeCtrl = TextEditingController(text: '09:00');
   final _salonStylistCtrl = TextEditingController();
   int _salonDuration = 60;
+  // v2.2.54: stylist = dropdown karyawan ber-flag isServiceStaff (bukan teks
+  // bebas) — id tersimpan ke appointments.stylist_id untuk laporan per staf.
+  List<Employee> _salonStaff = [];
+  int? _selectedStylistId;
+
+  Future<void> _loadSalonStaff() async {
+    try {
+      final emps = await AttendanceRepository(
+        ref.read(databaseProvider),
+      ).getEmployees();
+      if (!mounted) return;
+      setState(() {
+        _salonStaff = emps
+            .where((e) => e.isServiceStaff && (e.status ?? 'Aktif') != 'Nonaktif')
+            .toList();
+        // Validasi pilihan lama (mis. setelah restore data).
+        if (_selectedStylistId != null &&
+            !_salonStaff.any((e) => e.id == _selectedStylistId)) {
+          _selectedStylistId = null;
+        }
+      });
+    } catch (_) {}
+  }
 
   Future<void> _completeTab(AppDatabase db, {bool freeTable = true}) async {
     try {
@@ -230,6 +256,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _loadPaymentSettings();
     _checkBebasPromos();
     _loadInstallmentOptions();
+    if (NusaConfig.isSalonVariant) _loadSalonStaff();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoApplyPromo();
       final extra = GoRouterState.of(context).uri.queryParameters;
@@ -1348,6 +1375,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             stylist: _salonStylistCtrl.text.trim().isEmpty
                 ? null
                 : _salonStylistCtrl.text.trim(),
+            stylistId: _selectedStylistId,
             date: _salonDate,
             timeSlot: _salonTimeCtrl.text,
             estimatedDuration: _salonDuration,
@@ -1424,6 +1452,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
       // Show receipt as centered dialog (GAS thermal style)
       if (mounted) {
+        SoundService.I.play(NusaSound.success);
         final autoPrint = await SecureStore.getAutoPrint();
         if (!mounted) return;
         await ReceiptSheet.show(
@@ -1495,6 +1524,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         }
       }
     } catch (e) {
+      SoundService.I.play(NusaSound.error);
       if (mounted) {
         TopToast.error(context, 'Gagal memproses pembayaran: $e');
       }
@@ -1780,34 +1810,62 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
           ),
           SizedBox(height: 10),
-          TextField(
-            controller: _salonStylistCtrl,
-            decoration: InputDecoration(
-              hintText: 'Stylist (opsional)',
-              hintStyle: TextStyle(
-                fontSize: 12,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-              filled: true,
-              fillColor: isDark
+          // v2.2.54: stylist = dropdown karyawan Staf Layanan (bukan teks
+          // bebas) — pilihan tersimpan sebagai stylist_id di appointment.
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: isDark
                   ? NusaConfig.darkInputFill
                   : NusaConfig.inputFill,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 10,
-              ),
+              borderRadius: BorderRadius.circular(10),
             ),
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark
-                  ? NusaConfig.darkTextPrimary
-                  : NusaConfig.textPrimary,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: _selectedStylistId,
+                isExpanded: true,
+                hint: Text(
+                  'Stylist (opsional)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+                icon: Icon(
+                  Icons.arrow_drop_down,
+                  size: 18,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+                items: [
+                  const DropdownMenuItem<int>(
+                    value: null,
+                    child: Text('— Tanpa stylist —'),
+                  ),
+                  ..._salonStaff.map(
+                    (e) => DropdownMenuItem<int>(
+                      value: e.id,
+                      child: Text('${e.name} · ${e.role}'),
+                    ),
+                  ),
+                ],
+                onChanged: (v) {
+                  setState(() => _selectedStylistId = v);
+                  final emp = _salonStaff
+                      .where((e) => e.id == v)
+                      .firstOrNull;
+                  _salonStylistCtrl.text = emp?.name ?? '';
+                },
+              ),
             ),
           ),
         ],
@@ -3836,32 +3894,20 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // ── Search + scan camera ──
+              // Search bar standar (NusaSearchBar) — tombol scan kamera
+              // dipertahankan di kanan seperti sebelumnya.
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: NusaSearchBar(
                       controller: _searchCtrl,
+                      hint: 'Cari nama / barcode / telp',
                       onChanged: (v) {
                         setState(() {
                           _query = v;
                           _normQuery = _norm(v);
                         });
                       },
-                      decoration: InputDecoration(
-                        hintText: 'Cari nama / barcode / telp',
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: isDark
-                            ? NusaConfig.darkSurface2
-                            : Colors.grey.shade100,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 8),
-                      ),
                     ),
                   ),
                   const SizedBox(width: 8),

@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/sound_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -280,11 +281,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
     if (product == null) {
       _search.clear();
+      SoundService.I.play(NusaSound.error);
       if (mounted) TopToast.error(context, 'Produk tidak ditemukan');
       // Tetap fokus: scan berikutnya langsung jalan tanpa tap kolom cari.
       _searchFocus.requestFocus();
       return;
     }
+    SoundService.I.play(NusaSound.scan);
     _addToCart(product);
     _search.clear();
     if (mounted) setState(() {});
@@ -488,6 +491,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         ? product.stock
         : variants.fold<int>(0, (s, v) => s + v.stock);
     if (totalStock <= 0 && !product.isService) {
+      SoundService.I.play(NusaSound.error);
       TopToast.error(context, 'Stok "${product.name}" habis');
       return;
     }
@@ -503,6 +507,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         .firstWhere((c) => c?.productId == product.id, orElse: () => null);
     final inCartBase = inCartNow == null ? 0 : inCartNow.qtyInBase;
     if (totalStock > 0 && inCartBase >= totalStock) {
+      SoundService.I.play(NusaSound.error);
       TopToast.error(
         context,
         'Stok "${product.name}" tidak cukup (tersedia: $totalStock)',
@@ -533,6 +538,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             unitQtyPerBase: baseUnit != null ? defaultQtyPerBase : 1,
             isService: product.isService,
           );
+      SoundService.I.play(NusaSound.pop);
     }
   }
 
@@ -647,6 +653,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             : null,
                         weightKg: w,
                       );
+                  SoundService.I.play(NusaSound.pop);
                   Navigator.pop(ctx);
                   // Kembalikan fokus ke kolom cari — scan berikutnya langsung
                   // jalan tanpa tap (v2.2.29).
@@ -844,59 +851,115 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   // B10 (v2.2.44): segmen Produk | Layanan — varian jasa only.
+  // v2.2.54: diganti switch card LEBAR PENUH selebar search bar (bukan chip
+  // kecil) — pil primary bergeser animasi, ikon + label per sisi.
   Widget _buildServiceSegment(bool isDark) {
     if (!NusaConfig.isJasaVariant) return const SizedBox.shrink();
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _segmentChip(
-            label: 'Produk',
-            active: !_posServiceOnly,
-            isDark: isDark,
-            onTap: () => setState(() => _posServiceOnly = false),
-          ),
-          const SizedBox(width: 8),
-          _segmentChip(
-            label: 'Layanan',
-            active: _posServiceOnly,
-            isDark: isDark,
-            onTap: () => setState(() => _posServiceOnly = true),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color:
+              isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // Pil indikator yang bergeser kiri/kanan.
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: _posServiceOnly
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary,
+                      borderRadius:
+                          BorderRadius.circular(NusaConfig.radiusLG),
+                      boxShadow: [
+                        BoxShadow(
+                          color: NusaConfig.activePrimary
+                              .withValues(alpha: 0.30),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: _switchSegmentHalf(
+                    icon: Icons.inventory_2_rounded,
+                    label: 'Produk',
+                    selected: !_posServiceOnly,
+                    onTap: () => setState(() => _posServiceOnly = false),
+                  ),
+                ),
+                Expanded(
+                  child: _switchSegmentHalf(
+                    icon: Icons.handyman_outlined,
+                    label: 'Layanan',
+                    selected: _posServiceOnly,
+                    onTap: () => setState(() => _posServiceOnly = true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _segmentChip({
+  Widget _switchSegmentHalf({
+    required IconData icon,
     required String label,
-    required bool active,
-    required bool isDark,
+    required bool selected,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: active
-              ? NusaConfig.activePrimary
-              : (isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor),
-          borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: active
-                ? Colors.white
-                : (isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary),
-          ),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 17,
+              color: selected ? Colors.white : NusaConfig.textSecondary,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected
+                    ? Colors.white
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary),
+              ),
+            ),
+          ],
         ),
       ),
     );

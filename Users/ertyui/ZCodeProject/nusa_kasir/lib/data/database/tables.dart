@@ -179,6 +179,11 @@ class Employees extends Table {
       boolean().withDefault(const Constant(false))();
   BoolColumn get requiresCashClose =>
       boolean().withDefault(const Constant(false))();
+  // v2.2.54: staf layanan — boleh dipilih sebagai capster/stylist di booking
+  // (varian jasa). Default true supaya karyawan existing langsung terpilih;
+  // owner menyaring lewat form karyawan (role Gudang/Finance dicentang mati).
+  BoolColumn get isServiceStaff =>
+      boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -606,6 +611,9 @@ class Appointments extends Table {
   TextColumn get customerPhone => text().nullable()();
   TextColumn get service => text()(); // e.g. Haircut, Coloring
   TextColumn get stylist => text().nullable()();
+  // v2.2.54: ID karyawan stylist (FK logis ke Employees) — nama tetap di
+  // kolom `stylist` (denormalisasi untuk struk/tampilan tanpa join).
+  IntColumn get stylistId => integer().nullable()();
   DateTimeColumn get date => dateTime()();
   TextColumn get timeSlot => text()(); // "HH:mm"
   TextColumn get status => text().withDefault(const Constant('Dikonfirmasi'))();

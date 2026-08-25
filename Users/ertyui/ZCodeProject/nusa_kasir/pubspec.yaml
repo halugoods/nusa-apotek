@@ -1,7 +1,7 @@
 name: nusa_kasir
 description: "NUSA - Aplikasi Kasir untuk Rumah Makan & Kafe"
 publish_to: 'none'
-version: 2.2.46+99
+version: 2.2.54+107
 
 environment:
   sdk: ^3.12.2
@@ -52,6 +52,7 @@ dependencies:
   flutter_svg: ^2.0.17
   image_cropper: ^8.1.0
   webview_flutter: ^4.10.0
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -87,6 +88,7 @@ flutter:
     - assets/icons/apotek/
     - assets/icons/fotocopy/
     - assets/icons/servis/
+    - assets/audio/
   fonts:
     - family: Poppins
       fonts:

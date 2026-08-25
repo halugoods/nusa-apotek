@@ -12,6 +12,7 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
@@ -598,31 +599,12 @@ class StockOpnameScreenState extends ConsumerState<StockOpnameScreen> {
         // Search
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
+          child: NusaSearchBar(
             controller: _searchController,
+            hint: 'Cari produk / scan barcode...',
             onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: 'Cari produk / scan barcode...',
-              hintStyle: TextStyle(
-                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                fontSize: 14,
-              ),
-              prefixIcon: Icon(Icons.search_rounded,
-                  color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                  size: 20),
-              suffixIcon: IconButton(
-                icon: Icon(Icons.qr_code_scanner, size: 20),
-                onPressed: _scanCamera,
-              ),
-              filled: true,
-              fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                    color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder),
-              ),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
+            showScanner: true,
+            onScan: _scanCamera,
           ),
         ),
         SizedBox(height: 8),

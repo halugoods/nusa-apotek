@@ -12,6 +12,7 @@ import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/stage_slider.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -341,16 +342,13 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                // Search bar standar (NusaSearchBar) — pill dengan bayangan
+                // lembut, menggantikan outline lama yang tidak terlihat.
+                // Filter tetap via listener `_search` di initState.
                 Expanded(
-                  child: TextField(
+                  child: NusaSearchBar(
                     controller: _search,
-                    decoration: InputDecoration(
-                      hintText: 'Cari nama atau layanan...', hintStyle: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      filled: true, fillColor: isDark ? NusaConfig.darkInputFill : NusaConfig.inputFill,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
+                    hint: 'Cari nama atau layanan...',
                   ),
                 ),
                 const SizedBox(width: 8),
