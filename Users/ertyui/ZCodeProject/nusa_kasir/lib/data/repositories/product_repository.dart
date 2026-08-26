@@ -105,6 +105,43 @@ class ProductRepository {
     });
   }
 
+  /// v2.2.57: pemilik barcode — produk LAIN (id != [excludeId]) yang
+  /// barcode ternormalisasinya sama. Null = barcode bebas dipakai.
+  /// Cegah "scan muncul 2 produk" karena barcode dobel.
+  Future<Product?> barcodeOwner(String barcode, {int? excludeId}) async {
+    final norm = normalizeBarcode(barcode);
+    if (norm.isEmpty) return null;
+    final all = await db.select(db.products).get();
+    for (final p in all) {
+      if (excludeId != null && p.id == excludeId) continue;
+      if (normalizeBarcode(p.barcode ?? '') == norm) return p;
+    }
+    return null;
+  }
+
+  /// v2.2.57: produk identik — nama (+kategori+harga jual) sudah dipakai
+  /// produk lain. Nama dibandingkan case-insensitive tanpa spasi tepi.
+  /// Cegah user memasukkan produk sama berulang (temuan user v2.2.57).
+  Future<Product?> identicalProduct(
+    String name,
+    String category,
+    int sellPrice, {
+    int? excludeId,
+  }) async {
+    final n = name.trim().toLowerCase();
+    if (n.isEmpty) return null;
+    final all = await db.select(db.products).get();
+    for (final p in all) {
+      if (excludeId != null && p.id == excludeId) continue;
+      if (p.name.trim().toLowerCase() == n &&
+          p.category == category &&
+          p.sellPrice == sellPrice) {
+        return p;
+      }
+    }
+    return null;
+  }
+
   /// Search by name OR barcode (case-insensitive substring) — barcode juga
   /// dinormalisasi agar kode berhuruf ikut cocok.
   Future<List<Product>> searchProducts(String query) {

@@ -29,6 +29,10 @@
 - Dropdown filter karyawan di Laporan & Transaksi dibuat pipih (sejajar card switch).
 - Field Stok/Kadaluarsa disembunyikan di form Layanan (tab Layanan).
 - Notifikasi update lonceng: tombol download langsung membuka browser.
+- **Anti produk & barcode dobel** (laporan user): form produk sekarang menolak
+  barcode yang sudah dipakai produk lain (scan tidak lagi "muncul 2") dan menolak
+  produk identik (nama + kategori + harga jual sama) — tambah stok lewat Stok Masuk.
+  Data lama yang sudah dobel tetap bisa dihapus manual di menu Produk.
 
 ## 📢 Sistem Update Wajib (untuk admin)
 - Dashboard web: lihat versi app tiap user + badge "Stale" (>7 hari offline).

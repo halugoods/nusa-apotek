@@ -537,6 +537,39 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
 
     setState(() => _saving = true);
     try {
+      // v2.2.57: anti-dobel (temuan user) — sebelum simpan, cek:
+      // 1) barcode belum dipakai produk lain (scan tidak "muncul 2"),
+      // 2) tidak ada produk identik (nama+kategori+harga jual sama).
+      final prodRepo = ProductRepository(db);
+      final excludeId = _isEdit ? widget.productId : null;
+      if (_barcodeOn) {
+        final bcRaw = _barcodeCtrl.text.trim();
+        if (bcRaw.isNotEmpty) {
+          final owner = await prodRepo.barcodeOwner(bcRaw, excludeId: excludeId);
+          if (owner != null) {
+            setState(() => _saving = false);
+            TopToast.error(
+              context,
+              'Barcode sudah dipakai produk "${owner.name}". Ganti barcode-nya.',
+            );
+            return;
+          }
+        }
+      }
+      final twin = await prodRepo.identicalProduct(
+        name,
+        _category,
+        sell,
+        excludeId: excludeId,
+      );
+      if (twin != null) {
+        setState(() => _saving = false);
+        TopToast.error(
+          context,
+          'Produk "${twin.name}" (${twin.category}, ${formatRupiah(twin.sellPrice)}) sudah ada. Kalau mau tambah stok, pakai menu Stok Masuk.',
+        );
+        return;
+      }
       final supplierVal = _hasSupplier && _supplier != null
           ? Value<int?>(_supplier!.id)
           : const Value<int?>(null);
