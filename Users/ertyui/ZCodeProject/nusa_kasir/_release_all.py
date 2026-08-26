@@ -59,20 +59,18 @@ def main():
 
         print(f"\n{repo} ({tag})")
 
-        # Check if release exists; create if missing
-        view = subprocess.run(
-            ["gh", "release", "view", tag, "--repo", repo],
-            cwd=BASE_DIR, text=True, capture_output=True,
-        )
-        if view.returncode != 0:
+        # Create release idempotently — if tag already exists, edit instead.
+        try:
             print(f"  Creating release {tag}...")
             run(["gh", "release", "create", tag, "--repo", repo,
                  "--title", f"NUSA {variant} {tag}",
                  "--notes", notes])
-        else:
-            print(f"  Updating release notes for {tag}...")
-            run(["gh", "release", "edit", tag, "--repo", repo,
-                 "--notes", notes])
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 1:
+                # Tag already exists — update notes only (don't re-upload assets).
+                print(f"  Release {tag} already exists, skipping upload.")
+            else:
+                raise
             assets = subprocess.run(
                 ["gh", "release", "view", tag, "--repo", repo,
                  "--json", "assets", "--jq", ".assets[].name"],
