@@ -140,6 +140,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             !_salonStaff.any((e) => e.id == _selectedStylistId)) {
           _selectedStylistId = null;
         }
+        // v2.2.57: default stylist = staf layanan yang sedang login —
+        // capster yang melayani langsung tercatat tanpa pilih manual.
+        if (_selectedStylistId == null) {
+          final session = ref.read(employeeSessionProvider);
+          if (session != null &&
+              _salonStaff.any((e) => e.id == session.employeeId)) {
+            _selectedStylistId = session.employeeId;
+          }
+        }
       });
     } catch (_) {}
   }
@@ -1216,6 +1225,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final recipeRepo = NusaConfig.isFnbVariant
           ? RecipeRepository(db)
           : null;
+      // v2.2.57: id transaksi dibawa keluar blok transaction — dipakai link
+      // appointment → transaksi (atribusi omset/komisi capster).
+      int bookingTxId = 0;
       await db.transaction(() async {
         // Deduct stock for each item (item manual tidak punya stok).
         // Stok selalu dalam satuan dasar → pakai qtyInBase (qty × qtyPerBase).
@@ -1241,8 +1253,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // employeeId = logged-in employee; sessionId = active cashier shift
         // (so each cashier's dashboard shows only their own shift's sales).
         final activeShift = await CashierSessionRepository(db).getActive();
-        final savedTxId = await transactionRepo.saveTransaction(
-          items: cart,
+        final savedTxId = await transactionRepo.saveTransaction(          items: cart,
           total: _total,
           discount: _totalDiscount,
           paymentMethod: _paymentMethod,
@@ -1259,6 +1270,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           installmentMonths: months > 0 ? months : null,
           installmentPerMonth: perMonth > 0 ? perMonth : null,
         );
+        bookingTxId = savedTxId;
 
         // ── HUTANG / DP: catat sisa sebagai hutang pelanggan (menu Piutang) ──
         // Total transaksi tetap utuh (laporan omzet benar); uang muka tercatat
@@ -1385,6 +1397,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ? null
                 : _salonStylistCtrl.text.trim(),
             stylistId: _selectedStylistId,
+            // v2.2.57: link ke transaksi — dasar atribusi omset & komisi
+            // capster di laporan Kinerja Capster.
+            transactionId: bookingTxId > 0 ? bookingTxId : null,
             date: _salonDate,
             timeSlot: _salonTimeCtrl.text,
             estimatedDuration: _salonDuration,

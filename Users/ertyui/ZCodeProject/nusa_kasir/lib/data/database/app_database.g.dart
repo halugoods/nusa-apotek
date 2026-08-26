@@ -4503,6 +4503,19 @@ class $EmployeesTable extends Employees
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _commissionPercentMeta = const VerificationMeta(
+    'commissionPercent',
+  );
+  @override
+  late final GeneratedColumn<double> commissionPercent =
+      GeneratedColumn<double>(
+        'commission_percent',
+        aliasedName,
+        false,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(10.0),
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -4536,6 +4549,7 @@ class $EmployeesTable extends Employees
     requiresCashOpen,
     requiresCashClose,
     isServiceStaff,
+    commissionPercent,
     createdAt,
   ];
   @override
@@ -4682,6 +4696,15 @@ class $EmployeesTable extends Employees
         ),
       );
     }
+    if (data.containsKey('commission_percent')) {
+      context.handle(
+        _commissionPercentMeta,
+        commissionPercent.isAcceptableOrUnknown(
+          data['commission_percent']!,
+          _commissionPercentMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -4773,6 +4796,10 @@ class $EmployeesTable extends Employees
         DriftSqlType.bool,
         data['${effectivePrefix}is_service_staff'],
       )!,
+      commissionPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}commission_percent'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -4806,6 +4833,7 @@ class Employee extends DataClass implements Insertable<Employee> {
   final bool requiresCashOpen;
   final bool requiresCashClose;
   final bool isServiceStaff;
+  final double commissionPercent;
   final DateTime createdAt;
   const Employee({
     required this.id,
@@ -4827,6 +4855,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     required this.requiresCashOpen,
     required this.requiresCashClose,
     required this.isServiceStaff,
+    required this.commissionPercent,
     required this.createdAt,
   });
   @override
@@ -4873,6 +4902,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     map['requires_cash_open'] = Variable<bool>(requiresCashOpen);
     map['requires_cash_close'] = Variable<bool>(requiresCashClose);
     map['is_service_staff'] = Variable<bool>(isServiceStaff);
+    map['commission_percent'] = Variable<double>(commissionPercent);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -4920,6 +4950,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       requiresCashOpen: Value(requiresCashOpen),
       requiresCashClose: Value(requiresCashClose),
       isServiceStaff: Value(isServiceStaff),
+      commissionPercent: Value(commissionPercent),
       createdAt: Value(createdAt),
     );
   }
@@ -4949,6 +4980,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       requiresCashOpen: serializer.fromJson<bool>(json['requiresCashOpen']),
       requiresCashClose: serializer.fromJson<bool>(json['requiresCashClose']),
       isServiceStaff: serializer.fromJson<bool>(json['isServiceStaff']),
+      commissionPercent: serializer.fromJson<double>(json['commissionPercent']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -4975,6 +5007,7 @@ class Employee extends DataClass implements Insertable<Employee> {
       'requiresCashOpen': serializer.toJson<bool>(requiresCashOpen),
       'requiresCashClose': serializer.toJson<bool>(requiresCashClose),
       'isServiceStaff': serializer.toJson<bool>(isServiceStaff),
+      'commissionPercent': serializer.toJson<double>(commissionPercent),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -4999,6 +5032,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     bool? requiresCashOpen,
     bool? requiresCashClose,
     bool? isServiceStaff,
+    double? commissionPercent,
     DateTime? createdAt,
   }) => Employee(
     id: id ?? this.id,
@@ -5020,6 +5054,7 @@ class Employee extends DataClass implements Insertable<Employee> {
     requiresCashOpen: requiresCashOpen ?? this.requiresCashOpen,
     requiresCashClose: requiresCashClose ?? this.requiresCashClose,
     isServiceStaff: isServiceStaff ?? this.isServiceStaff,
+    commissionPercent: commissionPercent ?? this.commissionPercent,
     createdAt: createdAt ?? this.createdAt,
   );
   Employee copyWithCompanion(EmployeesCompanion data) {
@@ -5055,6 +5090,9 @@ class Employee extends DataClass implements Insertable<Employee> {
       isServiceStaff: data.isServiceStaff.present
           ? data.isServiceStaff.value
           : this.isServiceStaff,
+      commissionPercent: data.commissionPercent.present
+          ? data.commissionPercent.value
+          : this.commissionPercent,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -5081,13 +5119,14 @@ class Employee extends DataClass implements Insertable<Employee> {
           ..write('requiresCashOpen: $requiresCashOpen, ')
           ..write('requiresCashClose: $requiresCashClose, ')
           ..write('isServiceStaff: $isServiceStaff, ')
+          ..write('commissionPercent: $commissionPercent, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     pin,
@@ -5107,8 +5146,9 @@ class Employee extends DataClass implements Insertable<Employee> {
     requiresCashOpen,
     requiresCashClose,
     isServiceStaff,
+    commissionPercent,
     createdAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5132,6 +5172,7 @@ class Employee extends DataClass implements Insertable<Employee> {
           other.requiresCashOpen == this.requiresCashOpen &&
           other.requiresCashClose == this.requiresCashClose &&
           other.isServiceStaff == this.isServiceStaff &&
+          other.commissionPercent == this.commissionPercent &&
           other.createdAt == this.createdAt);
 }
 
@@ -5155,6 +5196,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
   final Value<bool> requiresCashOpen;
   final Value<bool> requiresCashClose;
   final Value<bool> isServiceStaff;
+  final Value<double> commissionPercent;
   final Value<DateTime> createdAt;
   const EmployeesCompanion({
     this.id = const Value.absent(),
@@ -5176,6 +5218,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.requiresCashOpen = const Value.absent(),
     this.requiresCashClose = const Value.absent(),
     this.isServiceStaff = const Value.absent(),
+    this.commissionPercent = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   EmployeesCompanion.insert({
@@ -5198,6 +5241,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     this.requiresCashOpen = const Value.absent(),
     this.requiresCashClose = const Value.absent(),
     this.isServiceStaff = const Value.absent(),
+    this.commissionPercent = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : name = Value(name),
        pin = Value(pin),
@@ -5222,6 +5266,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Expression<bool>? requiresCashOpen,
     Expression<bool>? requiresCashClose,
     Expression<bool>? isServiceStaff,
+    Expression<double>? commissionPercent,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -5244,6 +5289,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       if (requiresCashOpen != null) 'requires_cash_open': requiresCashOpen,
       if (requiresCashClose != null) 'requires_cash_close': requiresCashClose,
       if (isServiceStaff != null) 'is_service_staff': isServiceStaff,
+      if (commissionPercent != null) 'commission_percent': commissionPercent,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -5268,6 +5314,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     Value<bool>? requiresCashOpen,
     Value<bool>? requiresCashClose,
     Value<bool>? isServiceStaff,
+    Value<double>? commissionPercent,
     Value<DateTime>? createdAt,
   }) {
     return EmployeesCompanion(
@@ -5290,6 +5337,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
       requiresCashOpen: requiresCashOpen ?? this.requiresCashOpen,
       requiresCashClose: requiresCashClose ?? this.requiresCashClose,
       isServiceStaff: isServiceStaff ?? this.isServiceStaff,
+      commissionPercent: commissionPercent ?? this.commissionPercent,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -5354,6 +5402,9 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
     if (isServiceStaff.present) {
       map['is_service_staff'] = Variable<bool>(isServiceStaff.value);
     }
+    if (commissionPercent.present) {
+      map['commission_percent'] = Variable<double>(commissionPercent.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -5382,6 +5433,7 @@ class EmployeesCompanion extends UpdateCompanion<Employee> {
           ..write('requiresCashOpen: $requiresCashOpen, ')
           ..write('requiresCashClose: $requiresCashClose, ')
           ..write('isServiceStaff: $isServiceStaff, ')
+          ..write('commissionPercent: $commissionPercent, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -17612,6 +17664,17 @@ class $AppointmentsTable extends Appointments
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _dateMeta = const VerificationMeta('date');
   @override
   late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
@@ -17693,6 +17756,7 @@ class $AppointmentsTable extends Appointments
     service,
     stylist,
     stylistId,
+    transactionId,
     date,
     timeSlot,
     status,
@@ -17754,6 +17818,15 @@ class $AppointmentsTable extends Appointments
       context.handle(
         _stylistIdMeta,
         stylistId.isAcceptableOrUnknown(data['stylist_id']!, _stylistIdMeta),
+      );
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
       );
     }
     if (data.containsKey('date')) {
@@ -17838,6 +17911,10 @@ class $AppointmentsTable extends Appointments
         DriftSqlType.int,
         data['${effectivePrefix}stylist_id'],
       ),
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      ),
       date: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
@@ -17882,6 +17959,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
   final String service;
   final String? stylist;
   final int? stylistId;
+  final int? transactionId;
   final DateTime date;
   final String timeSlot;
   final String status;
@@ -17896,6 +17974,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     required this.service,
     this.stylist,
     this.stylistId,
+    this.transactionId,
     required this.date,
     required this.timeSlot,
     required this.status,
@@ -17918,6 +17997,9 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     }
     if (!nullToAbsent || stylistId != null) {
       map['stylist_id'] = Variable<int>(stylistId);
+    }
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
     }
     map['date'] = Variable<DateTime>(date);
     map['time_slot'] = Variable<String>(timeSlot);
@@ -17949,6 +18031,9 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       stylistId: stylistId == null && nullToAbsent
           ? const Value.absent()
           : Value(stylistId),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
       date: Value(date),
       timeSlot: Value(timeSlot),
       status: Value(status),
@@ -17977,6 +18062,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       service: serializer.fromJson<String>(json['service']),
       stylist: serializer.fromJson<String?>(json['stylist']),
       stylistId: serializer.fromJson<int?>(json['stylistId']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
       date: serializer.fromJson<DateTime>(json['date']),
       timeSlot: serializer.fromJson<String>(json['timeSlot']),
       status: serializer.fromJson<String>(json['status']),
@@ -17996,6 +18082,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       'service': serializer.toJson<String>(service),
       'stylist': serializer.toJson<String?>(stylist),
       'stylistId': serializer.toJson<int?>(stylistId),
+      'transactionId': serializer.toJson<int?>(transactionId),
       'date': serializer.toJson<DateTime>(date),
       'timeSlot': serializer.toJson<String>(timeSlot),
       'status': serializer.toJson<String>(status),
@@ -18013,6 +18100,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     String? service,
     Value<String?> stylist = const Value.absent(),
     Value<int?> stylistId = const Value.absent(),
+    Value<int?> transactionId = const Value.absent(),
     DateTime? date,
     String? timeSlot,
     String? status,
@@ -18029,6 +18117,9 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     service: service ?? this.service,
     stylist: stylist.present ? stylist.value : this.stylist,
     stylistId: stylistId.present ? stylistId.value : this.stylistId,
+    transactionId: transactionId.present
+        ? transactionId.value
+        : this.transactionId,
     date: date ?? this.date,
     timeSlot: timeSlot ?? this.timeSlot,
     status: status ?? this.status,
@@ -18051,6 +18142,9 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       service: data.service.present ? data.service.value : this.service,
       stylist: data.stylist.present ? data.stylist.value : this.stylist,
       stylistId: data.stylistId.present ? data.stylistId.value : this.stylistId,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
       date: data.date.present ? data.date.value : this.date,
       timeSlot: data.timeSlot.present ? data.timeSlot.value : this.timeSlot,
       status: data.status.present ? data.status.value : this.status,
@@ -18072,6 +18166,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           ..write('service: $service, ')
           ..write('stylist: $stylist, ')
           ..write('stylistId: $stylistId, ')
+          ..write('transactionId: $transactionId, ')
           ..write('date: $date, ')
           ..write('timeSlot: $timeSlot, ')
           ..write('status: $status, ')
@@ -18091,6 +18186,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     service,
     stylist,
     stylistId,
+    transactionId,
     date,
     timeSlot,
     status,
@@ -18109,6 +18205,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           other.service == this.service &&
           other.stylist == this.stylist &&
           other.stylistId == this.stylistId &&
+          other.transactionId == this.transactionId &&
           other.date == this.date &&
           other.timeSlot == this.timeSlot &&
           other.status == this.status &&
@@ -18125,6 +18222,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
   final Value<String> service;
   final Value<String?> stylist;
   final Value<int?> stylistId;
+  final Value<int?> transactionId;
   final Value<DateTime> date;
   final Value<String> timeSlot;
   final Value<String> status;
@@ -18139,6 +18237,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     this.service = const Value.absent(),
     this.stylist = const Value.absent(),
     this.stylistId = const Value.absent(),
+    this.transactionId = const Value.absent(),
     this.date = const Value.absent(),
     this.timeSlot = const Value.absent(),
     this.status = const Value.absent(),
@@ -18154,6 +18253,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     required String service,
     this.stylist = const Value.absent(),
     this.stylistId = const Value.absent(),
+    this.transactionId = const Value.absent(),
     required DateTime date,
     required String timeSlot,
     this.status = const Value.absent(),
@@ -18172,6 +18272,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Expression<String>? service,
     Expression<String>? stylist,
     Expression<int>? stylistId,
+    Expression<int>? transactionId,
     Expression<DateTime>? date,
     Expression<String>? timeSlot,
     Expression<String>? status,
@@ -18187,6 +18288,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       if (service != null) 'service': service,
       if (stylist != null) 'stylist': stylist,
       if (stylistId != null) 'stylist_id': stylistId,
+      if (transactionId != null) 'transaction_id': transactionId,
       if (date != null) 'date': date,
       if (timeSlot != null) 'time_slot': timeSlot,
       if (status != null) 'status': status,
@@ -18204,6 +18306,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Value<String>? service,
     Value<String?>? stylist,
     Value<int?>? stylistId,
+    Value<int?>? transactionId,
     Value<DateTime>? date,
     Value<String>? timeSlot,
     Value<String>? status,
@@ -18219,6 +18322,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       service: service ?? this.service,
       stylist: stylist ?? this.stylist,
       stylistId: stylistId ?? this.stylistId,
+      transactionId: transactionId ?? this.transactionId,
       date: date ?? this.date,
       timeSlot: timeSlot ?? this.timeSlot,
       status: status ?? this.status,
@@ -18249,6 +18353,9 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     }
     if (stylistId.present) {
       map['stylist_id'] = Variable<int>(stylistId.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
     }
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
@@ -18283,6 +18390,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
           ..write('service: $service, ')
           ..write('stylist: $stylist, ')
           ..write('stylistId: $stylistId, ')
+          ..write('transactionId: $transactionId, ')
           ..write('date: $date, ')
           ..write('timeSlot: $timeSlot, ')
           ..write('status: $status, ')
@@ -27822,6 +27930,7 @@ typedef $$EmployeesTableCreateCompanionBuilder =
       Value<bool> requiresCashOpen,
       Value<bool> requiresCashClose,
       Value<bool> isServiceStaff,
+      Value<double> commissionPercent,
       Value<DateTime> createdAt,
     });
 typedef $$EmployeesTableUpdateCompanionBuilder =
@@ -27845,6 +27954,7 @@ typedef $$EmployeesTableUpdateCompanionBuilder =
       Value<bool> requiresCashOpen,
       Value<bool> requiresCashClose,
       Value<bool> isServiceStaff,
+      Value<double> commissionPercent,
       Value<DateTime> createdAt,
     });
 
@@ -27949,6 +28059,11 @@ class $$EmployeesTableFilterComposer
 
   ColumnFilters<bool> get isServiceStaff => $composableBuilder(
     column: $table.isServiceStaff,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get commissionPercent => $composableBuilder(
+    column: $table.commissionPercent,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -28062,6 +28177,11 @@ class $$EmployeesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get commissionPercent => $composableBuilder(
+    column: $table.commissionPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -28146,6 +28266,11 @@ class $$EmployeesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get commissionPercent => $composableBuilder(
+    column: $table.commissionPercent,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -28197,6 +28322,7 @@ class $$EmployeesTableTableManager
                 Value<bool> requiresCashOpen = const Value.absent(),
                 Value<bool> requiresCashClose = const Value.absent(),
                 Value<bool> isServiceStaff = const Value.absent(),
+                Value<double> commissionPercent = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EmployeesCompanion(
                 id: id,
@@ -28218,6 +28344,7 @@ class $$EmployeesTableTableManager
                 requiresCashOpen: requiresCashOpen,
                 requiresCashClose: requiresCashClose,
                 isServiceStaff: isServiceStaff,
+                commissionPercent: commissionPercent,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -28241,6 +28368,7 @@ class $$EmployeesTableTableManager
                 Value<bool> requiresCashOpen = const Value.absent(),
                 Value<bool> requiresCashClose = const Value.absent(),
                 Value<bool> isServiceStaff = const Value.absent(),
+                Value<double> commissionPercent = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EmployeesCompanion.insert(
                 id: id,
@@ -28262,6 +28390,7 @@ class $$EmployeesTableTableManager
                 requiresCashOpen: requiresCashOpen,
                 requiresCashClose: requiresCashClose,
                 isServiceStaff: isServiceStaff,
+                commissionPercent: commissionPercent,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -34359,6 +34488,7 @@ typedef $$AppointmentsTableCreateCompanionBuilder =
       required String service,
       Value<String?> stylist,
       Value<int?> stylistId,
+      Value<int?> transactionId,
       required DateTime date,
       required String timeSlot,
       Value<String> status,
@@ -34375,6 +34505,7 @@ typedef $$AppointmentsTableUpdateCompanionBuilder =
       Value<String> service,
       Value<String?> stylist,
       Value<int?> stylistId,
+      Value<int?> transactionId,
       Value<DateTime> date,
       Value<String> timeSlot,
       Value<String> status,
@@ -34420,6 +34551,11 @@ class $$AppointmentsTableFilterComposer
 
   ColumnFilters<int> get stylistId => $composableBuilder(
     column: $table.stylistId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -34498,6 +34634,11 @@ class $$AppointmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get date => $composableBuilder(
     column: $table.date,
     builder: (column) => ColumnOrderings(column),
@@ -34565,6 +34706,11 @@ class $$AppointmentsTableAnnotationComposer
   GeneratedColumn<int> get stylistId =>
       $composableBuilder(column: $table.stylistId, builder: (column) => column);
 
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
 
@@ -34626,6 +34772,7 @@ class $$AppointmentsTableTableManager
                 Value<String> service = const Value.absent(),
                 Value<String?> stylist = const Value.absent(),
                 Value<int?> stylistId = const Value.absent(),
+                Value<int?> transactionId = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
                 Value<String> timeSlot = const Value.absent(),
                 Value<String> status = const Value.absent(),
@@ -34640,6 +34787,7 @@ class $$AppointmentsTableTableManager
                 service: service,
                 stylist: stylist,
                 stylistId: stylistId,
+                transactionId: transactionId,
                 date: date,
                 timeSlot: timeSlot,
                 status: status,
@@ -34656,6 +34804,7 @@ class $$AppointmentsTableTableManager
                 required String service,
                 Value<String?> stylist = const Value.absent(),
                 Value<int?> stylistId = const Value.absent(),
+                Value<int?> transactionId = const Value.absent(),
                 required DateTime date,
                 required String timeSlot,
                 Value<String> status = const Value.absent(),
@@ -34670,6 +34819,7 @@ class $$AppointmentsTableTableManager
                 service: service,
                 stylist: stylist,
                 stylistId: stylistId,
+                transactionId: transactionId,
                 date: date,
                 timeSlot: timeSlot,
                 status: status,

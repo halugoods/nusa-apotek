@@ -48,6 +48,7 @@ class AttendanceRepository {
     bool requiresCashClose = false,
     String? barcode,
     bool isServiceStaff = true,
+    double commissionPercent = 10.0,
   }) {
     return db
         .into(db.employees)
@@ -69,6 +70,7 @@ class AttendanceRepository {
             requiresCashClose: Value(requiresCashClose),
             barcode: Value(barcode),
             isServiceStaff: Value(isServiceStaff),
+            commissionPercent: Value(commissionPercent),
           ),
         );
   }
@@ -91,6 +93,7 @@ class AttendanceRepository {
     bool requiresCashClose = false,
     String? barcode,
     bool isServiceStaff = true,
+    double? commissionPercent,
   }) => (db.update(db.employees)..where((t) => t.id.equals(id))).write(
     EmployeesCompanion(
       name: Value(name),
@@ -109,6 +112,10 @@ class AttendanceRepository {
       requiresCashClose: Value(requiresCashClose),
       barcode: Value(barcode),
       isServiceStaff: Value(isServiceStaff),
+      // null = jangan sentuh kolom (Value.absent).
+      commissionPercent: commissionPercent == null
+          ? const Value.absent()
+          : Value(commissionPercent),
     ),
   );
 

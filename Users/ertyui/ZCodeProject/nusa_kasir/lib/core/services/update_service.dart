@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Result of an update check.
 @immutable
@@ -358,4 +360,58 @@ class UpdateService {
       }
     } catch (_) {}
   }
+
+  // ── v2.2.57: ping server (version tracking + force-update) ────────
+
+  /// Hasil ping terakhir — dipakai notif lonceng untuk tombol download
+  /// via browser tanpa panggil ulang server.
+  static ForceUpdateInfo? lastForceCheck;
+
+  /// Ping edge fn `app_ping`: catat versi perangkat ke cloud (dashboard
+  /// admin bisa lihat user di versi berapa) + ambil versi minimum produk.
+  /// Return [ForceUpdateInfo.required]=true → app HARUS diupdate (blocking).
+  ///
+  /// Gagal jaringan TIDAK pernah memblokir app — balik no-update.
+  static Future<ForceUpdateInfo> pingAndCheck() async {
+    try {
+      final client = Supabase.instance.client;
+      final key = await SecureStore.getActivation();
+      final res = await client.functions.invoke(
+        'app_ping',
+        body: {
+          if (key != null && key.isNotEmpty) 'key': key,
+          'product': NusaConfig.productId,
+          'version': NusaConfig.appVersion,
+          'build': NusaConfig.appBuildNumber,
+        },
+      );
+      final data = res.data as Map<String, dynamic>? ?? const {};
+      final info = ForceUpdateInfo(
+        required: data['update_required'] == true,
+        minVersion: data['min_version'] as String? ?? '',
+        minBuild: (data['min_build'] as num?)?.toInt() ?? 0,
+        downloadUrl: data['download_url'] as String?,
+      );
+      lastForceCheck = info;
+      return info;
+    } catch (_) {
+      final info = const ForceUpdateInfo(required: false);
+      return info;
+    }
+  }
+}
+
+/// Hasil cek force-update dari server (v2.2.57).
+class ForceUpdateInfo {
+  final bool required;
+  final String minVersion;
+  final int minBuild;
+  final String? downloadUrl;
+
+  const ForceUpdateInfo({
+    required this.required,
+    this.minVersion = '',
+    this.minBuild = 0,
+    this.downloadUrl,
+  });
 }

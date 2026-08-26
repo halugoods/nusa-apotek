@@ -676,42 +676,34 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   /// v2.2.54: dropdown filter karyawan — "Semua Kasir" default; pilih
   /// karyawan → daftar transaksi hanya menampilkan trx karyawan tsb.
-  /// v2.2.55: tampil sebagai kartu full-width yang rapi (bukan chip kecil).
+  /// v2.2.57: pipih — tipis sejajar switch card (~48px).
   Widget _employeeDropdown(bool isDark) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
       ),
       child: DropdownButtonFormField<int>(
         value: _employeeFilter,
         isExpanded: true,
-        isDense: false,
-        borderRadius: BorderRadius.circular(12),
-        elevation: 8,
+        isDense: true,
+        borderRadius: BorderRadius.circular(10),
         menuMaxHeight: 320,
         dropdownColor:
             isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
         style: GoogleFonts.plusJakartaSans(
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
           color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
         ),
         icon: Icon(
           Icons.expand_more_rounded,
-          size: 20,
+          size: 18,
           color: isDark
               ? NusaConfig.darkTextTertiary
               : NusaConfig.textTertiary,
@@ -735,7 +727,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         decoration: InputDecoration(
           prefixIcon: Icon(
             Icons.person_outline_rounded,
-            size: 20,
+            size: 18,
             color: NusaConfig.activePrimary,
           ),
           hintText: 'Semua Kasir',
@@ -743,7 +735,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 10),
         ),
       ),
     );

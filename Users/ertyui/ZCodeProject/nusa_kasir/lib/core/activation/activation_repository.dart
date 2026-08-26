@@ -333,49 +333,55 @@ class ActivationRepository {
 
   /// Get the cloud backup's last-modified timestamp.
   ///
-  /// v2.2.38: pakai `Last-Modified` header dari download (storage API selalu
-  /// kirim header ini, terbukti 200 + Last-Modified di verifikasi). List
-  /// folder (yang butuh izin list) diganti karena 404 untuk anon key.
+  /// v2.2.57: uses embedded metadata (inside encrypted archive) — fallback
+  /// to the plaintext sidecar metadata.json for backups written by older
+  /// versions. NEVER falls back to `DateTime.now()` because that is what
+  /// broke sync for percetakanrks@gmail.com (metadata upload silently
+  /// failing → cloud timestamp looked always-newer than local → every
+  /// autosync cycle hit conflict path → fresh uploads never propagated).
+  /// If we cannot determine a real timestamp, return `null` and let the
+  /// caller treat it as "cloud not proven newer than local" (safe path).
   Future<DateTime?> getBackupTimestamp() async {
     if (client == null) return null;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return null;
     try {
-      final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
-      final res = await client!.storage
-          .from('nusa-backups')
-          .download(path);
-      if (res.isEmpty) return null;
-      // Last-Modified tidak diekspos SDK → ambil timestamp upload via
-      // metadata.json bila ada; fallback ke waktu sekarang (backup ada).
-      final meta = await _readMetadata();
+      final meta = await _readEmbeddedMetadata();
       if (meta != null) {
-        // v2.2.43: penulis metadata (`_uploadMetadata`) menulis `updated_at`
-        // DAN `backupTime`. Selalu utamakan `updated_at`; kalau backup lama
-        // hanya punya `backupTime`, turunkan ke situ biar timestamp tidak
-        // pernah lompat ke now (lompat ke now = auto-sync selalu anggap cloud
-        // lebih baru = upload device asli MATI → restore selalu data lama).
-        final t =
-            DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
+        final t = DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
             DateTime.tryParse(meta['backupTime']?.toString() ?? '');
         if (t != null) return t;
       }
-      return DateTime.now();
+      // Legacy fallback: plaintext sidecar metadata.json
+      final bytes = await client!.storage
+          .from('nusa-backups')
+          .download('$uid/${NusaConfig.productId}/metadata.json');
+      if (!bytes.isEmpty) {
+        final m = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        final t = DateTime.tryParse(m['updated_at']?.toString() ?? '') ??
+            DateTime.tryParse(m['backupTime']?.toString() ?? '');
+        if (t != null) return t;
+      }
+      // Unknown — conservative: return null so the caller does not assume
+      // "cloud is newer" (which is what previously caused silent sync death).
+      return null;
     } catch (_) {
       return null;
     }
   }
 
-  /// Baca metadata.json (preview info) — dipakai getBackupTimestamp.
-  Future<Map<String, dynamic>?> _readMetadata() async {
-    return getBackupMetadata();
-  }
-
   /// Upload current local DB + product images to cloud.
-  /// Packed as a single archive, encrypted with Google user ID.
-  /// Also uploads a metadata.json so the "data found" dialog can preview
-  /// store name, owner name, and backup time without decrypting the archive.
+  /// Packed as a single archive (now includes metadata.json INSIDE the
+  /// encrypted archive — v2.2.57). Encrypted with Google user ID.
+  ///
+  /// v2.2.57: metadata is no longer uploaded as a separate plaintext file.
+  /// It is packed INSIDE the encrypted archive (`metadata.json` entry) so
+  /// the timestamp + store/owner info can never get out-of-sync with the
+  /// backup itself. This closes the failure mode where `getBackupTimestamp`
+  /// would fall back to `DateTime.now()` and break sync silently because
+  /// the sidecar metadata.json failed to upload (root cause of stuck-amber
+  /// + always-conflict bug seen on percetakanrks@gmail.com 2026-08-26).
   Future<bool> uploadBackupNow({String? storeName, String? ownerName}) async {
     if (client == null) return false;
     await _ensureAnonAuth();
@@ -387,9 +393,23 @@ class ActivationRepository {
       final dbFile = File(p.join(dir.path, 'nusa_kasir.sqlite'));
       if (!await dbFile.exists()) return false;
 
-      // Pack SQLite + product images into single archive
+      final now = DateTime.now();
+      final meta = {
+        'storeName': storeName ?? '',
+        'ownerName': ownerName ?? '',
+        'backupTime': now.toUtc().toIso8601String(),
+        'updated_at': now.toUtc().toIso8601String(),
+        'appVersion':
+            '${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+        'productId': NusaConfig.productId,
+        'variantKey': NusaConfig.productId,
+      };
+
       final files = <String, Uint8List>{};
       files['nusa_kasir.sqlite'] = await dbFile.readAsBytes();
+      files['metadata.json'] = Uint8List.fromList(
+        const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
+      );
 
       // Collect all product, employee, and QRIS image files
       final dirContents = dir.listSync();
@@ -421,12 +441,9 @@ class ActivationRepository {
             ),
           );
 
-      // Upload metadata (non-sensitive preview info — not encrypted)
-      final now = DateTime.now();
-      await _uploadMetadata(uid, storeName ?? '', ownerName ?? '', now);
       await SecureStore.saveLastBackupTime(now);
       debugPrint(
-        '[Backup] Uploaded DB + ${files.length - 1} images (${encrypted.length} bytes encrypted)',
+        '[Backup] Uploaded DB + ${files.length - 2} images (${encrypted.length} bytes encrypted, metadata-in-archive)',
       );
       return true;
     } catch (e) {
@@ -435,77 +452,47 @@ class ActivationRepository {
     }
   }
 
-  /// Upload a small metadata.json alongside the encrypted backup.
-  /// This lets the activation screen preview store name, owner, and
-  /// backup time BEFORE downloading and decrypting the full archive.
-  ///
-  /// v2.2.42: metadata ditulis ke path TANPA nama varian (`metadata.json`)
-  /// agar aplikasi varian lain bisa membacanya untuk verifikasi varian
-  /// (folder backup yang tercemar data varian lain bisa ketahuan). Daftar
-  /// path yang dibaca: `metadata.json` (versi baru) lalu fallback ke
-  /// `{productId}/metadata.json`. `variantKey` disimpan supaya verifikasi isi
-  /// backup bisa membandingkan identitas varian.
-  ///
-  /// v2.2.43 (isolasi per-varian): WAJIB tulis ke `$uid/{productId}/metadata.json`
-  /// — JANGAN pernah tulis `$uid/metadata.json` root. Semua 8 varian berbagi
-  /// akun Google yang sama; metadata root adalah shared state yang bikin varian
-  /// saling menimpa preview/verifikasi (akar kontaminasi). Field `updated_at`
-  /// adalah SOLE timestamp yang dibaca getBackupTimestamp/syncIfNewer; jangan
-  /// ganti nama/format tanpa sinkron ke pembaca tersebut.
-  Future<void> _uploadMetadata(
-    String uid,
-    String storeName,
-    String ownerName,
-    DateTime backupTime,
-  ) async {
-    try {
-      final now = backupTime.toUtc().toIso8601String();
-      final meta = {
-        'storeName': storeName,
-        'ownerName': ownerName,
-        'backupTime': now,
-        'updated_at': now,
-        'appVersion': '${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
-        'productId': NusaConfig.productId,
-        'variantKey': NusaConfig.productId,
-      };
-      final jsonBytes = Uint8List.fromList(
-        const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
-      );
-      await client!.storage.from('nusa-backups').uploadBinary(
-        '$uid/${NusaConfig.productId}/metadata.json',
-        jsonBytes,
-        fileOptions: const FileOptions(
-          upsert: true,
-          contentType: 'application/json',
-        ),
-      );
-    } catch (e) {
-      // v2.2.51: log error supaya ketahuan kenapa metadata gagal upload.
-      // Backup sudah berhasil — metadata non-critical tapi penting untuk
-      // verifikasi varian saat restore.
-      debugPrint('[Backup] _uploadMetadata FAILED: $e');
-    }
-  }
-
-  /// Fetch the backup metadata (store name, owner, backup time)
-  /// without downloading the encrypted archive.
-  /// Returns null if metadata doesn't exist or fetch fails.
+  /// Fetch the backup metadata (store name, owner, backup time).
+  /// v2.2.57: prefers embedded metadata inside the encrypted archive. Falls
+  /// back to the legacy plaintext `metadata.json` for backups written by
+  /// older versions (graceful upgrade path — existing backups remain usable).
   Future<Map<String, dynamic>?> getBackupMetadata() async {
     if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
-    // v2.2.43 (isolasi per-varian): baca HANYA path per-varian. JANGAN baca
-    // `$uid/metadata.json` root — backup lama menulis root sebagai shared 8
-    // varian, dan membacanya bisa membuat verifikasi varian menolak backup
-    // valid (metadata punya varian lain) atau menimpa preview. Per-varian
-    // saja = akar kontaminasi antar varian dihilangkan.
     try {
+      final embedded = await _readEmbeddedMetadata();
+      if (embedded != null) return embedded;
       final bytes = await client!.storage
           .from('nusa-backups')
           .download('$uid/${NusaConfig.productId}/metadata.json');
       if (bytes.isEmpty) return null;
       return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Read metadata.json from inside the encrypted archive. Returns null on
+  /// legacy (unpacked) backups or on any error — caller will fall back to
+  /// the plaintext sidecar.
+  Future<Map<String, dynamic>?> _readEmbeddedMetadata() async {
+    if (client == null) return null;
+    final uid = await _googleUserId();
+    if (uid == null) return null;
+    try {
+      final bytes = await client!.storage
+          .from('nusa-backups')
+          .download('$uid/${NusaConfig.productId}/backup.sqlite.enc');
+      if (bytes.isEmpty) return null;
+      final decrypted = await BackupCrypto.decrypt(
+        Uint8List.fromList(bytes),
+        uid,
+      );
+      final packed = BackupCrypto.unpackFiles(Uint8List.fromList(decrypted));
+      final meta = packed['metadata.json'];
+      if (meta == null) return null;
+      return jsonDecode(utf8.decode(meta)) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }

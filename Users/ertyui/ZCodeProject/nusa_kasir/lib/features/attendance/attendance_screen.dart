@@ -20,6 +20,7 @@ import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/shared/services/auth_methods.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
 
 const _avatarColors = [
   Color(0xFFE63946), Color(0xFF3B82F6), Color(0xFF10B981),
@@ -63,11 +64,33 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
   // Hero animation controllers
   final Map<int, AnimationController> _pulseControllers = {};
 
+  // v2.2.57: staf layanan yang login melihat kartu "Pendapatan Saya"
+  // (salon only — omset & komisi pribadi).
+  bool _showMyEarnings = false;
+
   @override
   void initState() {
     super.initState();
     _searchCtrl.addListener(() => setState(() => _query = _searchCtrl.text.toLowerCase()));
     _load();
+    _checkMyEarnings();
+  }
+
+  Future<void> _checkMyEarnings() async {
+    try {
+      if (!NusaConfig.isSalonVariant) return;
+      final session = ref.read(employeeSessionProvider);
+      if (session == null) return;
+      final emps = await AttendanceRepository(
+        ref.read(databaseProvider),
+      ).getEmployees();
+      Employee? me;
+      for (final e in emps) {
+        if (e.id == session.employeeId) me = e;
+      }
+      if (!mounted) return;
+      setState(() => _showMyEarnings = me?.isServiceStaff ?? false);
+    } catch (_) {}
   }
 
   @override
@@ -724,6 +747,36 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
           ]),
         ),
         SizedBox(height: 6),
+        // v2.2.57: kartu Pendapatan Saya untuk capster/stylist yang login.
+        if (_showMyEarnings)
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => context.push('/pendapatan-saya'),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+                ),
+                child: Row(children: [
+                  Icon(Icons.payments_rounded, size: 18, color: NusaConfig.activePrimary),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Pendapatan Saya',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                            color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 18,
+                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                ]),
+              ),
+            ),
+          ),
+        if (_showMyEarnings) SizedBox(height: 6),
         Expanded(child: _tab == 0 ? _todayTab(isDark, isOwner) : _historyTab(isDark)),
       ]),
     );

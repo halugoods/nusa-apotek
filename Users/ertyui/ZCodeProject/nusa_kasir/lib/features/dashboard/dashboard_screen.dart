@@ -32,6 +32,7 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/profile_stats_card.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
+import 'package:nusa_kasir/core/services/force_update_dialog.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/providers/update_progress_provider.dart';
 import 'package:nusa_kasir/shared/services/biometric_service.dart';
@@ -217,6 +218,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // if a new release exists, show a badge on the bell.
     _checkUpdateSilent();
 
+    // v2.2.57: ping server — catat versi perangkat + cek force-update.
+    // Kalau build < min_build → popup UPDATE WAJIB (blocking, download via
+    // browser eksternal).
+    _checkForceUpdate();
+
     // Refresh the bell badge with persisted unread count.
     _notifUnread = await NotificationService.unreadCount();
     if (mounted) setState(() {});
@@ -283,10 +289,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         type: 'update',
         title: '🔄 Update Tersedia v${info.latestVersion}',
         body:
-            'Versi baru NUSA tersedia$sizeTxt. Klik untuk mengunduh & menginstal.',
+            'Versi baru NUSA tersedia$sizeTxt. Klik untuk download via browser.',
         route: 'update',
       );
     }
+  }
+
+  /// v2.2.57: ping server (version tracking + force-update). Popup blocking
+  /// tampil kalau build app di bawah minimum produk. Gagal jaringan = diabaikan.
+  Future<void> _checkForceUpdate() async {
+    try {
+      final fu = await UpdateService.pingAndCheck();
+      if (!mounted || !fu.required) return;
+      await ForceUpdateDialog.show(context, fu);
+    } catch (_) {}
   }
 
   /// Bell tap: open the Notification Center modal (scrollable list of
@@ -459,11 +475,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           if (mounted) setState(() => _notifUnread = unread);
         }
         if (route == 'update') {
-          final info = _updateInfo;
-          if (info != null && info.hasUpdate && !upd.downloading) {
-            // Langsung mulai unduh dari drawer — progress tampil realtime.
-            Navigator.of(ctx).pop();
-            _showUpdateDialog(autoStart: true);
+          // v2.2.57: download via BROWSER eksternal (bukan in-app). URL
+          // prioritas: min-version server → fallback asset GitHub release.
+          final url = UpdateService.lastForceCheck?.downloadUrl ??
+              _updateInfo?.downloadUrl;
+          Navigator.of(ctx).pop();
+          if (url != null && url.isNotEmpty) {
+            try {
+              await launchUrl(
+                Uri.parse(url),
+                mode: LaunchMode.externalApplication,
+              );
+            } catch (_) {}
           }
           return;
         }

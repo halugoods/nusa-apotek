@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,6 +20,7 @@ import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/call_service.dart';
 import 'package:nusa_kasir/core/services/auto_sync_service.dart';
+import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart'
     show receiptHeaderMinPx, receiptHeaderMaxPx;
@@ -516,6 +518,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ok ? AutoSyncPhase.ok : AutoSyncPhase.failed,
       lastOkAt: ok ? DateTime.now() : AutoSyncService.status.value.lastOkAt,
     );
+    if (ok) {
+      unawaited(RealtimeBackupNotifier.I.broadcastUpdated());
+    }
     if (mounted) {
       setState(() => _backingUp = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -688,8 +693,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '$_conflictCount snapshot konflik tersimpan di perangkat '
-                        '(conflict_*.sqlite). Data tidak ada yang hilang.',
+                        'Ada $_conflictCount cadangan otomatis lama tersimpan di folder aplikasi (file conflict_*.sqlite). Aman dihapus dari tombol di atas jika tidak diperlukan.',
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.4,
@@ -818,6 +822,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ok ? AutoSyncPhase.ok : AutoSyncPhase.failed,
       lastOkAt: ok ? DateTime.now() : AutoSyncService.status.value.lastOkAt,
     );
+    if (ok) {
+      unawaited(RealtimeBackupNotifier.I.broadcastUpdated());
+    }
     if (mounted) {
       setState(() => _syncing = false);
       // Refresh timestamps so the next cloud sync dialog shows up-to-date values.

@@ -229,17 +229,15 @@ class _CloudSyncChip extends StatelessWidget {
     final String msg;
     switch (st.phase) {
       case AutoSyncPhase.uploading:
-        msg = 'Sedang mengunggah backup ke cloud… tunggu sampai ikon '
-            'hijau sebelum hapus data.';
+        msg = 'Mengunggah backup ke cloud…';
       case AutoSyncPhase.ok:
-        msg = 'Backup cloud aman$time. Data toko sudah tersimpan — '
-            'aman dipulihkan di device mana pun.';
+        msg = 'Backup cloud aman (sukses$time).';
       case AutoSyncPhase.failed:
         msg = 'Backup cloud GAGAL${time.isEmpty ? '' : ' (sukses terakhir$time)'}. '
-            'Periksa koneksi internet — perubahan baru belum tersimpan.';
+            'Periksa koneksi — akan dicoba ulang otomatis.';
       case AutoSyncPhase.idle:
         msg = 'Belum ada backup cloud. Perubahan data akan otomatis '
-            'diunggah beberapa detik setelah kamu menyimpan.';
+            'tersinkron setelah disimpan.';
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

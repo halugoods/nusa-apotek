@@ -17,6 +17,7 @@ import "package:nusa_kasir/shared/widgets/top_toast.dart";
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:go_router/go_router.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   ReportsScreen({super.key});
@@ -2259,6 +2260,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _employeeFilterDropdown(isDark),
             ),
+          // v2.2.57: Kinerja Capster (salon) — omset & komisi per stylist.
+          if (_tab == 0 && NusaConfig.isSalonVariant)
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _capsterEntryCard(isDark),
+            ),
           SizedBox(height: 2),
           // Ringkasan Harian card (only for Penjualan tab)
           if (_tab == 0) _ringkasanHarianCard(),
@@ -2274,39 +2281,29 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  /// v2.2.54: dropdown filter karyawan untuk tab Penjualan — "Semua Kasir"
-  /// default; pilih karyawan → semua kartu (omzet/grafik/daftar trx) hanya
-  /// menghitung transaksi karyawan tsb.
-  /// v2.2.55: tampil sebagai kartu full-width yang rapi (bukan chip kecil).
+  /// v2.2.57: pipih — tipis sejajar switch card (~48px). v2.2.55 terlalu
+  /// tebal karena padding bertumpuk + shadow; diringkas jadi selaras.
   Widget _employeeFilterDropdown(bool isDark) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
       ),
       child: DropdownButtonFormField<int>(
         value: _employeeFilter,
         isExpanded: true,
-        isDense: false,
-        borderRadius: BorderRadius.circular(12),
-        elevation: 8,
+        isDense: true,
+        borderRadius: BorderRadius.circular(10),
         menuMaxHeight: 320,
         dropdownColor:
             isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
           color: isDark
               ? NusaConfig.darkTextPrimary
@@ -2314,7 +2311,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
         icon: Icon(
           Icons.expand_more_rounded,
-          size: 20,
+          size: 18,
           color: isDark
               ? NusaConfig.darkTextTertiary
               : NusaConfig.textTertiary,
@@ -2343,7 +2340,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         decoration: InputDecoration(
           prefixIcon: Icon(
             Icons.person_outline_rounded,
-            size: 20,
+            size: 18,
             color: NusaConfig.activePrimary,
           ),
           hintText: 'Semua Kasir',
@@ -2351,7 +2348,51 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+        ),
+      ),
+    );
+  }
+
+  /// v2.2.57: kartu pintasan laporan Kinerja Capster (khusus varian salon) —
+  /// pipih sejajar dropdown filter di atasnya.
+  Widget _capsterEntryCard(bool isDark) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => context.push('/laporan/capster'),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.workspace_premium_rounded,
+                size: 18, color: NusaConfig.activePrimary),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Kinerja Capster — Omset & Komisi',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary),
+          ],
         ),
       ),
     );

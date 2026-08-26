@@ -848,26 +848,28 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                   _buildDiscountField(isDark),
                   SizedBox(height: NusaConfig.spaceSM),
 
-                  // ── 6. Stok ──
-                  NusaFormField(
-                    label: 'Stok',
-                    controller: _stock,
-                    keyboardType: TextInputType.number,
-                    hintText: 'Cth: 100',
-                  ),
-                  SizedBox(height: NusaConfig.spaceSM),
+                  // ── 6. Stok — disembunyikan untuk Layanan (jasa) ──
+                  if (!_isService) ...[
+                    NusaFormField(
+                      label: 'Stok',
+                      controller: _stock,
+                      keyboardType: TextInputType.number,
+                      hintText: 'Cth: 100',
+                    ),
+                    SizedBox(height: NusaConfig.spaceSM),
 
-                  // ── 7. Kadaluarsa (opsional) ──
-                  _buildExpiryPicker(isDark),
-                  SizedBox(height: NusaConfig.spaceSM),
+                    // ── 7. Kadaluarsa (opsional) ──
+                    _buildExpiryPicker(isDark),
+                    SizedBox(height: NusaConfig.spaceSM),
 
-                  // ── 8. Stok Minimum (opsional) ──
-                  NusaFormField(
-                    label: 'Stok Minimum (opsional)',
-                    controller: _min,
-                    keyboardType: TextInputType.number,
-                    hintText: 'Cth: 10',
-                  ),
+                    // ── 8. Stok Minimum (opsional) ──
+                    NusaFormField(
+                      label: 'Stok Minimum (opsional)',
+                      controller: _min,
+                      keyboardType: TextInputType.number,
+                      hintText: 'Cth: 10',
+                    ),
+                  ],
                   SizedBox(height: NusaConfig.spaceMD),
 
                   // ── Divider ──

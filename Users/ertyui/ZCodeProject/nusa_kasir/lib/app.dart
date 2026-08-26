@@ -5,6 +5,7 @@ import 'package:nusa_kasir/core/theme/nusa_theme.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
+import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/shared/widgets/call_receiver_overlay.dart';
 import 'package:nusa_kasir/features/auth/rbac.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
@@ -45,6 +46,7 @@ import 'package:nusa_kasir/features/domain/servis_screen.dart';
 import 'package:nusa_kasir/features/domain/booking_screen.dart';
 import 'package:nusa_kasir/features/domain/resep_screen.dart';
 import 'package:nusa_kasir/features/domain/print_order_screen.dart';
+import 'package:nusa_kasir/features/reports/capster_reports_screen.dart';
 import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
 
 const _publicRoutes = {
@@ -212,6 +214,16 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/laporan',
       pageBuilder: (_, __) => _slidePage(ReportsScreen()),
     ),
+    // v2.2.57: laporan kinerja capster (salon variant).
+    GoRoute(
+      path: '/laporan/capster',
+      pageBuilder: (_, __) => _slidePage(KinerjaCapsterScreen()),
+    ),
+    // v2.2.57: kapster login lihat omset/komisi sendiri.
+    GoRoute(
+      path: '/pendapatan-saya',
+      pageBuilder: (_, __) => _slidePage(PendapatanSayaScreen()),
+    ),
     GoRoute(
       path: '/karyawan',
       pageBuilder: (_, __) => _slidePage(EmployeesScreen()),
@@ -317,11 +329,30 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
     try {
       ref.read(autoSyncProvider);
     } catch (_) {}
+    // v2.2.57: subscribe realtime channel for delta "another device just
+    // uploaded" notifications. On receipt → trigger immediate pull (soft
+    // adopt if we can't safely hot-apply, otherwise close+restore+login).
+    try {
+      RealtimeBackupNotifier.I.start();
+      RealtimeSyncService.I.stream.listen((_) {
+        // Soft pull: just adopt cloud time. Hot-apply on push event would
+        // clobber unsaved UI state; next natural launch picks up via
+        // _applyPendingRestore. This still brings "another device updated"
+        // to within ~1s perceived latency for read-only screens (dashboard,
+        // reports) since they refetch on each rebuild.
+        try {
+          ref.read(autoSyncProvider).pullNow();
+        } catch (_) {}
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    try {
+      RealtimeBackupNotifier.I.stop();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -334,6 +365,14 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       try {
         ref.read(autoSyncProvider).flushNow();
+      } catch (_) {}
+    }
+    // v2.2.57: on resume, pull immediately so devices that were idle on a
+    // different network catch up within milliseconds instead of waiting for
+    // the 30s periodic timer.
+    if (state == AppLifecycleState.resumed) {
+      try {
+        ref.read(autoSyncProvider).pullNow();
       } catch (_) {}
     }
   }

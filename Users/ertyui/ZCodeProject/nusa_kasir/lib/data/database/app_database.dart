@@ -732,6 +732,16 @@ class AppDatabase extends _$AppDatabase {
           'UPDATE employees SET is_service_staff = 1 WHERE is_service_staff IS NULL',
         );
         await _addColumnIfMissing(m, 'appointments', 'stylist_id', 'INTEGER');
+        // v2.2.57: komisi capster (% omset) — dipakai laporan Kinerja Capster
+        // + hitung komisi per-line booking. Default 10 untuk karyawan existing.
+        await _addColumnIfMissing(
+            m, 'employees', 'commission_percent', 'REAL DEFAULT 10.0');
+        await m.database.customStatement(
+          'UPDATE employees SET commission_percent = 10.0 '
+          'WHERE commission_percent IS NULL',
+        );
+        // v2.2.57: link appointment → transaksi (omset & komisi per capster).
+        await _addColumnIfMissing(m, 'appointments', 'transaction_id', 'INTEGER');
       }
     },
   );

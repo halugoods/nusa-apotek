@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -182,6 +183,11 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     final barcodeC = TextEditingController(text: employee?.barcode ?? '');
     final salaryC = TextEditingController(
       text: employee?.baseSalary != null ? '${employee!.baseSalary}' : '',
+    );
+    // v2.2.57: komisi % staf layanan (default 10).
+    final pct = employee?.commissionPercent;
+    final commissionC = TextEditingController(
+      text: pct == null ? '10' : (pct % 1 == 0 ? pct.truncate().toString() : '$pct'),
     );
     String role = employee?.role ?? _roles.first;
     String status = employee?.status ?? 'Aktif';
@@ -1074,6 +1080,76 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                         ),
                       ),
 
+                    // ── Komisi (%) v2.2.57 — hanya staf layanan (salon) ──
+                    if (NusaConfig.isSalonVariant && isServiceStaff)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Komisi (%)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? NusaConfig.darkTextSecondary
+                                          : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '% omset booking yang jadi hak staf ini',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark
+                                          ? NusaConfig.darkTextTertiary
+                                          : NusaConfig.textTertiary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            SizedBox(
+                              width: 90,
+                              child: TextFormField(
+                                controller: commissionC,
+                                keyboardType: TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d{0,2}[.,]?\d{0,1}'),
+                                  ),
+                                ],
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? NusaConfig.darkTextPrimary
+                                      : NusaConfig.textPrimary,
+                                ),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 10,
+                                  ),
+                                  suffixText: '%',
+                                  suffixStyle: TextStyle(fontSize: 12),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
                     // ── NFC Tag Registration ──
                     _NfcRegisterButton(
                       isDark: isDark,
@@ -1224,6 +1300,11 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   requiresCashClose: requiresCashClose,
                                   barcode: barcode,
                                   isServiceStaff: isServiceStaff,
+                                  commissionPercent:
+                                      double.tryParse(
+                                        commissionC.text.replaceAll(',', '.'),
+                                      ) ??
+                                      10.0,
                                 );
                               } else {
                                 await repo.updateEmployee(
@@ -1244,6 +1325,10 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   requiresCashClose: requiresCashClose,
                                   barcode: barcode,
                                   isServiceStaff: isServiceStaff,
+                                  commissionPercent:
+                                      double.tryParse(
+                                        commissionC.text.replaceAll(',', '.'),
+                                      ),
                                 );
                               }
                               // Upload photo to cloud in background
