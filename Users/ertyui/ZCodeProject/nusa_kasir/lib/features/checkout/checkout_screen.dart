@@ -190,6 +190,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   int get _subtotal =>
       ref.watch(cartProvider).fold(0, (s, e) => s + e.subtotal);
+  // v2.2.55: true bila keranjang berisi minimal satu item LAYANAN. Item
+  // manual/timbang default isService=false jadi aman. read (bukan watch)
+  // supaya boleh dipanggil dari _confirmPayment; reaktivitas build tetap
+  // terjaga oleh ref.watch(cartProvider) di build().
+  bool get _cartHasService => ref.read(cartProvider).any((e) => e.isService);
   int get _manualDiscount => int.tryParse(_discountCtrl.text) ?? 0;
   int get _tierDiscount {
     if (_selectedCustomer == null) return 0;
@@ -1364,7 +1369,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
       // ── Salon: auto-create Appointment after successful transaction ──
       int? _bookingId;
-      if (NusaConfig.isSalonVariant && cart.isNotEmpty) {
+      // v2.2.55: gate sama dengan tampil kartu booking — transaksi murni
+      // barang tidak boleh membuat appointment saat kartu disembunyikan.
+      if (NusaConfig.isSalonVariant &&
+          cart.isNotEmpty &&
+          _cartHasService) {
         try {
           final aptRepo = AppointmentRepository(db);
           final services = cart.map((c) => c.name).join(', ');
@@ -1551,7 +1560,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           SizedBox(height: 14),
 
           // ── Salon Booking Card (salon variant with jasa items) ──
-          if (NusaConfig.isSalonVariant && _subtotal > 0) ...[
+          // v2.2.55: sembunyikan bila keranjang murni barang (tanpa layanan).
+          if (NusaConfig.isSalonVariant &&
+              _cartHasService &&
+              _subtotal > 0) ...[
             _buildSalonBookingCard(isDark),
             SizedBox(height: 14),
           ],

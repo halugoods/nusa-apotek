@@ -1009,68 +1009,70 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                     ),
 
                     // ── Staf Layanan (v2.2.54) ──
-                    GestureDetector(
-                      onTap: () =>
-                          setSt(() => isServiceStaff = !isServiceStaff),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
+                    // v2.2.55: toggle hanya tampil di varian salon.
+                    if (NusaConfig.isSalonVariant)
+                      GestureDetector(
+                        onTap: () =>
+                            setSt(() => isServiceStaff = !isServiceStaff),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: isServiceStaff
+                                        ? NusaConfig.activePrimary
+                                        : (isDark
+                                              ? NusaConfig.darkDivider
+                                              : NusaConfig.dividerColor),
+                                    width: 2,
+                                  ),
                                   color: isServiceStaff
                                       ? NusaConfig.activePrimary
-                                      : (isDark
-                                            ? NusaConfig.darkDivider
-                                            : NusaConfig.dividerColor),
-                                  width: 2,
+                                      : Colors.transparent,
                                 ),
-                                color: isServiceStaff
-                                    ? NusaConfig.activePrimary
-                                    : Colors.transparent,
+                                child: isServiceStaff
+                                    ? Icon(
+                                        Icons.check,
+                                        size: 14,
+                                        color: Colors.white,
+                                      )
+                                    : null,
                               ),
-                              child: isServiceStaff
-                                  ? Icon(
-                                      Icons.check,
-                                      size: 14,
-                                      color: Colors.white,
-                                    )
-                                  : null,
-                            ),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Staf Layanan',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? NusaConfig.darkTextSecondary
-                                          : NusaConfig.textSecondary,
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Staf Layanan',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark
+                                            ? NusaConfig.darkTextSecondary
+                                            : NusaConfig.textSecondary,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    'Bisa dipilih sebagai stylist/capster saat booking layanan',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark
-                                          ? NusaConfig.darkTextTertiary
-                                          : NusaConfig.textTertiary,
+                                    Text(
+                                      'Bisa dipilih sebagai stylist/capster saat booking layanan',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? NusaConfig.darkTextTertiary
+                                            : NusaConfig.textTertiary,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
                     // ── NFC Tag Registration ──
                     _NfcRegisterButton(

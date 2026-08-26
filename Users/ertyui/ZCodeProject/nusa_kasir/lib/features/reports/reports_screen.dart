@@ -2252,7 +2252,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
           ),
           SizedBox(height: 2),
-          // v2.2.54: filter per karyawan (Penjualan tab) — dropdown chip di
+          // v2.2.55: filter per karyawan (Penjualan tab) — kartu full-width di
           // bawah tab & periode.
           if (_tab == 0)
             Padding(
@@ -2277,68 +2277,81 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   /// v2.2.54: dropdown filter karyawan untuk tab Penjualan — "Semua Kasir"
   /// default; pilih karyawan → semua kartu (omzet/grafik/daftar trx) hanya
   /// menghitung transaksi karyawan tsb.
+  /// v2.2.55: tampil sebagai kartu full-width yang rapi (bukan chip kecil).
   Widget _employeeFilterDropdown(bool isDark) {
     return Container(
-      height: 38,
-      padding: EdgeInsets.symmetric(horizontal: 12),
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: _employeeFilter == null
-            ? (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor)
-            : NusaConfig.activePrimary.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(10),
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _employeeFilter == null
-              ? (isDark ? NusaConfig.darkBorder : NusaConfig.borderColor)
-              : NusaConfig.activePrimary.withValues(alpha: 0.5),
+          color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          value: _employeeFilter,
+      child: DropdownButtonFormField<int>(
+        value: _employeeFilter,
+        isExpanded: true,
+        isDense: false,
+        borderRadius: BorderRadius.circular(12),
+        elevation: 8,
+        menuMaxHeight: 320,
+        dropdownColor:
+            isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: isDark
+              ? NusaConfig.darkTextPrimary
+              : NusaConfig.textPrimary,
+        ),
+        icon: Icon(
+          Icons.expand_more_rounded,
+          size: 20,
+          color: isDark
+              ? NusaConfig.darkTextTertiary
+              : NusaConfig.textTertiary,
+        ),
+        items: [
+          DropdownMenuItem<int>(
+            value: null,
+            child: Text('Semua Kasir', overflow: TextOverflow.ellipsis),
+          ),
+          ..._employees.map(
+            (e) => DropdownMenuItem<int>(
+              value: e.id,
+              child: Text(
+                '${e.name} (${e.role})',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+        onChanged: (v) {
+          setState(() {
+            _employeeFilter = v;
+            _refreshKey++;
+          });
+        },
+        decoration: InputDecoration(
+          prefixIcon: Icon(
+            Icons.person_outline_rounded,
+            size: 20,
+            color: NusaConfig.activePrimary,
+          ),
+          hintText: 'Semua Kasir',
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
           isDense: true,
-          borderRadius: BorderRadius.circular(12),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isDark
-                ? NusaConfig.darkTextSecondary
-                : NusaConfig.textSecondary,
-          ),
-          icon: Icon(
-            Icons.expand_more_rounded,
-            size: 18,
-            color: isDark
-                ? NusaConfig.darkTextTertiary
-                : NusaConfig.textTertiary,
-          ),
-          items: [
-            DropdownMenuItem<int>(
-              value: null,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.groups_rounded,
-                    size: 15,
-                    color: NusaConfig.activePrimary,
-                  ),
-                  SizedBox(width: 6),
-                  Text('Semua Kasir'),
-                ],
-              ),
-            ),
-            ..._employees.map(
-              (e) => DropdownMenuItem<int>(
-                value: e.id,
-                child: Text('${e.name} (${e.role})'),
-              ),
-            ),
-          ],
-          onChanged: (v) {
-            setState(() {
-              _employeeFilter = v;
-              _refreshKey++;
-            });
-          },
+          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 12),
         ),
       ),
     );

@@ -71,6 +71,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   int _kategoriTick = 0;
   // Legacy alias (Produk mode) — dipertahankan agar referensi lama tetap jalan.
   bool get _showKategori => _tabIndex == 1;
+  /// v2.2.55: ganti tab + reload — isi list kini tergantung tab aktif
+  /// (Produk = barang, Layanan = isService).
+  void _switchTab(int i) {
+    if (_tabIndex == i) return;
+    setState(() => _tabIndex = i);
+    _load();
+  }
   // Increment saat bahan ditambah dari FAB → _BahanView re-init & reload.
   int _bahanTick = 0;
   List<String> labels = [];
@@ -127,21 +134,27 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _searchFocus.requestFocus();
   }
 
+  /// v2.2.55: tab Layanan memakai pipeline yang SAMA dengan tab Produk —
+  /// hanya filternya dibalik (isService true), jadi status chips, sort,
+  /// count badge, grid 1/2/3, dan kartu berfoto identik.
+  bool get _serviceTab => _tabIndex == 3 && NusaConfig.isJasaVariant;
+
   Future<void> _load() async {
     final repo = ref.read(productRepoProvider);
     final q = _search.text.trim().toLowerCase();
+    final serviceOnly = _serviceTab;
 
     List<Product> all;
     if (q.isNotEmpty) {
       all = await repo.searchProducts(q);
       // B10: tab Produk = barang fisik saja; layanan pindah ke tab Layanan.
       if (NusaConfig.isJasaVariant) {
-        all = all.where((p) => !p.isService).toList();
+        all = all.where((p) => p.isService == serviceOnly).toList();
       }
     } else {
       all = await repo.getProducts(
         status: _statusFilter == 'Semua' ? null : _statusFilter,
-        isService: NusaConfig.isJasaVariant ? false : null,
+        isService: NusaConfig.isJasaVariant ? serviceOnly : null,
       );
     }
     all = _sort(all);
@@ -277,8 +290,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   }
 
   /// Buka form produk sebagai slide-up sheet (state baru).
-  Future<void> _openProductForm({int? productId}) async {
-    final result = await showProductFormSheet(context, productId: productId);
+  Future<void> _openProductForm({int? productId, bool? isService}) async {
+    final result = await showProductFormSheet(
+      context,
+      productId: productId,
+      isService: isService,
+    );
     if (result != null && mounted) _load();
   }
 
@@ -362,19 +379,19 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       _SegmentTab(
                         label: 'Produk',
                         active: _tabIndex == 0,
-                        onTap: () => setState(() => _tabIndex = 0),
+                        onTap: () => _switchTab(0),
                       ),
                       _SegmentTab(
                         label: 'Kategori',
                         active: _tabIndex == 1,
-                        onTap: () => setState(() => _tabIndex = 1),
+                        onTap: () => _switchTab(1),
                       ),
                       // v2.2.43: tab ke-3 Bahan Baku — HANYA varian F&B.
                       if (NusaConfig.isFnbVariant)
                         _SegmentTab(
                           label: 'Bahan Baku',
                           active: _tabIndex == 2,
-                          onTap: () => setState(() => _tabIndex = 2),
+                          onTap: () => _switchTab(2),
                         ),
                       // B10 (v2.2.44): tab Layanan — HANYA varian jasa.
                       // Varian barang: tab disembunyikan (produk jasa tidak
@@ -383,7 +400,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         _SegmentTab(
                           label: 'Layanan',
                           active: _tabIndex == 3,
-                          onTap: () => setState(() => _tabIndex = 3),
+                          onTap: () => _switchTab(3),
                         ),
                     ],
                   ),
@@ -392,7 +409,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 // Grid toggle (only when in Produk mode) — dipisah jelas dari
                 // tab switch (Spacer + jarak) supaya 3 filter list/grid tidak
                 // menempel pada 3-4 tab di kiri (v2.2.45).
-                if (_tabIndex == 0) ...[
+                if (_tabIndex == 0 || _tabIndex == 3) ...[
                   Container(
                     height: 36,
                     decoration: BoxDecoration(
@@ -438,41 +455,22 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           // tombol aksi sendiri + barcode HID tetap jalan via ScreenScaffold).
           if (_tabIndex != 2)
             Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: NusaInput(
-                'Cari nama atau barcode...',
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              // v2.2.55: search bar standar Kasir (NusaSearchBar) — konsisten
+              // dengan audit searchbar v2.2.54; HID submit + scanner dipertahankan.
+              child: NusaSearchBar(
                 controller: _search,
                 hint: 'Cari nama atau barcode...',
-                focusNode: _searchFocus,
-                // Scan barcode EKSTERNAL (HID): Enter tidak unfocus, fokus
-                // tetap di kolom cari → scan beruntun tanpa tap ulang (v2.2.29).
-                textInputAction: TextInputAction.newline,
-                onSubmitted: (_) => _submitScanHid(),
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
-                suffixIcon: GestureDetector(
-                  onTap: _scanBarcode,
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 4),
-                    child: Icon(
-                      Icons.qr_code_scanner,
-                      size: 20,
-                      color: NusaConfig.activePrimary,
-                    ),
-                  ),
-                ),
+                onChanged: (_) => _onSearchChanged(),
+                onSubmit: (_) => _submitScanHid(),
+                showScanner: true,
+                onScan: _scanBarcode,
               ),
             ),
 
           // Content: product list, category grid, bahan baku (F&B), or layanan (jasa)
           if (_tabIndex == 2 && NusaConfig.isFnbVariant)
             Expanded(child: _BahanView(key: ValueKey(_bahanTick)))
-          else if (_tabIndex == 3 && NusaConfig.isJasaVariant)
-            Expanded(child: _LayananView(key: ValueKey(_kategoriTick)))
           else if (_showKategori)
             Expanded(child: _KategoriView(key: ValueKey(_kategoriTick)))
           else ...[
@@ -574,7 +572,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         ),
                       ),
                       child: Text(
-                        '${_products.length} produk',
+                        '${_products.length} ${_serviceTab ? 'layanan' : 'produk'}',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -592,12 +590,22 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ? SkeletonList()
                   : _products.isEmpty
                   ? EmptyState(
-                      icon: Icons.inventory_2_outlined,
+                      icon: _serviceTab
+                          ? Icons.handyman_outlined
+                          : Icons.inventory_2_outlined,
                       message: _search.text.isNotEmpty
-                          ? 'Produk tidak ditemukan'
-                          : 'Belum ada produk',
-                      actionLabel: 'Tambah Produk',
-                      onAction: () => _openProductForm(),
+                          ? (_serviceTab
+                                ? 'Layanan tidak ditemukan'
+                                : 'Produk tidak ditemukan')
+                          : (_serviceTab
+                                ? 'Belum ada layanan'
+                                : 'Belum ada produk'),
+                      actionLabel: _serviceTab
+                          ? 'Tambah Layanan'
+                          : 'Tambah Produk',
+                      onAction: () => _serviceTab
+                          ? _openProductForm(isService: true)
+                          : _openProductForm(),
                     )
                   : RefreshIndicator(
                       onRefresh: _load,
@@ -1180,398 +1188,6 @@ class _KategoriViewState extends ConsumerState<_KategoriView> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-// ── B10 (v2.2.44): Tab Layanan (jasa) — varian jasa only ──
-// Daftar produk bertanda isService. Tap → edit form (preset layanan);
-// menu (⋯) → hapus. Tambah via FAB (isService preset true).
-
-class _LayananView extends ConsumerStatefulWidget {
-  const _LayananView({super.key});
-  @override
-  ConsumerState<_LayananView> createState() => _LayananViewState();
-}
-
-class _LayananViewState extends ConsumerState<_LayananView> {
-  List<Product> _services = [];
-  bool _loading = true;
-  // v2.2.54: pendekatan SAMA dengan tab Produk — pencarian, filter kategori,
-  // dan toggle tampilan (list/grid), bukan sekadar list polos.
-  final _searchCtrl = TextEditingController();
-  String _query = '';
-  String _kategori = 'Semua';
-  int _gridColumns = 1;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final repo = ref.read(productRepoProvider);
-    final services = await repo.getServices();
-    services.sort((a, b) => a.name.compareTo(b.name));
-    if (mounted) {
-      setState(() {
-        _services = services;
-        _loading = false;
-      });
-    }
-  }
-
-  List<String> get _kategoriList {
-    final cats = _services.map((p) => p.category).toSet().toList()..sort();
-    return ['Semua', ...cats];
-  }
-
-  List<Product> get _filtered {
-    var list = _services;
-    if (_kategori != 'Semua') {
-      list = list.where((p) => p.category == _kategori).toList();
-    }
-    if (_query.isNotEmpty) {
-      final q = _query.toLowerCase();
-      list = list.where((p) => p.name.toLowerCase().contains(q)).toList();
-    }
-    return list;
-  }
-
-  Future<void> _editService(Product p) async {
-    final saved = await showProductFormSheet(context, productId: p.id);
-    if (saved != null && mounted) _load();
-  }
-
-  Future<void> _deleteService(Product p) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(NusaConfig.radiusXL),
-        ),
-        title: const Text('Hapus Layanan'),
-        content: Text(
-          'Hapus layanan "${p.name}"?\nTindakan ini tidak dapat dibatalkan.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: NusaConfig.error),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await ref.read(productRepoProvider).deleteProduct(p.id);
-    if (mounted) {
-      TopToast.success(context, 'Layanan dihapus');
-      _load();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (_loading) return const Center(child: CircularProgressIndicator());
-
-    final filtered = _filtered;
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        // ── Pencarian (widget standar, sama dgn menu Kasir) ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: NusaSearchBar(
-            controller: _searchCtrl,
-            hint: 'Cari layanan…',
-            onChanged: (v) => setState(() => _query = v),
-          ),
-        ),
-        // ── Filter kategori ──
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            scrollDirection: Axis.horizontal,
-            itemCount: _kategoriList.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final k = _kategoriList[i];
-              final active = k == _kategori;
-              return GestureDetector(
-                onTap: () => setState(() => _kategori = k),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: active
-                        ? NusaConfig.activePrimary
-                        : (isDark
-                              ? NusaConfig.darkSurface2
-                              : NusaConfig.surfaceColor),
-                    borderRadius: BorderRadius.circular(NusaConfig.radiusFull),
-                    border: active
-                        ? null
-                        : Border.all(
-                            color: isDark
-                                ? NusaConfig.darkBorder
-                                : NusaConfig.dividerColor,
-                          ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    k,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: active
-                          ? Colors.white
-                          : (isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        // ── Jumlah + toggle tampilan ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Row(
-            children: [
-              Text(
-                '${filtered.length} layanan',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
-                ),
-              ),
-              const Spacer(),
-              _layananGridBtn(1, Icons.view_list_rounded, isDark),
-              const SizedBox(width: 6),
-              _layananGridBtn(2, Icons.grid_view_rounded, isDark),
-            ],
-          ),
-        ),
-        Expanded(
-          child: filtered.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.handyman_outlined,
-                        size: 48,
-                        color: isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _services.isEmpty
-                            ? 'Belum ada layanan'
-                            : 'Tidak ada yang cocok',
-                        style: TextStyle(
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _services.isEmpty
-                            ? 'Tekan Tambah Layanan untuk mulai'
-                            : 'Coba kata kunci atau kategori lain',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: _gridColumns == 1
-                      ? ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (_, i) =>
-                              _layananCard(filtered[i], isDark),
-                        )
-                      : GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                            childAspectRatio: 0.95,
-                          ),
-                          itemCount: filtered.length,
-                          itemBuilder: (_, i) =>
-                              _layananCard(filtered[i], isDark, compact: true),
-                        ),
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _layananGridBtn(int cols, IconData icon, bool isDark) {
-    final active = _gridColumns == cols;
-    return GestureDetector(
-      onTap: () => setState(() => _gridColumns = cols),
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: active
-              ? NusaConfig.activePrimary.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(NusaConfig.radiusSM),
-          border: Border.all(
-            color: active
-                ? NusaConfig.activePrimary
-                : (isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
-          ),
-        ),
-        child: Icon(
-          icon,
-          size: 17,
-          color: active
-              ? NusaConfig.activePrimary
-              : (isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary),
-        ),
-      ),
-    );
-  }
-
-  /// Kartu layanan — mode list (horizontal) atau grid (compact vertikal).
-  Widget _layananCard(Product p, bool isDark, {bool compact = false}) {
-    final nameStyle = TextStyle(
-      fontSize: compact ? 13 : 14,
-      fontWeight: FontWeight.w700,
-      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-    );
-    final subStyle = TextStyle(
-      fontSize: 12,
-      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-    );
-    final price = p.sellPrice > 0 ? formatRupiah(p.sellPrice) : 'Gratis';
-
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: compact ? 34 : 40,
-          height: compact ? 34 : 40,
-          decoration: BoxDecoration(
-            color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: Icon(
-            Icons.handyman_outlined,
-            size: compact ? 18 : 20,
-            color: NusaConfig.activePrimary,
-          ),
-        ),
-        SizedBox(height: compact ? 8 : 0),
-        Flexible(
-          child: Text(
-            p.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: nameStyle,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          compact ? price : '${p.category} · $price',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: subStyle,
-        ),
-      ],
-    );
-
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: () => _editService(p),
-          child: Icon(
-            Icons.edit_outlined,
-            size: 18,
-            color: isDark
-                ? NusaConfig.darkTextSecondary
-                : NusaConfig.textSecondary,
-          ),
-        ),
-        const SizedBox(width: 12),
-        GestureDetector(
-          onTap: () => _deleteService(p),
-          child: Icon(Icons.delete_outline, size: 18, color: NusaConfig.error),
-        ),
-      ],
-    );
-
-    return GestureDetector(
-      onTap: () => _editService(p),
-      child: Container(
-        padding: EdgeInsets.all(compact ? 12 : 14),
-        decoration: BoxDecoration(
-          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-          borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-          border: Border.all(
-            color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
-          ),
-        ),
-        child: compact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  body,
-                  const Spacer(),
-                  Align(alignment: Alignment.centerRight, child: actions),
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(child: body),
-                  actions,
-                ],
-              ),
       ),
     );
   }

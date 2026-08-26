@@ -19,13 +19,38 @@ import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 /// - Conflict (cloud newer AND local changed): newest-wins — the loser is
 ///   saved as `conflict_<ts>.sqlite` snapshot next to the DB and the
 ///   `nusa_conflict_count` badge bumps. No dialogs, no reminders.
+///
+/// v2.2.55: status upload kini TERLIHAT — [AutoSyncService.status] di-update
+/// setiap fase (idle/uploading/ok/failed) dan ditampilkan sebagai ikon awan
+/// di DashboardHeader, supaya user tahu kapan data SUDAH aman di cloud
+/// sebelum menghapus data aplikasi (kasus nyata: produk hilang karena device
+/// dihapus saat upload masih berjalan — silent failure).
+enum AutoSyncPhase { idle, uploading, ok, failed }
+
+class AutoSyncStatus {
+  final AutoSyncPhase phase;
+  final DateTime? lastOkAt;
+  const AutoSyncStatus(this.phase, {this.lastOkAt});
+}
+
 class AutoSyncService {
   final AppDatabase db;
   final ActivationRepository repo;
   final SupabaseClient? client;
 
-  static const _debounce = Duration(seconds: 6);
-  static const _coalesce = Duration(seconds: 30);
+  /// v2.2.55: near-realtime — debounce 6s terasa lama (user bisa hapus data
+  /// sebelum upload mulai). 1.2s masih menggabungkan burst tulisan (import,
+  /// form multi-step) tapi backup keluar hampir seketika.
+  static const _debounce = Duration(milliseconds: 1200);
+
+  /// Safety net: walau tulisan terus-menerus (debounce terus tertunda),
+  /// paksa flush tiap 10s supaya data tetap mengalir ke cloud.
+  static const _coalesce = Duration(seconds: 10);
+
+  /// Status sinkronisasi global — didengarkan ikon awan di DashboardHeader.
+  /// Static supaya manual upload di Pengaturan bisa meng-update chip yang sama.
+  static final ValueNotifier<AutoSyncStatus> status =
+      ValueNotifier(const AutoSyncStatus(AutoSyncPhase.idle));
 
   StreamSubscription<dynamic>? _sub;
   Timer? _debounceTimer;
@@ -39,6 +64,7 @@ class AutoSyncService {
   /// Watch every table write and schedule a debounced upload.
   void start() {
     if (_sub != null) return;
+    _restoreStatusFromDisk();
     try {
       _sub = db.tableUpdates().listen((_) {
         _markLocalChange();
@@ -46,6 +72,18 @@ class AutoSyncService {
     } catch (e) {
       debugPrint('[AutoSync] watch start error: $e');
     }
+  }
+
+  /// Tampilkan waktu backup sukses terakhir (dari sesi sebelumnya) di chip.
+  Future<void> _restoreStatusFromDisk() async {
+    try {
+      final last = await SecureStore.getLastBackupTime();
+      if (last != null &&
+          status.value.phase == AutoSyncPhase.idle &&
+          status.value.lastOkAt == null) {
+        status.value = AutoSyncStatus(AutoSyncPhase.ok, lastOkAt: last);
+      }
+    } catch (_) {}
   }
 
   void _markLocalChange() {
@@ -80,10 +118,22 @@ class AutoSyncService {
     if (!await dbFile.exists()) return;
 
     _inFlight = true;
+    status.value = AutoSyncStatus(AutoSyncPhase.uploading,
+        lastOkAt: status.value.lastOkAt);
     try {
       await _pushOnce();
+    } catch (_) {
+      status.value = AutoSyncStatus(AutoSyncPhase.failed,
+          lastOkAt: status.value.lastOkAt);
     } finally {
       _inFlight = false;
+      // v2.2.55: perubahan yang terjadi SAAT upload berjalan tidak boleh
+      // nunggu tulisan berikutnya — langsung antre siklus lagi. Kalau tidak
+      // ada perubahan baru, _lastLocalChange == null (dikosongkan setelah
+      // sukses) → tidak ada loop.
+      if (_lastLocalChange != null && !_disposed) {
+        _schedule();
+      }
     }
   }
 
@@ -165,6 +215,10 @@ class AutoSyncService {
       await SecureStore.setLastCloudSeen(now);
       _lastLocalChange = null;
       await SecureStore.setLastLocalChange(now);
+      status.value = AutoSyncStatus(AutoSyncPhase.ok, lastOkAt: now.toLocal());
+    } else {
+      status.value = AutoSyncStatus(AutoSyncPhase.failed,
+          lastOkAt: status.value.lastOkAt);
     }
   }
 

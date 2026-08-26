@@ -18,6 +18,7 @@ import 'package:nusa_kasir/core/receipt/receipt_preview_widget.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/call_service.dart';
+import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/receipt_header_renderer.dart'
     show receiptHeaderMinPx, receiptHeaderMaxPx;
@@ -510,6 +511,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _backupNow() async {
     setState(() => _backingUp = true);
     final ok = await ref.read(activationRepoProvider).uploadBackupNow();
+    // v2.2.55: ikon awan di dashboard ikut berubah sesuai hasil manual backup.
+    AutoSyncService.status.value = AutoSyncStatus(
+      ok ? AutoSyncPhase.ok : AutoSyncPhase.failed,
+      lastOkAt: ok ? DateTime.now() : AutoSyncService.status.value.lastOkAt,
+    );
     if (mounted) {
       setState(() => _backingUp = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -807,6 +813,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _syncing = true);
     final repo = ref.read(activationRepoProvider);
     final ok = await repo.uploadBackupNow();
+    // v2.2.55: ikon awan di dashboard ikut berubah sesuai hasil upload manual.
+    AutoSyncService.status.value = AutoSyncStatus(
+      ok ? AutoSyncPhase.ok : AutoSyncPhase.failed,
+      lastOkAt: ok ? DateTime.now() : AutoSyncService.status.value.lastOkAt,
+    );
     if (mounted) {
       setState(() => _syncing = false);
       // Refresh timestamps so the next cloud sync dialog shows up-to-date values.

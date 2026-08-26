@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
 
 /// NUSA-branded app header: logo + user info + notification bell.
@@ -61,7 +63,8 @@ class DashboardHeader extends StatelessWidget {
             ),
           ),
 
-          // Right: Bell button with notification dot
+          // Right: status backup cloud (v2.2.55) + Bell button
+          const _CloudSyncChip(),
           GestureDetector(
             onTap: onBellTap,
             child: Container(
@@ -166,6 +169,83 @@ class DashboardHeader extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Ikon awan status backup cloud otomatis (v2.2.55).
+///
+/// Tujuan: user TAHU kapan data sudah aman di cloud SEBELUM menghapus
+/// data aplikasi (kasus nyata: produk/karyawan hilang karena device
+/// dibersihkan saat upload autosync masih berjalan — dulu silent).
+///   hijau cloud_done  = backup terakhir HH:MM sudah tersimpan
+///   amber cloud_upload= sedang mengunggah
+///   merah cloud_off   = upload terakhir gagal (cek koneksi)
+///   abu  cloud        = belum ada backup
+/// Tap → penjelasan singkat.
+class _CloudSyncChip extends StatelessWidget {
+  const _CloudSyncChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ValueListenableBuilder<AutoSyncStatus>(
+      valueListenable: AutoSyncService.status,
+      builder: (context, st, _) {
+        final IconData icon;
+        final Color color;
+        switch (st.phase) {
+          case AutoSyncPhase.uploading:
+            icon = Icons.cloud_upload_outlined;
+            color = NusaConfig.warning;
+          case AutoSyncPhase.ok:
+            icon = Icons.cloud_done_outlined;
+            color = NusaConfig.success;
+          case AutoSyncPhase.failed:
+            icon = Icons.cloud_off_outlined;
+            color = NusaConfig.error;
+          case AutoSyncPhase.idle:
+            icon = Icons.cloud_outlined;
+            color = isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary;
+        }
+        return GestureDetector(
+          onTap: () => _explain(context, st),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(icon, size: 22, color: color),
+          ),
+        );
+      },
+    );
+  }
+
+  void _explain(BuildContext context, AutoSyncStatus st) {
+    final time = st.lastOkAt == null
+        ? ''
+        : ' terakhir ${DateFormat('HH:mm').format(st.lastOkAt!)}';
+    final String msg;
+    switch (st.phase) {
+      case AutoSyncPhase.uploading:
+        msg = 'Sedang mengunggah backup ke cloud… tunggu sampai ikon '
+            'hijau sebelum hapus data.';
+      case AutoSyncPhase.ok:
+        msg = 'Backup cloud aman$time. Data toko sudah tersimpan — '
+            'aman dipulihkan di device mana pun.';
+      case AutoSyncPhase.failed:
+        msg = 'Backup cloud GAGAL${time.isEmpty ? '' : ' (sukses terakhir$time)'}. '
+            'Periksa koneksi internet — perubahan baru belum tersimpan.';
+      case AutoSyncPhase.idle:
+        msg = 'Belum ada backup cloud. Perubahan data akan otomatis '
+            'diunggah beberapa detik setelah kamu menyimpan.';
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
