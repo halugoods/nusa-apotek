@@ -784,6 +784,15 @@ Future<void> _repairNullDefaults(AppDatabase db) async {
   await db.customStatement(
     "UPDATE employees SET status = 'Aktif' WHERE status IS NULL",
   );
+  // v2.2.57: komisi capster (salon) + flag staf layanan ditambah TIDAK pakai
+  // DEFAULT di sebagian device lama (rows NULL). Drift map non-nullable → Null
+  // check saat SELECT → getEmployees() throw → login loop "Data Ditemukan".
+  await db.customStatement(
+    'UPDATE employees SET is_service_staff = 1 WHERE is_service_staff IS NULL',
+  );
+  await db.customStatement(
+    'UPDATE employees SET commission_percent = 10.0 WHERE commission_percent IS NULL',
+  );
   await db.customStatement(
     'UPDATE cashier_sessions SET starting_cash = 0 WHERE starting_cash IS NULL',
   );
