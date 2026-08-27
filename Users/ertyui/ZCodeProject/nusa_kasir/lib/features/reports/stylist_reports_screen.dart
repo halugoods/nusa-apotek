@@ -5,23 +5,23 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
-import 'package:nusa_kasir/data/repositories/capster_report_repository.dart';
+import 'package:nusa_kasir/data/repositories/stylist_report_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 
-/// Laporan kinerja capster/stylist — varian salon (v2.2.57).
+/// Laporan kinerja stylist — varian salon (v2.2.57).
 ///
 /// 4 layar dalam satu file karena saling terkait:
-///   - [KinerjaCapsterScreen]   — daftar ringkas per kapster (owner)
-///   - [DetailCapsterScreen]    — drilldown transaksi per kapster (owner)
+///   - [KinerjaStylistScreen]   — daftar ringkas per stylist (owner)
+///   - [DetailStylistScreen]    — drilldown transaksi per stylist (owner)
 ///   - [BayarKomisiScreen]      — tandai komisi sudah dibayar (owner)
-///   - [PendapatanSayaScreen]   — kapster login lihat omset/komisi sendiri
+///   - [PendapatanSayaScreen]   — stylist login lihat omset/komisi sendiri
 ///
 /// Hitungan on-the-fly dari appointments + transactions — tidak ada tabel
 /// komisi yang bisa drift.
-final _capsterRepoProvider = Provider<CapsterReportRepository>(
-  (ref) => CapsterReportRepository(ref.watch(databaseProvider)),
+final _stylistRepoProvider = Provider<StylistReportRepository>(
+  (ref) => StylistReportRepository(ref.watch(databaseProvider)),
 );
 
 DateTimeRange _defaultPeriod() {
@@ -38,27 +38,27 @@ extension _DateTimeRangeExt on DateTimeRange {
   }
 }
 
-// Helper: key SecureStore untuk tandai komisi sudah dibayar per kapster
+// Helper: key SecureStore untuk tandai komisi sudah dibayar per stylist
 // pada periode tertentu. Format: `nusa_komisi_paid_<empId>_<startMs>`.
 String _paidKey(int employeeId, DateTime start) =>
     'nusa_komisi_paid_e$employeeId'
     '_${start.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay}';
 
 // ───────────────────────────────────────────────────────────────────────────
-// KINERJA CAPSTER (root)
+// KINERJA STYLIST (root)
 // ───────────────────────────────────────────────────────────────────────────
 
-class KinerjaCapsterScreen extends ConsumerStatefulWidget {
-  const KinerjaCapsterScreen({super.key});
+class KinerjaStylistScreen extends ConsumerStatefulWidget {
+  const KinerjaStylistScreen({super.key});
   @override
-  ConsumerState<KinerjaCapsterScreen> createState() =>
-      _KinerjaCapsterScreenState();
+  ConsumerState<KinerjaStylistScreen> createState() =>
+      _KinerjaStylistScreenState();
 }
 
-class _KinerjaCapsterScreenState
-    extends ConsumerState<KinerjaCapsterScreen> {
+class _KinerjaStylistScreenState
+    extends ConsumerState<KinerjaStylistScreen> {
   late DateTimeRange _range = _defaultPeriod();
-  Future<List<CapsterSummary>>? _future;
+  Future<List<StylistSummary>>? _future;
 
   @override
   void initState() {
@@ -69,7 +69,7 @@ class _KinerjaCapsterScreenState
   void _reload() {
     setState(() {
       _future = ref
-          .read(_capsterRepoProvider)
+          .read(_stylistRepoProvider)
           .kinerja(start: _range.start, end: _range.end);
     });
   }
@@ -91,8 +91,8 @@ class _KinerjaCapsterScreenState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
-      'Kinerja Capster',
-      FutureBuilder<List<CapsterSummary>>(
+      'Kinerja Stylist',
+      FutureBuilder<List<StylistSummary>>(
         future: _future,
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -102,7 +102,7 @@ class _KinerjaCapsterScreenState
           if (list.isEmpty) {
             return const EmptyState(
               icon: Icons.insights_rounded,
-              message: 'Belum ada transaksi dengan kapster pada periode ini.',
+              message: 'Belum ada transaksi dengan stylist pada periode ini.',
             );
           }
           final totalOmset = list.fold<int>(0, (s, e) => s + e.totalOmset);
@@ -113,7 +113,7 @@ class _KinerjaCapsterScreenState
             children: [
               _summaryCard(isDark, totalOmset, totalKomisi, list.length),
               const SizedBox(height: 12),
-              ...list.map((c) => _capsterTile(context, isDark, c)),
+              ...list.map((c) => _stylistTile(context, isDark, c)),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () {
@@ -139,7 +139,7 @@ class _KinerjaCapsterScreenState
   }
 
   Widget _summaryCard(
-      bool isDark, int totalOmset, int totalKomisi, int capsterCount) {
+      bool isDark, int totalOmset, int totalKomisi, int stylistCount) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -194,10 +194,10 @@ class _KinerjaCapsterScreenState
             padding: const EdgeInsets.only(left: 12),
             child: Column(
               children: [
-                Text('$capsterCount',
+                Text('$stylistCount',
                     style: const TextStyle(
                         fontSize: 18, fontWeight: FontWeight.w800)),
-                Text('capster',
+                Text('stylist',
                     style: TextStyle(
                         fontSize: 10,
                         color: isDark
@@ -211,8 +211,8 @@ class _KinerjaCapsterScreenState
     );
   }
 
-  Widget _capsterTile(
-      BuildContext context, bool isDark, CapsterSummary c) {
+  Widget _stylistTile(
+      BuildContext context, bool isDark, StylistSummary c) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -221,7 +221,7 @@ class _KinerjaCapsterScreenState
         child: InkWell(
           borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
           onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => DetailCapsterScreen(
+            builder: (_) => DetailStylistScreen(
               employeeId: c.employeeId,
               name: c.name,
               range: _range,
@@ -283,14 +283,14 @@ class _KinerjaCapsterScreenState
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// DETAIL PER CAPSTER (drilldown)
+// DETAIL PER STYLIST (drilldown)
 // ───────────────────────────────────────────────────────────────────────────
 
-class DetailCapsterScreen extends ConsumerStatefulWidget {
+class DetailStylistScreen extends ConsumerStatefulWidget {
   final int employeeId;
   final String name;
   final DateTimeRange range;
-  const DetailCapsterScreen({
+  const DetailStylistScreen({
     super.key,
     required this.employeeId,
     required this.name,
@@ -298,18 +298,18 @@ class DetailCapsterScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<DetailCapsterScreen> createState() =>
-      _DetailCapsterScreenState();
+  ConsumerState<DetailStylistScreen> createState() =>
+      _DetailStylistScreenState();
 }
 
-class _DetailCapsterScreenState
-    extends ConsumerState<DetailCapsterScreen> {
-  Future<List<CapsterTransaction>>? _future;
+class _DetailStylistScreenState
+    extends ConsumerState<DetailStylistScreen> {
+  Future<List<StylistTransaction>>? _future;
 
   @override
   void initState() {
     super.initState();
-    _future = ref.read(_capsterRepoProvider).detail(
+    _future = ref.read(_stylistRepoProvider).detail(
           employeeId: widget.employeeId,
           start: widget.range.start,
           end: widget.range.end,
@@ -322,7 +322,7 @@ class _DetailCapsterScreenState
     final fmt = DateFormat('d MMM, HH:mm', 'id_ID');
     return ScreenScaffold(
       widget.name,
-      FutureBuilder<List<CapsterTransaction>>(
+      FutureBuilder<List<StylistTransaction>>(
         future: _future,
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -332,7 +332,7 @@ class _DetailCapsterScreenState
           if (list.isEmpty) {
             return const EmptyState(
               icon: Icons.receipt_long_rounded,
-              message: 'Tidak ada layanan yang ditangani kapster ini.',
+              message: 'Tidak ada layanan yang ditangani stylist ini.',
             );
           }
           final omset = list.fold<int>(0, (s, e) => s + e.omsetShare);
@@ -477,7 +477,7 @@ class BayarKomisiScreen extends ConsumerStatefulWidget {
 
 class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
   late DateTimeRange _range = _defaultPeriod();
-  Future<List<CapsterSummary>>? _future;
+  Future<List<StylistSummary>>? _future;
   final Set<int> _paidIds = <int>{};
   final Set<int> _selected = <int>{};
 
@@ -490,7 +490,7 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
   Future<void> _reload() async {
     // Lookup paid markers for this period.
     final fut = ref
-        .read(_capsterRepoProvider)
+        .read(_stylistRepoProvider)
         .kinerja(start: _range.start, end: _range.end);
     final list = await fut;
     final paid = <int>{};
@@ -528,7 +528,7 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Konfirmasi Pembayaran'),
         content: Text(
-            'Tandai komisi untuk ${_selected.length} kapster sebagai sudah dibayar?'),
+            'Tandai komisi untuk ${_selected.length} stylist sebagai sudah dibayar?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -562,14 +562,14 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
       'Bayar Komisi',
-      FutureBuilder<List<CapsterSummary>>(
+      FutureBuilder<List<StylistSummary>>(
         future: _future,
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           final list = (snap.data ?? const []).where((c) {
-            // Hide already-paid capsters from selection list.
+            // Hide already-paid Stylists from selection list.
             return !_paidIds.contains(c.employeeId);
           }).toList();
           return Column(
@@ -582,7 +582,7 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                          child: Text('${_selected.length} kapster dipilih',
+                          child: Text('${_selected.length} stylist dipilih',
                               style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -601,7 +601,7 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
                 child: list.isEmpty
                     ? const EmptyState(
                         icon: Icons.payments_outlined,
-                        message: 'Belum ada komisi kapster pada periode ini.',
+                        message: 'Belum ada komisi stylist pada periode ini.',
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -685,7 +685,7 @@ class _BayarKomisiScreenState extends ConsumerState<BayarKomisiScreen> {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// PENDAPATAN SAYA (capster self-view)
+// PENDAPATAN SAYA (Stylist self-view)
 // ───────────────────────────────────────────────────────────────────────────
 
 class PendapatanSayaScreen extends ConsumerStatefulWidget {
@@ -698,7 +698,7 @@ class PendapatanSayaScreen extends ConsumerStatefulWidget {
 class _PendapatanSayaScreenState
     extends ConsumerState<PendapatanSayaScreen> {
   late DateTimeRange _range = _defaultPeriod();
-  Future<CapsterEarnings>? _future;
+  Future<StylistEarnings>? _future;
 
   @override
   void initState() {
@@ -713,7 +713,7 @@ class _PendapatanSayaScreenState
       return;
     }
     setState(() {
-      _future = ref.read(_capsterRepoProvider).myEarnings(
+      _future = ref.read(_stylistRepoProvider).myEarnings(
             employeeId: session.employeeId,
             start: _range.start,
             end: _range.end,
@@ -732,7 +732,7 @@ class _PendapatanSayaScreenState
               icon: Icons.lock_outline_rounded,
               message: 'Login terlebih dahulu untuk melihat pendapatan.',
             )
-          : FutureBuilder<CapsterEarnings>(
+          : FutureBuilder<StylistEarnings>(
               future: _future,
               builder: (ctx, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {

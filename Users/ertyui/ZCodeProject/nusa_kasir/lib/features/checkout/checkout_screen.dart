@@ -141,7 +141,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _selectedStylistId = null;
         }
         // v2.2.57: default stylist = staf layanan yang sedang login —
-        // capster yang melayani langsung tercatat tanpa pilih manual.
+        // Stylist yang melayani langsung tercatat tanpa pilih manual.
         if (_selectedStylistId == null) {
           final session = ref.read(employeeSessionProvider);
           if (session != null &&
@@ -1226,7 +1226,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ? RecipeRepository(db)
           : null;
       // v2.2.57: id transaksi dibawa keluar blok transaction — dipakai link
-      // appointment → transaksi (atribusi omset/komisi capster).
+      // appointment → transaksi (atribusi omset/komisi Stylist).
       int bookingTxId = 0;
       await db.transaction(() async {
         // Deduct stock for each item (item manual tidak punya stok).
@@ -1398,7 +1398,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 : _salonStylistCtrl.text.trim(),
             stylistId: _selectedStylistId,
             // v2.2.57: link ke transaksi — dasar atribusi omset & komisi
-            // capster di laporan Kinerja Capster.
+            // Stylist di laporan Kinerja Stylist.
             transactionId: bookingTxId > 0 ? bookingTxId : null,
             date: _salonDate,
             timeSlot: _salonTimeCtrl.text,

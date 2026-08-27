@@ -10,7 +10,7 @@ abstract class NusaConfig {
 		static String _productId = "nusa-fotocopy";
 		static String _appSubtitle = "Aplikasi Kasir untuk Fotocopy & Percetakan";
   static const String appVersion = "2.2.57";
-  static const int appBuildNumber = 110;
+  static const int appBuildNumber = 111;
 		static String _githubRepo = "halugoods/nusa-fotocopy";
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
 		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Fotocopy";

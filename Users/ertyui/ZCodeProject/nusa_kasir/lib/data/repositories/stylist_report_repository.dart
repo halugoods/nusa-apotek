@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 
-/// Capster/stylist performance & commission reports (v2.2.57).
+/// Stylist/stylist performance & commission reports (v2.2.57).
 ///
 /// Salon variant only. Computes on-the-fly from `appointments` joined with
 /// `transactions` and `employees` — no separate commission table, so the
@@ -9,17 +9,17 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 ///
 /// Money is stored in IDR integer (rupiah). Commission rate is stored as
 /// `commission_percent` REAL on employees (default 10).
-class CapsterReportRepository {
+class StylistReportRepository {
   final AppDatabase db;
-  CapsterReportRepository(this.db);
+  StylistReportRepository(this.db);
 
-  /// Kinerja capster dalam periode [start, end).
+  /// Kinerja Stylist dalam periode [start, end).
   ///
-  /// Omset per kapster dihitung proporsional: kalau 1 transaksi punya 2
-  /// appointment dengan kapster berbeda, masing-masing dapat setengah dari
+  /// Omset per stylist dihitung proporsional: kalau 1 transaksi punya 2
+  /// appointment dengan stylist berbeda, masing-masing dapat setengah dari
   /// total transaksi. Tanpa data appointment.stylistId, transaksi tidak
   /// dihitung (owner bisa pakai laporan Penjualan reguler).
-  Future<List<CapsterSummary>> kinerja({
+  Future<List<StylistSummary>> kinerja({
     required DateTime start,
     required DateTime end,
   }) async {
@@ -69,13 +69,13 @@ class CapsterReportRepository {
       acc.transactions.add(tid);
     }
 
-    final result = <CapsterSummary>[];
+    final result = <StylistSummary>[];
     for (final emp in staff) {
       final acc = byEmp[emp.id];
       if (acc == null) continue;
       final pct = emp.commissionPercent;
       result.add(
-        CapsterSummary(
+        StylistSummary(
           employeeId: emp.id,
           name: emp.name,
           commissionPercent: pct,
@@ -90,9 +90,9 @@ class CapsterReportRepository {
     return result;
   }
 
-  /// Drilldown per kapster — list transaksi (dengan porsi omset & komisi)
+  /// Drilldown per stylist — list transaksi (dengan porsi omset & komisi)
   /// yang dia handle dalam periode.
-  Future<List<CapsterTransaction>> detail({
+  Future<List<StylistTransaction>> detail({
     required int employeeId,
     required DateTime start,
     required DateTime end,
@@ -126,7 +126,7 @@ class CapsterReportRepository {
         .getSingleOrNull();
     final pct = emp?.commissionPercent ?? 10.0;
 
-    final result = <CapsterTransaction>[];
+    final result = <StylistTransaction>[];
     for (final a in apts) {
       final tid = a.transactionId;
       if (tid == null) continue;
@@ -134,7 +134,7 @@ class CapsterReportRepository {
       if (t == null) continue;
       final share = t.total / (txAptCount[tid] ?? 1);
       result.add(
-        CapsterTransaction(
+        StylistTransaction(
           appointmentId: a.id,
           transactionId: t.id,
           date: t.date,
@@ -151,8 +151,8 @@ class CapsterReportRepository {
     return result;
   }
 
-  /// Total komisi kumulatif seorang kapster (untuk "Pendapatan Saya").
-  Future<CapsterEarnings> myEarnings({
+  /// Total komisi kumulatif seorang stylist (untuk "Pendapatan Saya").
+  Future<StylistEarnings> myEarnings({
     required int employeeId,
     required DateTime start,
     required DateTime end,
@@ -164,7 +164,7 @@ class CapsterReportRepository {
     );
     final omset = rows.fold<int>(0, (sum, e) => sum + e.omsetShare);
     final komisi = rows.fold<int>(0, (sum, e) => sum + e.komisi);
-    return CapsterEarnings(
+    return StylistEarnings(
       employeeId: employeeId,
       omset: omset,
       komisi: komisi,
@@ -179,7 +179,7 @@ class _Acc {
   final Set<int> transactions = <int>{};
 }
 
-class CapsterSummary {
+class StylistSummary {
   final int employeeId;
   final String name;
   final double commissionPercent;
@@ -188,7 +188,7 @@ class CapsterSummary {
   final int totalOmset;
   final int totalKomisi;
 
-  CapsterSummary({
+  StylistSummary({
     required this.employeeId,
     required this.name,
     required this.commissionPercent,
@@ -199,7 +199,7 @@ class CapsterSummary {
   });
 }
 
-class CapsterTransaction {
+class StylistTransaction {
   final int appointmentId;
   final int transactionId;
   final DateTime date;
@@ -210,7 +210,7 @@ class CapsterTransaction {
   final int omsetShare;
   final int komisi;
 
-  CapsterTransaction({
+  StylistTransaction({
     required this.appointmentId,
     required this.transactionId,
     required this.date,
@@ -223,12 +223,12 @@ class CapsterTransaction {
   });
 }
 
-class CapsterEarnings {
+class StylistEarnings {
   final int employeeId;
   final int omset;
   final int komisi;
   final int trxCount;
-  CapsterEarnings({
+  StylistEarnings({
     required this.employeeId,
     required this.omset,
     required this.komisi,

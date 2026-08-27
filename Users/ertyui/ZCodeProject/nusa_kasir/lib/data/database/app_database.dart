@@ -723,7 +723,7 @@ class AppDatabase extends _$AppDatabase {
         await _addColumnIfMissing(m, 'employees', 'photo_base64', 'TEXT');
       }
       if (from < 48) {
-        // v2.2.54: staf layanan (picker capster/stylist booking) +
+        // v2.2.54: staf layanan (picker stylist booking) +
         // stylistId pada appointment (link logis ke Employees).
         await _addColumnIfMissing(m, 'employees', 'is_service_staff', 'INTEGER');
         // ALTER tanpa DEFAULT → baris lama NULL; backfill 1 (default true —
@@ -732,7 +732,7 @@ class AppDatabase extends _$AppDatabase {
           'UPDATE employees SET is_service_staff = 1 WHERE is_service_staff IS NULL',
         );
         await _addColumnIfMissing(m, 'appointments', 'stylist_id', 'INTEGER');
-        // v2.2.57: komisi capster (% omset) — dipakai laporan Kinerja Capster
+        // v2.2.57: komisi Stylist (% omset) — dipakai laporan Kinerja Stylist
         // + hitung komisi per-line booking. Default 10 untuk karyawan existing.
         await _addColumnIfMissing(
             m, 'employees', 'commission_percent', 'REAL DEFAULT 10.0');
@@ -740,7 +740,7 @@ class AppDatabase extends _$AppDatabase {
           'UPDATE employees SET commission_percent = 10.0 '
           'WHERE commission_percent IS NULL',
         );
-        // v2.2.57: link appointment → transaksi (omset & komisi per capster).
+        // v2.2.57: link appointment → transaksi (omset & komisi per Stylist).
         await _addColumnIfMissing(m, 'appointments', 'transaction_id', 'INTEGER');
       }
     },
@@ -784,7 +784,7 @@ Future<void> _repairNullDefaults(AppDatabase db) async {
   await db.customStatement(
     "UPDATE employees SET status = 'Aktif' WHERE status IS NULL",
   );
-  // v2.2.57: komisi capster (salon) + flag staf layanan ditambah TIDAK pakai
+  // v2.2.57: komisi Stylist (salon) + flag staf layanan ditambah TIDAK pakai
   // DEFAULT di sebagian device lama (rows NULL). Drift map non-nullable → Null
   // check saat SELECT → getEmployees() throw → login loop "Data Ditemukan".
   await db.customStatement(

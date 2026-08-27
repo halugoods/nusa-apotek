@@ -199,7 +199,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     String workEnd = employee?.workEnd ?? '17:00';
     bool requiresCashOpen = employee?.requiresCashOpen ?? false;
     bool requiresCashClose = employee?.requiresCashClose ?? false;
-    // v2.2.54: flag Staf Layanan — bisa dipilih sebagai stylist/capster saat
+    // v2.2.54: flag Staf Layanan — bisa dipilih sebagai stylist/Stylist saat
     // booking (checkout salon). Default true supaya karyawan lama tetap muncul.
     bool isServiceStaff = employee?.isServiceStaff ?? true;
     // v2.2.45: barcode id-card jadi TOGGLE (mirip form produk) — OFF default
@@ -1064,7 +1064,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                       ),
                                     ),
                                     Text(
-                                      'Bisa dipilih sebagai stylist/capster saat booking layanan',
+                                      'Bisa dipilih sebagai stylist/Stylist saat booking layanan',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: isDark

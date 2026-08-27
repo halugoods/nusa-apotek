@@ -46,7 +46,7 @@ import 'package:nusa_kasir/features/domain/servis_screen.dart';
 import 'package:nusa_kasir/features/domain/booking_screen.dart';
 import 'package:nusa_kasir/features/domain/resep_screen.dart';
 import 'package:nusa_kasir/features/domain/print_order_screen.dart';
-import 'package:nusa_kasir/features/reports/capster_reports_screen.dart';
+import 'package:nusa_kasir/features/reports/stylist_reports_screen.dart';
 import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
 
 const _publicRoutes = {
@@ -214,12 +214,12 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
       path: '/laporan',
       pageBuilder: (_, __) => _slidePage(ReportsScreen()),
     ),
-    // v2.2.57: laporan kinerja capster (salon variant).
+    // v2.2.57: laporan kinerja Stylist (salon variant).
     GoRoute(
-      path: '/laporan/capster',
-      pageBuilder: (_, __) => _slidePage(KinerjaCapsterScreen()),
+      path: '/laporan/stylist',
+      pageBuilder: (_, __) => _slidePage(KinerjaStylistScreen()),
     ),
-    // v2.2.57: kapster login lihat omset/komisi sendiri.
+    // v2.2.57: stylist login lihat omset/komisi sendiri.
     GoRoute(
       path: '/pendapatan-saya',
       pageBuilder: (_, __) => _slidePage(PendapatanSayaScreen()),

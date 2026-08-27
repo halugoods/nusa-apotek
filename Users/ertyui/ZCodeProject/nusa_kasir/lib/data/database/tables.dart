@@ -179,12 +179,12 @@ class Employees extends Table {
       boolean().withDefault(const Constant(false))();
   BoolColumn get requiresCashClose =>
       boolean().withDefault(const Constant(false))();
-  // v2.2.54: staf layanan — boleh dipilih sebagai capster/stylist di booking
+  // v2.2.54: staf layanan — boleh dipilih sebagai stylist di booking
   // (varian jasa). Default true supaya karyawan existing langsung terpilih;
   // owner menyaring lewat form karyawan (role Gudang/Finance dicentang mati).
   BoolColumn get isServiceStaff =>
       boolean().withDefault(const Constant(true))();
-  // v2.2.57: komisi capster/stylist (% omset yang jadi hak dia). Hanya
+  // v2.2.57: komisi stylist (% omset yang jadi hak dia). Hanya
   // relevan saat isServiceStaff=true. Default 10% sesuai konvensi industri.
   RealColumn get commissionPercent =>
       real().withDefault(const Constant(10.0))();
@@ -618,7 +618,7 @@ class Appointments extends Table {
   // v2.2.54: ID karyawan stylist (FK logis ke Employees) — nama tetap di
   // kolom `stylist` (denormalisasi untuk struk/tampilan tanpa join).
   IntColumn get stylistId => integer().nullable()();
-  // v2.2.57: link appointment → transaksi (omset & komisi per capster
+  // v2.2.57: link appointment → transaksi (omset & komisi per Stylist
   // dihitung dari transaksi yang terkait booking).
   IntColumn get transactionId => integer().nullable()();
   DateTimeColumn get date => dateTime()();

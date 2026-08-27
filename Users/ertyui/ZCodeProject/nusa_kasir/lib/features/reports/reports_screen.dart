@@ -2260,11 +2260,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _employeeFilterDropdown(isDark),
             ),
-          // v2.2.57: Kinerja Capster (salon) — omset & komisi per stylist.
+          // v2.2.57: Kinerja Stylist (salon) — omset & komisi per stylist.
           if (_tab == 0 && NusaConfig.isSalonVariant)
             Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: _capsterEntryCard(isDark),
+              child: _stylistEntryCard(isDark),
             ),
           SizedBox(height: 2),
           // Ringkasan Harian card (only for Penjualan tab)
@@ -2354,12 +2354,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  /// v2.2.57: kartu pintasan laporan Kinerja Capster (khusus varian salon) —
+  /// v2.2.57: kartu pintasan laporan Kinerja Stylist (khusus varian salon) —
   /// pipih sejajar dropdown filter di atasnya.
-  Widget _capsterEntryCard(bool isDark) {
+  Widget _stylistEntryCard(bool isDark) {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => context.push('/laporan/capster'),
+      onTap: () => context.push('/laporan/Stylist'),
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2377,7 +2377,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Kinerja Capster — Omset & Komisi',
+                'Kinerja Stylist — Omset & Komisi',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,

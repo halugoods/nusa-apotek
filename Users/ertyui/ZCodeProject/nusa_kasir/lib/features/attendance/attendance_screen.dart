@@ -747,7 +747,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
           ]),
         ),
         SizedBox(height: 6),
-        // v2.2.57: kartu Pendapatan Saya untuk capster/stylist yang login.
+        // v2.2.57: kartu Pendapatan Saya untuk stylist yang login.
         if (_showMyEarnings)
           Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
