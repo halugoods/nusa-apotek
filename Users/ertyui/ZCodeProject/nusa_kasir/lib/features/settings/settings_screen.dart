@@ -3618,143 +3618,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
               ],
             ),
-            // Suara & Panggil + Biometrik + Salon — perilaku device toko
-            _groupCard(
-              isDark: isDark,
-              tiles: [
-                _menuTile(
-                  icon: Icons.volume_up_outlined,
-                  title: 'Suara Aplikasi',
-                  subtitle: _soundEnabled
-                      ? 'Aktif — bunyi transaksi berhasil, scan, presensi, dll.'
-                      : 'Dimatikan — app berjalan tanpa bunyi',
-                  isDark: isDark,
-                  onTap: null,
-                  trailing: Switch(
-                    value: _soundEnabled,
-                    activeColor: NusaConfig.activePrimary,
-                    onChanged: (v) async {
-                      await SecureStore.setSoundEnabled(v);
-                      setState(() => _soundEnabled = v);
-                    },
-                  ),
-                ),
-                _menuTile(
-                  icon: Icons.notifications_active_outlined,
-                  title: 'Fitur Panggil',
-                  subtitle: _callFeatureEnabled
-                      ? 'Aktif — owner bisa membunyikan device ini saat dibutuhkan'
-                      : 'Dimatikan — device tidak menerima panggilan',
-                  isDark: isDark,
-                  onTap: null,
-                  trailing: Switch(
-                    value: _callFeatureEnabled,
-                    activeColor: NusaConfig.activePrimary,
-                    onChanged: (v) async {
-                      await SecureStore.setCallFeatureEnabled(v);
-                      setState(() => _callFeatureEnabled = v);
-                      // Re-join / keluar channel Realtime sesuai toggle.
-                      try {
-                        if (v) {
-                          await CallService.I.start();
-                        } else {
-                          await CallService.I.stop();
-                        }
-                      } catch (_) {}
-                    },
-                  ),
-                ),
-                // Login Biometrik — Owner only, direct toggle
-                if (session?.role == 'Owner')
-                  _menuTile(
-                    icon: Icons.fingerprint,
-                    title: 'Login Biometrik',
-                    subtitle: _fingerprintEnabled
-                        ? 'Aktif — akses cepat pakai sidik jari / Face ID'
-                        : 'Aktifkan akses cepat Owner',
-                    isDark: isDark,
-                    onTap: () => _toggleFingerprint(session!),
-                    trailing: Switch(
-                      value: _fingerprintEnabled,
-                      activeColor: NusaConfig.activePrimary,
-                      onChanged: (v) => _toggleFingerprint(session!),
-                    ),
-                  ),
-                // Salon settings
-                if (NusaConfig.isSalonVariant) ...[
-                  _menuTile(
-                    icon: Icons.timer_outlined,
-                    title: 'Estimasi Default',
-                    subtitle:
-                        '$_salonDefaultDuration menit — durasi estimasi standar per booking',
-                    isDark: isDark,
-                    onTap: () async {
-                      final opts = [30, 45, 60, 90, 120];
-                      final current = _salonDefaultDuration;
-                      final sel = await showModalBottomSheet<String>(
-                        context: context,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(20),
-                          ),
-                        ),
-                        builder: (ctx) => Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Estimasi Default',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              ...opts.map(
-                                (o) => ListTile(
-                                  title: Text('$o menit'),
-                                  trailing: o == current
-                                      ? Icon(
-                                          Icons.check,
-                                          color: NusaConfig.activePrimary,
-                                        )
-                                      : null,
-                                  onTap: () => Navigator.pop(ctx, '$o'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                      if (sel != null && mounted) {
-                        final v = int.parse(sel);
-                        await SecureStore.setSalonDefaultDuration(v);
-                        setState(() => _salonDefaultDuration = v);
-                      }
-                    },
-                  ),
-                  _menuTile(
-                    icon: Icons.notifications_outlined,
-                    title: 'Notifikasi Booking',
-                    subtitle: _salonNotifyBooking
-                        ? 'Notif H-30 menit sebelum booking'
-                        : 'Notifikasi dimatikan',
-                    isDark: isDark,
-                    onTap: null,
-                    trailing: Switch(
-                      value: _salonNotifyBooking,
-                      activeColor: NusaConfig.activePrimary,
-                      onChanged: (v) async {
-                        await SecureStore.setSalonNotifyBooking(v);
-                        setState(() => _salonNotifyBooking = v);
-                      },
-                    ),
-                  ),
-                ],
-              ],
-            ),
-
             // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  TAMPILAN
             // ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -3911,6 +3774,146 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   isDark: isDark,
                   onTap: () => _showCloudSync(),
                 ),
+              ],
+            ),
+
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            //  NOTIFIKASI
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            _sectionHeader('NOTIFIKASI', isDark),
+            _groupCard(
+              isDark: isDark,
+              tiles: [
+                _menuTile(
+                  icon: Icons.volume_up_outlined,
+                  title: 'Suara Aplikasi',
+                  subtitle: _soundEnabled
+                      ? 'Aktif — bunyi transaksi berhasil, scan, presensi, dll.'
+                      : 'Dimatikan — app berjalan tanpa bunyi',
+                  isDark: isDark,
+                  onTap: null,
+                  trailing: Switch(
+                    value: _soundEnabled,
+                    activeColor: NusaConfig.activePrimary,
+                    onChanged: (v) async {
+                      await SecureStore.setSoundEnabled(v);
+                      setState(() => _soundEnabled = v);
+                    },
+                  ),
+                ),
+                _menuTile(
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Fitur Panggil',
+                  subtitle: _callFeatureEnabled
+                      ? 'Aktif — owner bisa membunyikan device ini saat dibutuhkan'
+                      : 'Dimatikan — device tidak menerima panggilan',
+                  isDark: isDark,
+                  onTap: null,
+                  trailing: Switch(
+                    value: _callFeatureEnabled,
+                    activeColor: NusaConfig.activePrimary,
+                    onChanged: (v) async {
+                      await SecureStore.setCallFeatureEnabled(v);
+                      setState(() => _callFeatureEnabled = v);
+                      // Re-join / keluar channel Realtime sesuai toggle.
+                      try {
+                        if (v) {
+                          await CallService.I.start();
+                        } else {
+                          await CallService.I.stop();
+                        }
+                      } catch (_) {}
+                    },
+                  ),
+                ),
+                // Login Biometrik — Owner only, direct toggle
+                if (session?.role == 'Owner')
+                  _menuTile(
+                    icon: Icons.fingerprint,
+                    title: 'Login Biometrik',
+                    subtitle: _fingerprintEnabled
+                        ? 'Aktif — akses cepat pakai sidik jari / Face ID'
+                        : 'Aktifkan akses cepat Owner',
+                    isDark: isDark,
+                    onTap: () => _toggleFingerprint(session!),
+                    trailing: Switch(
+                      value: _fingerprintEnabled,
+                      activeColor: NusaConfig.activePrimary,
+                      onChanged: (v) => _toggleFingerprint(session!),
+                    ),
+                  ),
+                // Salon settings
+                if (NusaConfig.isSalonVariant) ...[
+                  _menuTile(
+                    icon: Icons.timer_outlined,
+                    title: 'Estimasi Default',
+                    subtitle:
+                        '$_salonDefaultDuration menit — durasi estimasi standar per booking',
+                    isDark: isDark,
+                    onTap: () async {
+                      final opts = [30, 45, 60, 90, 120];
+                      final current = _salonDefaultDuration;
+                      final sel = await showModalBottomSheet<String>(
+                        context: context,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
+                        ),
+                        builder: (ctx) => Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Estimasi Default',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              ...opts.map(
+                                (o) => ListTile(
+                                  title: Text('$o menit'),
+                                  trailing: o == current
+                                      ? Icon(
+                                          Icons.check,
+                                          color: NusaConfig.activePrimary,
+                                        )
+                                      : null,
+                                  onTap: () => Navigator.pop(ctx, '$o'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      if (sel != null && mounted) {
+                        final v = int.parse(sel);
+                        await SecureStore.setSalonDefaultDuration(v);
+                        setState(() => _salonDefaultDuration = v);
+                      }
+                    },
+                  ),
+                  _menuTile(
+                    icon: Icons.notifications_outlined,
+                    title: 'Notifikasi Booking',
+                    subtitle: _salonNotifyBooking
+                        ? 'Notif H-30 menit sebelum booking'
+                        : 'Notifikasi dimatikan',
+                    isDark: isDark,
+                    onTap: null,
+                    trailing: Switch(
+                      value: _salonNotifyBooking,
+                      activeColor: NusaConfig.activePrimary,
+                      onChanged: (v) async {
+                        await SecureStore.setSalonNotifyBooking(v);
+                        setState(() => _salonNotifyBooking = v);
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
 
