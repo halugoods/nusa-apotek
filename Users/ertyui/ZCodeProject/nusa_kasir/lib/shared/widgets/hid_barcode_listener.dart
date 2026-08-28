@@ -126,10 +126,30 @@ class _HidBarcodeListenerState extends State<HidBarcodeListener> {
     _timer = Timer(const Duration(milliseconds: 3000), _flush);
   }
 
+  /// True kalau ada TextField / TextFormField yang sedang memegang fokus.
+  /// Saat user mengetik manual di form, scan HID tidak boleh menimpa —
+  /// karakter ketikan cepat (mis. harga) bisa salah dianggap barcode.
+  bool _fieldHasFocus() {
+    final primary = FocusManager.instance.primaryFocus;
+    if (primary == null) return false;
+    // Traverse naik ke widget ancestor; kalau ketemu EditableText → sedang
+    // mengetik di field.
+    return primary.context?.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
   void _flush() {
     _timer?.cancel();
     _timer = null;
     if (_buf.isEmpty) return;
+    // Guard: kalau ada field teks yang fokus, jangan dianggap scan (user lagi
+    // mengetik di form — ketikan cepat bisa salah jadi barcode). Ini mencegah
+    // angka harga loncat ke toggle barcode.
+    if (_fieldHasFocus()) {
+      _buf.clear();
+      _pendingFirst = null;
+      _lastKeyAt = null;
+      return;
+    }
     final code = _buf.toString();
     _buf.clear();
     _pendingFirst = null;
@@ -140,6 +160,14 @@ class _HidBarcodeListenerState extends State<HidBarcodeListener> {
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
+    // Kalau field teks fokus (user mengetik manual), jangan pernah tangkap
+    // karakter sebagai scan — biarkan semua lewat ke field/IME.
+    if (_fieldHasFocus()) {
+      _buf.clear();
+      _pendingFirst = null;
+      _lastKeyAt = null;
+      return KeyEventResult.ignored;
+    }
 
     // Enter / NumpadEnter → selesaikan barcode (hanya kalau ada buffer).
     if (key == LogicalKeyboardKey.enter ||

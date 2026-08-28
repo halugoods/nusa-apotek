@@ -312,6 +312,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _showNotificationCenter();
   }
 
+  /// v2.2.57+112: setelah check-in berhasil, bersihkan notif "belum absen"
+  /// hari ini supaya badge lonceng tidak nyala terus walau sudah absen &
+  /// semua notif sudah dibaca. Notif yang sudah dibaca pengguna tetap
+  /// dipertahankan (jangan dihapus paksa) — hanya notif absen yang dihapus.
+  Future<void> _afterCheckIn() async {
+    try {
+      final id =
+          'attendance-${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}';
+      await NotificationService.remove(id);
+      final unread = await NotificationService.unreadCount();
+      if (mounted) setState(() => _notifUnread = unread);
+    } catch (_) {}
+  }
+
   // ── Notification Center modal ────────────────────────────────────
 
   Future<void> _showNotificationCenter() async {
@@ -1471,6 +1485,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final attRepo = AttendanceRepository(ref.read(databaseProvider));
       await attRepo.checkIn(session.employeeId);
       if (mounted) setState(() => _hasCheckedIn = true);
+      await _afterCheckIn();
     }
 
     // Navigate
@@ -1757,6 +1772,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final attRepo = AttendanceRepository(ref.read(databaseProvider));
         await attRepo.checkIn(s.employeeId);
         setState(() => _hasCheckedIn = true);
+        await _afterCheckIn();
       } catch (_) {}
     }
 
@@ -2170,8 +2186,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   // v2.2.36: dot lonceng = ADA NOTIF BELUM DIBACA saja.
                   // Sebelumnya ikut `_updateInfo.hasUpdate` → dot nyala terus
                   // walau notif sudah dibaca (release build number lama).
-                  _notifUnread > 0 ||
-                  (!_hasCheckedIn && _currentName.isNotEmpty),
+                  //
+                  // v2.2.57+112: dot HANYA dari `_notifUnread`. Sebelumnya
+                  // ada `|| (!_hasCheckedIn && _currentName.isNotEmpty)` yang
+                  // bikin dot nyala terus selama belum absen, walau semua
+                  // notif sudah dibaca. Notif "belum absen" kini di-remove
+                  // saat check-in (lihat check-in handler), jadi badge bersih.
+                  _notifUnread > 0,
               onBellTap: _onBellTap,
               onLogout: _confirmLogout,
               // Ikon cabang di header (ergonomis) — tap → bottom sheet.
