@@ -49,7 +49,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _storeCtrl = TextEditingController();
   String? _activationKey;
   String _themeMode = 'system';
   String? _printerName;
@@ -153,7 +152,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _load() async {
     final repo = ref.read(settingsRepoProvider);
-    final name = await repo.getStoreName();
     final key = await SecureStore.getActivation();
     final theme = await repo.getThemeMode();
     final printer = await repo.getPrinterAddress();
@@ -205,7 +203,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     if (mounted) {
-      _storeCtrl.text = name;
       _activationKey = key;
       _themeMode = theme ?? 'system';
       _printerName = printer;
@@ -266,7 +263,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   void dispose() {
-    _storeCtrl.dispose();
     super.dispose();
   }
 
@@ -949,78 +945,100 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   // ── Section Header ────────────────────────────────────────
+  // v2.2.57+112: label kategori — huruf kapital tebal, diberi jarak atas
+  // lebih besar supaya tiap grup kartu terpisah jelas secara visual.
 
   Widget _sectionHeader(String title, bool isDark) => Padding(
-    padding: const EdgeInsets.only(top: 8, bottom: 8),
+    padding: const EdgeInsets.only(top: 28, bottom: 10),
     child: Text(
       title,
       style: TextStyle(
         fontSize: 12,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
         color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-        letterSpacing: 1.2,
+        letterSpacing: 1.4,
       ),
     ),
   );
 
-  // ── Menu Row (reusable) ───────────────────────────────────
+  // ── Menu Tile (row tanpa card — dipakai di dalam _groupCard) ──
+  // v2.2.57+112: baris-baris menu yang berelasi dibungkus 1 card group,
+  // antar baris dipisah Divider tipis (pola Material 3).
 
-  Widget _menuRow({
+  Widget _menuTile({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback? onTap,
-    Color? iconColor,
     bool isDark = false,
     Widget? trailing,
-  }) => NusaCard(
-    InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Icon(icon, color: iconColor ?? NusaConfig.activePrimary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: NusaConfig.activePrimary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : NusaConfig.textSecondary,
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            if (trailing != null)
-              trailing
-            else
-              Icon(
-                Icons.chevron_right,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-          ],
+              if (trailing != null)
+                trailing
+              else
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+            ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
+
+  // ── Group Card (Material 3) ───────────────────────────────
+  // Satu card menampung baris-baris menu berelasi, dipisah divider tipis.
+  // marginBottom diberi agar antar grup kartu renggang (brief: 24-28px).
+
+  Widget _groupCard({required List<Widget> tiles, bool isDark = false}) {
+    final divider = Divider(
+      height: 1,
+      thickness: 1,
+      indent: 52,
+      color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+    );
+    final children = <Widget>[];
+    for (var i = 0; i < tiles.length; i++) {
+      if (i > 0) children.add(divider);
+      children.add(tiles[i]);
+    }
+    return NusaCard(Padding(padding: EdgeInsets.zero, child: Column(children: children)));
+  }
 
   // ── Theme Chip ────────────────────────────────────────────
 
@@ -3538,500 +3556,448 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  TOKO
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             _sectionHeader('TOKO', isDark),
-            // Nama Toko
-            NusaCard(
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Informasi Toko',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            // v2.2.57+112: baris menu dibungkus card group (Material 3).
+            // "Informasi Toko" inline pindah ke layar Data Toko (/data_toko).
+            _groupCard(
+              isDark: isDark,
+              tiles: [
+                _menuTile(
+                  icon: Icons.storefront_outlined,
+                  title: 'Data Toko',
+                  subtitle: 'Nama toko, alamat, no. HP, pemilik',
+                  isDark: isDark,
+                  onTap: () => context.push('/data_toko'),
+                ),
+                _menuTile(
+                  icon: Icons.shopping_bag_outlined,
+                  title: 'Toko Online',
+                  subtitle: 'Aktifkan & atur toko online (Vercel)',
+                  isDark: isDark,
+                  onTap: () => context.push('/toko_online_setup'),
+                ),
+                _menuTile(
+                  icon: Icons.badge_outlined,
+                  title: 'Kartu ID',
+                  subtitle: 'Cetak kartu member & karyawan (segera hadir)',
+                  isDark: isDark,
+                  onTap: () => _showUnderDevelopment(context, 'Kartu ID'),
+                ),
+                _menuTile(
+                  icon: Icons.payment,
+                  title: 'Pembayaran',
+                  subtitle: 'Atur QRIS & rekening bank untuk transfer',
+                  isDark: isDark,
+                  onTap: () => context.push('/pengaturan_pembayaran'),
+                ),
+                _menuTile(
+                  icon: Icons.receipt_long,
+                  title: 'Pengaturan Struk',
+                  subtitle: 'Atur footer struk & upload logo toko',
+                  isDark: isDark,
+                  onTap: _showReceiptSettings,
+                ),
+                // Alur Pembayaran — FnB only
+                if (NusaConfig.isFnbVariant)
+                  _menuTile(
+                    icon: Icons.swap_horiz,
+                    title: 'Alur Pembayaran',
+                    subtitle: _fnbPayFirst
+                        ? 'Bayar dulu di kasir, baru pilih meja'
+                        : 'Pesan dulu, duduk di meja, bayar setelah selesai',
+                    isDark: isDark,
+                    onTap: null, // toggle handled by trailing switch
+                    trailing: Switch(
+                      value: _fnbPayFirst,
+                      activeColor: NusaConfig.activePrimary,
+                      onChanged: (_) => _toggleFnbPayFirst(),
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  NusaInput('Nama toko', controller: _storeCtrl),
-                  const SizedBox(height: 12),
-                  NusaButton(
-                    'Simpan',
-                    onPressed: () async {
-                      await ref
-                          .read(settingsRepoProvider)
-                          .setStoreName(_storeCtrl.text.trim());
+              ],
+            ),
+            // Suara & Panggil + Biometrik + Salon — perilaku device toko
+            _groupCard(
+              isDark: isDark,
+              tiles: [
+                _menuTile(
+                  icon: Icons.volume_up_outlined,
+                  title: 'Suara Aplikasi',
+                  subtitle: _soundEnabled
+                      ? 'Aktif — bunyi transaksi berhasil, scan, presensi, dll.'
+                      : 'Dimatikan — app berjalan tanpa bunyi',
+                  isDark: isDark,
+                  onTap: null,
+                  trailing: Switch(
+                    value: _soundEnabled,
+                    activeColor: NusaConfig.activePrimary,
+                    onChanged: (v) async {
+                      await SecureStore.setSoundEnabled(v);
+                      setState(() => _soundEnabled = v);
                     },
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Toko Online
-            _menuRow(
-              icon: Icons.shopping_bag_outlined,
-              iconColor: const Color(0xFFE63946),
-              title: 'Toko Online',
-              subtitle: 'Aktifkan & atur toko online (Vercel)',
-              isDark: isDark,
-              onTap: () => context.push('/toko_online_setup'),
-            ),
-            const SizedBox(height: 12),
-            // Kartu ID (v2.2.46: draft — desain masih berjalan)
-            _menuRow(
-              icon: Icons.badge_outlined,
-              iconColor: const Color(0xFFEC4899),
-              title: 'Kartu ID',
-              subtitle: 'Cetak kartu member & karyawan (segera hadir)',
-              isDark: isDark,
-              onTap: () => _showUnderDevelopment(context, 'Kartu ID'),
-            ),
-            const SizedBox(height: 12),
-            // Pembayaran
-            _menuRow(
-              icon: Icons.payment,
-              iconColor: const Color(0xFF6366F1),
-              title: 'Pembayaran',
-              subtitle: 'Atur QRIS & rekening bank untuk transfer',
-              isDark: isDark,
-              onTap: () => context.push('/pengaturan_pembayaran'),
-            ),
-            const SizedBox(height: 12),
-            // Pengaturan Struk (v2.2.45: naik setelah Pembayaran)
-            _menuRow(
-              icon: Icons.receipt_long,
-              iconColor: const Color(0xFF10B981),
-              title: 'Pengaturan Struk',
-              subtitle: 'Atur footer struk & upload logo toko',
-              isDark: isDark,
-              onTap: _showReceiptSettings,
-            ),
-            // Alur Pembayaran — FnB only
-            if (NusaConfig.isFnbVariant) ...[
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.swap_horiz,
-                iconColor: const Color(0xFFF59E0B),
-                title: 'Alur Pembayaran',
-                subtitle: _fnbPayFirst
-                    ? 'Bayar dulu di kasir, baru pilih meja'
-                    : 'Pesan dulu, duduk di meja, bayar setelah selesai',
-                isDark: isDark,
-                onTap: null, // toggle handled by trailing switch
-                trailing: Switch(
-                  value: _fnbPayFirst,
-                  activeColor: NusaConfig.warning,
-                  onChanged: (_) => _toggleFnbPayFirst(),
                 ),
-              ),
-            ],
-            // Laundry settings removed — now per-product via priceType toggle on product cards.
-
-            // ── Suara & Panggil (v2.2.54) ──
-            const SizedBox(height: 12),
-            _menuRow(
-              icon: Icons.volume_up_rounded,
-              iconColor: const Color(0xFF10B981),
-              title: 'Suara Aplikasi',
-              subtitle: _soundEnabled
-                  ? 'Aktif — bunyi transaksi berhasil, scan, presensi, dll.'
-                  : 'Dimatikan — app berjalan tanpa bunyi',
-              isDark: isDark,
-              onTap: null,
-              trailing: Switch(
-                value: _soundEnabled,
-                activeColor: NusaConfig.activePrimary,
-                onChanged: (v) async {
-                  await SecureStore.setSoundEnabled(v);
-                  setState(() => _soundEnabled = v);
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            _menuRow(
-              icon: Icons.notifications_active_rounded,
-              iconColor: const Color(0xFF3B82F6),
-              title: 'Fitur Panggil',
-              subtitle: _callFeatureEnabled
-                  ? 'Aktif — owner bisa membunyikan device ini saat dibutuhkan'
-                  : 'Dimatikan — device tidak menerima panggilan',
-              isDark: isDark,
-              onTap: null,
-              trailing: Switch(
-                value: _callFeatureEnabled,
-                activeColor: NusaConfig.info,
-                onChanged: (v) async {
-                  await SecureStore.setCallFeatureEnabled(v);
-                  setState(() => _callFeatureEnabled = v);
-                  // Re-join / keluar channel Realtime sesuai toggle.
-                  try {
-                    if (v) {
-                      await CallService.I.start();
-                    } else {
-                      await CallService.I.stop();
-                    }
-                  } catch (_) {}
-                },
-              ),
-            ),
-
-            // Salon settings
-            if (NusaConfig.isSalonVariant) ...[
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.timer_outlined,
-                iconColor: const Color(0xFF8B5CF6),
-                title: 'Estimasi Default',
-                subtitle:
-                    '$_salonDefaultDuration menit — durasi estimasi standar per booking',
-                isDark: isDark,
-                onTap: () async {
-                  final opts = [30, 45, 60, 90, 120];
-                  final current = _salonDefaultDuration;
-                  final sel = await showModalBottomSheet<String>(
-                    context: context,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(20),
-                      ),
+                _menuTile(
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Fitur Panggil',
+                  subtitle: _callFeatureEnabled
+                      ? 'Aktif — owner bisa membunyikan device ini saat dibutuhkan'
+                      : 'Dimatikan — device tidak menerima panggilan',
+                  isDark: isDark,
+                  onTap: null,
+                  trailing: Switch(
+                    value: _callFeatureEnabled,
+                    activeColor: NusaConfig.activePrimary,
+                    onChanged: (v) async {
+                      await SecureStore.setCallFeatureEnabled(v);
+                      setState(() => _callFeatureEnabled = v);
+                      // Re-join / keluar channel Realtime sesuai toggle.
+                      try {
+                        if (v) {
+                          await CallService.I.start();
+                        } else {
+                          await CallService.I.stop();
+                        }
+                      } catch (_) {}
+                    },
+                  ),
+                ),
+                // Login Biometrik — Owner only, direct toggle
+                if (session?.role == 'Owner')
+                  _menuTile(
+                    icon: Icons.fingerprint,
+                    title: 'Login Biometrik',
+                    subtitle: _fingerprintEnabled
+                        ? 'Aktif — akses cepat pakai sidik jari / Face ID'
+                        : 'Aktifkan akses cepat Owner',
+                    isDark: isDark,
+                    onTap: () => _toggleFingerprint(session!),
+                    trailing: Switch(
+                      value: _fingerprintEnabled,
+                      activeColor: NusaConfig.activePrimary,
+                      onChanged: (v) => _toggleFingerprint(session!),
                     ),
-                    builder: (ctx) => Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Estimasi Default',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+                  ),
+                // Salon settings
+                if (NusaConfig.isSalonVariant) ...[
+                  _menuTile(
+                    icon: Icons.timer_outlined,
+                    title: 'Estimasi Default',
+                    subtitle:
+                        '$_salonDefaultDuration menit — durasi estimasi standar per booking',
+                    isDark: isDark,
+                    onTap: () async {
+                      final opts = [30, 45, 60, 90, 120];
+                      final current = _salonDefaultDuration;
+                      final sel = await showModalBottomSheet<String>(
+                        context: context,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
                           ),
-                          const SizedBox(height: 12),
-                          ...opts.map(
-                            (o) => ListTile(
-                              title: Text('$o menit'),
-                              trailing: o == current
-                                  ? Icon(
-                                      Icons.check,
-                                      color: NusaConfig.activePrimary,
-                                    )
-                                  : null,
-                              onTap: () => Navigator.pop(ctx, '$o'),
-                            ),
+                        ),
+                        builder: (ctx) => Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Estimasi Default',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              ...opts.map(
+                                (o) => ListTile(
+                                  title: Text('$o menit'),
+                                  trailing: o == current
+                                      ? Icon(
+                                          Icons.check,
+                                          color: NusaConfig.activePrimary,
+                                        )
+                                      : null,
+                                  onTap: () => Navigator.pop(ctx, '$o'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      if (sel != null && mounted) {
+                        final v = int.parse(sel);
+                        await SecureStore.setSalonDefaultDuration(v);
+                        setState(() => _salonDefaultDuration = v);
+                      }
+                    },
+                  ),
+                  _menuTile(
+                    icon: Icons.notifications_outlined,
+                    title: 'Notifikasi Booking',
+                    subtitle: _salonNotifyBooking
+                        ? 'Notif H-30 menit sebelum booking'
+                        : 'Notifikasi dimatikan',
+                    isDark: isDark,
+                    onTap: null,
+                    trailing: Switch(
+                      value: _salonNotifyBooking,
+                      activeColor: NusaConfig.activePrimary,
+                      onChanged: (v) async {
+                        await SecureStore.setSalonNotifyBooking(v);
+                        setState(() => _salonNotifyBooking = v);
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            //  TAMPILAN
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            _sectionHeader('TAMPILAN', isDark),
+            _groupCard(
+              isDark: isDark,
+              tiles: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Tema',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _themeChip('Terang', 'light', Icons.light_mode, isDark),
+                          const SizedBox(width: 8),
+                          _themeChip('Gelap', 'dark', Icons.dark_mode, isDark),
+                          const SizedBox(width: 8),
+                          _themeChip(
+                            'Sistem',
+                            'system',
+                            Icons.phone_android,
+                            isDark,
                           ),
                         ],
                       ),
-                    ),
-                  );
-                  if (sel != null && mounted) {
-                    final v = int.parse(sel);
-                    await SecureStore.setSalonDefaultDuration(v);
-                    setState(() => _salonDefaultDuration = v);
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.notifications_outlined,
-                iconColor: const Color(0xFF3B82F6),
-                title: 'Notifikasi Booking',
-                subtitle: _salonNotifyBooking
-                    ? 'Notif H-30 menit sebelum booking'
-                    : 'Notifikasi dimatikan',
-                isDark: isDark,
-                onTap: null,
-                trailing: Switch(
-                  value: _salonNotifyBooking,
-                  activeColor: NusaConfig.info,
-                  onChanged: (v) async {
-                    await SecureStore.setSalonNotifyBooking(v);
-                    setState(() => _salonNotifyBooking = v);
-                  },
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 12),
-            // Biometrik (fingerprint / Face ID) — Owner only, direct toggle
-            if (session?.role == 'Owner') ...[
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.fingerprint,
-                iconColor: NusaConfig.accentPurple,
-                title: 'Login Biometrik',
-                subtitle: _fingerprintEnabled
-                    ? 'Aktif — akses cepat pakai sidik jari / Face ID'
-                    : 'Aktifkan akses cepat Owner',
-                isDark: isDark,
-                onTap: () => _toggleFingerprint(session!),
-                trailing: Switch(
-                  value: _fingerprintEnabled,
-                  activeColor: NusaConfig.accentPurple,
-                  onChanged: (v) => _toggleFingerprint(session!),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 24),
-
-            // ════════════════════════════════════════
-            //  TAMPILAN
-            // ════════════════════════════════════════
-            _sectionHeader('TAMPILAN', isDark),
-            NusaCard(
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Tema',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _themeChip('Terang', 'light', Icons.light_mode, isDark),
-                      const SizedBox(width: 8),
-                      _themeChip('Gelap', 'dark', Icons.dark_mode, isDark),
-                      const SizedBox(width: 8),
-                      _themeChip(
-                        'Sistem',
-                        'system',
-                        Icons.phone_android,
-                        isDark,
-                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Tema Warna
-            _menuRow(
-              icon: Icons.palette_outlined,
-              iconColor: NusaConfig.activePrimary,
-              title: 'Tema Warna',
-              subtitle: _currentThemeLabel(),
-              isDark: isDark,
-              onTap: _showThemePicker,
-            ),
-
-            const SizedBox(height: 24),
-
-            // ════════════════════════════════════════
-            //  KEAMANAN
-            // ════════════════════════════════════════
-            Row(
-              children: [
-                _sectionHeader('KEAMANAN', isDark),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.lock_outline,
-                  size: 13,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+                ),
+                _menuTile(
+                  icon: Icons.palette_outlined,
+                  title: 'Tema Warna',
+                  subtitle: _currentThemeLabel(),
+                  isDark: isDark,
+                  onTap: _showThemePicker,
                 ),
               ],
             ),
-            // Kelola Fitur
-            _menuRow(
-              icon: Icons.toggle_on_outlined,
-              iconColor: NusaConfig.accentPurple,
-              title: 'Kelola Fitur',
-              subtitle: 'Atur fitur yang tampil di Home Screen',
+
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            //  KEAMANAN
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
+            _sectionHeader('KEAMANAN', isDark),
+            _groupCard(
               isDark: isDark,
-              onTap: () => _pinGate(_showFeatureToggles),
-              trailing: Icon(
-                Icons.lock_outline,
-                size: 16,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            // PIN Pad Kasir (opsional — login PIN tetap wajib)
-            _menuRow(
-              icon: Icons.pin_outlined,
-              iconColor: NusaConfig.accentGold,
-              title: 'PIN Kasir di Kasir',
-              subtitle: _pinPadEnabled
-                  ? 'Kasir wajib PIN saat buka fitur & kasir'
-                  : 'Kasir buka tanpa PIN (login tetap butuh PIN)',
-              isDark: isDark,
-              onTap: null, // toggle handled by trailing switch
-              trailing: Switch(
-                value: _pinPadEnabled,
-                activeTrackColor: NusaConfig.activePrimary,
-                onChanged: (_) => _togglePinPad(),
-              ),
-            ),
-            // Dev: Pilih Varian (only in dev build)
-            if (NusaConfig.isDevBuild) ...[
-              const SizedBox(height: 12),
-              _menuRow(
-                icon: Icons.apps_rounded,
-                iconColor: NusaConfig.accentGold,
-                title: 'Pilih Varian',
-                subtitle:
-                    'Switch ke variant lain (${NusaConfig.productId.replaceFirst('nusa-', '')})',
-                isDark: isDark,
-                onTap: () => _pinGate(() => context.go('/variant-picker')),
-                trailing: Icon(
-                  Icons.lock_outline,
-                  size: 16,
-                  color: isDark
-                      ? NusaConfig.darkTextSecondary
-                      : NusaConfig.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            // Lisensi
-            _menuRow(
-              icon: Icons.key,
-              iconColor: NusaConfig.accentGreen,
-              title: 'Lisensi',
-              subtitle: _activationKey != null
-                  ? 'Terverifikasi'
-                  : 'Belum diaktivasi',
-              isDark: isDark,
-              onTap: () => _pinGate(_showLicense),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_activationKey != null)
-                    Icon(
-                      Icons.check_circle,
-                      size: 14,
-                      color: NusaConfig.accentGreen,
-                    ),
-                  const SizedBox(width: 6),
-                  Icon(
+              tiles: [
+                _menuTile(
+                  icon: Icons.toggle_on_outlined,
+                  title: 'Kelola Fitur',
+                  subtitle: 'Atur fitur yang tampil di Home Screen',
+                  isDark: isDark,
+                  onTap: () => _pinGate(_showFeatureToggles),
+                  trailing: Icon(
                     Icons.lock_outline,
                     size: 16,
                     color: isDark
                         ? NusaConfig.darkTextSecondary
                         : NusaConfig.textSecondary,
                   ),
-                ],
-              ),
+                ),
+                _menuTile(
+                  icon: Icons.pin_outlined,
+                  title: 'PIN Kasir di Kasir',
+                  subtitle: _pinPadEnabled
+                      ? 'Kasir wajib PIN saat buka fitur & kasir'
+                      : 'Kasir buka tanpa PIN (login tetap butuh PIN)',
+                  isDark: isDark,
+                  onTap: null, // toggle handled by trailing switch
+                  trailing: Switch(
+                    value: _pinPadEnabled,
+                    activeColor: NusaConfig.activePrimary,
+                    onChanged: (_) => _togglePinPad(),
+                  ),
+                ),
+                // Dev: Pilih Varian (only in dev build)
+                if (NusaConfig.isDevBuild)
+                  _menuTile(
+                    icon: Icons.apps_rounded,
+                    title: 'Pilih Varian',
+                    subtitle:
+                        'Switch ke variant lain (${NusaConfig.productId.replaceFirst('nusa-', '')})',
+                    isDark: isDark,
+                    onTap: () => _pinGate(() => context.go('/variant-picker')),
+                    trailing: Icon(
+                      Icons.lock_outline,
+                      size: 16,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ),
+                _menuTile(
+                  icon: Icons.key,
+                  title: 'Lisensi',
+                  subtitle: _activationKey != null
+                      ? 'Terverifikasi'
+                      : 'Belum diaktivasi',
+                  isDark: isDark,
+                  onTap: () => _pinGate(_showLicense),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_activationKey != null)
+                        Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: NusaConfig.activePrimary,
+                        ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.lock_outline,
+                        size: 16,
+                        color: isDark
+                            ? NusaConfig.darkTextSecondary
+                            : NusaConfig.textSecondary,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
 
-            // PIN length — fixed at 6 digits, not user-changeable
-            const SizedBox(height: 24),
-
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  DATA
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             _sectionHeader('DATA', isDark),
-            _menuRow(
-              icon: Icons.backup,
-              iconColor: NusaConfig.activePrimary,
-              title: 'Backup & Restore',
-              subtitle: 'Simpan atau muat file database',
+            _groupCard(
               isDark: isDark,
-              onTap: () => showBackupSheet(context, ref),
-            ),
-            const SizedBox(height: 12),
-            _menuRow(
-              icon: Icons.cloud_sync,
-              iconColor: NusaConfig.info,
-              title: 'Sinkronisasi Cloud',
-              subtitle: 'Upload / Download antar perangkat via Google',
-              isDark: isDark,
-              onTap: () => _showCloudSync(),
+              tiles: [
+                _menuTile(
+                  icon: Icons.backup,
+                  title: 'Backup & Restore',
+                  subtitle: 'Simpan atau muat file database',
+                  isDark: isDark,
+                  onTap: () => showBackupSheet(context, ref),
+                ),
+                _menuTile(
+                  icon: Icons.cloud_sync,
+                  title: 'Sinkronisasi Cloud',
+                  subtitle: 'Upload / Download antar perangkat via Google',
+                  isDark: isDark,
+                  onTap: () => _showCloudSync(),
+                ),
+              ],
             ),
 
-            const SizedBox(height: 24),
-
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  PERANGKAT
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             _sectionHeader('PERANGKAT', isDark),
-            // Printer
-            _menuRow(
-              icon: Icons.print,
-              iconColor: const Color(0xFFE63946),
-              title: 'Printer',
-              subtitle: _printerName != null
-                  ? _printerName!.split('|').first
-                  : 'Atur printer thermal',
+            _groupCard(
               isDark: isDark,
-              onTap: () => PrinterSettingsSheet.show(
-                context: context,
-                currentAddress: _printerName,
-                onPrinterSelected: (d) async {
-                  await ref
-                      .read(settingsRepoProvider)
-                      .setPrinterAddress('${d.name}|${d.address}');
-                  // Mirror into SecureStore — single source of truth for
-                  // receipt-sheet auto-print (printer_settings_sheet already
-                  // writes it too; this covers older flows).
-                  await SecureStore.setPrinterAddress('${d.name}|${d.address}');
-                  setState(() => _printerName = '${d.name}|${d.address}');
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Riwayat Update
-            _menuRow(
-              icon: _updateInfo?.hasUpdate == true
-                  ? Icons.system_update
-                  : Icons.update,
-              iconColor: _updateInfo?.hasUpdate == true
-                  ? Colors.orange
-                  : NusaConfig.activePrimary,
-              title: _updateInfo?.hasUpdate == true
-                  ? 'Update Tersedia!'
-                  : 'Riwayat Update',
-              subtitle: _updateInfo?.hasUpdate == true
-                  ? 'Terpasang v${NusaConfig.appVersion} · Tersedia v${_updateInfo!.latestVersion}'
-                  : 'Terpasang v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber} (terbaru)',
-              isDark: isDark,
-              onTap: _updateInfo?.hasUpdate == true
-                  ? _showUpdateDialog
-                  : _showUpdateHistory,
-              trailing: Icon(
-                _updateInfo?.hasUpdate == true
-                    ? Icons.download
-                    : Icons.history_rounded,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
+              tiles: [
+                _menuTile(
+                  icon: Icons.print,
+                  title: 'Printer',
+                  subtitle: _printerName != null
+                      ? _printerName!.split('|').first
+                      : 'Atur printer thermal',
+                  isDark: isDark,
+                  onTap: () => PrinterSettingsSheet.show(
+                    context: context,
+                    currentAddress: _printerName,
+                    onPrinterSelected: (d) async {
+                      await ref
+                          .read(settingsRepoProvider)
+                          .setPrinterAddress('${d.name}|${d.address}');
+                      // Mirror into SecureStore — single source of truth for
+                      // receipt-sheet auto-print (printer_settings_sheet already
+                      // writes it too; this covers older flows).
+                      await SecureStore.setPrinterAddress('${d.name}|${d.address}');
+                      setState(() => _printerName = '${d.name}|${d.address}');
+                    },
+                  ),
+                ),
+                _menuTile(
+                  icon: _updateInfo?.hasUpdate == true
+                      ? Icons.system_update
+                      : Icons.update,
+                  title: _updateInfo?.hasUpdate == true
+                      ? 'Update Tersedia!'
+                      : 'Riwayat Update',
+                  subtitle: _updateInfo?.hasUpdate == true
+                      ? 'Terpasang v${NusaConfig.appVersion} · Tersedia v${_updateInfo!.latestVersion}'
+                      : 'Terpasang v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber} (terbaru)',
+                  isDark: isDark,
+                  onTap: _updateInfo?.hasUpdate == true
+                      ? _showUpdateDialog
+                      : _showUpdateHistory,
+                  trailing: Icon(
+                    _updateInfo?.hasUpdate == true
+                        ? Icons.download
+                        : Icons.history_rounded,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                ),
+              ],
             ),
 
-            const SizedBox(height: 32),
-
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  BANTUAN
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             _sectionHeader('BANTUAN', isDark),
-            // v2.2.53: Tutorial kini membuka daftar panduan dari cloud (tabel
-            // `tutorials`) — dikelola via nusa-online /dashboard → tab Tutorial.
-            _menuRow(
-              icon: Icons.school_outlined,
-              iconColor: NusaConfig.activePrimary,
-              title: 'Tutorial',
-              subtitle: 'Panduan video cara pakai tiap menu',
+            _groupCard(
               isDark: isDark,
-              onTap: _openTutorial,
+              tiles: [
+                // v2.2.53: Tutorial kini membuka daftar panduan dari cloud (tabel
+                // `tutorials`) — dikelola via nusa-online /dashboard → tab Tutorial.
+                _menuTile(
+                  icon: Icons.school_outlined,
+                  title: 'Tutorial',
+                  subtitle: 'Panduan video cara pakai tiap menu',
+                  isDark: isDark,
+                  onTap: _openTutorial,
+                ),
+                _menuTile(
+                  icon: Icons.feedback_outlined,
+                  title: 'Bantuan & Masukan',
+                  subtitle: 'Laporkan bug, usulkan fitur, atau chat tim',
+                  isDark: isDark,
+                  onTap: _showFeedbackSheet,
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _menuRow(
-              icon: Icons.feedback_outlined,
-              iconColor: NusaConfig.info,
-              title: 'Bantuan & Masukan',
-              subtitle: 'Laporkan bug, usulkan fitur, atau chat tim',
-              isDark: isDark,
-              onTap: _showFeedbackSheet,
-            ),
-            const SizedBox(height: 24),
 
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             //  TENTANG APLIKASI
-            // ════════════════════════════════════════
+            // ════════════════════════════════════════════════════════════════════════════════════════════════
             _sectionHeader('TENTANG APLIKASI', isDark),
             NusaCard(
               Padding(

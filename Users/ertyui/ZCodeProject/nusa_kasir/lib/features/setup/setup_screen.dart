@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
@@ -111,10 +112,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           title: const Text('Izinkan akses?'),
           content: const Text(
             'NUSA butuh izin berikut agar fitur berjalan maksimal:\n\n'
-            '📷 Kamera — scan barcode produk\n'
-            '🔔 Notifikasi — stok menipis & pesanan\n'
-            '💾 Penyimpanan — simpan & muat data\n'
-            '🔵 Bluetooth — cetak struk ke printer\n\n'
+            '• Kamera — scan barcode produk\n'
+            '• Notifikasi — stok menipis & pesanan\n'
+            '• Penyimpanan — simpan & muat data\n'
+            '• Bluetooth — cetak struk ke printer\n\n'
             'Bisa diatur lagi kapan saja lewat Pengaturan.',
             style: TextStyle(fontSize: 14, height: 1.5),
           ),
@@ -169,22 +170,18 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 children: [
                   SizedBox(height: 32),
 
-                  // Hero icon
-                  Container(
+                  // Hero logo — 1 aset konsisten per varian, tanpa lingkaran.
+                  Image.asset(
+                    splashLogoPath(),
                     width: 88,
                     height: 88,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.18),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 2,
+                    errorBuilder: (_, __, ___) => Text(
+                      'NUSA',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
-                    ),
-                    child: Icon(
-                      Icons.storefront_rounded,
-                      size: 44,
-                      color: Colors.white,
                     ),
                   ),
                   SizedBox(height: 24),
@@ -298,7 +295,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
                         SizedBox(height: 24),
                         NusaButton(
-                          _loading ? 'Menyimpan...' : 'Mulai Buka Toko 🚀',
+                          _loading ? 'Menyimpan...' : 'Mulai Buka Toko',
                           onPressed: _loading ? null : _submit,
                         ),
                       ],

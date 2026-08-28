@@ -41,6 +41,27 @@ class SettingsRepository {
         .write(SettingsCompanion(storeName: Value(name)));
   }
 
+  /// v2.2.57+112: setter no. HP toko — kolom storePhone sudah ada sejak lama,
+  /// tapi tidak pernah ditulis dari app (dulu cuma dari toko online cloud).
+  Future<void> setStorePhone(String phone) async {
+    await ensureRow();
+    await (db.update(db.settings)..where((t) => t.id.equals(1)))
+        .write(SettingsCompanion(storePhone: Value(phone)));
+  }
+
+  /// v2.2.57+112: setter alamat toko — kolom storeAddress sudah ada sejak lama,
+  /// tapi tidak pernah dipakai (dulu cuma dari toko online cloud).
+  Future<void> setStoreAddress(String address) async {
+    await ensureRow();
+    await (db.update(db.settings)..where((t) => t.id.equals(1)))
+        .write(SettingsCompanion(storeAddress: Value(address)));
+  }
+
+  Future<String> getStoreAddress() async {
+    final row = await db.select(db.settings).getSingleOrNull();
+    return row?.storeAddress ?? '';
+  }
+
   Future<void> setQris(String v) async {
     await ensureRow();
     await (db.update(db.settings)..where((t) => t.id.equals(1)))

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/services/account_auth_service.dart';
+import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
@@ -52,6 +54,18 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   String? _googleError;
   String? _googleId;
 
+  // Email/password auth (v2.2.57+112)
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _signupEmailCtrl = TextEditingController();
+  final _signupPassCtrl = TextEditingController();
+  final _signupPass2Ctrl = TextEditingController();
+  bool _obscurePass = true;
+  bool _obscurePass2 = true;
+  bool _rememberEmail = true;
+  bool _authLoading = false;
+  String? _authError;
+
   // Activation key input (new user)
   final _keyCtrl = TextEditingController();
   bool _keyLoading = false;
@@ -66,8 +80,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   // yang PIN-nya 4 digit tidak stuck selamanya.
   int _pinLength = 6;
 
-  // Screen state: 'welcome' | 'google_loading' | 'decision' | 'pin' | 'key'
-  String _screen = 'welcome';
+  // Screen state: 'auth' (login) | 'signup' | 'google_loading' | 'decision' | 'pin' | 'key' | 'trial_expired'
+  String _screen = 'auth';
 
   // v2.2.44 (L2/L3): expires_at lisensi yang habis — untuk countdown grace
   // 7 hari (H-7 diterima server; H+7 key di-revoke) di layar blokir.
@@ -85,11 +99,19 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     });
   }
 
-  /// Auto-launch Google Sign-In silently if already activated.
-  /// Skips welcome screen — user goes directly to PIN input.
+  /// Auto sign-in: akun email/password dulu (kalau "Ingat saya" dicentang),
+  /// lalu fallback ke Google seperti sebelumnya. Keduanya berujung pada
+  /// `_checkLicenseStatus`.
   Future<void> _initAutoSignIn() async {
     final activated = (await SecureStore.getActivation()) != null;
     if (!activated) return;
+    final accountUid = await AccountAuthService.getStoredUid();
+    if (accountUid != null && await AccountAuthService.shouldRemember()) {
+      if (!mounted) return;
+      _googleId = accountUid;
+      if (mounted) await _checkLicenseStatus(accountUid);
+      return;
+    }
     final linked = await GoogleAuthService.isLinked();
     if (!linked) return;
     if (!mounted) return;
@@ -110,7 +132,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         setState(() {
           _googleLoading = false;
           _googleError = 'Login Google diperlukan untuk menggunakan NUSA Kasir';
-          _screen = 'welcome';
+          _screen = 'auth';
         });
         return;
       }
@@ -124,7 +146,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       setState(() {
         _googleLoading = false;
         _googleError = 'Gagal login Google: $e';
-        _screen = 'welcome';
+        _screen = 'auth';
       });
     }
   }
@@ -141,6 +163,124 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     }
     await _startGoogleSignIn();
   }
+
+  // ── Email/password (v2.2.57+112) ────────────────────────────────────
+
+  /// Login pakai email + password (Supabase Auth). Setelah uid didapat,
+  /// jalankan `_checkLicenseStatus` — alur identik dengan jalur Google.
+  ///
+  /// Catatan "Ingat saya": UID akun SELALU disimpan — dia anchor identitas
+  /// backup (path + kunci enkripsi, sama persis dengan peran Google UID).
+  /// Yang dikontrol checkbox hanya auto-login di pembukaan app berikutnya.
+  Future<void> _submitEmailLogin() async {
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
+    if (email.isEmpty || pass.isEmpty) {
+      setState(() => _authError = 'Masukkan email dan password');
+      return;
+    }
+    if (!_isEmail(email)) {
+      setState(() => _authError = 'Format email tidak valid');
+      return;
+    }
+    setState(() {
+      _authLoading = true;
+      _authError = null;
+    });
+    final uid = await AccountAuthService().signIn(email, pass);
+    if (!mounted) return;
+    if (uid == null) {
+      setState(() {
+        _authLoading = false;
+        _authError = 'Email atau password salah';
+      });
+      return;
+    }
+    _googleId = uid;
+    await AccountAuthService.saveRemember(_rememberEmail);
+    if (!mounted) return;
+    setState(() => _authLoading = false);
+    await _checkLicenseStatus(uid);
+  }
+
+  /// Daftar akun baru (email + password + konfirmasi password).
+  Future<void> _submitSignup() async {
+    final email = _signupEmailCtrl.text.trim();
+    final pass = _signupPassCtrl.text;
+    final pass2 = _signupPass2Ctrl.text;
+    if (email.isEmpty || pass.isEmpty || pass2.isEmpty) {
+      setState(() => _authError = 'Lengkapi semua kolom');
+      return;
+    }
+    if (!_isEmail(email)) {
+      setState(() => _authError = 'Format email tidak valid');
+      return;
+    }
+    if (pass.length < 6) {
+      setState(() => _authError = 'Password minimal 6 karakter');
+      return;
+    }
+    if (pass != pass2) {
+      setState(() => _authError = 'Password tidak sama');
+      return;
+    }
+    setState(() {
+      _authLoading = true;
+      _authError = null;
+    });
+    final result = await AccountAuthService().signUp(email, pass);
+    if (!mounted) return;
+    setState(() => _authLoading = false);
+    switch (result) {
+      case 'ok':
+        final uid = await AccountAuthService.getStoredUid();
+        if (uid != null) {
+          _googleId = uid;
+          await _checkLicenseStatus(uid);
+        } else {
+          setState(() => _screen = 'auth');
+        }
+        return;
+      case 'confirm_email':
+        setState(() {
+          _screen = 'auth';
+          _authError = 'Cek email kamu untuk konfirmasi, lalu login.';
+        });
+        return;
+      case 'exists':
+        setState(() {
+          _authError = 'Email sudah terdaftar. Silakan login.';
+        });
+        return;
+      default:
+        setState(() {
+          _authError = 'Gagal mendaftar. Periksa koneksi, coba lagi.';
+        });
+        return;
+    }
+  }
+
+  /// Lupa password → kirim email reset (link ke nusa-online /reset-password).
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _authError = 'Masukkan email dulu untuk reset password');
+      return;
+    }
+    setState(() {
+      _authLoading = true;
+      _authError = null;
+    });
+    final ok = await AccountAuthService().resetPassword(email);
+    if (!mounted) return;
+    setState(() => _authLoading = false);
+    TopToast.success(
+      context,
+      ok ? 'Link reset password terkirim ke email' : 'Gagal kirim link reset',
+    );
+  }
+
+  bool _isEmail(String s) => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(s);
 
   Future<void> _openLandingPage() async {
     final uri = Uri.parse(NusaConfig.landingPageUrl);
@@ -513,6 +653,22 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         if (isExpired || cloudStatus == 'Expired' ||
             cloudStatus == 'Cancelled' || cloudStatus == 'Suspended') {
           if (mounted) {
+            // v2.2.57+112: akun yang lisensinya DIBATALKAN (Cancelled) atau
+            // DISUSPEND kembali ke layar status lisensi (decision — "sudah
+            // punya / belum punya lisensi"), BUKAN layar perpanjangan.
+            // Layar trial_expired (perpanjangan) hanya untuk status Expired.
+            if (cloudStatus == 'Cancelled' || cloudStatus == 'Suspended') {
+              setState(() {
+                _googleLoading = false;
+                _googleError = data['message'] as String? ??
+                    'Lisensi Anda tidak aktif lagi.\nHubungi admin untuk bantuan.';
+                _licenseExpiry = data['expires_at'] != null
+                    ? DateTime.tryParse(data['expires_at'] as String)
+                    : null;
+                _screen = 'decision';
+              });
+              return;
+            }
             setState(() {
               _googleLoading = false;
               _googleError = data['message'] as String? ??
@@ -663,7 +819,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     // setup dari nol. Kalau ada backup valid → preview → restoreDirect →
     // /login. Tidak ada backup → /setup (seperti sebelumnya).
     if (!mounted) return;
-    TopToast.success(context, 'Aktivasi berhasil! 🎉');
+    TopToast.success(context, 'Aktivasi berhasil');
     final actRepo = ref.read(activationRepoProvider);
     final variantStatus = await actRepo.checkBackupVariant();
     if (!mounted) return;
@@ -765,6 +921,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   @override
   void dispose() {
     _keyCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _signupEmailCtrl.dispose();
+    _signupPassCtrl.dispose();
+    _signupPass2Ctrl.dispose();
     super.dispose();
   }
 
@@ -773,8 +934,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     switch (_screen) {
-      case 'welcome':
-        return _buildWelcomeScreen(isDark);
+      case 'auth':
+        return _buildAuthScreen(isDark);
+      case 'signup':
+        return _buildSignupScreen(isDark);
       case 'google_loading':
         return _buildGoogleLoadingScreen(isDark);
       case 'trial_expired':
@@ -786,13 +949,20 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       case 'key':
         return _buildKeyScreen(isDark);
       default:
-        return _buildWelcomeScreen(isDark);
+        return _buildAuthScreen(isDark);
     }
   }
 
   // ── Welcome Screen ──────────────────────────────────────────────────
 
-  Widget _buildWelcomeScreen(bool isDark) {
+  // ── Auth Screen (login: email/password + Google) ─────────────────────
+  //
+  // v2.2.57+112: redesign total. Satu aset logo konsisten per varian
+  // (splashLogoPath → app_logo_{variant} {HEX}.png) — TANPA circle/gradient
+  // dan TANPA icon toko/roket. Form email+password + ingat saya + lupa
+  // password, card daftar, lalu card login Google di paling bawah.
+
+  Widget _buildAuthScreen(bool isDark) {
     return Scaffold(
       backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
       body: SafeArea(
@@ -801,36 +971,46 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
             child: Column(
               children: [
-                // Logo + Brand
-                Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
+                // ── Logo (1 aset konsisten, tanpa lingkaran) ──
+                Image.asset(
+                  splashLogoPath(),
+                  width: 96,
+                  height: 96,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.35),
-                        blurRadius: 20,
-                        offset: Offset(0, 8),
-                      ),
-                    ],
                   ),
-                  child: Icon(Icons.store_rounded, color: Colors.white, size: 36),
                 ),
-                SizedBox(height: 20),
-                Text('NUSA', style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: NusaConfig.activePrimary, fontWeight: FontWeight.w800, letterSpacing: -1)),
-                SizedBox(height: 4),
-                Text(NusaConfig.appSubtitle,
-                  style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                SizedBox(height: 36),
+                const SizedBox(height: 20),
+                Text('NUSA',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: NusaConfig.activePrimary,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
+                    )),
+                const SizedBox(height: 6),
+                // Subtitle — kontras dinaikkan (abu gelap + weight medium).
+                Text(
+                  NusaConfig.appSubtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: isDark
+                        ? NusaConfig.darkTextSecondary
+                        : const Color(0xFF3F3F46),
+                  ),
+                ),
+                const SizedBox(height: 32),
 
-                // ── Card ──
+                // ── Card: form masuk ──
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(28),
+                  padding: EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: isDark ? NusaConfig.darkSurface : Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -843,74 +1023,555 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     ],
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Masuk ke NUSA',
-                        style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700,
-                          color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                        )),
-                      SizedBox(height: 4),
-                      Text('Gunakan akun Google untuk melanjutkan',
-                        style: TextStyle(fontSize: 13,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                      SizedBox(height: 24),
+                      Text('Masuk',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : Color(0xFF151717),
+                          )),
+                      const SizedBox(height: 4),
+                      Text('Masuk untuk lanjut ke aplikasi',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : const Color(0xFF3F3F46),
+                          )),
+                      const SizedBox(height: 20),
 
-                      // Google Sign-In button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: _startGoogleSignIn,
-                          icon: Image.asset(
-                            'assets/icons/google_logo.png',
-                            width: 20, height: 20,
-                            errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata, size: 24, color: Color(0xFF4285F4)),
-                          ),
-                          label: Text('Masuk dengan Google',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                            side: BorderSide(color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      // Email
+                      TextField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        style: TextStyle(fontSize: 14),
+                        decoration: _authInputDecoration(
+                          label: 'Email',
+                          icon: Icons.mail_outline,
+                          isDark: isDark,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Password + visibility toggle
+                      TextField(
+                        controller: _passCtrl,
+                        obscureText: _obscurePass,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submitEmailLogin(),
+                        style: TextStyle(fontSize: 14),
+                        decoration: _authInputDecoration(
+                          label: 'Password',
+                          icon: Icons.lock_outline,
+                          isDark: isDark,
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePass
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                            onPressed: () =>
+                                setState(() => _obscurePass = !_obscurePass),
                           ),
                         ),
                       ),
 
-                      // Error message
-                      if (_googleError != null) ...[
-                        SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.activePrimary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.error_outline, size: 18,
-                                color: NusaConfig.activePrimary.withValues(alpha: 0.7)),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(_googleError!,
-                                  style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
+                      // ── Ingat saya + Lupa password ──
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(
+                                  () => _rememberEmail = !_rememberEmail),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _rememberEmail
+                                            ? NusaConfig.activePrimary
+                                            : (isDark
+                                                ? NusaConfig.darkDivider
+                                                : NusaConfig.dividerColor),
+                                        width: 2,
+                                      ),
+                                      color: _rememberEmail
+                                          ? NusaConfig.activePrimary
+                                          : Colors.transparent,
+                                    ),
+                                    child: _rememberEmail
+                                        ? Icon(Icons.check,
+                                            size: 14, color: Colors.white)
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text('Ingat saya',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark
+                                            ? NusaConfig.darkTextSecondary
+                                            : const Color(0xFF3F3F46),
+                                      )),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          TextButton(
+                            onPressed: _authLoading ? null : _forgotPassword,
+                            style: TextButton.styleFrom(
+                              foregroundColor: NusaConfig.activePrimary,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            child: const Text(
+                              'Lupa password?',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      if (_authError != null) ...[
+                        const SizedBox(height: 4),
+                        _authErrorBox(_authError!, isDark),
                       ],
+
+                      const SizedBox(height: 16),
+
+                      // Tombol masuk
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _authLoading ? null : _submitEmailLogin,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: NusaConfig.activePrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            disabledBackgroundColor:
+                                NusaConfig.activePrimary.withValues(alpha: 0.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: _authLoading
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Masuk',
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
-                SizedBox(height: 32),
-                Text('v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
-                  style: TextStyle(fontSize: 11,
-                    color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                const SizedBox(height: 14),
+
+                // ── Card: belum punya akun → daftar ──
+                OutlinedButton(
+                  onPressed: () => setState(() {
+                    _screen = 'signup';
+                    _authError = null;
+                  }),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    foregroundColor:
+                        isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                    side: BorderSide(
+                        color: isDark ? NusaConfig.darkBorder : Color(0xFFD1D5DB)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Belum punya akun? Daftar',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Divider "atau" ──
+                Row(children: [
+                  Expanded(
+                      child: Divider(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('atau',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary)),
+                  ),
+                  Expanded(
+                      child: Divider(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                ]),
+
+                const SizedBox(height: 14),
+
+                // ── Card: masuk dengan Google ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _startGoogleSignIn,
+                    icon: Image.asset(
+                      'assets/icons/google_logo.png',
+                      width: 20,
+                      height: 20,
+                      errorBuilder: (_, __, ___) =>
+                          Icon(Icons.g_mobiledata, size: 24, color: Color(0xFF4285F4)),
+                    ),
+                    label: const Text('Masuk dengan Google',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor:
+                          isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                      side: BorderSide(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+                Text(
+                    'v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    )),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Signup Screen (email + password baru) ────────────────────────────
+
+  Widget _buildSignupScreen(bool isDark) {
+    return Scaffold(
+      backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: Column(
+              children: [
+                Image.asset(
+                  splashLogoPath(),
+                  width: 88,
+                  height: 88,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text('Buat Akun',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: isDark
+                          ? NusaConfig.darkTextPrimary
+                          : Color(0xFF151717),
+                    )),
+                const SizedBox(height: 6),
+                Text('Daftar dengan email untuk mulai',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : const Color(0xFF3F3F46),
+                    )),
+                const SizedBox(height: 28),
+
+                // ── Card: form daftar ──
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                        blurRadius: 20,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _signupEmailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: _authInputDecoration(
+                          label: 'Email',
+                          icon: Icons.mail_outline,
+                          isDark: isDark,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _signupPassCtrl,
+                        obscureText: _obscurePass,
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: _authInputDecoration(
+                          label: 'Password (min. 6 karakter)',
+                          icon: Icons.lock_outline,
+                          isDark: isDark,
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePass
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                            onPressed: () =>
+                                setState(() => _obscurePass = !_obscurePass),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _signupPass2Ctrl,
+                        obscureText: _obscurePass2,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submitSignup(),
+                        style: const TextStyle(fontSize: 14),
+                        decoration: _authInputDecoration(
+                          label: 'Ulangi password',
+                          icon: Icons.lock_outline,
+                          isDark: isDark,
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePass2
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : NusaConfig.textSecondary,
+                            ),
+                            onPressed: () =>
+                                setState(() => _obscurePass2 = !_obscurePass2),
+                          ),
+                        ),
+                      ),
+
+                      if (_authError != null) ...[
+                        const SizedBox(height: 12),
+                        _authErrorBox(_authError!, isDark),
+                      ],
+
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _authLoading ? null : _submitSignup,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: NusaConfig.activePrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            disabledBackgroundColor:
+                                NusaConfig.activePrimary.withValues(alpha: 0.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: _authLoading
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Daftar',
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Divider "atau" ──
+                Row(children: [
+                  Expanded(
+                      child: Divider(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('atau',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary)),
+                  ),
+                  Expanded(
+                      child: Divider(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                ]),
+
+                const SizedBox(height: 14),
+
+                // ── Card: daftar dengan Google ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _startGoogleSignIn,
+                    icon: Image.asset(
+                      'assets/icons/google_logo.png',
+                      width: 20,
+                      height: 20,
+                      errorBuilder: (_, __, ___) =>
+                          Icon(Icons.g_mobiledata, size: 24, color: Color(0xFF4285F4)),
+                    ),
+                    label: const Text('Daftar dengan Google',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor:
+                          isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                      side: BorderSide(
+                          color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _screen = 'auth';
+                    _authError = null;
+                  }),
+                  child: Text('Sudah punya akun? Masuk',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: NusaConfig.activePrimary,
+                      )),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Input decoration seragam untuk form auth (label floating + icon prefix).
+  InputDecoration _authInputDecoration({
+    required String label,
+    required IconData icon,
+    required bool isDark,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon,
+          size: 20,
+          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+      labelStyle: TextStyle(
+        fontSize: 13,
+        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+      ),
+      filled: true,
+      fillColor: isDark ? NusaConfig.darkBackground : Color(0xFFF9FAFB),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(
+            color: isDark ? NusaConfig.darkBorder : Color(0xFFECEDEC)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(
+            color: isDark ? NusaConfig.darkBorder : Color(0xFFECEDEC)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide:
+            BorderSide(color: NusaConfig.activePrimary, width: 1.5),
+      ),
+    );
+  }
+
+  /// Kotak error seragam untuk form auth.
+  Widget _authErrorBox(String message, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: NusaConfig.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 18, color: NusaConfig.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      isDark ? NusaConfig.darkTextSecondary : Color(0xFF3F3F46)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1021,17 +1682,19 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
             child: Column(
               children: [
-                SizedBox(height: 40),
-                Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: inGrace ? Colors.amber.shade100 : Colors.red.shade100,
-                  ),
-                  child: Icon(
-                    inGrace ? Icons.timer_off_rounded : Icons.block_rounded,
-                    size: 36,
-                    color: inGrace ? Colors.amber.shade700 : Colors.red.shade700,
+                SizedBox(height: 32),
+                // Logo konsisten — tanpa lingkaran, tanpa icon timer/block.
+                Image.asset(
+                  splashLogoPath(),
+                  width: 96,
+                  height: 96,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
                   ),
                 ),
                 SizedBox(height: 20),
@@ -1137,6 +1800,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
   // ── Decision Screen (no license — 2 options) ─────────────────────
 
+  // ── Decision Screen (no license / canceled — 2 options) ─────────────
+
   Widget _buildDecisionScreen(bool isDark) {
     return Scaffold(
       backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
@@ -1146,38 +1811,79 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
             child: Column(
               children: [
-                SizedBox(height: 40),
-                Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
+                SizedBox(height: 32),
+                // Logo konsisten — tanpa lingkaran, tanpa icon roket.
+                Image.asset(
+                  splashLogoPath(),
+                  width: 96,
+                  height: 96,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.35),
-                        blurRadius: 20,
-                        offset: Offset(0, 8),
-                      ),
-                    ],
                   ),
-                  child: Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 34),
                 ),
                 SizedBox(height: 20),
                 Text('NUSA',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: NusaConfig.activePrimary, fontWeight: FontWeight.w800, letterSpacing: -1)),
-                SizedBox(height: 4),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: NusaConfig.activePrimary,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
+                    )),
+                SizedBox(height: 6),
                 Text(NusaConfig.appSubtitle,
-                  style: TextStyle(fontSize: 13,
-                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                SizedBox(height: 36),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : const Color(0xFF3F3F46),
+                    )),
 
-                // ── Two buttons card ──
+                // Banner alasan (akun dibatalkan / suspended) bila ada.
+                if (_googleError != null) ...[
+                  SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.warning.withValues(alpha: isDark ? 0.12 : 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: NusaConfig.warning.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 18, color: NusaConfig.warning),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _googleError!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: isDark
+                                  ? NusaConfig.darkTextSecondary
+                                  : const Color(0xFF3F3F46),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                SizedBox(height: 28),
+
+                // ── Dua pilihan lisensi ──
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(28),
+                  padding: EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: isDark ? NusaConfig.darkSurface : Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -1190,47 +1896,58 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     ],
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text('Aktivasi Lisensi',
-                        style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700,
-                          color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                        )),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : Color(0xFF151717),
+                          )),
                       SizedBox(height: 4),
                       Text('Pilih salah satu untuk melanjutkan',
-                        style: TextStyle(fontSize: 13,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                      SizedBox(height: 24),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : const Color(0xFF3F3F46),
+                          )),
+                      SizedBox(height: 20),
 
-                      // Option 1: Already have license key
+                      // Option 1: Sudah punya key
                       SizedBox(
-                        width: double.infinity,
                         height: 56,
                         child: OutlinedButton(
                           onPressed: () => setState(() => _screen = 'key'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                            side: BorderSide(color: isDark ? NusaConfig.darkBorder : Color(0xFFD1D5DB), width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            foregroundColor: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : Color(0xFF151717),
+                            side: BorderSide(
+                                color: isDark
+                                    ? NusaConfig.darkBorder
+                                    : Color(0xFFD1D5DB),
+                                width: 1.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.vpn_key_rounded, size: 20),
-                              SizedBox(width: 10),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Sudah punya lisensi key',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                                  Text('Aktivasi dengan key dari seller',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w400,
-                                      color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                                ],
-                              ),
-                            ],
-                          ),
+                          child: Text('Sudah punya lisensi key',
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Aktivasi dengan key dari seller',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
                         ),
                       ),
 
@@ -1238,20 +1955,31 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
                       // Divider "atau"
                       Row(children: [
-                        Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                        Expanded(
+                            child: Divider(
+                                color: isDark
+                                    ? NusaConfig.darkBorder
+                                    : Color(0xFFE5E7EB))),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 12),
                           child: Text('atau',
-                            style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? NusaConfig.darkTextTertiary
+                                      : NusaConfig.textTertiary)),
                         ),
-                        Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                        Expanded(
+                            child: Divider(
+                                color: isDark
+                                    ? NusaConfig.darkBorder
+                                    : Color(0xFFE5E7EB))),
                       ]),
 
                       SizedBox(height: 16),
 
-                      // Option 2: Buy license in-app
+                      // Option 2: Belum punya lisensi
                       SizedBox(
-                        width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
                           onPressed: () => _openPayment(),
@@ -1259,26 +1987,24 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                             backgroundColor: NusaConfig.activePrimary,
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.shopping_bag_rounded, size: 20),
-                              SizedBox(width: 10),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Belum punya lisensi',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                                  Text('Beli langsung dalam aplikasi',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w400,
-                                      color: Colors.white70)),
-                                ],
-                              ),
-                            ],
-                          ),
+                          child: const Text('Belum punya lisensi',
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Beli langsung dalam aplikasi',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
                         ),
                       ),
                     ],
@@ -1289,7 +2015,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 TextButton(
                   onPressed: _startGoogleSignIn,
                   child: Text('Ganti akun Google',
-                    style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
+                      style: TextStyle(
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
+                          fontSize: 13)),
                 ),
               ],
             ),
@@ -1323,47 +2053,43 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     return Scaffold(
       backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
       body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-          child: Column(
-            children: [
-              SizedBox(height: 40),
-              Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: Column(
+              children: [
+                SizedBox(height: 32),
+                Image.asset(
+                  splashLogoPath(),
+                  width: 88,
+                  height: 88,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
                 ),
-                child: Icon(Icons.lock_rounded, color: Colors.white, size: 34),
-              ),
-              SizedBox(height: 32),
-              // Card
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: isDark ? NusaConfig.darkSurface : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 20,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text('Masuk', style: TextStyle(
+                SizedBox(height: 28),
+                // Card
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text('Masuk', style: TextStyle(
                       fontSize: 20, fontWeight: FontWeight.w700,
                       color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717))),
                     SizedBox(height: 4),
@@ -1695,47 +2421,43 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     return Scaffold(
       backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
       body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-          child: Column(
-            children: [
-              SizedBox(height: 40),
-              Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: Column(
+              children: [
+                SizedBox(height: 32),
+                Image.asset(
+                  splashLogoPath(),
+                  width: 88,
+                  height: 88,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: NusaConfig.activePrimary.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
                 ),
-                child: Icon(Icons.vpn_key_rounded, color: Colors.white, size: 34),
-              ),
-              SizedBox(height: 32),
-              // Card
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: isDark ? NusaConfig.darkSurface : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 20,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text('Aktivasi NUSA', style: TextStyle(
+                SizedBox(height: 28),
+                // Card
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text('Aktivasi NUSA', style: TextStyle(
                       fontSize: 20, fontWeight: FontWeight.w700,
                       color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717))),
                     SizedBox(height: 4),

@@ -53,7 +53,16 @@ class ActivationRepository {
   /// user disuruh setup ulang padahal datanya ada. Kalau Google UID kosong →
   /// null (caller lanjut ke setup / minta login Google).
   static Future<String?> _googleUserId() async {
-    return SecureStore.read(key: 'nusa_google_user_id');
+    // Prioritas: Google UID (jalur historis — semua backup lama dipath dengan
+    // angka 21 digit). Kalau tidak ada, fallback ke UID akun email/password
+    // (UUID `auth.users`, DISIMPAN stabil di secure storage — v2.2.57+112).
+    // Akun email mengaktivasi lisensi dengan UUID yang sama, jadi path backup
+    // + kunci enkripsi konsisten → restore & upload tetap jalan.
+    // JANGAN pernah fallback ke UID sesi anon (ephemeral, ganti tiap sign-in
+    // → path beda → backup "hilang"; lihat catatan v2.2.38).
+    final google = await SecureStore.read(key: 'nusa_google_user_id');
+    if (google != null) return google;
+    return SecureStore.read(key: 'nusa_account_uid');
   }
 
   /// Ensure an anonymous Supabase session exists so background storage calls

@@ -48,6 +48,7 @@ import 'package:nusa_kasir/features/domain/resep_screen.dart';
 import 'package:nusa_kasir/features/domain/print_order_screen.dart';
 import 'package:nusa_kasir/features/reports/stylist_reports_screen.dart';
 import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
+import 'package:nusa_kasir/features/settings/store_data_screen.dart';
 
 const _publicRoutes = {
   '/splash',
@@ -85,6 +86,7 @@ const _protectedRouteKeys = {
   '/ai_chat': 'ai_chat',
   '/toko': 'pesanan_online',
   '/pengaturan_pembayaran': 'pengaturan',
+  '/data_toko': 'pengaturan',
   '/meja': 'meja',
   '/laundry_status': 'laundry_status',
   '/servis': 'servis',
@@ -275,6 +277,10 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     GoRoute(
       path: '/pengaturan_pembayaran',
       pageBuilder: (_, __) => _slidePage(PaymentSettingsScreen()),
+    ),
+    GoRoute(
+      path: '/data_toko',
+      pageBuilder: (_, __) => _slidePage(StoreDataScreen()),
     ),
     // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Servis) ──
     GoRoute(path: '/meja', pageBuilder: (_, __) => _slidePage(MejaScreen())),
