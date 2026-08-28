@@ -184,11 +184,19 @@ class ImageStorageService {
           files = [];
         }
 
-        final names = <String>{
+        // Kalau LIST berhasil, jangan probe nama lokal yang jelas tidak ada
+        // di daftar server (kalau tidak, tiap start probe 404 per kandidat).
+        // Kalau list gagal (anon tanpa izin list), lanjut jalur probe lama.
+        final listed = <String>{
           for (final f in files)
             if (f is Map && f['name'] is String) f['name'] as String,
-          for (final c in candidates)
-            if (_categoryOf(c) == cat) p.basename(c),
+        };
+
+        final names = <String>{
+          ...listed,
+          if (files.isEmpty)
+            for (final c in candidates)
+              if (_categoryOf(c) == cat) p.basename(c),
         };
 
         for (final name in names) {
@@ -225,6 +233,9 @@ class ImageStorageService {
   /// Returns number of images uploaded.
   Future<int> uploadAllLocal() async {
     int count = 0;
+    // Nama file yang sudah dipastikan ADA di server (sesi ini) — hindari
+    // download probe ulang tiap start (migrasi dulu selalu nge-probe).
+    final knownRemote = <String>{};
     try {
       final dir = await getApplicationDocumentsDirectory();
       final entries = await dir.list().toList();
@@ -249,11 +260,14 @@ class ImageStorageService {
           continue; // unknown prefix, skip
         }
 
+        final remotePath = _remotePath(category, name);
+        if (knownRemote.contains(remotePath)) continue;
+
         // Check if already on server
         try {
-          final remotePath = _remotePath(category, name);
           await _client.storage.from('nusa-images').download(remotePath);
           // File exists on server — skip
+          knownRemote.add(remotePath);
           continue;
         } catch (_) {
           // File doesn't exist — upload it
