@@ -784,14 +784,40 @@ Future<void> _repairNullDefaults(AppDatabase db) async {
   await db.customStatement(
     "UPDATE employees SET status = 'Aktif' WHERE status IS NULL",
   );
-  // v2.2.57: komisi Stylist (salon) + flag staf layanan ditambah TIDAK pakai
-  // DEFAULT di sebagian device lama (rows NULL). Drift map non-nullable → Null
-  // check saat SELECT → getEmployees() throw → login loop "Data Ditemukan".
+  // v2.2.57+114: kolom v2.2.57 (stylist) dibuat LEWAT _ensureColumnExists,
+  // bukan hanya backfill NULL. Kenapa penting: v2.2.54 menambah
+  // employees.is_service_staff (blok migrasi `from < 48`), lalu v2.2.57+110
+  // menambah commission_percent DI BLOK YANG SAMA tanpa menaikkan schemaVersion
+  // (tetap 48). Device yang user_version-nya sudah 48 sejak v2.2.54 → upgrade
+  // → drift skip onUpgrade (from == 48 == to) → kolom commission_percent TIDAK
+  // PERNAH dibuat → getEmployees() throw "no such column" → login loop "Data
+  // Ditemukan" (kasus percetakanrks, backup uv=48 + kolom hilang). Sebelumnya
+  // cuma UPDATE ... WHERE IS NULL → no-op diam-diam kalau kolom tidak ada.
+  await _ensureColumnExists(
+    db,
+    'employees',
+    'is_service_staff',
+    'ALTER TABLE employees ADD COLUMN is_service_staff INTEGER',
+  );
   await db.customStatement(
     'UPDATE employees SET is_service_staff = 1 WHERE is_service_staff IS NULL',
   );
+  await _ensureColumnExists(
+    db,
+    'employees',
+    'commission_percent',
+    'ALTER TABLE employees ADD COLUMN commission_percent REAL DEFAULT 10.0',
+  );
   await db.customStatement(
     'UPDATE employees SET commission_percent = 10.0 WHERE commission_percent IS NULL',
+  );
+  // v2.2.57+114: appointments.transaction_id (nullable di drift, tidak crash,
+  // tapi aman ditambahkan supaya struktur konsisten untuk seluruh varian).
+  await _ensureColumnExists(
+    db,
+    'appointments',
+    'transaction_id',
+    'ALTER TABLE appointments ADD COLUMN transaction_id INTEGER',
   );
   await db.customStatement(
     'UPDATE cashier_sessions SET starting_cash = 0 WHERE starting_cash IS NULL',
@@ -998,6 +1024,25 @@ Future<void> _addColumnIfMissing(
     column,
     'ALTER TABLE "$table" ADD COLUMN "$column" $sqlType',
   );
+}
+
+/// Jalankan [sql] (biasanya ALTER TABLE ... ADD COLUMN) kalau kolom [column]
+/// belum ada di [table]. Dipakai dari beforeOpen/_repairNullDefaults yang tidak
+/// punya Migrator — versi customStatement dari [_runIfColumnMissing].
+/// Idempoten: PRAGMA table_info dulu, skip kalau kolom sudah ada.
+Future<void> _ensureColumnExists(
+  AppDatabase db,
+  String table,
+  String column,
+  String sql,
+) async {
+  final has = await db
+      .customSelect('PRAGMA table_info($table)')
+      .get()
+      .then((rows) => rows.any((r) => r.read<String>('name') == column));
+  if (!has) {
+    await db.customStatement(sql);
+  }
 }
 
 /// `CREATE TABLE IF NOT EXISTS [name] ([definition])` — tidak error bila ada.

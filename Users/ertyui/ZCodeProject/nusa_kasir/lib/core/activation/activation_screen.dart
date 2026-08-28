@@ -1236,25 +1236,44 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 SizedBox(
                   width: double.infinity,
                   height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: _startGoogleSignIn,
-                    icon: Image.asset(
-                      'assets/icons/google_logo.png',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (_, __, ___) =>
-                          Icon(Icons.g_mobiledata, size: 24, color: Color(0xFF4285F4)),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    label: const Text('Masuk dengan Google',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w500)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                      side: BorderSide(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                    child: OutlinedButton.icon(
+                      onPressed: _startGoogleSignIn,
+                      icon: Image.asset(
+                        'assets/icons/google_logo.png',
+                        width: 20,
+                        height: 20,
+                        errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
+                            size: 24, color: Color(0xFF4285F4)),
+                      ),
+                      label: const Text('Masuk dengan Google',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor:
+                            isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                        backgroundColor: isDark
+                            ? NusaConfig.darkSurface
+                            : Colors.white,
+                        elevation: 3,
+                        shadowColor: Colors.black.withValues(alpha: 0.20),
+                        side: BorderSide(
+                            color: isDark
+                                ? NusaConfig.darkBorder
+                                : Color(0xFFDADCE0)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
                 ),
@@ -1469,25 +1488,44 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 SizedBox(
                   width: double.infinity,
                   height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: _startGoogleSignIn,
-                    icon: Image.asset(
-                      'assets/icons/google_logo.png',
-                      width: 20,
-                      height: 20,
-                      errorBuilder: (_, __, ___) =>
-                          Icon(Icons.g_mobiledata, size: 24, color: Color(0xFF4285F4)),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    label: const Text('Daftar dengan Google',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w500)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                      side: BorderSide(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFEDEDEF)),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                    child: OutlinedButton.icon(
+                      onPressed: _startGoogleSignIn,
+                      icon: Image.asset(
+                        'assets/icons/google_logo.png',
+                        width: 20,
+                        height: 20,
+                        errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
+                            size: 24, color: Color(0xFF4285F4)),
+                      ),
+                      label: const Text('Daftar dengan Google',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor:
+                            isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                        backgroundColor: isDark
+                            ? NusaConfig.darkSurface
+                            : Colors.white,
+                        elevation: 3,
+                        shadowColor: Colors.black.withValues(alpha: 0.20),
+                        side: BorderSide(
+                            color: isDark
+                                ? NusaConfig.darkBorder
+                                : Color(0xFFDADCE0)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
                 ),
