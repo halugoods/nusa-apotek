@@ -25,6 +25,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   String? _storeName;
   int? _activeSessionId;
   List<ChatSession> _sessions = [];
+  List<Map<String, dynamic>> _cloudSessions = [];
   bool _showSessions = false;
 
   // Drawer animation
@@ -85,6 +86,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
   // ── Session management ──────────────────────────────────────────────
 
+  /// Muat riwayat sesi: lokal (SQLite `chat_sessions`) + cloud
+  /// (`ai_chat_history` via edge fn ai-assistant — Area H).
   Future<void> _loadSessions() async {
     try {
       final db = ref.read(databaseProvider);
@@ -92,6 +95,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         ..orderBy([(t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)]))
         .get();
       if (mounted) setState(() => _sessions = rows);
+    } catch (_) {}
+    // Cloud history — best effort (login Google/PIN belum tentu ada).
+    try {
+      final owner = await AiService.ownerId();
+      if (owner != null && owner.isNotEmpty) {
+        final cloud = await AiService.getHistory(owner: owner);
+        if (mounted) setState(() => _cloudSessions = cloud);
+      }
     } catch (_) {}
   }
 
@@ -144,8 +155,77 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     } catch (_) {}
   }
 
+  // ── Cloud session (Area H: riwayat chat cloud) ──
+
+  /// Buka sesi chat dari cloud — muat pesan lengkap dari `ai_chat_history`.
+  Future<void> _loadCloudSession(Map<String, dynamic> s) async {
+    try {
+      final owner = await AiService.ownerId();
+      final sid = s['session_id'] as String? ?? '';
+      if (owner == null || sid.isEmpty) return;
+      final rows = await AiService.getHistoryMessages(owner: owner, sessionId: sid);
+      if (rows.isEmpty) return;
+
+      final msgs = <ChatMessage>[];
+      for (final r in rows) {
+        final role = r['role'] as String? ?? '';
+        final content = r['content'] as String? ?? '';
+        msgs.add(ChatMessage(
+          role: role,
+          content: content,
+          timestamp: DateTime.tryParse(r['created_at'] as String? ?? '') ?? DateTime.now(),
+          toolCallId: r['tool_call_id'] as String?,
+          toolName: r['tool_name'] as String?,
+          toolArgs: r['tool_args'] != null
+              ? (r['tool_args'] is Map<String, dynamic>
+                  ? r['tool_args'] as Map<String, dynamic>
+                  : _safeMap(r['tool_args']))
+              : null,
+        ));
+      }
+      if (msgs.isNotEmpty && mounted) {
+        // Pakai session_id cloud sebagai identitas sesi aktif supaya
+        // pertanyaan berikutnya masuk ke sesi cloud yang sama.
+        _sessionUuid = sid;
+        setState(() {
+          _messages.clear();
+          _messages.addAll(msgs);
+          _activeSessionId = null; // bukan sesi lokal
+        });
+        _toggleDrawer();
+        _scrollToBottom();
+      }
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic> _safeMap(dynamic v) {
+    try {
+      if (v is Map<String, dynamic>) return v;
+      return jsonDecode(v as String) as Map<String, dynamic>;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _deleteCloudSession(Map<String, dynamic> s) async {
+    try {
+      final owner = await AiService.ownerId();
+      final sid = s['session_id'] as String? ?? '';
+      if (owner == null || sid.isEmpty) return;
+      final ok = await AiService.deleteHistory(owner: owner, sessionId: sid);
+      if (ok && mounted) {
+        setState(() {
+          _cloudSessions = _cloudSessions
+              .where((c) => c['session_id'] != sid)
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
   void _newChat() {
     _saveSession();
+    _sessionUuid = null; // sesi cloud baru (area H)
     setState(() {
       _messages.clear();
       _activeSessionId = null;
@@ -451,7 +531,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           ),
           const Divider(),
           Expanded(
-            child: _sessions.isEmpty
+            child: (_sessions.isEmpty && _cloudSessions.isEmpty)
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -461,31 +541,72 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                               color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
                     ),
                   )
-                : ListView.builder(
-                    itemCount: _sessions.length,
-                    itemBuilder: (_, i) {
-                      final s = _sessions[i];
-                      final active = s.id == _activeSessionId;
-                      return ListTile(
-                        dense: true,
-                        selected: active,
-                        selectedTileColor: NusaConfig.activePrimary.withValues(alpha: 0.08),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        title: Text(s.title,
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        subtitle: Text(
-                          _formatDate(s.updatedAt),
-                          style: TextStyle(fontSize: 11,
-                              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                : ListView(
+                    children: [
+                      // ── Riwayat cloud (Area H) ──
+                      if (_cloudSessions.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text('Di Cloud',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 16),
-                          onPressed: () => _deleteSession(s),
+                        ..._cloudSessions.map((s) {
+                          final title = s['title'] as String? ?? 'Chat';
+                          final created = s['created_at'] as String? ?? '';
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(Icons.cloud_outlined, size: 16,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            title: Text(title,
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                            subtitle: Text(
+                              _formatCloudDate(created),
+                              style: TextStyle(fontSize: 11,
+                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              onPressed: () => _deleteCloudSession(s),
+                            ),
+                            onTap: () => _loadCloudSession(s),
+                          );
+                        }),
+                        const Divider(),
+                      ],
+                      // ── Riwayat lokal (perangkat ini) ──
+                      if (_sessions.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text('Di Perangkat Ini',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
                         ),
-                        onTap: () => _loadSession(s),
-                      );
-                    },
+                        ..._sessions.map((s) {
+                          final active = s.id == _activeSessionId;
+                          return ListTile(
+                            dense: true,
+                            selected: active,
+                            selectedTileColor: NusaConfig.activePrimary.withValues(alpha: 0.08),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            title: Text(s.title,
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                            subtitle: Text(
+                              _formatDate(s.updatedAt),
+                              style: TextStyle(fontSize: 11,
+                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              onPressed: () => _deleteSession(s),
+                            ),
+                            onTap: () => _loadSession(s),
+                          );
+                        }),
+                      ],
+                    ],
                   ),
           ),
         ],
@@ -834,6 +955,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     if (diff.inHours < 24) return '${diff.inHours}j yg lalu';
     if (diff.inDays < 7) return '${diff.inDays}h yg lalu';
     return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  String _formatCloudDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    return _formatDate(dt.toLocal());
   }
 
   String _formatTime(DateTime dt) {

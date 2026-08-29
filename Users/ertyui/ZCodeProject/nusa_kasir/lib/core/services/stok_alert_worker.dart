@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/ai_insight_worker.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,6 +27,14 @@ void stokCallbackDispatcher() {
       if (taskName == _onlineCheckTask) {
         final db = AppDatabase();
         await _checkOnlineOrders(db);
+        await db.close();
+        return true;
+      }
+      if (taskName == aiInsightTaskName) {
+        // Area H: rangkuman harian AI (insight proaktif) — hitung lokal,
+        // kirim notifikasi + simpan untuk dashboard card.
+        final db = AppDatabase();
+        await runAiInsight(db);
         await db.close();
         return true;
       }

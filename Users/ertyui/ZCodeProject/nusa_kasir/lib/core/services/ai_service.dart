@@ -218,6 +218,93 @@ class AiService {
     }
   }
 
+  /// Cloud chat history — daftar sesi chat (title = pesan user pertama).
+  /// Area H: riwayat chat tersimpan di `ai_chat_history` (Supabase), jadi
+  /// user bisa buka chat lama dari perangkat mana pun.
+  static Future<List<Map<String, dynamic>>> getHistory({
+    required String owner,
+    int limit = 30,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse(functionUrl()),
+        headers: {
+          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
+          'apikey': NusaConfig.supabaseAnon,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'action': 'history',
+          'owner': owner,
+          'limit': limit,
+        }),
+      ).timeout(const Duration(seconds: 20));
+      if (res.statusCode >= 400) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return (data['sessions'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Cloud chat history — pesan lengkap 1 sesi.
+  static Future<List<Map<String, dynamic>>> getHistoryMessages({
+    required String owner,
+    required String sessionId,
+    int limit = 100,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse(functionUrl()),
+        headers: {
+          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
+          'apikey': NusaConfig.supabaseAnon,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'action': 'history_messages',
+          'owner': owner,
+          'session_id': sessionId,
+          'limit': limit,
+        }),
+      ).timeout(const Duration(seconds: 20));
+      if (res.statusCode >= 400) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return (data['messages'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Cloud chat history — hapus 1 sesi.
+  static Future<bool> deleteHistory({
+    required String owner,
+    required String sessionId,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse(functionUrl()),
+        headers: {
+          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
+          'apikey': NusaConfig.supabaseAnon,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'action': 'history_delete',
+          'owner': owner,
+          'session_id': sessionId,
+        }),
+      ).timeout(const Duration(seconds: 20));
+      return res.statusCode < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Non-streaming chat — pakai fungsi invoke SDK (simple, untuk test/admin).
   Future<AiResponse> chat({
     required List<ChatMessage> messages,

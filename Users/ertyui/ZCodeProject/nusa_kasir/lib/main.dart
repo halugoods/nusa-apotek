@@ -16,6 +16,7 @@ import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
+import 'package:nusa_kasir/core/services/ai_insight_worker.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
@@ -390,6 +391,9 @@ void main() async {
     } catch (_) {}
     try {
       registerOnlineCheck();
+    } catch (_) {}
+    try {
+      registerAiInsightCheck();
     } catch (_) {}
 
     // Load persisted theme mode and color preset before app starts.
