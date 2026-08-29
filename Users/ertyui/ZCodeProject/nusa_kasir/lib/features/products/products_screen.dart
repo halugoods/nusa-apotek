@@ -2308,6 +2308,22 @@ class _ProductGridCard extends StatelessWidget {
                       : NusaConfig.textTertiary,
                 ),
               ),
+              // ── Kode barcode (v2.2.57+115) — cek cepat tanpa buka edit ──
+              if (product.barcode != null && product.barcode!.isNotEmpty) ...[
+                SizedBox(height: 2),
+                Text(
+                  '• ${product.barcode}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
               SizedBox(height: 6),
               // ── Price ──
               product.hasDiscount
@@ -2531,6 +2547,22 @@ class _ProductListCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  // ── Kode barcode (v2.2.57+115) ──
+                  if (product.barcode != null && product.barcode!.isNotEmpty) ...[
+                    SizedBox(height: 2),
+                    Text(
+                      '• ${product.barcode}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: isDark
+                            ? NusaConfig.darkTextTertiary
+                            : NusaConfig.textTertiary,
+                      ),
+                    ),
+                  ],
                   SizedBox(height: 2),
                   product.hasDiscount
                       ? Row(

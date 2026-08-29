@@ -261,6 +261,22 @@ class _ProductCard extends StatelessWidget {
                         : NusaConfig.textSecondary,
                   ),
                 ),
+                // ── Kode barcode (v2.2.57+115) ──
+                if (product.barcode != null && product.barcode!.isNotEmpty) ...[
+                  SizedBox(height: 2),
+                  Text(
+                    '• ${product.barcode}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
                 SizedBox(height: 3),
                 product.hasDiscount
                     ? Row(
