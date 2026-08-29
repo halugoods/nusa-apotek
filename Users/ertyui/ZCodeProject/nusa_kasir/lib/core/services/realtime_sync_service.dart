@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
-import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
@@ -30,7 +29,10 @@ class RealtimeBackupNotifier {
     } catch (_) {
       return null;
     }
-    final uid = await GoogleAuthService.getStoredUserId();
+    // v2.2.57+115 (Area I): channel memakai canonical UID (sama dengan path
+    // backup) supaya semua device di akun yang sama bertemu di satu channel —
+    // sebelum ini device Google UID vs email UUID tidak pernah saling lihat.
+    final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null || uid.isEmpty) return null;
     return 'nusa-sync-$uid';
   }
@@ -133,7 +135,8 @@ Future<void> applyRemoteBackup({
     }
     // Soft pull: just adopt the cloud timestamp — next launch will pick up
     // the fresh data via the existing _applyPendingRestore flow.
-    final uid = await SecureStore.read(key: 'nusa_google_user_id');
+    // Area I: canonical UID (lihat _channelName).
+    final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null) return;
     final cloudTime = await repo.getBackupTimestamp().timeout(
           const Duration(seconds: 8),

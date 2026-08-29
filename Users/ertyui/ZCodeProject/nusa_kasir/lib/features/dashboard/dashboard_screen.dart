@@ -1274,7 +1274,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final f = File(photoPath);
       if (await f.exists()) return photoPath;
       // v2.2.38: path cloud pakai Google UID, bukan Supabase anon UID.
-      final uid = await SecureStore.read(key: 'nusa_google_user_id');
+      // v2.2.57+115 (Area I): canonical UID — sama dengan path backup supaya
+      // foto karyawan tidak pecah antara akun email vs Google.
+      final uid = await SecureStore.resolveCanonicalUid();
       if (uid == null) return null;
       final filename = photoPath.split(RegExp(r'[\\/]')).last;
       final svc = ImageStorageService(Supabase.instance.client, uid);

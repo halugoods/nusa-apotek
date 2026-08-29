@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// Panggil Karyawan (v2.2.54) — Supabase Realtime Broadcast.
 ///
-/// Semua device toko yang login subscribe ke channel `nusa-call-{googleUid}`
-/// (satu toko = satu akun Google, jadi channel-nya sama). Owner tap "Panggil"
+/// Semua device toko yang login subscribe ke channel `nusa-call-{uid}`
+/// (satu toko = satu akun, jadi channel-nya sama; uid = canonical backup
+/// identity — lihat SecureStore.resolveCanonicalUid, v2.2.57+115 Area I).
+/// Owner tap "Panggil"
 /// pada karyawan X → broadcast event `ring` → device yang sedang login
 /// SEBAGAI karyawan X memainkan ringtone + overlay sampai di-dismiss.
 ///
@@ -46,7 +47,9 @@ class CallService {
     } catch (_) {
       return null;
     }
-    final uid = await GoogleAuthService.getStoredUserId();
+    // v2.2.57+115 (Area I): canonical UID — channel panggilan ikut identitas
+    // backup yang sama supaya device di akun yang sama tetap bertemu.
+    final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null || uid.isEmpty) return null;
     return 'nusa-call-$uid';
   }

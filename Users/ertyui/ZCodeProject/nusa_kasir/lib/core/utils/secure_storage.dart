@@ -86,6 +86,26 @@ class SecureStore {
     return 'v$v+$b';
   }
 
+  // -- Canonical backup identity (v2.2.57+115, Area I) -----------------
+  // Identitas backup dipakai sebagai path + kunci enkripsi cloud
+  // (lihat ActivationRepository._googleUserId). Ada 2 jalur login:
+  //   - Google OAuth → `nusa_google_user_id` (angka 21 digit)
+  //   - email/password → `nusa_account_uid` (UUID auth.users)
+  // Kalau keduanya ada (user pernah login dua metode di perangkat sama),
+  // backup terpecah ke dua path → autosync tampak "tidak sinkron".
+  // Solusi: satu canonical UID = identitas yang PALING BARU dipakai.
+  // TANPA migrasi/dedupe path otomatis (berisiko) — cukup konsistenkan
+  // pilihan untuk jalur upload/download berikutnya.
+
+  /// Pilih satu identitas backup yang konsisten:
+  /// prefer account UUID (email/password — jalur login terbaru), lalu
+  /// Google 21-digit. Hanya bila keduanya tidak ada → null.
+  static Future<String?> resolveCanonicalUid() async {
+    final account = await SecureStore.read(key: 'nusa_account_uid');
+    if (account != null && account.isNotEmpty) return account;
+    return SecureStore.read(key: 'nusa_google_user_id');
+  }
+
   // -- Activation (namespaced per product to prevent cross-variant license leaks) --
   static String get _activationKey => 'nusa_activation_${NusaConfig.productId}';
   static const String _legacyActivationKey = 'nusa_activation';

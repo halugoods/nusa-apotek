@@ -159,7 +159,10 @@ Future<void> _applyPendingRestore() async {
 Future<void> _receiveAtLaunch() async {
   try {
     if (await SecureStore.getActivation() == null) return;
-    final uid = await SecureStore.read(key: 'nusa_google_user_id');
+    // v2.2.57+115 (Area I): canonical UID backup — prefer UID akun
+    // email/password, lalu Google 21-digit. Sebelumnya hanya baca Google UID
+    // → device email-only tidak pernah pull backup di launch.
+    final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null) return;
 
     final client = Supabase.instance.client;
@@ -256,10 +259,12 @@ void _syncImagesFromCloud() {
   Future.microtask(() async {
     try {
       // v2.2.38: pakai Google UID (bukan Supabase anon session UID).
-      // Path images di bucket nusa-images memakai Google UID ({googleUid}/
+      // Path images di bucket nusa-images memakai UID ({uid}/
       // {productId}/...). UID anon (UUID) beda → upload/download gambar
       // nyasar ke path kosong → foto produk hilang setelah reinstall.
-      final uid = await SecureStore.read(key: 'nusa_google_user_id');
+      // v2.2.57+115 (Area I): canonical UID — SAMA dengan path backup supaya
+      // restore foto tidak pecah antara akun email/password vs Google.
+      final uid = await SecureStore.resolveCanonicalUid();
       if (uid == null) return;
 
       final svc = ImageStorageService(Supabase.instance.client, uid);

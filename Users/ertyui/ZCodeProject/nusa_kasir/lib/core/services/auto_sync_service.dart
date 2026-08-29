@@ -128,7 +128,11 @@ class AutoSyncService {
     if (_lastLocalChange == null) return;
 
     if (!await repo.isActivated) return;
-    final uid = await SecureStore.read(key: 'nusa_google_user_id');
+    // v2.2.57+115 (Area I): satu canonical UID untuk backup — prefer UID akun
+    // email/password (UUID), lalu Google 21-digit. Sebelumnya guard hanya baca
+    // `nusa_google_user_id` → user yang login email/password SAJA (tanpa
+    // Google) uid null → autosync mati total ("login sama tapi ga sinkron").
+    final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null) return;
     final dir = await getApplicationDocumentsDirectory();
     final dbFile = File(p.join(dir.path, 'nusa_kasir.sqlite'));
@@ -162,7 +166,8 @@ class AutoSyncService {
     if (_disposed) return;
     try {
       if (!await repo.isActivated) return;
-      final uid = await SecureStore.read(key: 'nusa_google_user_id');
+      // Area I: canonical UID (lihat flushNow).
+      final uid = await SecureStore.resolveCanonicalUid();
       if (uid == null) return;
 
       final cloudTime =

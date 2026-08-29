@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
-import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -84,8 +84,9 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
       }
       // Upload to cloud
       try {
-        // Supabase auth tidak dipakai — uid Google dari SecureStore.
-        final uid = await GoogleAuthService.getStoredUserId();
+        // Supabase auth tidak dipakai — uid canonical backup dari SecureStore
+        // (v2.2.57+115 Area I: sama dengan path backup supaya foto tidak pecah).
+        final uid = await SecureStore.resolveCanonicalUid();
         if (uid != null) {
           ImageStorageService(Supabase.instance.client, uid)
               .uploadImage('settings', path);

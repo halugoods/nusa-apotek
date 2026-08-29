@@ -1336,9 +1336,11 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                 try {
                                   // v2.2.38: path cloud pakai Google UID,
                                   // bukan Supabase anon UID.
-                                  final uid = await SecureStore.read(
-                                    key: 'nusa_google_user_id',
-                                  );
+                                  // v2.2.57+115 (Area I): canonical UID — sama
+                                  // dengan path backup supaya foto karyawan
+                                  // tidak pecah antara akun email vs Google.
+                                  final uid = await SecureStore
+                                      .resolveCanonicalUid();
                                   if (uid != null) {
                                     ImageStorageService(
                                       Supabase.instance.client,

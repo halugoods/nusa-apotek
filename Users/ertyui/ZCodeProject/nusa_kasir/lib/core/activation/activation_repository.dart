@@ -52,17 +52,14 @@ class ActivationRepository {
   /// hanya menghasilkan path kosong → dialog "Data Ditemukan" tak muncul →
   /// user disuruh setup ulang padahal datanya ada. Kalau Google UID kosong →
   /// null (caller lanjut ke setup / minta login Google).
+  ///
+  /// v2.2.57+115 (Area I): unifikasi identitas — prefer `nusa_account_uid`
+  /// (UUID email/password, jalur login terbaru) kalau ada, lalu Google
+  /// 21-digit. Sebelumnya SELALU prioritas Google → kalau user pernah login
+  /// email setelah Google, backup terpecah ke dua path → autosync "tidak
+  /// sinkron" (laporan user 2026-08-28). Konsistenkan ke satu canonical UID.
   static Future<String?> _googleUserId() async {
-    // Prioritas: Google UID (jalur historis — semua backup lama dipath dengan
-    // angka 21 digit). Kalau tidak ada, fallback ke UID akun email/password
-    // (UUID `auth.users`, DISIMPAN stabil di secure storage — v2.2.57+112).
-    // Akun email mengaktivasi lisensi dengan UUID yang sama, jadi path backup
-    // + kunci enkripsi konsisten → restore & upload tetap jalan.
-    // JANGAN pernah fallback ke UID sesi anon (ephemeral, ganti tiap sign-in
-    // → path beda → backup "hilang"; lihat catatan v2.2.38).
-    final google = await SecureStore.read(key: 'nusa_google_user_id');
-    if (google != null) return google;
-    return SecureStore.read(key: 'nusa_account_uid');
+    return SecureStore.resolveCanonicalUid();
   }
 
   /// Ensure an anonymous Supabase session exists so background storage calls
