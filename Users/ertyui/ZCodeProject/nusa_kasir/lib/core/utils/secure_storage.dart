@@ -297,6 +297,15 @@ class SecureStore {
   static Future<String?> getPrinterAddress() =>
       SecureStore.read(key: _printerAddressKey);
 
+  /// Label printer address ("Name|MAC") — TERPISAH dari printer struk.
+  /// Dipakai fitur Cetak Label (Area B): jalur TSPL pakai printer label
+  /// khusus (Rongta/HPRT/Godex/BluePrint), bukan printer struk.
+  static const _labelPrinterAddressKey = 'nusa_label_printer_address';
+  static Future<void> setLabelPrinterAddress(String v) =>
+      SecureStore.write(key: _labelPrinterAddressKey, value: v);
+  static Future<String?> getLabelPrinterAddress() =>
+      SecureStore.read(key: _labelPrinterAddressKey);
+
   // -- Cash drawer --
   static Future<void> setCashDrawerEnabled(bool v) =>
       SecureStore.write(key: 'nusa_cash_drawer_enabled', value: v.toString());

@@ -15,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/category_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/recipe_repository.dart';
 import 'package:nusa_kasir/features/products/product_form_screen.dart';
+import 'package:nusa_kasir/features/products/label_print_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
@@ -683,6 +684,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ),
         ],
       ),
+      // v2.2.57+115 (Area B): cetak label barcode — TSPL / struk 58mm / PDF.
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.print_outlined),
+          tooltip: 'Cetak Label',
+          onPressed: () => LabelPrintSheet.show(context),
+        ),
+      ],
       onBarcode: _onExternalBarcode,
     );
   }
