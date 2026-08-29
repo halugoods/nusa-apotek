@@ -156,6 +156,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final theme = await repo.getThemeMode();
     final printer = await repo.getPrinterAddress();
 
+    // v2.2.57+115: versi APK asli (PackageInfo) — biar tampilan
+    // "Terpasang" akurat, bukan konstanta build yang sudah naik duluan.
+    await SecureStore.loadInstalledVersion();
+
     // Load theme preset
     final savedTheme = await SecureStore.getThemePreset();
     if (savedTheme != null && NusaConfig.themePresets.containsKey(savedTheme)) {
@@ -970,10 +974,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _menuTile({
     required IconData icon,
     required String title,
-    required String subtitle,
+    required String? subtitle,
     required VoidCallback? onTap,
     bool isDark = false,
     Widget? trailing,
+    Widget? subtitleWidget, // v2.2.57+115: subtitle non-teks (mis. FutureBuilder)
   }) =>
       InkWell(
         onTap: onTap,
@@ -995,16 +1000,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        color: isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary,
-                      ),
-                    ),
+                    subtitleWidget ??
+                        (subtitle == null
+                            ? const SizedBox.shrink()
+                            : Text(
+                                subtitle,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark
+                                      ? NusaConfig.darkTextTertiary
+                                      : NusaConfig.textTertiary,
+                                ),
+                              )),
                   ],
                 ),
               ),
@@ -1822,14 +1830,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
+                    FutureBuilder<String>(
+                      // v2.2.57+115: versi terpasang asli (PackageInfo).
+                      future: SecureStore.installedVersionAndBuild(),
+                      builder: (context, snap) {
+                        final installed = snap.data ?? '';
+                        return Text(
+                          installed.isNotEmpty
+                              ? 'Saat ini: $installed'
+                              : 'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        );
+                      },
                     ),
                     if (info.fileSizeBytes != null &&
                         info.fileSizeBytes! > 0) ...[
@@ -3953,8 +3970,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ? 'Update Tersedia!'
                       : 'Riwayat Update',
                   subtitle: _updateInfo?.hasUpdate == true
-                      ? 'Terpasang v${NusaConfig.appVersion} · Tersedia v${_updateInfo!.latestVersion}'
-                      : 'Terpasang v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber} (terbaru)',
+                      ? 'Terpasang v${_updateInfo!.latestVersion} · Tersedia v${_updateInfo!.latestVersion}'
+                      : null,
+                  subtitleWidget: _updateInfo?.hasUpdate == true
+                      ? null
+                      : FutureBuilder<String>(
+                          // v2.2.57+115: versi APK asli (PackageInfo).
+                          future: SecureStore.installedVersionAndBuild(),
+                          builder: (context, snap) {
+                            final installed = snap.data ?? '';
+                            return Text(
+                              installed.isNotEmpty
+                                  ? 'Terpasang $installed (terbaru)'
+                                  : 'Terpasang v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber} (terbaru)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? NusaConfig.darkTextSecondary
+                                    : NusaConfig.textSecondary,
+                              ),
+                            );
+                          },
+                        ),
                   isDark: isDark,
                   onTap: _updateInfo?.hasUpdate == true
                       ? _showUpdateDialog
@@ -4106,6 +4143,7 @@ class _UpdateHistorySheet extends StatefulWidget {
 class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
   List<ReleaseHistoryItem>? _releases; // null = masih loading
   int? _expandedIndex;
+  int _installedBuild = NusaConfig.appBuildNumber; // v2.2.57+115: APK asli
 
   @override
   void initState() {
@@ -4114,6 +4152,9 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
   }
 
   Future<void> _load() async {
+    // v2.2.57+115: build yang TERPASANG dari PackageInfo, bukan konstanta
+    // compile-time — biar badge "Terpasang" menandai release yang benar.
+    _installedBuild = await SecureStore.installedBuildNumber();
     final releases = await UpdateService.getReleaseHistory();
     if (!mounted) return;
     setState(() {
@@ -4275,7 +4316,7 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
                       itemBuilder: (context, i) {
                         final r = releases[i];
                         final isCurrent =
-                            r.buildNumber == NusaConfig.appBuildNumber;
+                            r.buildNumber == _installedBuild;
                         final expanded = _expandedIndex == i;
                         // Changelog di-render rapi: baris "- "/"* " → bullet
                         // list, "## " → judul section, sisanya paragraf.

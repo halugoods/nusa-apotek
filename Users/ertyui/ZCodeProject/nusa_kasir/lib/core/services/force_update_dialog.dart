@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/update_service.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// Popup UPDATE WAJIB (v2.2.57) — tampil saat build app < min_build produk
 /// di server. BLOCKING: tidak bisa ditutup/diskip, app tidak bisa dipakai
@@ -59,10 +60,20 @@ class ForceUpdateDialog {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Versi kamu: v${NusaConfig.appVersion} '
-                  '(build ${NusaConfig.appBuildNumber})',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                // v2.2.57+115: versi APK asli dari PackageInfo.
+                FutureBuilder<String>(
+                  future: SecureStore.installedVersionAndBuild(),
+                  builder: (context, snap) {
+                    final installed = snap.data ?? '';
+                    return Text(
+                      installed.isNotEmpty
+                          ? 'Versi kamu: $installed'
+                          : 'Versi kamu: v${NusaConfig.appVersion} '
+                              '(build ${NusaConfig.appBuildNumber})',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 SizedBox(

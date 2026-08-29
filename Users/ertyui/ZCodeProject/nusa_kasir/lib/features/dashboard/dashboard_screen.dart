@@ -214,6 +214,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     await _load();
 
+    // v2.2.57+115: versi APK asli (PackageInfo) — dipakai update check
+    // supaya user versi lama dapat notif update yang benar.
+    await SecureStore.loadInstalledVersion();
+
     // Check for app update silently (10-min cache inside UpdateService) —
     // if a new release exists, show a badge on the bell.
     _checkUpdateSilent();
@@ -664,7 +668,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           width: double.maxFinite,
           child: _downloadingUpdate
               ? _buildDownloadProgress(isDark)
-              : _buildUpdateInfo(info, isDark),
+              : FutureBuilder<String>(
+                  // v2.2.57+115: versi terpasang asli (PackageInfo).
+                  future: SecureStore.installedVersionAndBuild(),
+                  builder: (context, snap) {
+                    final installed = snap.data ?? '';
+                    final shown = installed.isNotEmpty
+                        ? 'Saat ini: $installed'
+                        : 'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}';
+                    return _buildUpdateInfo(info, isDark,
+                        installedText: shown);
+                  },
+                ),
         ),
         actions: _downloadingUpdate
             ? null
@@ -698,7 +713,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  Widget _buildUpdateInfo(UpdateInfo info, bool isDark) {
+  Widget _buildUpdateInfo(UpdateInfo info, bool isDark,
+      {String installedText = ''}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -709,7 +725,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Saat ini: v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+          installedText,
           style: TextStyle(
             fontSize: 13,
             color: isDark

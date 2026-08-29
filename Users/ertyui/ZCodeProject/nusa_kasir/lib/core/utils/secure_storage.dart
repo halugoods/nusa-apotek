@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nusa_kasir/core/constants/app_constants.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// DO NOT wipe the entire keystore on PlatformException.
 /// A single key failure (e.g. after OS update) should NOT delete
@@ -43,6 +44,46 @@ class SecureStore {
     } on PlatformException {
       // Already gone or inaccessible — don't cascade
     }
+  }
+
+  // -- Installed version (v2.2.57+115) ---------------------------------
+  // Build APK ASLI dari PackageInfo (bukan konstanta compile-time).
+  // Tanpa ini "Terpasang" salah tandai release yang belum diinstall:
+  // konstanta sudah di-bump ke build berikutnya sebelum user meng-update.
+  static int? _installedBuild;
+  static String? _installedVersion;
+
+  static Future<void> loadInstalledVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _installedVersion = info.version;
+      _installedBuild = int.tryParse(info.buildNumber);
+    } catch (_) {
+      // Platform tidak mendukung / plugin gagal → fallback konstanta.
+      _installedBuild = null;
+    }
+  }
+
+  /// Build number APK yang TERPASANG (dari PackageInfo), fallback ke
+  /// konstanta compile-time kalau plugin gagal di platform tertentu.
+  static Future<int> installedBuildNumber() async {
+    if (_installedBuild != null) return _installedBuild!;
+    await loadInstalledVersion();
+    return _installedBuild ?? NusaConfig.appBuildNumber;
+  }
+
+  /// Versi (mis. "2.2.57") dari PackageInfo, fallback konstanta.
+  static Future<String> installedVersion() async {
+    if (_installedVersion != null) return _installedVersion!;
+    await loadInstalledVersion();
+    return _installedVersion ?? NusaConfig.appVersion;
+  }
+
+  /// Gabungan "v2.2.57+115" dari PackageInfo (untuk label "Saat ini").
+  static Future<String> installedVersionAndBuild() async {
+    final v = await installedVersion();
+    final b = await installedBuildNumber();
+    return 'v$v+$b';
   }
 
   // -- Activation (namespaced per product to prevent cross-variant license leaks) --

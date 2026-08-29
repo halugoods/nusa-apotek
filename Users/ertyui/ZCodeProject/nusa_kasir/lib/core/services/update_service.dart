@@ -143,7 +143,12 @@ class UpdateService {
 
       final (version, buildNumber) = parsed;
 
-      if (buildNumber <= NusaConfig.appBuildNumber) {
+      // v2.2.57+115: bandingkan dengan build APK yang TERPASANG (PackageInfo),
+      // bukan konstanta compile-time. Sebelumnya konstanta sudah di-bump ke
+      // build berikutnya saat source dipersiapkan → user versi lama tidak
+      // dapat notif update.
+      final installed = await SecureStore.installedBuildNumber();
+      if (buildNumber <= installed) {
         final result = UpdateInfo.noUpdate();
         _cached = result;
         _cacheTime = DateTime.now();
@@ -381,8 +386,8 @@ class UpdateService {
         body: {
           if (key != null && key.isNotEmpty) 'key': key,
           'product': NusaConfig.productId,
-          'version': NusaConfig.appVersion,
-          'build': NusaConfig.appBuildNumber,
+          'version': await SecureStore.installedVersion(),
+          'build': await SecureStore.installedBuildNumber(),
         },
       );
       final data = res.data as Map<String, dynamic>? ?? const {};
