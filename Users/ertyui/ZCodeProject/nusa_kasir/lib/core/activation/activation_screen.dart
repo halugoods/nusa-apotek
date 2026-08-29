@@ -484,7 +484,17 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       return true;
     }
     if (mounted) {
-      TopToast.error(context, 'Gagal memulihkan data dari cloud');
+      // ── v2.2.57+115 (Area J): backup dari versi lebih baru ──
+      final newerVersion = repo.lastBackupVersionError;
+      if (newerVersion != null) {
+        TopToast.error(
+          context,
+          'Backup dibuat dengan versi lebih baru ($newerVersion). '
+          'Update aplikasi dulu, lalu restore lagi.',
+        );
+      } else {
+        TopToast.error(context, 'Gagal memulihkan data dari cloud');
+      }
     }
     return false;
   }

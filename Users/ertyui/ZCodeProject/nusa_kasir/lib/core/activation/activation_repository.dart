@@ -507,6 +507,24 @@ class ActivationRepository {
     }
   }
 
+  // ── v2.2.57+115 (Area J): kompatibilitas backup antar versi ────────
+
+  /// Versi backup yang DITOLAK karena lebih baru dari app terpasang.
+  /// Dipakai UI restore untuk menampilkan pesan yang jelas. null = tidak ada
+  /// penolakan (atau backup tidak membawa appVersion).
+  String? _lastBackupVersionError;
+
+  /// Versi backup yang terakhir ditolak karena lebih baru (untuk pesan UI),
+  /// atau null bila tidak ada.
+  String? get lastBackupVersionError => _lastBackupVersionError;
+
+  /// Parse build number dari string "2.2.57+115" → 115. Return null kalau
+  /// format tidak dikenal (backup lama tanpa appVersion).
+  static int? _parseBuildNumber(String appVersion) {
+    final m = RegExp(r'\+(\d+)\s*$').firstMatch(appVersion.trim());
+    return m == null ? null : int.tryParse(m.group(1)!);
+  }
+
   /// Download backup from cloud and write directly to the live DB + images.
   /// Restore berlaku IMMEDIATE — caller harus menutup koneksi drift dulu
   /// (lihat RestoreBackupFlow / _autoRestoreIfNeeded) supaya swap aman.
@@ -521,6 +539,27 @@ class ActivationRepository {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
+
+      // ── v2.2.57+115 (Area J): tolak backup dari versi LEBIH BARU ──
+      // Backup yang dibuat oleh build lebih baru bisa membawa schema/kolom
+      // yang versi terpasang belum kenal → setelah restore, drift tidak bisa
+      // migrasi (user_version > schemaVersion app) → query error / login PIN
+      // gagal karena DB dianggap "corrupt". Cegah dengan pesan yang jelas:
+      // "Update app dulu, lalu restore". Downgrade diam-diam tidak pernah aman.
+      final meta = await _readEmbeddedMetadata();
+      final backupApp = meta?['appVersion']?.toString() ?? '';
+      final installedBuild = await SecureStore.installedBuildNumber();
+      final backupBuild = _parseBuildNumber(backupApp);
+      if (backupBuild != null && backupBuild > installedBuild) {
+        debugPrint(
+          '[RestoreDirect] tolak backup versi $backupApp (lebih baru dari '
+          'terpasang +$installedBuild)',
+        );
+        _lastBackupVersionError = backupApp;
+        return false;
+      }
+      _lastBackupVersionError = null;
+
       // v2.2.42: jangan pernah restore backup yang isinya data varian LAIN
       // (folder tercemar — mis. nusa-fnb berisi produk servis). Restore data
       // salah varian = data user hilang dari layar varian ini.
@@ -581,8 +620,8 @@ class ActivationRepository {
       }
 
       // Pull backup timestamp from metadata if available
-      final meta = await getBackupMetadata();
-      final ts = meta?['updated_at'] ?? meta?['backupTime'];
+      final meta2 = await getBackupMetadata();
+      final ts = meta2?['updated_at'] ?? meta2?['backupTime'];
       if (ts != null) {
         final parsed = DateTime.tryParse(ts.toString());
         if (parsed != null) {
@@ -617,6 +656,16 @@ class ActivationRepository {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
       final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // ── v2.2.57+115 (Area J): tolak backup versi lebih baru ──
+      final meta = await _readEmbeddedMetadata();
+      final backupApp = meta?['appVersion']?.toString() ?? '';
+      final installedBuild = await SecureStore.installedBuildNumber();
+      final backupBuild = _parseBuildNumber(backupApp);
+      if (backupBuild != null && backupBuild > installedBuild) {
+        _lastBackupVersionError = backupApp;
+        return false;
+      }
+      _lastBackupVersionError = null;
       // v2.2.42: jangan pernah stage backup yang isinya data varian LAIN.
       if (!await _backupBelongsToVariant(decrypted, uid)) return false;
       final dir = await getApplicationDocumentsDirectory();
