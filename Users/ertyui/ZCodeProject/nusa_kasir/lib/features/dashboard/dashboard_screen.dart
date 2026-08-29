@@ -2225,7 +2225,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         initials: initials,
                         userName: userName,
                         role: roleText,
-                        branch: _storeName,
+                        // v2.2.57+115: card stats menampilkan CABANG yang
+                        // sedang dipilih (Owner/Manager bebas pindah cabang);
+                        // null → "Semua Cabang". Sebelumnya selalu nama toko.
+                        branch: _activeBranch?.name ?? 'Semua Cabang',
                         attendanceStatus: attendanceText,
                         salesValue: _omzet,
                         transactionCount: _trxCount,
@@ -2358,6 +2361,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           pending: _laundryPending,
                           ready: _laundryReady,
                           delivered: _laundryDelivered,
+                          branch: _activeBranch?.name ?? 'Semua Cabang',
                           expanded: _laundryStatsExpanded,
                           onToggle: () {
                             setState(
@@ -2380,6 +2384,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           confirmed: _salonConfirmed,
                           waiting: _salonWaiting,
                           done: _salonDone,
+                          branch: _activeBranch?.name ?? 'Semua Cabang',
                           expanded: _salonStatsExpanded,
                           onToggle: () {
                             setState(
@@ -2402,6 +2407,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           inProgress: _bengkelInProgress,
                           done: _bengkelDone,
                           estimate: _bengkelEstimate,
+                          branch: _activeBranch?.name ?? 'Semua Cabang',
                           expanded: _bengkelStatsExpanded,
                           onToggle: () {
                             setState(
@@ -2424,6 +2430,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           pending: _printPending,
                           done: _printDone,
                           picked: _printPicked,
+                          branch: _activeBranch?.name ?? 'Semua Cabang',
                           expanded: _printStatsExpanded,
                           onToggle: () {
                             setState(
@@ -2872,6 +2879,7 @@ class _KeuanganSummary extends StatelessWidget {
 /// Collapsed: just a thin horizontal pill. Tap to expand the stats card.
 class _LaundryStatsCard extends StatefulWidget {
   final int today, pending, ready, delivered;
+  final String branch;
   final bool expanded;
   final VoidCallback onToggle;
   const _LaundryStatsCard({
@@ -2879,6 +2887,7 @@ class _LaundryStatsCard extends StatefulWidget {
     required this.pending,
     required this.ready,
     required this.delivered,
+    required this.branch,
     required this.expanded,
     required this.onToggle,
   });
@@ -3012,6 +3021,22 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard>
                               : NusaConfig.textPrimary,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      // v2.2.57+115: keterangan cabang yang dipilih.
+                      Expanded(
+                        child: Text(
+                          widget.branch,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                      ),
                       const Spacer(),
                       GestureDetector(
                         onTap: widget.onToggle,
@@ -3114,6 +3139,7 @@ class _LaundryStatsCardState extends State<_LaundryStatsCard>
 /// Salon stats mini-card on dashboard.
 class _SalonStatsCard extends StatefulWidget {
   final int today, confirmed, waiting, done;
+  final String branch;
   final bool expanded;
   final VoidCallback onToggle;
   const _SalonStatsCard({
@@ -3121,6 +3147,7 @@ class _SalonStatsCard extends StatefulWidget {
     required this.confirmed,
     required this.waiting,
     required this.done,
+    required this.branch,
     required this.expanded,
     required this.onToggle,
   });
@@ -3254,6 +3281,22 @@ class _SalonStatsCardState extends State<_SalonStatsCard>
                               : NusaConfig.textPrimary,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      // v2.2.57+115: keterangan cabang yang dipilih.
+                      Expanded(
+                        child: Text(
+                          widget.branch,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                      ),
                       const Spacer(),
                       GestureDetector(
                         onTap: widget.onToggle,
@@ -3356,6 +3399,7 @@ class _SalonStatsCardState extends State<_SalonStatsCard>
 /// Fotocopy/Percetakan dashboard stats card — expandable with slide animation.
 class _PrintOrderStatsCard extends StatefulWidget {
   final int today, pending, done, picked;
+  final String branch;
   final bool expanded;
   final VoidCallback onToggle;
   const _PrintOrderStatsCard({
@@ -3363,6 +3407,7 @@ class _PrintOrderStatsCard extends StatefulWidget {
     required this.pending,
     required this.done,
     required this.picked,
+    required this.branch,
     required this.expanded,
     required this.onToggle,
   });
@@ -3495,6 +3540,22 @@ class _PrintOrderStatsCardState extends State<_PrintOrderStatsCard>
                               : NusaConfig.textPrimary,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      // v2.2.57+115: keterangan cabang yang dipilih.
+                      Expanded(
+                        child: Text(
+                          widget.branch,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                      ),
                       const Spacer(),
                       GestureDetector(
                         onTap: widget.onToggle,
@@ -3597,6 +3658,7 @@ class _PrintOrderStatsCardState extends State<_PrintOrderStatsCard>
 /// Bengkel dashboard stats card — expandable with slide animation (mirror of salon).
 class _BengkelStatsCard extends StatefulWidget {
   final int today, queue, inProgress, done, estimate;
+  final String branch;
   final bool expanded;
   final VoidCallback onToggle;
   const _BengkelStatsCard({
@@ -3605,6 +3667,7 @@ class _BengkelStatsCard extends StatefulWidget {
     required this.inProgress,
     required this.done,
     required this.estimate,
+    required this.branch,
     required this.expanded,
     required this.onToggle,
   });
@@ -3736,6 +3799,22 @@ class _BengkelStatsCardState extends State<_BengkelStatsCard>
                           color: isDark
                               ? NusaConfig.darkTextPrimary
                               : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // v2.2.57+115: keterangan cabang yang dipilih.
+                      Expanded(
+                        child: Text(
+                          widget.branch,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
                         ),
                       ),
                       const Spacer(),

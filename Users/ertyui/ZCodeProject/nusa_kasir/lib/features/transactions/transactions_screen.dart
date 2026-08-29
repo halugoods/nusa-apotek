@@ -1645,25 +1645,33 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                       : accent,
                                 ),
                                 SizedBox(width: 4),
-                                Text(
-                                  '$relDate • ${tx.paymentMethod}',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: isVoided
-                                        ? isDark
-                                              ? NusaConfig.darkTextTertiary
-                                              : NusaConfig.textTertiary
-                                        : (isDark
-                                              ? NusaConfig.darkTextTertiary
-                                              : isDark
-                                              ? NusaConfig.darkTextTertiary
-                                              : NusaConfig.textTertiary),
+                                Flexible(
+                                  child: Text(
+                                    // v2.2.57+115: kasir dipindah ke baris
+                                    // sendiri di bawah tanggal (sebelumnya
+                                    // sejajar metode → ketutupan icon aksi).
+                                    '$relDate • ${tx.paymentMethod}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: isVoided
+                                          ? isDark
+                                                ? NusaConfig.darkTextTertiary
+                                                : NusaConfig.textTertiary
+                                          : (isDark
+                                                ? NusaConfig.darkTextTertiary
+                                                : NusaConfig.textTertiary),
+                                    ),
                                   ),
                                 ),
-                                // v2.2.54: nama karyawan yang melakukan trx.
-                                if ((tx.cashierName ?? '').isNotEmpty) ...[
-                                  SizedBox(width: 10),
+                              ],
+                            ),
+                            // v2.2.54: nama karyawan yang melakukan trx.
+                            if ((tx.cashierName ?? '').isNotEmpty) ...[
+                              SizedBox(height: 3),
+                              Row(
+                                children: [
                                   Icon(
                                     Icons.person_rounded,
                                     size: 13,
@@ -1686,8 +1694,8 @@ class _TransactionCardState extends ConsumerState<_TransactionCard> {
                                     ),
                                   ),
                                 ],
-                              ],
-                            ),
+                              ),
+                            ],
                             // ── Status piutang (v2.2.34): sinkron dengan
                             // menu Piutang — "Lunas ✓" / "Sisa RpX" / "Piutang".
                             if (!isVoided && _debtStatus != null) ...[

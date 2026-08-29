@@ -652,9 +652,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Auto-upload aktif: perubahan disinkronkan ±6 dtk '
-                      '(saat online). Konflik otomatis memilih data terbaru — '
-                      'yang lama disimpan sebagai snapshot, tanpa dialog.',
+                      'Auto-sync aktif: perubahan dikirim ~1,2 dtk setelah '
+                      'Anda berhenti mengetik, digabung dalam 10 dtk, dan '
+                      'data ditarik dari cloud tiap 30 dtk (saat online). '
+                      'Konflik otomatis memilih data terbaru — yang lama '
+                      'disimpan sebagai snapshot, tanpa dialog.',
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.4,
