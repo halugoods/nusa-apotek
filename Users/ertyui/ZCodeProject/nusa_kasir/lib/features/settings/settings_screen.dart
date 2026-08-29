@@ -1437,17 +1437,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final now = DateTime.now();
     final blocked = info == null ||
         info.status == 'Expired' ||
-        info.status == 'Cancelled' ||
-        info.status == 'Suspended';
+        info.status == 'Cancelled';
     final isExpired = !blocked && exp != null && exp.isBefore(now);
     final statusText = info == null
         ? 'Tidak Terdeteksi'
         : blocked
             ? (info.status == 'Cancelled'
                 ? 'Dibatalkan'
-                : info.status == 'Suspended'
-                    ? 'Dinonaktifkan'
-                    : 'Kedaluwarsa')
+                : 'Kedaluwarsa')
             : isExpired
                 ? 'Kedaluwarsa'
                 : 'Aktif';

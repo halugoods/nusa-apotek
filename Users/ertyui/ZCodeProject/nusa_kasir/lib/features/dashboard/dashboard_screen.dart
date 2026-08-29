@@ -2636,10 +2636,9 @@ class _LicenseExpiryBanner extends StatelessWidget {
     final exp = info.expiresAt;
     final now = DateTime.now();
 
-    // Status non-aktif (expired/cancelled/suspended) → banner merah wajib.
+    // Status non-aktif (expired/cancelled) → banner merah wajib.
     final blocked = info.status == 'Expired' ||
-        info.status == 'Cancelled' ||
-        info.status == 'Suspended';
+        info.status == 'Cancelled';
     // Aktif tapi masa berlaku sudah lewat (expires_at < now) → harus segera
     // perpanjang; kalau lifetime (tanpa expires_at) → tidak perlu.
     final isExpired = !blocked && exp != null && exp.isBefore(now);
@@ -2664,9 +2663,7 @@ class _LicenseExpiryBanner extends StatelessWidget {
     if (blocked) {
       message = info.status == 'Cancelled'
           ? 'Lisensi Anda dihentikan. Hubungi admin.'
-          : info.status == 'Suspended'
-              ? 'Lisensi Anda dinonaktifkan sementara.'
-              : 'Lisensi Anda telah kedaluwarsa. Perpanjang agar kasir aktif kembali.';
+          : 'Lisensi Anda telah kedaluwarsa. Perpanjang agar kasir aktif kembali.';
     } else if (isExpired) {
       message = 'Masa lisensi Anda telah berakhir. Perpanjang untuk melanjutkan.';
     } else if (daysUntil != null && daysUntil <= 0) {

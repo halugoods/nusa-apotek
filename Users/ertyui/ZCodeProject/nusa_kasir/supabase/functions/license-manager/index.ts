@@ -545,7 +545,15 @@ async function handleUpdate(supabase: any, params: any) {
   if (!license_id) return json({ error: "license_id required" }, 400);
 
   const updates: Record<string, unknown> = {};
-  if (status !== undefined) updates.status = String(status);
+  if (status !== undefined) {
+    if (!["Generated", "Trial", "Active", "Cancelled", "Expired"].includes(String(status))) {
+      return json(
+        { error: "Invalid status (Generated | Trial | Active | Cancelled | Expired)" },
+        400,
+      );
+    }
+    updates.status = String(status);
+  }
   if (google_user_id !== undefined)
     updates.google_user_id = google_user_id === null ? null : String(google_user_id);
   if (owner_email !== undefined)
@@ -638,7 +646,6 @@ async function handleStats(supabase: any) {
     Cancelled: 0,
     Trial: 0,
     Expired: 0,
-    Suspended: 0,
     total_activations: 0,
   };
 

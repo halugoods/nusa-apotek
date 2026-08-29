@@ -651,13 +651,13 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         final isExpired = data['is_expired'] == true;
 
         if (isExpired || cloudStatus == 'Expired' ||
-            cloudStatus == 'Cancelled' || cloudStatus == 'Suspended') {
+            cloudStatus == 'Cancelled') {
           if (mounted) {
-            // v2.2.57+112: akun yang lisensinya DIBATALKAN (Cancelled) atau
-            // DISUSPEND kembali ke layar status lisensi (decision — "sudah
-            // punya / belum punya lisensi"), BUKAN layar perpanjangan.
+            // v2.2.57+112: akun yang lisensinya DIBATALKAN (Cancelled) kembali
+            // ke layar status lisensi (decision — "sudah punya / belum punya
+            // lisensi"), BUKAN layar perpanjangan.
             // Layar trial_expired (perpanjangan) hanya untuk status Expired.
-            if (cloudStatus == 'Cancelled' || cloudStatus == 'Suspended') {
+            if (cloudStatus == 'Cancelled') {
               setState(() {
                 _googleLoading = false;
                 _googleError = data['message'] as String? ??

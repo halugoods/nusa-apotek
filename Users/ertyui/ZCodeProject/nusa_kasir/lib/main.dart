@@ -458,7 +458,7 @@ void main() async {
 
     // ── v2.2.54: STARTUP LICENSE GATE ────────────────────────────────────
     // Device yang sudah aktivasi tetap dicek ke cloud SETIAP buka app.
-    // Lisensi yang di-revoke admin (Cancelled/Suspended/Expired) → paksa
+    // Lisensi yang di-revoke admin (Cancelled/Expired) → paksa
     // lewat layar aktivasi (blokir) meski key lokal masih valid. Ini menutup
     // celah: dulu activated device langsung masuk tanpa cek status terbaru.
     // Fail-open: offline / lambat (>4s) → jangan blokir user yang sah.
@@ -483,7 +483,6 @@ void main() async {
               data['has_license'] == false &&
               (data['is_expired'] == true ||
                   status == 'Cancelled' ||
-                  status == 'Suspended' ||
                   status == 'Expired');
           if (blocked) initialLocation = '/activation';
         }

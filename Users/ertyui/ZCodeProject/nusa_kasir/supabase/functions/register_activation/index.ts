@@ -123,19 +123,15 @@ Deno.serve(async (req: Request) => {
       // Prefer the newest non-blocked license; keep blocked ones so we can
       // report a meaningful message instead of silently "no license".
       let license = owned?.find(
-        (l) => !["Cancelled", "Suspended", "Expired"].includes(l.status),
+        (l) => !["Cancelled", "Expired"].includes(l.status),
       ) ?? owned?.[0] ?? null;
 
       if (!license) {
         return json({ has_license: false }, 200);
       }
 
-      // Block revoked/cancelled/suspended licenses — treat as no license
-      if (
-        license.status === "Cancelled" ||
-        license.status === "Suspended" ||
-        license.status === "Expired"
-      ) {
+      // Block revoked/cancelled licenses — treat as no license
+      if (license.status === "Cancelled" || license.status === "Expired") {
         return json(
           {
             has_license: false,
@@ -143,9 +139,7 @@ Deno.serve(async (req: Request) => {
             message:
               license.status === "Cancelled"
                 ? "Lisensi Anda telah dibatalkan."
-                : license.status === "Suspended"
-                  ? "Lisensi Anda sedang dinonaktifkan."
-                  : "Lisensi Anda telah kedaluwarsa.",
+                : "Lisensi Anda telah kedaluwarsa.",
           },
           200,
         );
@@ -214,11 +208,6 @@ Deno.serve(async (req: Request) => {
     if (lic.status === "Cancelled")
       return json(
         { error: "cancelled", message: "Key ini sudah dibatalkan" },
-        403,
-      );
-    if (lic.status === "Suspended")
-      return json(
-        { error: "suspended", message: "Key ini sedang dinonaktifkan" },
         403,
       );
 
