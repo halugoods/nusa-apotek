@@ -413,6 +413,38 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           onChanged: (v) => setState(() => _showBarcode = v),
           label: 'Barcode',
         ),
+        if (_selected.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          // ── Preview LIVE — dari renderer SAMA (bukan mockup) ──
+          // v2.2.57+115: user minta preview real seperti preview struk, supaya
+          // layout (barcode pendek di atas, nama, harga) bisa dicek sebelum
+          // cetak. Render pakai LabelRenderer.renderLabelBitmap → sama dengan
+          // hasil TSPL/ESC-POS/PDF.
+          Text(
+            'Preview Label',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? NusaConfig.darkTextPrimary
+                  : NusaConfig.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Contoh produk pertama yang dipilih. '
+            'Preview = hasil cetak asli.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? NusaConfig.darkTextSecondary
+                  : NusaConfig.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _LabelPreview(product: _selected.first, sheet: this),
+          const SizedBox(height: 4),
+        ],
         const SizedBox(height: 20),
 
         _stepHeader('3', 'Cara Cetak'),
@@ -642,6 +674,71 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             });
           }
         },
+      ),
+    );
+  }
+}
+
+/// Preview label LIVE — render pakai [LabelRenderer.renderLabelBitmap] yang
+/// SAMA dengan TSPL/ESC-POS/PDF (konsistensi: preview = hasil cetak).
+class _LabelPreview extends StatelessWidget {
+  final Product product;
+  final _LabelPrintSheetState sheet;
+
+  const _LabelPreview({required this.product, required this.sheet});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Render label 40×30mm di 203 DPI (sama dengan printer) lalu tampilkan.
+    final bitmap = sheet._renderFor(product, LabelDpi.dpi203);
+    final pngBytes = Uint8List.fromList(img.encodePng(bitmap));
+    // Skala preview: label 30mm tinggi ≈ 240px → tampilkan ~140px tinggi.
+    final previewH = 140.0;
+    final aspect = bitmap.width / bitmap.height;
+
+    return Container(
+      alignment: Alignment.center,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Image.memory(
+                pngBytes,
+                height: previewH,
+                width: previewH * aspect,
+                gaplessPlayback: true,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${sheet._labelW.toStringAsFixed(0)}×${sheet._labelH.toStringAsFixed(0)}mm',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

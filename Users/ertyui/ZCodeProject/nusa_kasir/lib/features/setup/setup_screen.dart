@@ -88,8 +88,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         );
       } catch (_) {}
 
-      // First-install: minta izin sekali (kamera, notifikasi, penyimpanan,
-      // bluetooth) — user bisa pilih "Nanti" dan mengaktifkan via Pengaturan.
+      // First-install: minta izin sekali — DIALOG NATIVE ANDROID langsung
+      // (bukan UI buatan sendiri), berurutan satu per satu oleh sistem.
       if (mounted) await _askPermissionsOnce();
 
       if (mounted) context.go('/home');
@@ -101,38 +101,16 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     }
   }
 
-  /// Dialog izin pertama kali — hanya muncul sekali seumur hidup app.
+  /// Izin pertama kali — hanya muncul sekali seumur hidup app.
+  ///
+  /// Setiap [Permission.x.request()] memunculkan dialog ASLI dari sistem
+  /// Android (permission_handler → framework dialog), bukan dialog custom.
+  /// Urut satu per satu agar tidak tumpang tindih. User bisa menolak dan
+  /// mengaktifkan lagi kapan saja lewat Pengaturan.
   Future<void> _askPermissionsOnce() async {
     try {
       if (await SecureStore.getPermissionsAsked()) return;
-      final granted = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Izinkan akses?'),
-          content: const Text(
-            'NUSA butuh izin berikut agar fitur berjalan maksimal:\n\n'
-            '• Kamera — scan barcode produk\n'
-            '• Notifikasi — stok menipis & pesanan\n'
-            '• Penyimpanan — simpan & muat data\n'
-            '• Bluetooth — cetak struk ke printer\n\n'
-            'Bisa diatur lagi kapan saja lewat Pengaturan.',
-            style: TextStyle(fontSize: 14, height: 1.5),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Nanti'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Izinkan'),
-            ),
-          ],
-        ),
-      );
       await SecureStore.setPermissionsAsked(true);
-      if (granted != true) return;
 
       await Permission.camera.request();
       await Permission.notification.request();

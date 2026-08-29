@@ -2217,77 +2217,84 @@ class _ProductGridCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Image (inset) ──
-              ClipRRect(
-                borderRadius: BorderRadius.circular(NusaConfig.radiusSM),
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Stack(
-                    children: [
-                      NusaProductImage(
-                        imagePath: product.imagePath,
-                        imageBase64: product.imageBase64,
-                        width: double.infinity,
-                        height: double.infinity,
-                        fit: BoxFit.cover,
-                        placeholder: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: gradient,
+              // ── Image (inset) — Expanded supaya konten di bawahnya selalu
+              // muat dalam sel grid (mencegah aksi edit/hapus meluber keluar
+              // card saat nama panjang + barcode: v2.2.57+115 fix).
+              Expanded(
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(NusaConfig.radiusSM),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          NusaProductImage(
+                            imagePath: product.imagePath,
+                            imageBase64: product.imageBase64,
+                            width: double.infinity,
+                            height: double.infinity,
+                            fit: BoxFit.cover,
+                            placeholder: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: gradient,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                _initials(product.name),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                             ),
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            _initials(product.name),
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
+                          // Stock badge top-left
+                          Positioned(
+                            top: 6,
+                            left: 6,
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: outOfStock
+                                    ? NusaConfig.stockOut
+                                    : (product.stock <= product.minStock
+                                          ? NusaConfig.stockLow
+                                          : NusaConfig.surfaceColor
+                                              .withValues(alpha: 0.92)),
+                                borderRadius: BorderRadius.circular(
+                                  NusaConfig.radiusFull,
+                                ),
+                              ),
+                              child: Text(
+                                outOfStock ? 'Habis' : '${product.stock}x',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: outOfStock
+                                      ? NusaConfig.stockOutText
+                                      : (product.stock <= product.minStock
+                                            ? NusaConfig.stockLowText
+                                            : NusaConfig.activePrimary),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          if (outOfStock)
+                            Container(color: Colors.white.withValues(alpha: 0.4)),
+                        ],
                       ),
-                      // Stock badge top-left
-                      Positioned(
-                        top: 6,
-                        left: 6,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: outOfStock
-                                ? NusaConfig.stockOut
-                                : (product.stock <= product.minStock
-                                      ? NusaConfig.stockLow
-                                      : NusaConfig.surfaceColor.withValues(
-                                          alpha: 0.92,
-                                        )),
-                            borderRadius: BorderRadius.circular(
-                              NusaConfig.radiusFull,
-                            ),
-                          ),
-                          child: Text(
-                            outOfStock ? 'Habis' : '${product.stock}x',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: outOfStock
-                                  ? NusaConfig.stockOutText
-                                  : (product.stock <= product.minStock
-                                        ? NusaConfig.stockLowText
-                                        : NusaConfig.activePrimary),
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (outOfStock)
-                        Container(color: Colors.white.withValues(alpha: 0.4)),
-                    ],
+                    ),
                   ),
                 ),
               ),

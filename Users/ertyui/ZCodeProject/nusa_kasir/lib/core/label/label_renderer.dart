@@ -52,10 +52,20 @@ class LabelRenderer {
 
   /// Render SATU label ke bitmap MONOKROM (1-bit) ukuran [widthPx]×[heightPx].
   ///
-  /// Isi label dinamis via [showName]/[showPrice]/[showBarcode]. Barcode
-  /// CODE128 di posisi tengah (atau bawah kalau ada teks), dengan quiet zone
-  /// 8px. Mengembalikan [img.Image] RGBA (putih/hitam) — output yang sama
-  /// dipakai pratinjau (encodePng), TSPL, dan ESC/POS (konsistensi render).
+  /// Layout (v2.2.57+115, dirombak dari umpan balik user):
+  ///   ┌──────────────────────────────┐
+  ///   │          ▓▓▓▓▓▓▓▓▓▓          │  ← barcode CODE128, PENDEK & di TENGAH
+  ///   │         nama produk          │  ← nama, center, 1–2 baris
+  ///   │           Rp 12.500          │  ← harga, center, bold
+  ///   └──────────────────────────────┘
+  ///
+  /// Semua elemen CENTER (tidak menempel kiri). Barcode dibuat ramping:
+  /// tingginya ~28% label, di posisi atas — bukan memenuhi label yang bikin
+  /// teks nama/harga terpisah jauh dari barcode (keluhan user).
+  ///
+  /// Isi label dinamis via [showName]/[showPrice]/[showBarcode]. Mengembalikan
+  /// [img.Image] RGBA (putih/hitam) — output yang sama dipakai pratinjau
+  /// (encodePng), TSPL, dan ESC/POS (konsistensi render).
   static img.Image renderLabelBitmap({
     required String barcode,
     required String name,
@@ -69,54 +79,70 @@ class LabelRenderer {
     final image = img.Image(widthPx, heightPx)
       ..fill(img.getColor(255, 255, 255)); // putih
     const margin = 8;
+    final cx = widthPx ~/ 2; // pusat horizontal
 
-    // ── Teks (nama + harga) di KIRI atas, bukan tengah — label harga umumnya
-    //    kecil; teks di tengah menabrak barcode. Ditumpuk: nama di atas, harga
-    //    di bawahnya, pakai font 3×5 pixel (sederhana, tegas, 1-bit friendly).
-    var textY = margin;
-    var nameLines = <String>[];
-    if (showName && name.trim().isNotEmpty) {
-      nameLines = _wrapName(name, widthPx - margin * 2);
-      for (var i = 0; i < nameLines.length && i < 2; i++) {
-        _drawText5x7(
-          image, widthPx, nameLines[i], margin, textY, blackColor: true,
-        );
-        textY += 10;
-      }
-    }
-    if (showPrice) {
-      _drawText5x7(
-        image,
-        widthPx,
-        'Rp${_formatPrice(price)}',
-        margin,
-        textY,
-        blackColor: true,
-      );
-      textY += 12;
-    }
+    // Baris elemen (dihitung dari atas). Urutan: barcode → nama → harga.
+    // Pakai "blok" supaya tidak ada gap ngaco: setiap elemen menempati
+    // slotnya sendiri, sisanya disebar merata di atas-bawah (center vertikal).
+    var y = margin;
 
-    // ── Barcode CODE128 — pakai operasi dari package `barcode` supaya scan
-    //    HID/kamera yang sama di app ini membaca label yang sama.
+    // ── 1) Barcode CODE128 — PENDEK & CENTER ──
+    //    Tinggi barcode = 26% tinggi label (bukan memenuhi label). Pakai
+    //    operasi dari package `barcode` supaya scan HID/kamera yang sama di
+    //    app ini membaca label yang sama.
     if (showBarcode && barcode.trim().isNotEmpty) {
       final bw = widthPx - margin * 2;
-      // Posisi tengah sisa area di bawah teks.
-      final topY = textY + 4;
-      final bh = heightPx - topY - margin;
+      final bh = (heightPx * 0.26).round().clamp(24, 80);
       final bars = barcodeBars(barcode, bw.toDouble(), bh.toDouble());
+      // Hitung bounding box barcode (bar paling kiri & kanan) supaya bisa
+      // di-center secara visual.
+      var minX = widthPx, maxX = 0;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
           final x0 = (margin + el.left).round();
-          final y0 = (topY + el.top).round();
+          final x1 = x0 + el.width.round();
+          if (x0 < minX) minX = x0;
+          if (x1 > maxX) maxX = x1;
+        }
+      }
+      final barW = maxX - minX;
+      final offX = barW > 0 ? cx - barW ~/ 2 : 0;
+      final topY = y;
+      for (final el in bars) {
+        if (el is bc.BarcodeBar && el.black) {
+          final x0 = (margin + el.left).round() + offX - minX;
+          final y0 = topY + el.top.round();
           final w = el.width.round();
           final h = el.height.round();
           for (var yy = y0; yy < y0 + h && yy < heightPx; yy++) {
             for (var xx = x0; xx < x0 + w && xx < widthPx; xx++) {
-              image.setPixelRgba(xx, yy, 0, 0, 0);
+              if (xx >= 0 && xx < widthPx) image.setPixelRgba(xx, yy, 0, 0, 0);
             }
           }
         }
       }
+      y += bh + 4; // + jarak kecil ke teks
+    }
+
+    // ── 2) Nama produk — center, maks 2 baris ──
+    if (showName && name.trim().isNotEmpty) {
+      final nameLines = _wrapName(name, widthPx - margin * 2);
+      for (var i = 0; i < nameLines.length && i < 2; i++) {
+        final lineW = nameLines[i].length * 6; // lebar teks 5×7 + spasi
+        final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+        _drawText5x7(image, widthPx, nameLines[i], lx, y, blackColor: true);
+        y += 10;
+      }
+      y += 2;
+    }
+
+    // ── 3) Harga — center, bold-ish ──
+    if (showPrice) {
+      final priceText = 'Rp ${_formatPrice(price)}';
+      final lineW = priceText.length * 6;
+      final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+      _drawText5x7(image, widthPx, priceText, lx, y, blackColor: true);
+      y += 12;
     }
 
     return image;
@@ -209,7 +235,7 @@ class LabelRenderer {
 
   /// Bangun widget label untuk PDF (A4 grid). Ukuran [widthMm]×[heightMm]
   /// — default 40×30. Isi label DINAMIS (checkbox) — SAMA dengan jalur cetak
-  /// lain (konsistensi render: nama di kiri atas, barcode di bawah).
+  /// lain (konsistensi render): barcode di atas center, nama, lalu harga.
   static pw.Widget pdfLabel({
     required String barcode,
     required String name,
@@ -220,51 +246,57 @@ class LabelRenderer {
     double widthMm = defaultWidthMm,
     double heightMm = defaultHeightMm,
   }) {
-    const PdfColor ink = PdfColor.fromInt(0xFF000000);
+    const PdfColor ink = PdfColor.fromInt(0xFF111827);
     const PdfColor paper = PdfColor.fromInt(0xFFFFFFFF);
 
     final children = <pw.Widget>[];
 
-    // Nama + harga — pakai teks PDF (bukan bitmap) supaya tajam + ringan.
-    if (showName && name.trim().isNotEmpty) {
-      children.add(
-        pw.Text(
-          name,
-          style: pw.TextStyle(
-            fontSize: 8,
-            fontWeight: pw.FontWeight.bold,
-            color: PdfColor.fromInt(0xFF111827),
-          ),
-          maxLines: 1,
-          overflow: pw.TextOverflow.clip,
-        ),
-      );
-    }
-    if (showPrice) {
-      children.add(
-        pw.Text(
-          'Rp${_formatPrice(price)}',
-          style: pw.TextStyle(
-            fontSize: 7,
-            fontWeight: pw.FontWeight.bold,
-            color: PdfColor.fromInt(0xFF111827),
-          ),
-        ),
-      );
-    }
+    // Barcode — di ATAS, center, pendek (tinggi ~ 22% label, bukan separuh).
     if (showBarcode && barcode.trim().isNotEmpty) {
       children.add(
-        pw.Padding(
-          padding: const pw.EdgeInsets.only(top: 2),
+        pw.Center(
           child: pw.BarcodeWidget(
             data: barcode,
             barcode: bc.Barcode.code128(),
-            width: widthMm * PdfPageFormat.mm / 2.0, // ~ lebar label
-            height: heightMm * PdfPageFormat.mm / 2.5,
-            drawText: true,
-            textStyle: pw.TextStyle(
-              fontSize: 5,
-              color: PdfColor.fromInt(0xFF111827),
+            width: widthMm * PdfPageFormat.mm * 0.9,
+            height: heightMm * PdfPageFormat.mm * 0.22,
+            drawText: false, // teks barcode tidak wajib — bersih & pendek
+          ),
+        ),
+      );
+      children.add(pw.SizedBox(height: 1.5 * PdfPageFormat.mm));
+    }
+
+    // Nama — center, bold.
+    if (showName && name.trim().isNotEmpty) {
+      children.add(
+        pw.Center(
+          child: pw.Text(
+            name,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: ink,
+            ),
+            maxLines: 2,
+            overflow: pw.TextOverflow.clip,
+          ),
+        ),
+      );
+      children.add(pw.SizedBox(height: 0.8 * PdfPageFormat.mm));
+    }
+
+    // Harga — center, bold.
+    if (showPrice) {
+      children.add(
+        pw.Center(
+          child: pw.Text(
+            'Rp ${_formatPrice(price)}',
+            style: pw.TextStyle(
+              fontSize: 8,
+              fontWeight: pw.FontWeight.bold,
+              color: ink,
             ),
           ),
         ),
@@ -280,8 +312,8 @@ class LabelRenderer {
         border: pw.Border.all(color: ink, width: 0.3),
       ),
       child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        mainAxisAlignment: pw.MainAxisAlignment.start,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        mainAxisAlignment: pw.MainAxisAlignment.center,
         children: children,
       ),
     );

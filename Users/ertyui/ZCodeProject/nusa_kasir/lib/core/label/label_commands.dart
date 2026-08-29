@@ -79,9 +79,13 @@ class LabelCommands {
 
   /// Bangun bytes ESC/POS untuk SATU label struk 58mm dari [bitmap].
   ///
-  /// Struktur (per label): teks nama + harga (tengah), lalu bit-image barcode
-  /// (GS v 0), lalu feed + potong. User menyusun label beruntun lalu
-  /// potong manual (label di printer struk = potongan berurutan).
+  /// Struk label beruntun: bit-image raster (GS v 0) dari [bitmap] yang SUDAH
+  /// berisi barcode+nama+harga (renderLabelBitmap), lalu feed + potong.
+  ///
+  /// v2.2.57+115: nama & harga TIDAK lagi dicetak sebagai teks ESC/POS di
+  /// sini — dulu ini bikin nama/harga DOBEL (teks + di dalam bitmap).
+  /// [name]/[price] dipertahankan sebagai parameter untuk kompatibilitas
+  /// pemanggil, tapi tidak dipakai.
   static Uint8List buildEscPosLabel({
     required img.Image bitmap,
     required String name,
@@ -92,22 +96,10 @@ class LabelCommands {
     final out = <int>[];
     // Reset printer.
     out.addAll(const [0x1B, 0x40]);
-    // Center alignment.
-    out.addAll(const [0x1B, 0x61, 0x01]);
-    if (showName && name.trim().isNotEmpty) {
-      out.addAll(_asciiBytes(name));
-      out.addAll(const [0x0A]);
-    }
-    if (showPrice) {
-      // Bold.
-      out.addAll(const [0x1B, 0x45, 0x01]);
-      out.addAll(_asciiBytes('Rp$price'));
-      out.addAll(const [0x1B, 0x45, 0x00]);
-      out.addAll(const [0x0A]);
-    }
-    out.addAll(const [0x0A]);
 
     // Bit-image raster (GS v 0) — kompatibel ESC/POS umum (Epson/Star/Xprinter).
+    // Bitmap = SATU label lengkap (barcode + nama + harga) yang dirender
+    // LabelRenderer — konsisten dengan preview & PDF.
     out.addAll(_gsV0Raster(bitmap));
 
     // Feed + cut. Feed 4 baris supaya label terpisah rapi.
@@ -145,8 +137,6 @@ class LabelCommands {
     }
     return data.toList();
   }
-
-  static List<int> _asciiBytes(String s) => s.codeUnits.toList();
 }
 
 /// Helper mono — konversi [img.Image] ke daftar piksel hitam (untuk TSPL).

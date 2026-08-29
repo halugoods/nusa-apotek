@@ -10,7 +10,6 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/call_service.dart';
 import 'package:nusa_kasir/core/services/sound_service.dart';
-import 'package:nusa_kasir/core/services/ai_insight_worker.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -93,10 +92,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Keuangan summary
   int _financeExpense = 0;
   int _financeIncome = 0;
-
-  // AI Insight (rangkuman harian proaktif — Area H)
-  Map<String, dynamic>? _aiInsight;
-  bool _aiInsightLoading = false;
 
   // Laundry stats
   int _laundryToday = 0;
@@ -1172,45 +1167,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _printPicked = printPicked;
         _printStatsExpanded = printStatsExpanded;
       });
-      // Insight proaktif di-refresh di luar setState (async, tidak menghalangi).
-      _loadAiInsight();
     }
   }
-
-  /// AI Insight — ambil insight terakhir dari SecureStore (dihasilkan
-  /// background worker setiap pagi), lalu bangun ulang kalau belum ada hari
-  /// ini. Area H (v2.2.57+115): insight proaktif ringkas — omzet, produk
-  /// terlaris, stok menipis — tanpa biaya AI (hitungan lokal).
-  Future<void> _loadAiInsight() async {
-    if (_aiInsightLoading) return;
-    _aiInsightLoading = true;
-    try {
-      final raw = await SecureStore.read(key: aiInsightStorageKey);
-      Map<String, dynamic>? insight;
-      if (raw != null && raw.isNotEmpty) {
-        try {
-          insight = jsonDecode(raw) as Map<String, dynamic>;
-        } catch (_) {}
-      }
-      final todayKey = _dateKey(DateTime.now());
-      if (insight == null || insight['date_key'] != todayKey) {
-        // Belum ada insight hari ini — bangun sekarang (data sudah ada di DB).
-        final built = await AiInsightWorker.buildInsight();
-        built['date_key'] = todayKey;
-        insight = built;
-        await SecureStore.write(
-          key: aiInsightStorageKey,
-          value: jsonEncode(built),
-        );
-      }
-      if (mounted) setState(() => _aiInsight = insight);
-    } catch (_) {} finally {
-      _aiInsightLoading = false;
-    }
-  }
-
-  String _dateKey(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// Pre-fetch flip card data for the profile card back side.
   Future<void> _fetchCardData(int? employeeId) async {
@@ -2403,15 +2361,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                       ],
 
-                      // AI Insight — rangkuman harian proaktif (Area H)
-                      if (_aiInsight != null) ...[
-                        const SizedBox(height: 12),
-                        _AiInsightCard(
-                          insight: _aiInsight!,
-                          onOpenChat: () => context.push('/ai_chat'),
-                        ),
-                      ],
-
                       // Keuangan summary card
                       if (_financeExpense > 0 || _financeIncome > 0) ...[
                         const SizedBox(height: 12),
@@ -2838,157 +2787,6 @@ class _LicenseExpiryBanner extends StatelessWidget {
 
   static String _fmt(DateTime? d) =>
       d == null ? '—' : '${d.day}/${d.month}/${d.year}';
-}
-
-/// AI Insight card — rangkuman harian proaktif (Area H v2.2.57+115).
-/// Data dari [AiInsightWorker] (SecureStore), dihitung lokal tanpa biaya AI.
-class _AiInsightCard extends StatelessWidget {
-  final Map<String, dynamic> insight;
-  final VoidCallback? onOpenChat;
-  const _AiInsightCard({required this.insight, this.onOpenChat});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final text = insight['text'] as String? ?? '';
-    final omzet = insight['omzet'] as int? ?? 0;
-    final count = insight['count'] as int? ?? 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [NusaConfig.darkSurface, NusaConfig.darkSurface2]
-                : [
-                    NusaConfig.activePrimary.withValues(alpha: 0.08),
-                    NusaConfig.accentPurple.withValues(alpha: 0.08),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? NusaConfig.darkBorder
-                : NusaConfig.activePrimary.withValues(alpha: 0.25),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: NusaConfig.activePrimary.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 16,
-                    color: NusaConfig.activePrimary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    '🤖 AI Insight Hari Ini',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (onOpenChat != null)
-                  InkWell(
-                    onTap: onOpenChat,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Tanya Nusa',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: NusaConfig.activePrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right,
-                            size: 14,
-                            color: NusaConfig.activePrimary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              text,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.45,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-            if (omzet > 0 || count > 0) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _chip('Rp ${_num(omzet)}', NusaConfig.accentGreen, isDark),
-                  const SizedBox(width: 8),
-                  _chip('$count transaksi', NusaConfig.activePrimary, isDark),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(String label, Color color, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: isDark ? color.withValues(alpha: 0.9) : color,
-        ),
-      ),
-    );
-  }
-
-  static String _num(int n) {
-    final s = n.toString();
-    final b = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
-      b.write(s[i]);
-    }
-    return b.toString();
-  }
 }
 
 class _KeuanganSummary extends StatelessWidget {

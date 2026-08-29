@@ -215,8 +215,16 @@ class _CloudSyncChip extends StatelessWidget {
         }
         return GestureDetector(
           onTap: () => _explain(context, st),
-          // v2.2.57+115: tanpa padding — gap diatur 8px oleh parent Row.
-          child: Icon(icon, size: 22, color: color),
+          // v2.2.57+115: semua ikon header 44x44 (tap target seragam) dan
+          // gap 8px diatur parent Row — spacing kanan-kiri ikon seragam.
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(icon, size: 22, color: color),
+          ),
         );
       },
     );
