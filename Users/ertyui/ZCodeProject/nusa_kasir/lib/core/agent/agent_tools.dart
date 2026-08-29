@@ -5,7 +5,6 @@ import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/data/repositories/promo_repository.dart';
-import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
 import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/supplier_repository.dart';
@@ -456,11 +455,11 @@ class AgentToolRegistry {
     final filtered = status != null && status.isNotEmpty
         ? tickets.where((t) => t.status == status).toList()
         : tickets;
-    final list = tickets.take(20).map((t) => {
+    final list = filtered.take(20).map((t) => {
       'id': t.id, 'customer': t.customerName, 'device': t.deviceName,
       'status': t.status, 'estimated_cost': t.estimatedCost,
     }).toList();
-    return jsonEncode({'total': tickets.length, 'tickets': list});
+    return jsonEncode({'total': filtered.length, 'tickets': list});
   }
 
   static Future<String> _getAppointments(AppDatabase db, Map<String, dynamic> args) async {
@@ -470,11 +469,11 @@ class AgentToolRegistry {
     final filtered = status != null && status.isNotEmpty
         ? appointments.where((a) => a.status == status).toList()
         : appointments;
-    final list = appointments.take(20).map((a) => {
+    final list = filtered.take(20).map((a) => {
       'id': a.id, 'customer': a.customerName, 'service': a.service,
       'status': a.status, 'date': '${a.date.day}/${a.date.month}/${a.date.year}',
     }).toList();
-    return jsonEncode({'total': appointments.length, 'appointments': list});
+    return jsonEncode({'total': filtered.length, 'appointments': list});
   }
 
   static Future<String> _getBookingStats(AppDatabase db, Map<String, dynamic> args) async {
@@ -500,11 +499,11 @@ class AgentToolRegistry {
     final filtered = status != null && status.isNotEmpty
         ? prescriptions.where((p) => p.status == status).toList()
         : prescriptions;
-    final list = prescriptions.take(20).map((p) => {
+    final list = filtered.take(20).map((p) => {
       'id': p.id, 'patient': p.patientName, 'doctor': p.doctorName,
       'status': p.status,
     }).toList();
-    return jsonEncode({'total': prescriptions.length, 'prescriptions': list});
+    return jsonEncode({'total': filtered.length, 'prescriptions': list});
   }
 
   static Future<String> _getPrintOrders(AppDatabase db, Map<String, dynamic> args) async {

@@ -1,19 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/ai_service.dart';
-import 'package:nusa_kasir/core/services/nusa_cs_service.dart';
 import 'package:nusa_kasir/core/agent/agent_tools.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/data/database/app_database.dart';
-import 'package:nusa_kasir/data/repositories/product_repository.dart';
-import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
-import 'package:nusa_kasir/data/repositories/promo_repository.dart';
-import 'package:nusa_kasir/data/repositories/customer_repository.dart';
-import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 
 int _maxContextChars = 4000; // ~1K tokens — keep dbContext lean
 
@@ -171,76 +164,35 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     return words.take(6).join(' ') + (words.length > 6 ? '...' : '');
   }
 
-  // ── Database context ─────────────────────────────────────────────────
-  // Keep this LEAN — max ~500 tokens. Detail queries go through tools.
-
-  Future<String> _buildDbContext() async {
-    final sb = StringBuffer();
-    try {
-      final db = ref.read(databaseProvider);
-      final today = DateTime.now();
-
-      if (_storeName != null && _storeName!.isNotEmpty) {
-        sb.writeln('Toko: $_storeName');
-      }
-
-      // Products — count only
-      final products = await ProductRepository(db).getProducts();
-      final habis = products.where((p) => p.stock == 0).length;
-      final menipis = products.where((p) => p.stock > 0 && p.stock <= p.minStock).length;
-      sb.writeln('Produk: ${products.length} total, $habis habis, $menipis menipis');
-
-      // Today + month summary (count + revenue only)
-      final transactions = await ref.read(transactionRepoProvider).getTransactions();
-      final todayTrx = transactions.where((t) => t.date.year == today.year && t.date.month == today.month && t.date.day == today.day).toList();
-      sb.writeln('Transaksi hari ini: ${todayTrx.length}, Rp${todayTrx.fold<int>(0, (s,t) => s+t.total)}');
-      final monthTrx = transactions.where((t) => t.date.year == today.year && t.date.month == today.month).toList();
-      sb.writeln('Transaksi bln ini: ${monthTrx.length}, Rp${monthTrx.fold<int>(0, (s,t) => s+t.total)}');
-
-      // Customer + employee counts
-      try {
-        final customers = await CustomerRepository(db).getCustomers();
-        sb.writeln('Pelanggan: ${customers.length} orang');
-      } catch (_) {}
-      try {
-        final emps = await (db.select(db.employees)).get();
-        sb.writeln('Karyawan: ${emps.length} orang');
-      } catch (_) {}
-
-      // Promo count
-      try {
-        final promos = await PromoRepository(db).getPromos();
-        final active = promos.where((p) => p.status == 'Aktif').length;
-        if (active > 0) sb.writeln('Promo aktif: $active');
-      } catch (_) {}
-
-      // Attendance
-      try {
-        final att = await (db.select(db.attendance)).get();
-        final todayAtt = att.where((a) => a.date.year == today.year && a.date.month == today.month && a.date.day == today.day).toList();
-        sb.writeln('Presensi hari ini: ${todayAtt.length} hadir');
-      } catch (_) {}
-
-      sb.writeln('[GUNAKAN TOOLS untuk data detail — JANGAN mengarang. '
-          'Tools: get_products, get_customers, get_transactions, get_summary, '
-          'get_low_stock, get_top_products, get_promos, get_employees, get_attendance, '
-          'get_expenses, get_debts, get_suppliers]');
-    } catch (_) {
-      sb.writeln('(Data toko tidak tersedia — gunakan tools jika ada)');
-    }
-    return sb.toString();
-  }
-
   Future<void> _loadStoreName() async {
     final name = await ref.read(settingsRepoProvider).getStoreName();
     if (mounted && name.isNotEmpty) setState(() => _storeName = name);
   }
 
-  // ── Send message (with agent tool calling loop) ─────────────────
+  // ── Send message (streaming cloud + agent tool calling loop) ──
+  //
+  // Area H (v2.2.57+115): chat TIDAK lagi ke server lokal Nusa CS — penuh
+  // ke cloud Supabase edge function `ai-assistant` (streaming SSE + tools +
+  // provider configurable + riwayat cloud).
+
+  String? _sessionUuid = '';
+
+  /// Session id untuk cloud history (UUID per chat, konsisten selama layar).
+  String get _cloudSessionId {
+    if (_sessionUuid == null || _sessionUuid!.isEmpty) {
+      _sessionUuid = DateTime.now().microsecondsSinceEpoch.toString();
+    }
+    return _sessionUuid!;
+  }
 
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _loading) return;
+
+    final owner = await AiService.ownerId();
+    final db = ref.read(databaseProvider);
+    final tools = AgentToolRegistry.forVariant();
+    final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
     setState(() {
       _messages.add(ChatMessage(role: 'user', content: text));
@@ -250,52 +202,74 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     _inputCtrl.clear();
     _scrollToBottom();
 
+    // Sliding window: kirim hanya 6 pesan terakhir agar hemat token.
+    final visible = _visibleMessages;
+    final recent = visible.length > 6
+        ? visible.sublist(visible.length - 6)
+        : List<ChatMessage>.from(visible);
+
+    // Stream status bar: provider aktif.
+    final settings = await AiService.getSettings(owner);
+    if (mounted) {
+      setState(() {
+        _thinkingLabel = settings?.isCustom == true
+            ? 'AI: ${settings?.model ?? 'default'} (custom)'
+            : 'AI: ${settings?.model ?? 'default'}...';
+      });
+    }
+
     try {
-      final db = ref.read(databaseProvider);
-      final tools = AgentToolRegistry.forVariant();
-
-      // Sliding window: send only last 6 visible messages to avoid token bloat.
-      // Groq free tier = ~6K tokens/min. Each full-message pass adds 3-5 messages
-      // (user + tool_call + tool_result + assistant). After 2 turns that's 8-10 messages
-      // of 800-2K chars each = 5K-12K tokens → instant 429.
-      final visible = _visibleMessages;
-      final recent = visible.length > 6 ? visible.sublist(visible.length - 6) : visible;
-
       for (int round = 0; round < 2; round++) {
-        var res = AiResponse(reply: 'Maaf, Nusa sedang sibuk (error 429). Coba lagi nanti ya.');
-        // Retry once with backoff on 429
-        for (int attempt = 0; attempt < 2; attempt++) {
-          res = await NusaCsServer.chat(
-            messages: recent,
-            variant: NusaConfig.productId,
-          );
-          // 429 comes back as text reply with "sedang sibuk". If we got tool calls,
-          // it's a real response — proceed immediately.
-          if (res.hasToolCalls) break;
-          final r = res.reply ?? '';
-          if (!r.contains('sedang sibuk')) break;
-          if (attempt == 0) await Future.delayed(const Duration(seconds: 3));
-        }
+        // ── Streaming response ke bubble assistant yang sedang berjalan ──
+        final streamMsg = ChatMessage(role: 'assistant', content: '');
+        if (mounted) setState(() => _messages.add(streamMsg));
+        _scrollToBottom();
 
-        // Tool calls?
-        if (res.hasToolCalls) {
-          final tc = res.toolCalls!.first;
+        // Buffer teks terpisah — ChatMessage.content final, jadi bubble di-replace
+        // tiap token (remove/add) supaya SelectableText ikut ter-update.
+        final buffer = StringBuffer();
+
+        final toolCalls = await AiService.chatStream(
+          messages: recent,
+          tools: toolDefs,
+          storeName: _storeName,
+          owner: owner,
+          sessionId: _cloudSessionId,
+          onEvent: (ev) {
+            if (ev.delta != null && mounted) {
+              buffer.write(ev.delta);
+              final idx = _messages.indexOf(streamMsg);
+              setState(() {
+                if (idx >= 0) {
+                  _messages[idx] = ChatMessage(
+                    role: 'assistant',
+                    content: buffer.toString(),
+                  );
+                }
+              });
+              _scrollToBottom();
+            }
+          },
+        );
+
+        if (!mounted) return;
+
+        // Tool calls? jalankan lokal, lalu lanjut round berikutnya.
+        if (toolCalls != null && toolCalls.isNotEmpty) {
+          final tc = toolCalls.first;
           final tool = tools.where((t) => t.name == tc.name).firstOrNull;
-
-          if (tool != null && mounted) {
+          if (tool != null) {
             setState(() => _thinkingLabel = 'Menjalankan: ${tc.name}...');
             _scrollToBottom();
-
             try {
               final rawResult = await tool.execute(db, tc.arguments);
-              // Cap tool result to ~300 chars to prevent context explosion
               final result = rawResult.length > 350
                   ? '${rawResult.substring(0, 350)}...'
                   : rawResult;
 
               _messages.add(ChatMessage(
                 role: 'assistant',
-                content: '',
+                content: buffer.toString(),
                 toolCallId: tc.id,
                 toolName: tc.name,
                 toolArgs: tc.arguments,
@@ -307,20 +281,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 toolName: tc.name,
               );
               _messages.add(toolMsg);
-              // Also feed into sliding window for next round
               recent.add(ChatMessage(
                 role: 'assistant',
-                content: '',
+                content: buffer.toString(),
                 toolCallId: tc.id,
                 toolName: tc.name,
                 toolArgs: tc.arguments,
               ));
-              recent.add(ChatMessage(
-                role: 'tool',
-                content: result,
-                toolCallId: tc.id,
-                toolName: tc.name,
-              ));
+              recent.add(toolMsg);
             } catch (e) {
               _messages.add(ChatMessage(
                 role: 'tool',
@@ -335,17 +303,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 toolName: tc.name,
               ));
             }
-          } else {
-            break;
+            continue;
           }
-          continue;
         }
 
-        // Text reply — done
+        // Teks selesai
         if (mounted) {
-          final reply = res.reply ?? 'Maaf, tidak ada jawaban.';
           setState(() {
-            _messages.add(ChatMessage(role: 'assistant', content: reply));
             _loading = false;
             _thinkingLabel = '';
           });
@@ -355,11 +319,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         return;
       }
 
-      // Exhausted rounds
+      // Rounds habis tanpa jawaban teks
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
-              role: 'assistant', content: 'Saya sudah mencari datanya tapi belum menemukan jawaban yang tepat. Coba tanyakan dengan kata kunci yang lebih spesifik ya.'));
+            role: 'assistant',
+            content: 'Saya sudah mencari datanya tapi belum menemukan jawaban yang tepat. Coba tanyakan dengan kata kunci yang lebih spesifik ya.',
+          ));
           _loading = false;
           _thinkingLabel = '';
         });
