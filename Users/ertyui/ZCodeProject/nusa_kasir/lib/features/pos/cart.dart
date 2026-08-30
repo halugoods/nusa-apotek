@@ -90,18 +90,27 @@ class CartItem {
     return base > unitPrice || discountPerItem != null;
   }
 
-  /// Potongan diskon per SATUAN (gabungan harga sementara + diskon per qty).
-  /// Dipakai subtotal & baris "Disc." di struk.
-  int get effectiveDiscountPerItem =>
-      ((originalPrice ?? unitPrice) - unitPrice).clamp(0, (originalPrice ?? unitPrice)) +
-      (discountPerItem ?? 0);
+  /// Potongan diskon per SATUAN (v2.2.57+119): diskon produk/grosir SUDAH
+  /// tercermin di [unitPrice] — tidak boleh dihitung lagi. Hanya
+  /// [discountPerItem] (fitur "Ubah Diskon" di keranjang, +116) yang
+  /// ditambahkan sebagai potongan tambahan.
+  ///
+  /// FIX dobel diskon (+119): sebelumnya `(originalPrice - unitPrice)` ikut
+  /// dijumlahkan di sini, padahal [subtotal]/checkout/struk sudah memakai
+  /// [unitPrice] (harga final). Akibatnya produk berdiskon dari menu Produk
+  /// (87500 → diskon 37500) dihitung diskonnya DUA KALI → total 12500.
+  int get effectiveDiscountPerItem => (discountPerItem ?? 0).clamp(
+        0,
+        unitPrice,
+      );
 
   /// Nominal total diskon item (per satuan × qty / berat).
   int get itemDiscountTotal => (effectiveDiscountPerItem *
           (isPerKg ? 1 : qty));
 
   /// Subtotal — harga SEMENTARA (tempPrice) bila ada, sisanya [price].
-  /// Diskon per satuan TIDAK dikurangkan di sini (dipotong di transaksi
+  /// Sudah = harga final (diskon produk/grosir tercermin di [unitPrice]).
+  /// [discountPerItem] TIDAK dikurangkan di sini (dipotong di transaksi
   /// total via [itemDiscountTotal], konsisten baris "Disc." struk).
   int get subtotal {
     final base = isPerKg ? (unitPrice * weightKg!).ceil() : unitPrice * qty;

@@ -89,13 +89,19 @@ class ToolCall {
 
   const ToolCall({required this.id, required this.name, required this.arguments});
 
-  factory ToolCall.fromJson(Map<String, dynamic> json) => ToolCall(
-        id: json['id'] as String? ?? '',
-        name: json['function']?['name'] as String? ?? '',
-        arguments: (json['function']?['arguments'] as String?)?.isNotEmpty == true
-            ? _safeJsonDecode(json['function']['arguments'] as String)
-            : {},
-      );
+  factory ToolCall.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '';
+    return ToolCall(
+      // v2.2.57+119: sebagian provider (OpenRouter/Groq) streaming tidak
+      // mengirim `id` per tool call. Kalau dibiarkan kosong, pesan role:'tool'
+      // dengan tool_call_id '' ditolak provider (400) — synthesikan id unik.
+      id: id.isNotEmpty ? id : 'tc_${DateTime.now().microsecondsSinceEpoch}',
+      name: json['function']?['name'] as String? ?? '',
+      arguments: (json['function']?['arguments'] as String?)?.isNotEmpty == true
+          ? _safeJsonDecode(json['function']['arguments'] as String)
+          : {},
+    );
+  }
 
   static Map<String, dynamic> _safeJsonDecode(String s) {
     try {
@@ -413,7 +419,16 @@ class AiService {
             final deltas = json['tool_calls_delta'] as List;
             for (final d in deltas) {
               final dMap = d as Map<String, dynamic>;
-              final idx = dMap['index'] as int? ?? 0;
+              // v2.2.57+119: beberapa provider (OpenRouter/Gemini) mengirim
+              // tool_calls LENGKAP dalam 1 chunk TANPA field `index` (bukan
+              // delta). Kalau dipaksa masuk index 0, tool call ke-2 dst akan
+              // tercampur ke tool pertama → arguments rusak & tool tidak jalan.
+              // Selalu generate index berurutan untuk chunk tanpa index.
+              final idx = dMap['index'] as int? ??
+                  toolCallIndex.keys.fold<int>(
+                    0,
+                    (max, k) => k + 1 > max ? k + 1 : max,
+                  );
               final entry = toolCallIndex.putIfAbsent(idx, () => {
                     'id': dMap['id'] as String? ?? '',
                     'type': 'function',

@@ -38,15 +38,16 @@ class ReceiptItem {
   bool get isPerKg => weightKg != null;
 
   /// Harga per unit efektif (setelah harga sementara & diskon per satuan).
+  /// FIX dobel diskon (+119): harga yang TERSIMPAN (price) sudah merupakan
+  /// harga final (termasuk diskon produk/grosir). Hanya [discountPerItem]
+  /// yang jadi potongan TAMBAHAN.
   int get unitPrice => price;
   bool get hasDiscount =>
       (originalPrice != null && originalPrice! > price) ||
       (discountPerItem != null && discountPerItem! > 0);
-  int get discountNominal =>
-      (hasDiscount && originalPrice != null && originalPrice! > price
-          ? originalPrice! - price
-          : 0) +
-      (discountPerItem ?? 0);
+  /// Potongan per SATUAN — diskon produk (originalPrice - price) TIDAK
+  /// dihitung lagi (sudah tercermin di [price]). Hanya discountPerItem.
+  int get discountNominal => discountPerItem ?? 0;
   int get subtotal =>
       isPerKg
           ? (price * weightKg!).ceil() - (discountPerItem ?? 0)

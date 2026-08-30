@@ -299,4 +299,76 @@ void main() {
       expect(n.state.single.originalPrice, 12000);
     });
   });
+
+  group('FIX dobel diskon (v2.2.57+119)', () {
+    test('produk berdiskon: unitPrice sudah final, itemDiscountTotal = 0', () {
+      // Produk: harga 87500, diskon 37500 → effectivePrice 50000 (dari menu
+      // Produk). originalPrice = coret 87500. Tanpa discountPerItem manual,
+      // diskon produk TIDAK boleh dihitung lagi di itemDiscountTotal.
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk Diskon', 50000, originalPrice: 87500);
+      final item = n.state.single;
+      expect(item.unitPrice, 50000);
+      expect(item.hasDiscount, isTrue);
+      expect(item.effectiveDiscountPerItem, 0);
+      expect(item.itemDiscountTotal, 0);
+      // Subtotal pakai harga final 50000 (bukan 12500!).
+      expect(item.subtotal, 50000);
+      // Total keranjang = 50000 (dulu kedobel → 12500).
+      expect(n.total, 50000);
+    });
+
+    test('diskon per satuan manual tetap jalan (tidak nol)', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk', 50000);
+      n.setDiscountPerItem(1, 10000);
+      final item = n.state.single;
+      expect(item.effectiveDiscountPerItem, 10000);
+      expect(item.itemDiscountTotal, 10000);
+      // Subtotal = harga final (diskon manual dipotong di total transaksi
+      // lewat itemDiscountTotal — total keranjang POS = subtotal murni).
+      expect(item.subtotal, 50000);
+      expect(n.total, 50000);
+      // Nilai yang sampai ke checkout: subtotal - itemDiscountTotal.
+      expect(n.total - item.itemDiscountTotal, 40000);
+    });
+
+    test('produk berdiskon + diskon manual = TAMBAH diskon manual SAJA (tidak dobel)', () {
+      // Produk 87500 → diskon 37500 → 50000. User tambah diskon manual 5000
+      // → 45000 di checkout (dulu dobel: 87500-37500-37500-5000 = 7500).
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk Diskon', 50000, originalPrice: 87500);
+      n.setDiscountPerItem(1, 5000);
+      final item = n.state.single;
+      expect(item.unitPrice, 50000);
+      expect(item.effectiveDiscountPerItem, 5000);
+      expect(item.itemDiscountTotal, 5000);
+      expect(item.subtotal, 50000);
+      // Di checkout: 50000 - 5000 = 45000 (hanya diskon manual, tidak dobel).
+      expect(n.total - item.itemDiscountTotal, 45000);
+    });
+
+    test('diskon manual tidak boleh lebih besar dari harga unit', () {
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk', 30000);
+      n.setDiscountPerItem(1, 50000);
+      expect(n.state.single.effectiveDiscountPerItem, 30000);
+      expect(n.state.single.itemDiscountTotal, 30000);
+    });
+
+    test('tempPrice (harga sementara) + discountPerItem tidak dobel', () {
+      // Harga sementara 40000 dari harga normal 50000 → coret 50000.
+      // User tambah diskon manual 5000 → di checkout 35000 (bukan 30000).
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk', 50000, originalPrice: 50000);
+      n.setTempPrice(1, 40000);
+      n.setDiscountPerItem(1, 5000);
+      final item = n.state.single;
+      expect(item.unitPrice, 40000);
+      expect(item.effectiveDiscountPerItem, 5000);
+      expect(item.itemDiscountTotal, 5000);
+      expect(item.subtotal, 40000);
+      expect(n.total - item.itemDiscountTotal, 35000);
+    });
+  });
 }

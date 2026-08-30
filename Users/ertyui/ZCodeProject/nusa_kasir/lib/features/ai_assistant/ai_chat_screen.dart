@@ -25,7 +25,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   String? _storeName;
   int? _activeSessionId;
   List<ChatSession> _sessions = [];
-  List<Map<String, dynamic>> _cloudSessions = [];
   bool _showSessions = false;
 
   // Drawer animation
@@ -86,8 +85,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
   // ── Session management ──────────────────────────────────────────────
 
-  /// Muat riwayat sesi: lokal (SQLite `chat_sessions`) + cloud
-  /// (`ai_chat_history` via edge fn ai-assistant — Area H).
+  /// Muat riwayat sesi: lokal (SQLite `chat_sessions`) saja.
+  /// v2.2.57+119: riwayat chat TIDAK lagi dibedakan cloud vs local —
+  /// cukup local (perangkat ini).
   Future<void> _loadSessions() async {
     try {
       final db = ref.read(databaseProvider);
@@ -95,14 +95,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         ..orderBy([(t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)]))
         .get();
       if (mounted) setState(() => _sessions = rows);
-    } catch (_) {}
-    // Cloud history — best effort (login Google/PIN belum tentu ada).
-    try {
-      final owner = await AiService.ownerId();
-      if (owner != null && owner.isNotEmpty) {
-        final cloud = await AiService.getHistory(owner: owner);
-        if (mounted) setState(() => _cloudSessions = cloud);
-      }
     } catch (_) {}
   }
 
@@ -155,77 +147,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     } catch (_) {}
   }
 
-  // ── Cloud session (Area H: riwayat chat cloud) ──
-
-  /// Buka sesi chat dari cloud — muat pesan lengkap dari `ai_chat_history`.
-  Future<void> _loadCloudSession(Map<String, dynamic> s) async {
-    try {
-      final owner = await AiService.ownerId();
-      final sid = s['session_id'] as String? ?? '';
-      if (owner == null || sid.isEmpty) return;
-      final rows = await AiService.getHistoryMessages(owner: owner, sessionId: sid);
-      if (rows.isEmpty) return;
-
-      final msgs = <ChatMessage>[];
-      for (final r in rows) {
-        final role = r['role'] as String? ?? '';
-        final content = r['content'] as String? ?? '';
-        msgs.add(ChatMessage(
-          role: role,
-          content: content,
-          timestamp: DateTime.tryParse(r['created_at'] as String? ?? '') ?? DateTime.now(),
-          toolCallId: r['tool_call_id'] as String?,
-          toolName: r['tool_name'] as String?,
-          toolArgs: r['tool_args'] != null
-              ? (r['tool_args'] is Map<String, dynamic>
-                  ? r['tool_args'] as Map<String, dynamic>
-                  : _safeMap(r['tool_args']))
-              : null,
-        ));
-      }
-      if (msgs.isNotEmpty && mounted) {
-        // Pakai session_id cloud sebagai identitas sesi aktif supaya
-        // pertanyaan berikutnya masuk ke sesi cloud yang sama.
-        _sessionUuid = sid;
-        setState(() {
-          _messages.clear();
-          _messages.addAll(msgs);
-          _activeSessionId = null; // bukan sesi lokal
-        });
-        _toggleDrawer();
-        _scrollToBottom();
-      }
-    } catch (_) {}
-  }
-
-  static Map<String, dynamic> _safeMap(dynamic v) {
-    try {
-      if (v is Map<String, dynamic>) return v;
-      return jsonDecode(v as String) as Map<String, dynamic>;
-    } catch (_) {
-      return {};
-    }
-  }
-
-  Future<void> _deleteCloudSession(Map<String, dynamic> s) async {
-    try {
-      final owner = await AiService.ownerId();
-      final sid = s['session_id'] as String? ?? '';
-      if (owner == null || sid.isEmpty) return;
-      final ok = await AiService.deleteHistory(owner: owner, sessionId: sid);
-      if (ok && mounted) {
-        setState(() {
-          _cloudSessions = _cloudSessions
-              .where((c) => c['session_id'] != sid)
-              .toList();
-        });
-      }
-    } catch (_) {}
-  }
+  // v2.2.57+119: riwayat chat DIHAPUS dari cloud — cukup local saja.
+  // (Blok kode cloud dihapus total; lihat _loadSessions/_newChat.)
 
   void _newChat() {
     _saveSession();
-    _sessionUuid = null; // sesi cloud baru (area H)
     setState(() {
       _messages.clear();
       _activeSessionId = null;
@@ -253,17 +179,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   //
   // Area H (v2.2.57+115): chat TIDAK lagi ke server lokal Nusa CS — penuh
   // ke cloud Supabase edge function `ai-assistant` (streaming SSE + tools +
-  // provider configurable + riwayat cloud).
-
-  String? _sessionUuid = '';
-
-  /// Session id untuk cloud history (UUID per chat, konsisten selama layar).
-  String get _cloudSessionId {
-    if (_sessionUuid == null || _sessionUuid!.isEmpty) {
-      _sessionUuid = DateTime.now().microsecondsSinceEpoch.toString();
-    }
-    return _sessionUuid!;
-  }
+  // provider configurable). Riwayat chat lokal (v2.2.57+119).
 
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
@@ -300,25 +216,27 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
     try {
       for (int round = 0; round < 2; round++) {
-        // ── Streaming response ke bubble assistant yang sedang berjalan ──
-        final streamMsg = ChatMessage(role: 'assistant', content: '');
-        if (mounted) setState(() => _messages.add(streamMsg));
-        _scrollToBottom();
-
         // Buffer teks terpisah — ChatMessage.content final, jadi bubble di-replace
         // tiap token (remove/add) supaya SelectableText ikut ter-update.
         final buffer = StringBuffer();
+
+        // v2.2.57+119: indexOf(streamMsg) memakai identitas (==) — setelah
+        // bubble pertama diganti instance baru, indexOf selalu -1 → bubble
+        // beku di token pertama. Iterasi manual dengan identitas field lebih
+        // aman & tidak bergantung urutan List.
+        final streamMsg = ChatMessage(role: 'assistant', content: '');
+        if (mounted) setState(() => _messages.add(streamMsg));
+        _scrollToBottom();
 
         final toolCalls = await AiService.chatStream(
           messages: recent,
           tools: toolDefs,
           storeName: _storeName,
           owner: owner,
-          sessionId: _cloudSessionId,
           onEvent: (ev) {
             if (ev.delta != null && mounted) {
               buffer.write(ev.delta);
-              final idx = _messages.indexOf(streamMsg);
+              final idx = _indexOfMessage(streamMsg);
               setState(() {
                 if (idx >= 0) {
                   _messages[idx] = ChatMessage(
@@ -336,15 +254,23 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
         // Tool calls? jalankan lokal, lalu lanjut round berikutnya.
         if (toolCalls != null && toolCalls.isNotEmpty) {
-          final tc = toolCalls.first;
+          // v2.2.57+119: hanya tool call TERAKHIR yang dieksekusi — kalau
+          // model minta banyak tool sekaligus, menjalankan semuanya bikin
+          // jawaban berantakan & tidak nyambung. Model bisa memanggil lagi
+          // di round berikutnya.
+          final tc = toolCalls.last;
           final tool = tools.where((t) => t.name == tc.name).firstOrNull;
           if (tool != null) {
             setState(() => _thinkingLabel = 'Menjalankan: ${tc.name}...');
             _scrollToBottom();
             try {
               final rawResult = await tool.execute(db, tc.arguments);
-              final result = rawResult.length > 350
-                  ? '${rawResult.substring(0, 350)}...'
+              // v2.2.57+119: truncation diperlonggar (350 → 2000 char) + ada
+              // penanda "...(dipotong)" supaya model tahu datanya tidak utuh
+              // dan TIDAK mengarang angka yang tidak ada di potongan.
+              final truncated = rawResult.length > 2000;
+              final result = truncated
+                  ? '${rawResult.substring(0, 2000)}\n...(hasil dipotong, ${rawResult.length} karakter total)'
                   : rawResult;
 
               _messages.add(ChatMessage(
@@ -419,6 +345,15 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         });
       }
     }
+  }
+
+  /// Cari index pesan dengan identitas objek — aman walau instance di dalam
+  /// list sudah diganti (bubble streaming di-replace tiap token).
+  int _indexOfMessage(ChatMessage needle) {
+    for (int i = 0; i < _messages.length; i++) {
+      if (identical(_messages[i], needle)) return i;
+    }
+    return -1;
   }
 
   void _scrollToBottom() {
@@ -531,7 +466,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           ),
           const Divider(),
           Expanded(
-            child: (_sessions.isEmpty && _cloudSessions.isEmpty)
+            child: _sessions.isEmpty
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -543,46 +478,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                   )
                 : ListView(
                     children: [
-                      // ── Riwayat cloud (Area H) ──
-                      if (_cloudSessions.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                          child: Text('Di Cloud',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                        ),
-                        ..._cloudSessions.map((s) {
-                          final title = s['title'] as String? ?? 'Chat';
-                          final created = s['created_at'] as String? ?? '';
-                          return ListTile(
-                            dense: true,
-                            leading: Icon(Icons.cloud_outlined, size: 16,
-                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                            title: Text(title,
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                            subtitle: Text(
-                              _formatCloudDate(created),
-                              style: TextStyle(fontSize: 11,
-                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 16),
-                              onPressed: () => _deleteCloudSession(s),
-                            ),
-                            onTap: () => _loadCloudSession(s),
-                          );
-                        }),
-                        const Divider(),
-                      ],
-                      // ── Riwayat lokal (perangkat ini) ──
+                      // ── Riwayat lokal (perangkat ini) — v2.2.57+119:
+                      // riwayat chat cukup local saja (tidak dibedakan cloud).
                       if (_sessions.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                          child: Text('Di Perangkat Ini',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-                        ),
                         ..._sessions.map((s) {
                           final active = s.id == _activeSessionId;
                           return ListTile(
@@ -955,12 +853,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     if (diff.inHours < 24) return '${diff.inHours}j yg lalu';
     if (diff.inDays < 7) return '${diff.inDays}h yg lalu';
     return '${dt.day}/${dt.month}/${dt.year}';
-  }
-
-  String _formatCloudDate(String iso) {
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return '';
-    return _formatDate(dt.toLocal());
   }
 
   String _formatTime(DateTime dt) {
