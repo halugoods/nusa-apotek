@@ -11,6 +11,13 @@ import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 
+/// Google Sheets Terpusat (v2.2.57+121) — Company API via edge fn
+/// `sheets-admin` di nusa-online.
+///
+/// App TIDAK login Google lagi. Spreadsheet dibuat server (service account
+/// NUSA) atas nama user; app cukup kirim `user_id` canonical + rows + request
+/// format JSON. Link KONTINU: 1 spreadsheet per user, dibuat sekali, dipakai
+/// terus untuk semua pembukuan.
 class SpreadsheetScreen extends ConsumerStatefulWidget {
   SpreadsheetScreen({super.key});
   @override
@@ -19,20 +26,20 @@ class SpreadsheetScreen extends ConsumerStatefulWidget {
 
 class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
   SpreadsheetService? _svc;
-  String? _spreadsheetId;
+  String? _spreadsheetUrl;
   String _userEmail = '';
+  String _storeName = '';
+  String _error = '';
   bool _connecting = false;
   bool _syncing = false;
   String _syncingTab = '';
   final Map<String, DateTime?> _lastSync = {};
   int _syncedCount = 0;
   int _totalCount = 0;
-  String projectId = '';
-  String sheetsApiEnableUrl = '';
 
-  // All tabs (10 total)
+  // All tabs (10 total) — urutan sama dengan server (tab pertama = Laporan).
   static const _allTabs = [
-    'Produk', 'Transaksi', 'Stok', 'Laporan', 'Keuangan',
+    'Laporan', 'Produk', 'Transaksi', 'Stok', 'Keuangan',
     'Karyawan', 'Pelanggan', 'Supplier', 'Promo', 'Presensi',
   ];
 
@@ -45,246 +52,64 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
   Future<void> _init() async {
     _svc = SpreadsheetService(ref.read(databaseProvider));
     final savedEmail = await SecureStore.getSheetsEmail();
-    final savedSheetId = await SecureStore.getSheetsId();
-
-    // Try silent restore (no popup). Only works if user previously signed in
-    // AND granted Sheets scope. If the restored token lacks Sheets scope,
-    // we clear and ask for re-login — never keep a bad session.
-    if (savedEmail != null) {
-      try {
-        final account = await _svc!.signInSilently();
-        if (account != null) {
-          final accessErr = await _svc!.verifyAccess();
-          if (accessErr.isEmpty) {
-            // Good session — restore
-            if (mounted) {
-              setState(() {
-                _userEmail = account.email;
-                _spreadsheetId = savedSheetId;
-              });
-            }
-            return;
-          }
-          // Session restored but no Sheets scope — clear it
-          debugPrint('[Spreadsheet] silent session lacks Sheets scope, clearing');
-        }
-      } catch (e) {
-        debugPrint('[Spreadsheet] signInSilently threw: $e');
-      }
-    }
-
-    // Fallback: show saved email but no active session
-    if (savedEmail != null && mounted) {
-      setState(() {
-        _userEmail = savedEmail;
-        _spreadsheetId = savedSheetId;
-      });
-    }
-  }
-
-  Future<void> _signIn() async {
-    setState(() => _connecting = true);
-
-    try {
-      // If a previous session exists, disconnect it first to force a clean
-      // sign-in that explicitly asks for Sheets permission.
-      // Only call disconnect if there's an actual signed-in user, otherwise
-      // disconnect() throws and we eat the real error in the outer catch.
-      if (_svc!.isSignedIn) {
-        try {
-          await _svc!.signOut();
-        } catch (_) {
-          // Fine — nothing to disconnect
-        }
-      }
-
-      // Fresh sign-in — this will show the Google consent screen
-      // that explicitly asks for Spreadsheet permission.
-      final account = await _svc!.signIn();
-      if (account == null || !mounted) {
-        setState(() => _connecting = false);
-        return;
-      }
-
-      // Verify the token actually has Sheets access
-      final err = await _svc!.verifyAccess();
-      if (err.isNotEmpty && mounted) {
-        setState(() => _connecting = false);
-        TopToast.error(context, err);
-        return;
-      }
-
-      // Save & restore
-      final email = account.email;
-      await SecureStore.saveSheetsEmail(email);
-      final savedId = await SecureStore.getSheetsId();
-      if (mounted) {
-        setState(() {
-          _userEmail = email;
-          _spreadsheetId = (savedId != null && savedId.isNotEmpty) ? savedId : null;
-          _connecting = false;
-        });
-        TopToast.success(context, 'Login berhasil — siap membuat spreadsheet');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _connecting = false);
-        TopToast.error(context, 'Gagal login — periksa koneksi internet');
-      }
-    }
-  }
-
-  Future<void> _signOut() async {
-    try {
-      await _svc!.signOut();
-    } catch (_) {}
-    await SecureStore.clearSheetsTokens();
-    await SecureStore.clearSheetsEmail();
-    await SecureStore.clearSheetsId();
+    final savedUrl = await SecureStore.getSheetsId();
+    final storeName = await _svc!.storeName();
     if (mounted) {
       setState(() {
-        _userEmail = '';
-        _spreadsheetId = null;
-        _lastSync.clear();
+        _userEmail = savedEmail ?? '';
+        _storeName = storeName;
+        _spreadsheetUrl = (savedUrl != null && savedUrl.isNotEmpty) ? savedUrl : null;
       });
     }
   }
 
-  Future<void> _createSheet() async {
-    final email = _userEmail;
-    if (email.isEmpty) return;
-
-    if (_svc == null) {
-      TopToast.error(context, 'Gagal terhubung ke Google — silakan login ulang');
+  /// Siapkan spreadsheet user: buka link kontinu yang sudah ada, atau buat
+  /// baru kalau belum pernah (create_spreadsheet via server).
+  Future<void> _prepare() async {
+    final svc = _svc;
+    final uid = await SpreadsheetService.uid();
+    if (svc == null || uid == null) {
+      if (mounted) TopToast.error(context, 'Identitas akun belum tersedia — coba buka ulang app.');
       return;
     }
 
-    setState(() => _connecting = true);
+    setState(() {
+      _connecting = true;
+      _error = '';
+    });
 
-    try {
-      // Verify access before attempting create
-      final verifyErr = await _svc!.verifyAccess();
-      if (verifyErr.isNotEmpty) {
-        if (mounted) {
-          setState(() => _connecting = false);
-          TopToast.error(context, 'Sesi login kadaluarsa — silakan login ulang');
-          _signIn();
-        }
-        return;
-      }
+    final email = (await svc.email()).isNotEmpty
+        ? await svc.email()
+        : _userEmail;
 
-      final id = await _svc!.findOrCreate(email);
-      if (id != null && id.isNotEmpty && mounted) {
-        await SecureStore.saveSheetsId(id);
-        setState(() {
-          _spreadsheetId = id;
-          _connecting = false;
-        });
-        TopToast.success(context, 'Spreadsheet dibuat — sinkron data otomatis...');
-        _syncAll();
-      } else if (mounted) {
-        setState(() => _connecting = false);
-        TopToast.error(context, 'Gagal membuat spreadsheet di Google Drive.\n'
-            'Pastikan Google Drive Anda aktif dan coba lagi.');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _connecting = false);
-        final msg = e.toString();
-        if (msg.contains('apiNotEnabled') || msg.contains('403') || msg.contains('disabled')) {
-          _showApiSetupDialog();
-        } else if (msg.contains('quota') || msg.contains('429')) {
-          TopToast.error(context, 'Kuota Google Sheets tercapai. Coba beberapa saat lagi.');
-        } else {
-          TopToast.error(context, 'Gagal membuat spreadsheet.\n$msg');
-        }
-      }
-    }
-  }
-
-  void _showApiSetupDialog() {
-    // Direct link to enable Sheets API in Google Cloud Console
-    // Uses the Firebase project ID from google-services.json
-    projectId = 'nusa-kasir-hgds-36c2f';
-    sheetsApiEnableUrl =
-        'https://console.cloud.google.com/apis/library/sheets.googleapis.com'
-        '?project=$projectId';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(children: [
-          Icon(Icons.info_outline, color: NusaConfig.accentGold, size: 24),
-          SizedBox(width: 10),
-          Expanded(child: Text('Google Sheets API', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
-        ]),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              'Google Sheets API belum diaktifkan untuk project Firebase Anda.',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.4),
-            ),
-            SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: NusaConfig.accentGold.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: NusaConfig.accentGold.withValues(alpha: 0.25)),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Icon(Icons.lightbulb_outline, size: 18, color: NusaConfig.accentGold),
-                  SizedBox(width: 6),
-                  Text('1-Klik Setup', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: NusaConfig.accentGold)),
-                ]),
-                SizedBox(height: 4),
-                Text(
-                  'Tombol di bawah akan membuka halaman Google Cloud Console\n'
-                  'langsung ke Google Sheets API. Klik ENABLE, lalu tunggu 1-2 menit.',
-                  style: TextStyle(fontSize: 12, height: 1.5),
-                ),
-              ]),
-            ),
-            SizedBox(height: 14),
-            Text(
-              'Manual:',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 6),
-            Text(
-              '1. console.cloud.google.com\n'
-              '2. Pilih project "nusa-kasir-hgds-36c2f"\n'
-              '3. APIs & Services → Library\n'
-              '4. Cari "Google Sheets API" → Enable\n'
-              '5. Tunggu 1-2 menit, lalu coba lagi',
-              style: TextStyle(fontSize: 12, height: 1.7),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Tutup')),
-          SizedBox(width: 4),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _openUrl(sheetsApiEnableUrl);
-            },
-            icon: Icon(Icons.open_in_browser, size: 18),
-            label: Text('Buka Google Cloud Console'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF1A73E8),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-          ),
-        ],
-      ),
+    final result = await svc.prepare(
+      userId: uid,
+      email: email,
+      storeName: _storeName,
     );
+
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _connecting = false;
+        _error = result.error!;
+      });
+      TopToast.error(context, result.error!);
+      return;
+    }
+
+    await SecureStore.saveSheetsEmail(email);
+    setState(() {
+      _connecting = false;
+      _spreadsheetUrl = result.url;
+    });
+    TopToast.success(
+      context,
+      result.createdNow
+          ? 'Spreadsheet dibuat — mulai sinkron data...'
+          : 'Spreadsheet ditemukan — melanjutkan pembukuan lama',
+    );
+    _syncAll();
   }
 
   void _openUrl(String url) {
@@ -295,15 +120,28 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
     }
   }
 
-  Future<void> _syncTab(String tab) async {
-    if (_spreadsheetId == null || _svc == null) return;
-
-    // Quick access check before syncing
-    final verifyErr = await _svc!.verifyAccess();
-    if (verifyErr.isNotEmpty) {
-      if (mounted) TopToast.error(context, verifyErr);
-      return;
+  void _reset() async {
+    await SecureStore.clearSheetsEmail();
+    await SecureStore.clearSheetsId();
+    if (mounted) {
+      setState(() {
+        _userEmail = '';
+        _spreadsheetUrl = null;
+        _lastSync.clear();
+        _error = '';
+      });
     }
+    TopToast.success(context, 'Koneksi spreadsheet diputus');
+  }
+
+  Future<void> _syncTab(String tab) async {
+    final svc = _svc;
+    final uid = await SpreadsheetService.uid();
+    final url = _spreadsheetUrl;
+    if (svc == null || uid == null || url == null) return;
+
+    final id = _idFromUrl(url);
+    if (id == null) return;
 
     setState(() {
       _syncing = true;
@@ -311,16 +149,16 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
     });
     SyncResult result;
     switch (tab) {
-      case 'Produk':    result = await _svc!.syncProducts(_spreadsheetId!); break;
-      case 'Transaksi': result = await _svc!.syncTransactions(_spreadsheetId!); break;
-      case 'Stok':      result = await _svc!.syncStock(_spreadsheetId!); break;
-      case 'Laporan':   result = await _svc!.syncLaporan(_spreadsheetId!); break;
-      case 'Keuangan':  result = await _svc!.syncKeuangan(_spreadsheetId!); break;
-      case 'Karyawan':  result = await _svc!.syncKaryawan(_spreadsheetId!); break;
-      case 'Pelanggan': result = await _svc!.syncPelanggan(_spreadsheetId!); break;
-      case 'Supplier':  result = await _svc!.syncSupplier(_spreadsheetId!); break;
-      case 'Promo':     result = await _svc!.syncPromo(_spreadsheetId!); break;
-      case 'Presensi':  result = await _svc!.syncPresensi(_spreadsheetId!); break;
+      case 'Produk':    result = await svc.syncProducts(uid, id); break;
+      case 'Transaksi': result = await svc.syncTransactions(uid, id); break;
+      case 'Stok':      result = await svc.syncStock(uid, id); break;
+      case 'Laporan':   result = await svc.syncLaporan(uid, id, _storeName); break;
+      case 'Keuangan':  result = await svc.syncKeuangan(uid, id); break;
+      case 'Karyawan':  result = await svc.syncKaryawan(uid, id); break;
+      case 'Pelanggan': result = await svc.syncPelanggan(uid, id); break;
+      case 'Supplier':  result = await svc.syncSupplier(uid, id); break;
+      case 'Promo':     result = await svc.syncPromo(uid, id); break;
+      case 'Presensi':  result = await svc.syncPresensi(uid, id); break;
       default: return;
     }
     if (mounted) {
@@ -338,14 +176,13 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
   }
 
   Future<void> _syncAll() async {
-    if (_spreadsheetId == null || _svc == null) return;
+    final svc = _svc;
+    final uid = await SpreadsheetService.uid();
+    final url = _spreadsheetUrl;
+    if (svc == null || uid == null || url == null) return;
 
-    // Quick access check before syncing
-    final verifyErr = await _svc!.verifyAccess();
-    if (verifyErr.isNotEmpty) {
-      if (mounted) TopToast.error(context, verifyErr);
-      return;
-    }
+    final id = _idFromUrl(url);
+    if (id == null) return;
 
     setState(() {
       _syncing = true;
@@ -353,12 +190,10 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
       _syncedCount = 0;
       _totalCount = _allTabs.length;
     });
-    final results = await _svc!.syncAll(_spreadsheetId!);
-    int okCount = 0;
+    final results = await svc.syncAll(uid, id, _storeName);
     final errors = <String>[];
     for (final r in results) {
       if (r.ok) {
-        okCount++;
         if (mounted) _lastSync[r.tab] = DateTime.now();
       } else if (r.error != null) {
         errors.add('${r.tab}: ${r.error}');
@@ -381,6 +216,12 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
     }
   }
 
+  /// Ekstrak spreadsheet id dari URL Google Sheets.
+  static String? _idFromUrl(String url) {
+    final m = RegExp(r'/spreadsheets/d/([a-zA-Z0-9-_]+)').firstMatch(url);
+    return m?.group(1);
+  }
+
   String _lastSyncText(String tab) {
     final dt = _lastSync[tab];
     if (dt == null) return 'Belum';
@@ -393,10 +234,10 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
 
   // Icons per tab
   static const _tabIcons = {
+    'Laporan': Icons.paid_outlined,
     'Produk': Icons.inventory_2_outlined,
     'Transaksi': Icons.receipt_long_outlined,
     'Stok': Icons.view_module_outlined,
-    'Laporan': Icons.paid_outlined,
     'Keuangan': Icons.account_balance_wallet_outlined,
     'Karyawan': Icons.people_outline,
     'Pelanggan': Icons.person_outline,
@@ -410,6 +251,7 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textPri = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
     final textTer = isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+    final connected = _spreadsheetUrl != null;
 
     return ScreenScaffold(
       'Spreadsheet',
@@ -425,25 +267,27 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
               Container(
                 width: 42, height: 42,
                 decoration: BoxDecoration(
-                  color: _userEmail.isNotEmpty
+                  color: connected
                       ? NusaConfig.accentGreen.withValues(alpha: 0.12)
                       : NusaConfig.textTertiary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  _userEmail.isNotEmpty ? Icons.check_circle_rounded : Icons.cloud_off_rounded,
-                  color: _userEmail.isNotEmpty ? NusaConfig.accentGreen : NusaConfig.textTertiary,
+                  connected ? Icons.check_circle_rounded : Icons.cloud_off_rounded,
+                  color: connected ? NusaConfig.accentGreen : NusaConfig.textTertiary,
                   size: 22,
                 ),
               ),
               SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_userEmail.isNotEmpty ? 'Terhubung' : 'Belum Terhubung',
+                  Text(connected ? 'Spreadsheet Aktif' : 'Belum Ada Spreadsheet',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textPri)),
                   SizedBox(height: 2),
                   Text(
-                    _userEmail.isNotEmpty ? _userEmail : 'Login Google untuk sinkronisasi',
+                    connected
+                        ? (_userEmail.isNotEmpty ? _userEmail : 'Data pembukuan Anda')
+                        : 'Data pembukuan tersimpan otomatis di Google Sheets',
                     style: TextStyle(fontSize: 12, color: textTer),
                   ),
                 ]),
@@ -452,24 +296,20 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
           )),
           SizedBox(height: 16),
 
-          // ── Not connected → Login button ──
-          if (_userEmail.isEmpty) ...[
+          if (!connected) ...[
             SizedBox(
               width: double.infinity,
               child: NusaButton(
-                _connecting ? 'Menghubungkan...' : 'Login dengan Google',
-                onPressed: _connecting ? null : _signIn,
+                _connecting ? 'Menyiapkan...' : 'Buat / Buka Spreadsheet',
+                onPressed: _connecting ? null : _prepare,
               ),
             ),
             SizedBox(height: 12),
-            Text('Data akan otomatis tersimpan di Google Sheets akun Anda',
+            Text('Sekali buat, link spreadsheet dipakai terus untuk semua pembukuan.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: textTer)),
-          ]
-
-          // ── Connected ──
-          else ...[
-            // Spreadsheet status card
+          ] else ...[
+            // Spreadsheet aktif — tampilkan link + tombol buka
             NusaCard(Padding(
               padding: EdgeInsets.all(14),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -477,110 +317,142 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
                   Container(
                     width: 42, height: 42,
                     decoration: BoxDecoration(
-                      color: _spreadsheetId != null
-                          ? NusaConfig.accentGreen.withValues(alpha: 0.12)
-                          : NusaConfig.accentPurple.withValues(alpha: 0.12),
+                      color: NusaConfig.accentGreen.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      _spreadsheetId != null ? Icons.description_outlined : Icons.add_to_drive,
-                      color: _spreadsheetId != null ? NusaConfig.accentGreen : NusaConfig.accentPurple,
-                      size: 22,
-                    ),
+                    child: Icon(Icons.description_outlined,
+                        color: NusaConfig.accentGreen, size: 22),
                   ),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_spreadsheetId != null ? 'Spreadsheet Aktif' : 'Belum Ada Spreadsheet',
+                      Text('Spreadsheet Aktif',
                           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textPri)),
                       SizedBox(height: 2),
                       Text(
-                        _spreadsheetId != null ? 'Semua data siap disinkronkan' : 'Satu klik untuk membuat',
+                        'Semua data siap disinkronkan',
                         style: TextStyle(fontSize: 12, color: textTer),
                       ),
                     ]),
                   ),
                 ]),
-                if (_spreadsheetId == null && !_connecting) ...[
-                  SizedBox(height: 12),
-                  SizedBox(
+                SizedBox(height: 12),
+                InkWell(
+                  onTap: () => _openUrl(_spreadsheetUrl!),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
                     width: double.infinity,
-                    child: NusaButton('Buat Spreadsheet Baru', onPressed: _createSheet),
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.accentGreen.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: NusaConfig.accentGreen.withValues(alpha: 0.2)),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Icon(Icons.open_in_new, size: 15, color: NusaConfig.accentGreen),
+                        SizedBox(width: 6),
+                        Text('Buka Spreadsheet',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: NusaConfig.accentGreen)),
+                      ]),
+                      SizedBox(height: 4),
+                      Text(
+                        _spreadsheetUrl!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: textTer),
+                      ),
+                    ]),
                   ),
-                ],
+                ),
               ]),
             )),
             SizedBox(height: 20),
 
             // ── Sync section ──
-            if (_spreadsheetId != null) ...[
-              Row(children: [
-                Expanded(
-                  child: Text('Sinkronisasi Data', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPri)),
-                ),
-                if (_syncing && _syncingTab == 'Semua')
-                  Text('$_syncedCount / $_totalCount', style: TextStyle(fontSize: 13, color: textTer)),
-              ]),
-              SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: Text('Sinkronisasi Data', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPri)),
+              ),
+              if (_syncing && _syncingTab == 'Semua')
+                Text('$_syncedCount / $_totalCount', style: TextStyle(fontSize: 13, color: textTer)),
+            ]),
+            SizedBox(height: 8),
 
-              // Progress bar for sync all
-              if (_syncing && _syncingTab == 'Semua') ...[
-                Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _totalCount > 0 ? _syncedCount / _totalCount : 0,
-                      backgroundColor: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
-                      valueColor: AlwaysStoppedAnimation(NusaConfig.accentGreen),
-                      minHeight: 6,
-                    ),
-                  ),
-                ),
-              ],
-
-              // Tab list
-              ..._allTabs.map((tab) => Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: _syncTile(tab, _tabIcons[tab] ?? Icons.sync, isDark: isDark),
-              )),
-
-              SizedBox(height: 16),
-              // Sync All button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _syncing ? null : _syncAll,
-                  icon: _syncing && _syncingTab == 'Semua'
-                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Icon(Icons.sync_rounded, size: 18),
-                  label: Text(_syncing && _syncingTab == 'Semua' ? 'Menyinkronkan...' : 'Sync Semua Data'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: NusaConfig.activePrimary,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    textStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            // Progress bar for sync all
+            if (_syncing && _syncingTab == 'Semua') ...[
+              Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _totalCount > 0 ? _syncedCount / _totalCount : 0,
+                    backgroundColor: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+                    valueColor: AlwaysStoppedAnimation(NusaConfig.accentGreen),
+                    minHeight: 6,
                   ),
                 ),
               ),
             ],
 
+            // Tab list
+            ..._allTabs.map((tab) => Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: _syncTile(tab, _tabIcons[tab] ?? Icons.sync, isDark: isDark),
+            )),
+
             SizedBox(height: 16),
-            // Sign out
+            // Sync All button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _syncing ? null : _syncAll,
+                icon: _syncing && _syncingTab == 'Semua'
+                    ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Icon(Icons.sync_rounded, size: 18),
+                label: Text(_syncing && _syncingTab == 'Semua' ? 'Menyinkronkan...' : 'Sync Semua Data'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+
+            SizedBox(height: 16),
+            // Reset / putus koneksi
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _signOut,
-                icon: Icon(Icons.logout, size: 18),
-                label: Text('Putuskan Koneksi'),
+                onPressed: _reset,
+                icon: Icon(Icons.link_off, size: 18),
+                label: Text('Putus Koneksi Spreadsheet'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: NusaConfig.activePrimary,
                   padding: EdgeInsets.symmetric(vertical: 14),
                   side: BorderSide(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
+              ),
+            ),
+          ],
+
+          if (_error.isNotEmpty) ...[
+            SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFFEF4444).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFEF4444).withValues(alpha: 0.2)),
+              ),
+              child: Text(
+                _error,
+                style: TextStyle(fontSize: 12, color: Color(0xFFEF4444), height: 1.4),
               ),
             ),
           ],
