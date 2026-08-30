@@ -2314,6 +2314,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
     final noteCtrl = TextEditingController(text: item.note ?? '');
     var showInReceipt = item.showInReceipt;
+    // v2.2.57+120: pendekatan checkbox — user aktifkan dulu opsi yang
+    // dibutuhkan, baru form muncul. Checkbox default ON bila item sudah
+    // punya nilai (mis. sudah pernah diubah sebelumnya).
+    var enablePrice = item.tempPrice != null;
+    var enableDisc = item.discountPerItem != null;
+    var enableNote = (item.note ?? '').isNotEmpty;
     final isDark =
         Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
@@ -2381,77 +2387,72 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   ),
                 ],
                 SizedBox(height: 16),
-                // ── Ubah Harga Sementara ──
-                Text(
-                  'Ubah Harga Sementara',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
+                // ── Opsi item: checkbox → form muncul saat aktif (v2.2.57+120) ──
+                _buildItemOptionCheckbox(
+                  icon: Icons.price_change_outlined,
+                  title: 'Ubah Harga Sementara',
+                  subtitle: 'Set harga jual khusus item ini (per unit)',
+                  value: enablePrice,
+                  onChanged: (v) => setSt(() => enablePrice = v),
+                ),
+                if (enablePrice) ...[
+                  const SizedBox(height: 8),
+                  NusaFormField(
+                    label: 'Harga per unit (kosongkan = pakai harga normal)',
+                    controller: priceCtrl,
+                    hintText: '${item.price}',
+                    keyboardType: TextInputType.number,
                   ),
-                ),
-                SizedBox(height: 6),
-                NusaFormField(
-                  label: 'Harga per unit (kosongkan = pakai harga normal)',
-                  controller: priceCtrl,
-                  hintText: '${item.price}',
-                  keyboardType: TextInputType.number,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Harga normal: ${formatRupiah(item.price)}${item.originalPrice != null ? ' (coret ${formatRupiah(item.originalPrice!)})' : ''}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Harga normal: ${formatRupiah(item.price)}${item.originalPrice != null ? ' (coret ${formatRupiah(item.originalPrice!)})' : ''}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
                   ),
+                ],
+                const SizedBox(height: 6),
+                _buildItemOptionCheckbox(
+                  icon: Icons.discount_outlined,
+                  title: 'Ubah Diskon per Jumlah',
+                  subtitle: 'Potongan tambahan per satuan item ini',
+                  value: enableDisc,
+                  onChanged: (v) => setSt(() => enableDisc = v),
                 ),
-                SizedBox(height: 14),
-                // ── Ubah Diskon per Jumlah ──
-                Text(
-                  'Ubah Diskon per Jumlah',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
+                if (enableDisc) ...[
+                  const SizedBox(height: 8),
+                  NusaFormField(
+                    label: 'Diskon per satuan (Rp) — kosongkan = tanpa diskon',
+                    controller: discCtrl,
+                    hintText: '0',
+                    keyboardType: TextInputType.number,
                   ),
+                ],
+                const SizedBox(height: 6),
+                _buildItemOptionCheckbox(
+                  icon: Icons.notes_outlined,
+                  title: 'Catatan',
+                  subtitle: 'Info tambahan yang ikut tersimpan & tercetak',
+                  value: enableNote,
+                  onChanged: (v) => setSt(() => enableNote = v),
                 ),
-                SizedBox(height: 6),
-                NusaFormField(
-                  label: 'Diskon per satuan (Rp) — kosongkan = tanpa diskon',
-                  controller: discCtrl,
-                  hintText: '0',
-                  keyboardType: TextInputType.number,
-                ),
-                SizedBox(height: 14),
-                // ── Tambah Catatan ──
-                Text(
-                  'Catatan',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
+                if (enableNote) ...[
+                  const SizedBox(height: 8),
+                  NusaFormField(
+                    label: 'Catatan',
+                    controller: noteCtrl,
+                    hintText: NusaConfig.isLaundryVariant
+                        ? 'Contoh: noda di lengan kiri, kain sutra delicate'
+                        : NusaConfig.isSalonVariant
+                        ? 'Contoh: model two-block undercut, fade rendah'
+                        : 'Contoh: tidak pedas, es batu terpisah',
+                    maxLines: 2,
                   ),
-                ),
-                SizedBox(height: 6),
-                NusaFormField(
-                  label: 'Catatan',
-                  controller: noteCtrl,
-                  hintText: NusaConfig.isLaundryVariant
-                      ? 'Contoh: noda di lengan kiri, kain sutra delicate'
-                      : NusaConfig.isSalonVariant
-                      ? 'Contoh: model two-block undercut, fade rendah'
-                      : 'Contoh: tidak pedas, es batu terpisah',
-                  maxLines: 2,
-                ),
-                SizedBox(height: 14),
+                ],
+                const SizedBox(height: 14),
                 // ── Toggle informasikan di struk cetak ──
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2518,27 +2519,35 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     ),
                     onPressed: () {
                       final notifier = ref.read(cartProvider.notifier);
-                      final priceText = priceCtrl.text.trim();
-                      final discText = discCtrl.text.trim();
+                      // Hanya simpan field yang checkbox-nya aktif; yang mati
+                      // direset null (v2.2.57+120 checkbox approach).
                       notifier.setTempPrice(
                         item.productId,
-                        priceText.isEmpty
+                        !enablePrice
                             ? null
-                            : (int.tryParse(priceText) ?? item.tempPrice),
+                            : priceCtrl.text.trim().isEmpty
+                                ? null
+                                : (int.tryParse(priceCtrl.text.trim()) ??
+                                    item.tempPrice),
                         variantName: item.variantName,
                       );
                       notifier.setDiscountPerItem(
                         item.productId,
-                        discText.isEmpty
+                        !enableDisc
                             ? null
-                            : (int.tryParse(discText) ?? item.discountPerItem),
+                            : discCtrl.text.trim().isEmpty
+                                ? null
+                                : (int.tryParse(discCtrl.text.trim()) ??
+                                    item.discountPerItem),
                         variantName: item.variantName,
                       );
                       notifier.setNote(
                         item.productId,
-                        noteCtrl.text.trim().isEmpty
+                        !enableNote
                             ? null
-                            : noteCtrl.text.trim(),
+                            : noteCtrl.text.trim().isEmpty
+                                ? null
+                                : noteCtrl.text.trim(),
                         variantName: item.variantName,
                       );
                       notifier.setShowInReceipt(
@@ -2556,6 +2565,64 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Baris opsi item di bottom-sheet keranjang (v2.2.57+120): checkbox +
+  /// ikon + judul + deskripsi. Form muncul hanya saat checkbox aktif —
+  /// sheet tetap ringkas dan user yang kontrol apa yang mau diubah.
+  Widget _buildItemOptionCheckbox({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: value
+              ? NusaConfig.activePrimary.withValues(alpha: 0.5)
+              : Colors.transparent,
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(value: value, onChanged: (v) => onChanged(v ?? value)),
+          Icon(icon, size: 18, color: NusaConfig.activePrimary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: dark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: dark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
