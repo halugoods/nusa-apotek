@@ -14,6 +14,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
+import 'package:nusa_kasir/core/services/online_product_sync_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -481,6 +482,12 @@ class _OnlineStoreSetupScreenState
       _saving = true;
       _imgFailedNames = [];
     });
+    // Status global sinkron produk online — chip header ikut bergerak.
+    OnlineProductSyncService.status.value = OnlineSyncStatus(
+      OnlineSyncPhase.uploading,
+      lastOkAt: OnlineProductSyncService.status.value.lastOkAt,
+      lastCount: OnlineProductSyncService.status.value.lastCount,
+    );
     try {
       final db = ref.read(databaseProvider);
       final online = OnlineOrderService(Supabase.instance.client);
@@ -494,9 +501,25 @@ class _OnlineStoreSetupScreenState
       if (mounted) {
         setState(() => _onlineProductCount = result.count);
         if (result.error != null) {
+          OnlineProductSyncService.status.value = OnlineSyncStatus(
+            OnlineSyncPhase.failed,
+            lastOkAt: OnlineProductSyncService.status.value.lastOkAt,
+            lastCount: OnlineProductSyncService.status.value.lastCount,
+          );
           TopToast.error(context, 'Sinkron gagal — ${result.error}');
           return;
         }
+        OnlineProductSyncService.status.value = OnlineSyncStatus(
+          OnlineSyncPhase.ok,
+          lastOkAt: DateTime.now(),
+          lastCount: result.count,
+        );
+        try {
+          await SecureStore.write(
+            key: 'nusa_online_sync_status_${NusaConfig.productId}',
+            value: DateTime.now().toUtc().millisecondsSinceEpoch.toString(),
+          );
+        } catch (_) {}
         final msg =
             '${result.count} produk disinkronkan'
             '${result.imgSuccess > 0 ? " (${result.imgSuccess} gambar)" : ""}'
@@ -515,6 +538,11 @@ class _OnlineStoreSetupScreenState
       }
     } catch (e) {
       debugPrint('[OnlineStoreSetup] Gagal sinkronisasi produk: $e');
+      OnlineProductSyncService.status.value = OnlineSyncStatus(
+        OnlineSyncPhase.failed,
+        lastOkAt: OnlineProductSyncService.status.value.lastOkAt,
+        lastCount: OnlineProductSyncService.status.value.lastCount,
+      );
       if (mounted) TopToast.error(context, 'Gagal sinkron: $e');
     }
     if (mounted) setState(() => _saving = false);
@@ -653,6 +681,9 @@ class _OnlineStoreSetupScreenState
           ],
         ),
       ),
+      // Chip status sinkron produk online (v2.2.57+120) — hijau = sudah
+      // sinkron, amber = sedang unggah, merah = gagal, abu = belum pernah.
+      actions: [_OnlineStoreSyncChip()],
     );
   }
 
@@ -1582,18 +1613,90 @@ class _OnlineStoreSetupScreenState
                   ],
                 ),
               ),
-              // Sync button
+              // Sync button — v2.2.57+120: wrap-card; hijau saat sinkron
+              // sukses (tombol terkunci abu-abu, status "Tersinkron"),
+              // amber saat sedang unggah, hijau siap dipakai manual.
               if (_isActive)
-                TextButton(
-                  onPressed: _saving ? null : _syncProducts,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Color(0xFFF59E0B),
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  child: Text(
-                    'Sinkronkan',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
+                ValueListenableBuilder<OnlineSyncStatus>(
+                  valueListenable: OnlineProductSyncService.status,
+                  builder: (context, st, _) {
+                    final synced = st.phase == OnlineSyncPhase.ok;
+                    final uploading = st.phase == OnlineSyncPhase.uploading;
+                    final failed = st.phase == OnlineSyncPhase.failed;
+                    final Color bg;
+                    final Color fg;
+                    final String label;
+                    if (uploading) {
+                      bg = Color(0xFFF59E0B).withValues(alpha: 0.12);
+                      fg = Color(0xFFB45309);
+                      label = 'Menyinkron…';
+                    } else if (synced) {
+                      bg = NusaConfig.success.withValues(alpha: 0.12);
+                      fg = NusaConfig.success;
+                      label = 'Tersinkron ✓';
+                    } else if (failed) {
+                      bg = NusaConfig.error.withValues(alpha: 0.12);
+                      fg = NusaConfig.error;
+                      label = 'Coba Sinkron';
+                    } else {
+                      bg = Color(0xFFF59E0B).withValues(alpha: 0.12);
+                      fg = Color(0xFFF59E0B);
+                      label = 'Sinkronkan';
+                    }
+                    return GestureDetector(
+                      onTap: (uploading || synced) || _saving
+                          ? null
+                          : _syncProducts,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(10),
+                          // Disabled (sudah tersinkron) = tanpa border tegas.
+                          border: synced || uploading
+                              ? Border.all(
+                                  color: fg.withValues(alpha: 0.3),
+                                  width: 1,
+                                )
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (uploading)
+                              SizedBox(
+                                width: 13,
+                                height: 13,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: fg,
+                                ),
+                              )
+                            else
+                              Icon(
+                                synced
+                                    ? Icons.cloud_done_outlined
+                                    : Icons.sync_rounded,
+                                size: 16,
+                                color: fg,
+                              ),
+                            SizedBox(width: 6),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5,
+                                color: fg,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
             ],
           ),
@@ -3068,5 +3171,88 @@ class _OnlineStoreSetupScreenState
         ],
       ),
     );
+  }
+}
+
+/// Chip status sinkron produk ke toko online (v2.2.57+120) — di header
+/// Toko Online, mirror ikon cloud dashboard:
+///   hijau cloud_done   = produk terakhir tersinkron (HH:MM)
+///   amber cloud_upload = sedang mengunggah produk
+///   merah cloud_off    = sinkron terakhir gagal
+///   abu  cloud         = belum ada sinkron (produk belum pernah disinkron)
+/// Tap → penjelasan singkat.
+class _OnlineStoreSyncChip extends StatelessWidget {
+  const _OnlineStoreSyncChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ValueListenableBuilder<OnlineSyncStatus>(
+      valueListenable: OnlineProductSyncService.status,
+      builder: (context, st, _) {
+        final IconData icon;
+        final Color color;
+        switch (st.phase) {
+          case OnlineSyncPhase.uploading:
+            icon = Icons.cloud_upload_outlined;
+            color = NusaConfig.warning;
+          case OnlineSyncPhase.ok:
+            icon = Icons.cloud_done_outlined;
+            color = NusaConfig.success;
+          case OnlineSyncPhase.failed:
+            icon = Icons.cloud_off_outlined;
+            color = NusaConfig.error;
+          case OnlineSyncPhase.idle:
+            icon = Icons.cloud_outlined;
+            color = isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary;
+        }
+        return GestureDetector(
+          onTap: () => _explain(context, st),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(icon, size: 22, color: color),
+          ),
+        );
+      },
+    );
+  }
+
+  void _explain(BuildContext context, OnlineSyncStatus st) {
+    final String msg;
+    switch (st.phase) {
+      case OnlineSyncPhase.uploading:
+        msg = 'Menyinkronkan produk ke toko online…';
+      case OnlineSyncPhase.ok:
+        final n = st.lastCount;
+        msg = 'Produk tersinkron'
+            '${n != null ? ' ($n produk)' : ''}'
+            '${st.lastOkAt != null ? ' ${_hhmm(st.lastOkAt!)}' : ''}.';
+      case OnlineSyncPhase.failed:
+        msg = 'Sinkron produk GAGAL. Periksa koneksi — produk '
+            'akan dicoba ulang otomatis saat ada perubahan.';
+      case OnlineSyncPhase.idle:
+        msg = 'Belum ada produk tersinkron. Produk yang ditandai '
+            '"Online" akan otomatis tersinkron ke website.';
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  String _hhmm(DateTime t) {
+    final local = t.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 }
