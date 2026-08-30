@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:barcode/barcode.dart' as bc;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
@@ -11,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/label/label_commands.dart';
+import 'package:nusa_kasir/core/label/label_font_config.dart';
 import 'package:nusa_kasir/core/label/label_renderer.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
@@ -22,13 +24,18 @@ import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
-/// Alur Cetak Label Barcode (v2.2.57+115, Area B) — 3 langkah:
+/// Alur Cetak Label Barcode (v2.2.57+116) — 3 langkah:
 ///   1. Pilih produk (checkbox, "Pilih Semua")
-///   2. Pilih ISI label (checkbox: Nama / Harga / Barcode — bebas kombinasi)
-///   3. Pilih JALUR cetak:
-///      a. Thermal Label (TSPL) — printer label khusus, kompatibel semua merk
-///      b. Thermal Struk 58mm (ESC/POS) — printer struk yang sudah dimiliki
-///      c. PDF A4 grid — unduh/share, siap dipotong
+///   2. Pilih ISI label (Nama / Harga / Barcode) + UKURAN FONT (v2.2.57+116:
+///      slider nama & harga — user bisa sesuaikan sendiri, berlaku ke SEMUA
+///      jalur cetak supaya preview = hasil cetak)
+///   3. Pilih JALUR cetak — KLIK jalur → muncul PREVIEW ACTUAL jalur tsb
+///      (bukan preview generik) + tombol cetak di dalam preview:
+///      a. Thermal Label (TSPL) — preview bitmap 203 DPI (isi persis yang
+///         dikirim ke printer label)
+///      b. Thermal Struk 58mm (ESC/POS) — preview di atas kertas struk
+///      c. PDF A4 grid — preview lembar A4 (grid 4×8 label seperti aslinya),
+///         tombol cetak = buka PDF → share/unduh/print via Android
 ///
 /// Isi label & ukuran diteruskan ke [LabelRenderer] — render SAMA untuk semua
 /// jalur (konsistensi, pratinjau = hasil cetak).
@@ -64,7 +71,16 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   bool _showPrice = true;
   bool _showBarcode = true;
 
+  // ── Step 2 (v2.2.57+116): ukuran font label ──
+  // Skala font nama & harga (1.0–3.0) — tersimpan di SecureStore via
+  // [LabelFontConfig] (pola sama seperti ReceiptConfig di struk).
+  double _nameScale = 1.0;
+  double _priceScale = 1.0;
+
   // ── Step 3: jalur cetak ──
+  // Jalur yang sedang dibuka preview-nya (null = semua tertutup).
+  // 0 = TSPL, 1 = Struk thermal, 2 = PDF A4.
+  int? _expandedPath;
   bool _printing = false;
   String _status = '';
 
@@ -72,6 +88,17 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   void initState() {
     super.initState();
     _loadProducts();
+    _loadFontConfig();
+  }
+
+  Future<void> _loadFontConfig() async {
+    final cfg = await LabelFontConfig.load();
+    if (mounted) {
+      setState(() {
+        _nameScale = cfg.nameScale;
+        _priceScale = cfg.priceScale;
+      });
+    }
   }
 
   Future<void> _loadProducts() async {
@@ -104,7 +131,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   double get _labelW => LabelRenderer.defaultWidthMm; // 40
   double get _labelH => LabelRenderer.defaultHeightMm; // 30
 
-  /// Render label bitmap untuk SATU produk (dipakai TSPL + ESC/POS).
+  /// Render label bitmap untuk SATU produk (dipakai TSPL + ESC/POS + preview).
+  /// Ukuran font nama & harga memakai [_nameScale]/[_priceScale] — SAMA untuk
+  /// preview dan print (konsistensi render).
   img.Image _renderFor(Product p, int dpi) {
     return LabelRenderer.renderLabelBitmap(
       barcode: p.barcode ?? '',
@@ -115,6 +144,8 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       showBarcode: _showBarcode,
       widthPx: LabelRenderer.mmToPx(_labelW, dpi: dpi).round(),
       heightPx: LabelRenderer.mmToPx(_labelH, dpi: dpi).round(),
+      nameFontScale: _nameScale,
+      priceFontScale: _priceScale,
     );
   }
 
@@ -305,6 +336,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     if (_selected.isEmpty) return null;
     final doc = pw.Document(title: 'Label Barcode', author: 'NUSA Kasir');
     // Grid: label 40×30mm, margin 8mm, gap 4mm → ~4 kolom × 8 baris per A4.
+    // Angka SAMA dengan preview _A4GridPreview (konsistensi layout).
     const pageW = 210.0, pageH = 297.0;
     const marginMm = 8.0, gapMm = 4.0;
     final cols =
@@ -328,6 +360,8 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
               showBarcode: _showBarcode,
               widthMm: _labelW,
               heightMm: _labelH,
+              nameFontScale: _nameScale,
+              priceFontScale: _priceScale,
             ),
           )
           .toList();
@@ -368,6 +402,31 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     }
   }
 
+  /// Jalankan aksi cetak untuk jalur [path] dengan spinner + status.
+  Future<void> _runPrint(int path) async {
+    if (_selected.isEmpty) {
+      TopToast.error(context, 'Pilih produk dulu');
+      return;
+    }
+    setState(() {
+      _printing = true;
+      _status = 'Mencetak ${_selected.length} label…';
+    });
+    final ok = switch (path) {
+      0 => await _printTspl(),
+      1 => await _printEscPos(),
+      _ => await _sharePdf(),
+    };
+    if (mounted) {
+      setState(() {
+        _printing = false;
+        _status = ok
+            ? 'Selesai — ${_selected.length} label dikirim.'
+            : 'Gagal mencetak. Periksa printer & Bluetooth.';
+      });
+    }
+  }
+
   // ── Build ──
 
   @override
@@ -397,7 +456,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           _productList(),
         const SizedBox(height: 20),
 
-        _stepHeader('2', 'Isi Label'),
+        _stepHeader('2', 'Isi Label & Ukuran Font'),
         _checkRow(
           value: _showName,
           onChanged: (v) => setState(() => _showName = v),
@@ -413,58 +472,96 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           onChanged: (v) => setState(() => _showBarcode = v),
           label: 'Barcode',
         ),
-        if (_selected.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          // ── Preview LIVE — dari renderer SAMA (bukan mockup) ──
-          // v2.2.57+115: user minta preview real seperti preview struk, supaya
-          // layout (barcode pendek di atas, nama, harga) bisa dicek sebelum
-          // cetak. Render pakai LabelRenderer.renderLabelBitmap → sama dengan
-          // hasil TSPL/ESC-POS/PDF.
-          Text(
-            'Preview Label',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? NusaConfig.darkTextPrimary
-                  : NusaConfig.textPrimary,
-            ),
+        const SizedBox(height: 12),
+        // ── Ukuran font label (v2.2.57+116) ──
+        // User bisa sesuaikan ukuran font nama & harga — berlaku ke SEMUA
+        // jalur cetak (TSPL / struk / PDF), preview ikut berubah live.
+        Text(
+          'Ukuran Font Label',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextPrimary
+                : NusaConfig.textPrimary,
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Contoh produk pertama yang dipilih. '
-            'Preview = hasil cetak asli.',
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? NusaConfig.darkTextSecondary
-                  : NusaConfig.textSecondary,
-            ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Atur besar tulisan nama & harga. Berlaku untuk semua jalur cetak.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
           ),
-          const SizedBox(height: 8),
-          _LabelPreview(product: _selected.first, sheet: this),
-          const SizedBox(height: 4),
-        ],
+        ),
+        _fontSlider(
+          label: 'Nama Produk',
+          value: _nameScale,
+          onChanged: (v) {
+            setState(() => _nameScale = v);
+            LabelFontConfig(nameScale: v, priceScale: _priceScale).save();
+          },
+        ),
+        _fontSlider(
+          label: 'Harga',
+          value: _priceScale,
+          onChanged: (v) {
+            setState(() => _priceScale = v);
+            LabelFontConfig(nameScale: _nameScale, priceScale: v).save();
+          },
+        ),
         const SizedBox(height: 20),
 
         _stepHeader('3', 'Cara Cetak'),
+        Text(
+          'Klik jalur cetak untuk lihat preview hasilnya, lalu tekan Cetak.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
         _pathCard(
+          path: 0,
           icon: Icons.print_outlined,
           title: 'Thermal Label (TSPL)',
           subtitle: 'Printer label khusus — Rongta/HPRT/Godex/BluePrint',
-          onTap: _printTspl,
+          preview: _selected.isEmpty
+              ? null
+              : _LabelBitmapPreview(
+                  product: _selected.first,
+                  sheet: this,
+                  dpi: LabelDpi.dpi203,
+                  paperNote: 'Printer label 40×30mm • bitmap 203 DPI',
+                ),
         ),
         _pathCard(
+          path: 1,
           icon: Icons.receipt_long_outlined,
           title: 'Thermal Struk 58mm',
           subtitle: 'Printer struk yang sudah dipakai — label beruntun',
-          onTap: _printEscPos,
+          preview: _selected.isEmpty
+              ? null
+              : _StrukPreview(
+                  product: _selected.first,
+                  sheet: this,
+                ),
         ),
         _pathCard(
+          path: 2,
           icon: Icons.picture_as_pdf_outlined,
           title: 'PDF A4 (grid)',
-          subtitle: 'Banyak label sekaligus, siap dipotong',
-          onTap: _sharePdf,
+          subtitle: 'Banyak label sekaligus, siap dipotong / dicetak printer umum',
+          preview: _selected.isEmpty
+              ? null
+              : _A4GridPreview(
+                  products: _selected,
+                  sheet: this,
+                ),
         ),
         if (_status.isNotEmpty)
           Padding(
@@ -631,115 +728,555 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     );
   }
 
+  /// Slider ukuran font label (v2.2.57+116): 1.0× – 3.0×.
+  Widget _fontSlider({
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(label, style: const TextStyle(fontSize: 13)),
+          ),
+          Expanded(
+            child: Slider(
+              value: value.clamp(1.0, 3.0),
+              min: 1.0,
+              max: 3.0,
+              divisions: 16,
+              activeColor: NusaConfig.activePrimary,
+              label: '${value.toStringAsFixed(1)}×',
+              onChanged: onChanged,
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text(
+              '${value.toStringAsFixed(1)}×',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? NusaConfig.darkTextPrimary
+                    : NusaConfig.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Kartu jalur cetak — KLIK untuk buka/tutup preview ACTUAL jalur tsb.
+  /// Preview + tombol cetak muncul di dalam kartu saat terbuka.
   Widget _pathCard({
+    required int path,
     required IconData icon,
     required String title,
     required String subtitle,
-    required Future<bool> Function() onTap,
+    required Widget? preview,
   }) {
+    final expanded = _expandedPath == path;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: Colors.grey.withOpacity(0.06),
-        leading: Icon(icon, color: NusaConfig.activePrimary),
-        title: Text(
-          title,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: expanded
+              ? NusaConfig.activePrimary.withValues(alpha: 0.6)
+              : Colors.transparent,
+          width: 1.5,
         ),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: _printing
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.chevron_right),
-        onTap: () async {
-          if (_selected.isEmpty) {
-            TopToast.error(context, 'Pilih produk dulu');
-            return;
-          }
-          setState(() {
-            _printing = true;
-            _status = 'Mencetak ${_selected.length} label…';
-          });
-          final ok = await onTap();
-          if (mounted) {
-            setState(() {
-              _printing = false;
-              _status = ok
-                  ? 'Selesai — ${_selected.length} label dikirim.'
-                  : 'Gagal mencetak. Periksa printer & Bluetooth.';
-            });
-          }
-        },
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            tileColor: Colors.grey.withOpacity(0.06),
+            leading: Icon(icon, color: NusaConfig.activePrimary),
+            title: Text(
+              title,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+            trailing: AnimatedRotation(
+              turns: expanded ? 0.5 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: const Icon(Icons.keyboard_arrow_down),
+            ),
+            onTap: () {
+              if (_selected.isEmpty) {
+                TopToast.error(context, 'Pilih produk dulu');
+                return;
+              }
+              setState(() {
+                _expandedPath = expanded ? null : path;
+                _status = '';
+              });
+            },
+          ),
+          if (expanded && preview != null)
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface2.withValues(alpha: 0.5)
+                    : Colors.grey.withOpacity(0.04),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  preview,
+                  const SizedBox(height: 12),
+                  // Tombol cetak — ada DI DALAM preview (permintaan user).
+                  FilledButton.icon(
+                    onPressed: _printing
+                        ? null
+                        : () => _runPrint(path),
+                    icon: _printing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            path == 2
+                                ? Icons.share_outlined
+                                : Icons.print_outlined,
+                            size: 18,
+                          ),
+                    label: Text(
+                      _printing
+                          ? 'Mencetak…'
+                          : path == 2
+                              ? 'Buka PDF — Print / Simpan'
+                              : 'Cetak ${_selected.length} Label',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    path == 2
+                        ? 'PDF dibuat dari render yang sama dengan preview — '
+                            'share sheet Android bisa langsung Print ke printer umum.'
+                        : 'Dikirim via Bluetooth ke printer yang tersimpan.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
-/// Preview label LIVE — render pakai [LabelRenderer.renderLabelBitmap] yang
-/// SAMA dengan TSPL/ESC-POS/PDF (konsistensi: preview = hasil cetak).
-class _LabelPreview extends StatelessWidget {
+/// Preview bitmap label — render ACTUAL via [LabelRenderer.renderLabelBitmap]
+/// (SAMA dengan yang dikirim ke printer TSPL/struk). Dipakai jalur TSPL.
+class _LabelBitmapPreview extends StatelessWidget {
   final Product product;
   final _LabelPrintSheetState sheet;
+  final int dpi;
+  final String paperNote;
 
-  const _LabelPreview({required this.product, required this.sheet});
+  const _LabelBitmapPreview({
+    required this.product,
+    required this.sheet,
+    required this.dpi,
+    required this.paperNote,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Render label 40×30mm di 203 DPI (sama dengan printer) lalu tampilkan.
-    final bitmap = sheet._renderFor(product, LabelDpi.dpi203);
+    final bitmap = sheet._renderFor(product, dpi);
     final pngBytes = Uint8List.fromList(img.encodePng(bitmap));
-    // Skala preview: label 30mm tinggi ≈ 240px → tampilkan ~140px tinggi.
     final previewH = 140.0;
     final aspect = bitmap.width / bitmap.height;
 
-    return Container(
-      alignment: Alignment.center,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(12),
+    return Column(
+      children: [
+        Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Image.memory(
+              pngBytes,
+              height: previewH,
+              width: previewH * aspect,
+              gaplessPlayback: true,
+              fit: BoxFit.contain,
+            ),
+          ),
         ),
-        child: Column(
-          children: [
-            Container(
+        const SizedBox(height: 6),
+        Text(
+          paperNote,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Preview jalur struk thermal — bitmap ACTUAL di atas visual kertas struk
+/// 58mm (label 40mm ≈ 69% lebar kertas, center, lalu potong).
+class _StrukPreview extends StatelessWidget {
+  final Product product;
+  final _LabelPrintSheetState sheet;
+
+  const _StrukPreview({required this.product, required this.sheet});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bitmap = sheet._renderFor(product, LabelDpi.dpi203);
+    final pngBytes = Uint8List.fromList(img.encodePng(bitmap));
+    // Visual kertas struk: 58mm lebar, label 40mm → ~69% lebar kertas.
+    const paperW = 190.0;
+    final bitmapW = paperW * (sheet._labelW / 58.0);
+    final bitmapH = bitmapW * bitmap.height / bitmap.width;
+
+    return Column(
+      children: [
+        Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Container(
+            width: paperW,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Image.memory(
+                  pngBytes,
+                  width: bitmapW,
+                  height: bitmapH,
+                  gaplessPlayback: true,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(height: 6),
+                // Garis potong putus-putus (dari cutter printer struk).
+                CustomPaint(
+                  size: const Size(double.infinity, 1),
+                  painter: _DashedLinePainter(
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '✂ potong',
+                  style: TextStyle(
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Kertas 58mm • label 40×30mm • bit-image ESC/POS',
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Preview PDF A4 — replika lembar A4 yang akurat dengan layout yang SAMA
+/// dengan PDF asli (grid 4×8, margin 8mm, gap 4mm, label 40×30mm).
+/// Konten label (barcode/nama/harga) dirender sungguhan, bukan mockup —
+/// skala per-lembar supaya terlihat seperti hasil cetak.
+class _A4GridPreview extends StatelessWidget {
+  final List<Product> products;
+  final _LabelPrintSheetState sheet;
+
+  const _A4GridPreview({required this.products, required this.sheet});
+
+  static const _pageWmm = 210.0, _pageHmm = 297.0;
+  static const _marginMm = 8.0, _gapMm = 4.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final labelW = sheet._labelW, labelH = sheet._labelH;
+    // Hitung grid SAMA seperti _buildPdf (konsistensi preview = hasil).
+    final cols =
+        ((_pageWmm - 2 * _marginMm + _gapMm) / (labelW + _gapMm)).floor();
+    final rows =
+        ((_pageHmm - 2 * _marginMm + _gapMm) / (labelH + _gapMm)).floor();
+    final perPage = cols * rows;
+    final pages = ((products.length + perPage - 1) / perPage).ceil();
+    final shown = products.take(perPage).toList();
+    // Ukuran logis lembar; FittedBox mengecilkan agar muat selebar kartu.
+    const sheetW = 380.0;
+    final scale = sheetW / _pageWmm;
+    final sheetH = _pageHmm * scale;
+
+    return Column(
+      children: [
+        Center(
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: Container(
+              width: sheetW,
+              height: sheetH,
+              padding: EdgeInsets.all(_marginMm * scale),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
-              child: Image.memory(
-                pngBytes,
-                height: previewH,
-                width: previewH * aspect,
-                gaplessPlayback: true,
-                fit: BoxFit.contain,
+              child: Stack(
+                children: [
+                  for (var i = 0; i < shown.length; i++)
+                    Positioned(
+                      left: (i % cols) * (labelW + _gapMm) * scale,
+                      top: (i ~/ cols) * (labelH + _gapMm) * scale,
+                      width: labelW * scale,
+                      height: labelH * scale,
+                      child: _MiniLabel(
+                        product: shown[i],
+                        sheet: sheet,
+                        scale: scale,
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '${sheet._labelW.toStringAsFixed(0)}×${sheet._labelH.toStringAsFixed(0)}mm',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
+          ),
         ),
+        const SizedBox(height: 6),
+        Text(
+          'Lembar A4 • $cols×$rows label • '
+          '${products.length} label → $pages ${pages > 1 ? 'halaman' : 'halaman'} '
+          '(${labelW.toStringAsFixed(0)}×${labelH.toStringAsFixed(0)}mm)',
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Satu label mini di dalam preview lembar A4 — konten ACTUAL (barcode
+/// CODE128 + nama + harga) dirender sesuai isi label & ukuran font.
+class _MiniLabel extends StatelessWidget {
+  final Product product;
+  final _LabelPrintSheetState sheet;
+  final double scale;
+
+  const _MiniLabel({
+    required this.product,
+    required this.sheet,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final showBarcode = sheet._showBarcode;
+    final showName = sheet._showName;
+    final showPrice = sheet._showPrice;
+    final barcode = product.barcode ?? '';
+    final bars = showBarcode && barcode.trim().isNotEmpty
+        ? LabelRenderer.barcodeBars(
+            barcode,
+            sheet._labelW * scale - 3 * scale,
+            sheet._labelH * scale * 0.22,
+          )
+        : const <bc.BarcodeElement>[];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade400, width: 0.5),
+      ),
+      padding: EdgeInsets.all(1.5 * scale),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (bars.isNotEmpty)
+            Expanded(
+              flex: 26,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 2 * scale),
+                child: Center(
+                  child: CustomPaint(
+                    painter: _BarPainter(bars),
+                    size: Size(
+                      sheet._labelW * scale - 3 * scale,
+                      sheet._labelH * scale * 0.22,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (showName && product.name.trim().isNotEmpty)
+            Expanded(
+              flex: 34,
+              child: Center(
+                child: Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 7.5 * sheet._nameScale * scale / 2.6,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF111827),
+                    height: 1.1,
+                  ),
+                ),
+              ),
+            ),
+          if (showPrice)
+            Expanded(
+              flex: 20,
+              child: Center(
+                child: Text(
+                  'Rp ${_fmtPrice(product.sellPrice)}',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 8 * sheet._priceScale * scale / 2.6,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
+
+  static String _fmtPrice(int price) {
+    final s = price.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+}
+
+/// Painter barcode CODE128 dari [LabelRenderer.barcodeBars] (rendered SAMA
+/// dengan print — bukan gambar placeholder).
+class _BarPainter extends CustomPainter {
+  final List<bc.BarcodeElement> bars;
+  _BarPainter(this.bars);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black;
+    for (final el in bars) {
+      if (el is bc.BarcodeBar && el.black) {
+        canvas.drawRect(
+          Rect.fromLTWH(el.left, el.top, el.width, el.height),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BarPainter oldDelegate) =>
+      oldDelegate.bars != bars;
+}
+
+/// Garis putus-putus (potongan kertas struk).
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  _DashedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    const dashW = 6.0, gapW = 4.0;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashW, 0), paint);
+      x += dashW + gapW;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLinePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

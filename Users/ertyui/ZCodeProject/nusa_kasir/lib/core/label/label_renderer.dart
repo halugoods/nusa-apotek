@@ -63,9 +63,12 @@ class LabelRenderer {
   /// tingginya ~28% label, di posisi atas — bukan memenuhi label yang bikin
   /// teks nama/harga terpisah jauh dari barcode (keluhan user).
   ///
-  /// Isi label dinamis via [showName]/[showPrice]/[showBarcode]. Mengembalikan
-  /// [img.Image] RGBA (putih/hitam) — output yang sama dipakai pratinjau
-  /// (encodePng), TSPL, dan ESC/POS (konsistensi render).
+  /// Isi label dinamis via [showName]/[showPrice]/[showBarcode]. Ukuran font
+  /// nama & harga bisa diatur user via [nameFontScale]/[priceFontScale]
+  /// (1.0–3.0, v2.2.57+116) — font bitmap 5×7 digambar dengan perbesaran
+  /// skala tsb. Mengembalikan [img.Image] RGBA (putih/hitam) — output yang
+  /// sama dipakai pratinjau (encodePng), TSPL, dan ESC/POS (konsistensi
+  /// render).
   static img.Image renderLabelBitmap({
     required String barcode,
     required String name,
@@ -75,6 +78,8 @@ class LabelRenderer {
     required bool showBarcode,
     required int widthPx,
     required int heightPx,
+    double nameFontScale = 1.0,
+    double priceFontScale = 1.0,
   }) {
     final image = img.Image(widthPx, heightPx)
       ..fill(img.getColor(255, 255, 255)); // putih
@@ -126,23 +131,31 @@ class LabelRenderer {
 
     // ── 2) Nama produk — center, maks 2 baris ──
     if (showName && name.trim().isNotEmpty) {
-      final nameLines = _wrapName(name, widthPx - margin * 2);
+      final scale = nameFontScale.clamp(1.0, 3.0);
+      final charW = (5 * scale).round();
+      final advance = (6 * scale).round();
+      final lineH = (10 * scale).round();
+      final nameLines = _wrapName(name, widthPx - margin * 2, charW: charW);
       for (var i = 0; i < nameLines.length && i < 2; i++) {
-        final lineW = nameLines[i].length * 6; // lebar teks 5×7 + spasi
+        final lineW = nameLines[i].length * advance;
         final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
-        _drawText5x7(image, widthPx, nameLines[i], lx, y, blackColor: true);
-        y += 10;
+        _drawText5x7(image, widthPx, nameLines[i], lx, y,
+            blackColor: true, scale: scale);
+        y += lineH;
       }
-      y += 2;
+      y += (2 * scale).round();
     }
 
     // ── 3) Harga — center, bold-ish ──
     if (showPrice) {
+      final scale = priceFontScale.clamp(1.0, 3.0);
+      final advance = (6 * scale).round();
       final priceText = 'Rp ${_formatPrice(price)}';
-      final lineW = priceText.length * 6;
+      final lineW = priceText.length * advance;
       final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
-      _drawText5x7(image, widthPx, priceText, lx, y, blackColor: true);
-      y += 12;
+      _drawText5x7(image, widthPx, priceText, lx, y,
+          blackColor: true, scale: scale);
+      y += (12 * scale).round();
     }
 
     return image;
@@ -165,8 +178,8 @@ class LabelRenderer {
   }
 
   /// Wrap teks nama ke baris (maks 2 baris) supaya tidak melebihi lebar label.
-  static List<String> _wrapName(String name, int maxPx) {
-    const charW = 5; // lebar karakter font 5×7
+  /// [charW] = lebar karakter dalam px — menyesuaikan skala font (v2.2.57+116).
+  static List<String> _wrapName(String name, int maxPx, {int charW = 5}) {
     final words = name.split(' ');
     final lines = <String>[];
     var cur = '';
@@ -185,6 +198,10 @@ class LabelRenderer {
 
   /// Gambar teks pakai font bitmap 5×7 (angka/huruf dasar) ke [img.Image].
   /// Cukup untuk nama produk + harga label kecil.
+  ///
+  /// [scale] = perbesaran font (v2.2.57+116): 1.0 = 5×7 px, 2.0 = 10×14 px.
+  /// Setiap piksel font diperbesar menjadi blok [scale]×[scale] supaya
+  /// hasilnya tegas (tanpa anti-aliasing — cocok printer thermal 1-bit).
   static void _drawText5x7(
     img.Image image,
     int widthPx,
@@ -192,29 +209,35 @@ class LabelRenderer {
     int x,
     int y, {
     bool blackColor = true,
+    double scale = 1.0,
   }) {
+    final s = scale.clamp(1.0, 3.0).round();
     final chars = text.toUpperCase().split('');
     var cx = x;
     for (final ch in chars) {
       final glyph = _font5x7(ch);
       if (glyph == null) {
-        cx += 5;
+        cx += 5 * s;
         continue;
       }
       for (var row = 0; row < 7; row++) {
         final bits = glyph[row];
         for (var col = 0; col < 5; col++) {
           if ((bits & (1 << (4 - col))) != 0) {
-            final px = (y + row) * widthPx + (cx + col);
-            if (px >= 0 && px < image.width * image.height) {
-              if (blackColor) {
-                image.setPixelRgba(cx + col, y + row, 0, 0, 0);
+            for (var dy = 0; dy < s; dy++) {
+              final py = y + row * s + dy;
+              if (py < 0 || py >= image.height) continue;
+              for (var dx = 0; dx < s; dx++) {
+                final px = cx + col * s + dx;
+                if (px >= 0 && px < image.width && blackColor) {
+                  image.setPixelRgba(px, py, 0, 0, 0);
+                }
               }
             }
           }
         }
       }
-      cx += 6; // 1px spasi antar karakter
+      cx += 6 * s; // 1px spasi antar karakter (diskalakan)
     }
   }
 
@@ -236,6 +259,9 @@ class LabelRenderer {
   /// Bangun widget label untuk PDF (A4 grid). Ukuran [widthMm]×[heightMm]
   /// — default 40×30. Isi label DINAMIS (checkbox) — SAMA dengan jalur cetak
   /// lain (konsistensi render): barcode di atas center, nama, lalu harga.
+  ///
+  /// [nameFontScale]/[priceFontScale] (v2.2.57+116): skala font user
+  /// (1.0–3.0) — fontSize dasar 7.5 (nama) / 8 (harga) dikalikan skala.
   static pw.Widget pdfLabel({
     required String barcode,
     required String name,
@@ -245,6 +271,8 @@ class LabelRenderer {
     required bool showBarcode,
     double widthMm = defaultWidthMm,
     double heightMm = defaultHeightMm,
+    double nameFontScale = 1.0,
+    double priceFontScale = 1.0,
   }) {
     const PdfColor ink = PdfColor.fromInt(0xFF111827);
     const PdfColor paper = PdfColor.fromInt(0xFFFFFFFF);
@@ -267,7 +295,7 @@ class LabelRenderer {
       children.add(pw.SizedBox(height: 1.5 * PdfPageFormat.mm));
     }
 
-    // Nama — center, bold.
+    // Nama — center, bold. fontSize diskalakan dari 7.5 (v2.2.57+116).
     if (showName && name.trim().isNotEmpty) {
       children.add(
         pw.Center(
@@ -275,7 +303,7 @@ class LabelRenderer {
             name,
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
-              fontSize: 7.5,
+              fontSize: 7.5 * nameFontScale.clamp(1.0, 3.0),
               fontWeight: pw.FontWeight.bold,
               color: ink,
             ),
@@ -287,14 +315,14 @@ class LabelRenderer {
       children.add(pw.SizedBox(height: 0.8 * PdfPageFormat.mm));
     }
 
-    // Harga — center, bold.
+    // Harga — center, bold. fontSize diskalakan dari 8 (v2.2.57+116).
     if (showPrice) {
       children.add(
         pw.Center(
           child: pw.Text(
             'Rp ${_formatPrice(price)}',
             style: pw.TextStyle(
-              fontSize: 8,
+              fontSize: 8 * priceFontScale.clamp(1.0, 3.0),
               fontWeight: pw.FontWeight.bold,
               color: ink,
             ),

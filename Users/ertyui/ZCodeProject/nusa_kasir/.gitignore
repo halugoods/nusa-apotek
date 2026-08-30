@@ -49,6 +49,7 @@ nusa_key.private
 
 # Build reports
 /android/build/reports/
+/android/.kotlin/
 
 # APK builds (too large for GitHub)
 *.apk

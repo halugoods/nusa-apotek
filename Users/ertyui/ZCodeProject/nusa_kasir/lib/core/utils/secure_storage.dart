@@ -306,6 +306,28 @@ class SecureStore {
   static Future<String?> getLabelPrinterAddress() =>
       SecureStore.read(key: _labelPrinterAddressKey);
 
+  // -- Ukuran font label barcode (Area B, v2.2.57+116) --
+  // Konfigurasi user untuk nama produk & harga di cetak label — berlaku ke
+  // SEMUA jalur (TSPL / struk thermal / PDF A4) supaya preview = hasil cetak.
+  // Tersimpan sebagai skala 1.0–3.0 (bitmap font 5×7 diskalakan; PDF pakai
+  // fontSize = 7.5×skala). Default 1.0 = ukuran lama.
+  static const _labelNameFontKey = 'nusa_label_name_font';
+  static Future<void> setLabelNameFontScale(double v) =>
+      SecureStore.write(key: _labelNameFontKey, value: v.toString());
+  static Future<double> getLabelNameFontScale() async =>
+      double.tryParse(
+        await SecureStore.read(key: _labelNameFontKey) ?? '',
+      ) ??
+      1.0;
+  static const _labelPriceFontKey = 'nusa_label_price_font';
+  static Future<void> setLabelPriceFontScale(double v) =>
+      SecureStore.write(key: _labelPriceFontKey, value: v.toString());
+  static Future<double> getLabelPriceFontScale() async =>
+      double.tryParse(
+        await SecureStore.read(key: _labelPriceFontKey) ?? '',
+      ) ??
+      1.0;
+
   // -- Cash drawer --
   static Future<void> setCashDrawerEnabled(bool v) =>
       SecureStore.write(key: 'nusa_cash_drawer_enabled', value: v.toString());
