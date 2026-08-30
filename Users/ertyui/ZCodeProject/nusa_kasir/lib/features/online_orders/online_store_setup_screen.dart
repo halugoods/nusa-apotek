@@ -144,6 +144,13 @@ class _OnlineStoreSetupScreenState
     final repo = ref.read(settingsRepoProvider);
     final name = await repo.getStoreName();
     if (name.isNotEmpty) _nameCtrl.text = name;
+    // v2.2.57+120: auto-fill info toko dari "Data Toko" lokal (No. HP/WA +
+    // alamat) — user yang sudah mengisi Data Toko di Pengaturan tidak perlu
+    // mengetik ulang di sini. Nilai cloud tetap menang bila sudah ada.
+    final localPhone = await repo.getStorePhone();
+    final localAddress = await repo.getStoreAddress();
+    if (localPhone.isNotEmpty) _waCtrl.text = localPhone;
+    if (localAddress.isNotEmpty) _addressCtrl.text = localAddress;
 
     // Load store logo from local settings
     _logoPath = await repo.getStoreLogoPath();
@@ -298,6 +305,13 @@ class _OnlineStoreSetupScreenState
 
       if (ok) {
         await ref.read(settingsRepoProvider).setStoreName(name);
+        // v2.2.57+120: info toko di sini ikut disimpan ke Data Toko lokal
+        // (No. HP/WA + alamat) — dua arah, jadi edit di toko online juga
+        // memperbarui Data Toko di Pengaturan.
+        await ref.read(settingsRepoProvider).setStorePhone(_waCtrl.text.trim());
+        await ref
+            .read(settingsRepoProvider)
+            .setStoreAddress(_addressCtrl.text.trim());
         _storeUrl =
             'https://nusa-online.vercel.app/toko/${NusaConfig.productId}/$slug';
 
