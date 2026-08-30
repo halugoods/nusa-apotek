@@ -24,6 +24,21 @@ class CartItem {
   /// Dipakai untuk menampilkan coret harga asli di keranjang.
   final int? originalPrice;
 
+  /// HARGA SEMENTARA per unit (v2.2.57+116) — diskon manual per produk dari
+  /// bottom-sheet "Ubah Harga" di keranjang. Mengganti [price] untuk
+  /// subtotal & transaksi, originalPrice tetap jadi coret. Null = pakai
+  /// harga normal [price].
+  final int? tempPrice;
+
+  /// Diskon nominal per SATUAN (qty) (v2.2.57+116) — dari bottom-sheet
+  /// "Ubah Diskon". Dipotong dari harga per unit; total potongan =
+  /// discountPerItem × qty. Tampil sebagai baris "Disc." di struk.
+  final int? discountPerItem;
+
+  /// Tampilkan baris produk ini di struk cetak (v2.2.57+116). Default true.
+  /// Saat false, item TIDAK dicetak di struk (opsi "informasikan di struk").
+  final bool showInReceipt;
+
   /// Harga modal (cost) per unit. Hanya diisi untuk item manual (ad-hoc);
   /// produk reguler pakai buyPrice dari tabel produk saat hitung HPP.
   /// Tidak dipakai untuk harga jual — murni untuk laporan laba.
@@ -47,6 +62,9 @@ class CartItem {
     this.unitName,
     this.unitQtyPerBase = 1,
     this.originalPrice,
+    this.tempPrice,
+    this.discountPerItem,
+    this.showInReceipt = true,
     this.costPrice,
     this.qty = 1,
     this.note,
@@ -59,8 +77,36 @@ class CartItem {
   /// skipped by stock validation/deduction and report aggregation.
   bool get isManual => productId < 0;
   bool get isPerKg => weightKg != null;
-  bool get hasDiscount => originalPrice != null && originalPrice! > price;
-  int get subtotal => isPerKg ? (price * weightKg!).ceil() : price * qty;
+
+  /// Harga per unit yang dipakai transaksi — tempPrice (harga sementara)
+  /// lebih tinggi prioritasnya dari harga normal [price] (v2.2.57+116).
+  int get unitPrice => tempPrice ?? price;
+
+  /// True bila item memakai harga sementara ATAU harga normal turun
+  /// (diskon grosir/standalone) — menampilkan coret di keranjang.
+  bool get hasDiscount {
+    final base = originalPrice;
+    if (base == null) return false;
+    return base > unitPrice || discountPerItem != null;
+  }
+
+  /// Potongan diskon per SATUAN (gabungan harga sementara + diskon per qty).
+  /// Dipakai subtotal & baris "Disc." di struk.
+  int get effectiveDiscountPerItem =>
+      ((originalPrice ?? unitPrice) - unitPrice).clamp(0, (originalPrice ?? unitPrice)) +
+      (discountPerItem ?? 0);
+
+  /// Nominal total diskon item (per satuan × qty / berat).
+  int get itemDiscountTotal => (effectiveDiscountPerItem *
+          (isPerKg ? 1 : qty));
+
+  /// Subtotal — harga SEMENTARA (tempPrice) bila ada, sisanya [price].
+  /// Diskon per satuan TIDAK dikurangkan di sini (dipotong di transaksi
+  /// total via [itemDiscountTotal], konsisten baris "Disc." struk).
+  int get subtotal {
+    final base = isPerKg ? (unitPrice * weightKg!).ceil() : unitPrice * qty;
+    return base;
+  }
 
   /// Nama tampilan: produk + varian ("Nama — Varian").
   String get displayName => variantName == null || variantName!.isEmpty
@@ -93,6 +139,9 @@ class CartItem {
     if (unitName != null) 'unitName': unitName,
     if (unitQtyPerBase != 1) 'unitQtyPerBase': unitQtyPerBase,
     if (originalPrice != null) 'originalPrice': originalPrice,
+    if (tempPrice != null) 'tempPrice': tempPrice,
+    if (discountPerItem != null) 'discountPerItem': discountPerItem,
+    if (!showInReceipt) 'showInReceipt': false,
     if (costPrice != null) 'costPrice': costPrice,
     if (weightKg != null) 'weightKg': weightKg,
     if (isService) 'isService': isService,
@@ -107,6 +156,9 @@ class CartItem {
     double? unitQtyPerBase,
     int? price,
     int? originalPrice,
+    int? tempPrice,
+    int? discountPerItem,
+    bool? showInReceipt,
     int? costPrice,
     int? qty,
     String? note,
@@ -122,6 +174,9 @@ class CartItem {
     unitName: unitName ?? this.unitName,
     unitQtyPerBase: unitQtyPerBase ?? this.unitQtyPerBase,
     originalPrice: originalPrice ?? this.originalPrice,
+    tempPrice: tempPrice ?? this.tempPrice,
+    discountPerItem: discountPerItem ?? this.discountPerItem,
+    showInReceipt: showInReceipt ?? this.showInReceipt,
     costPrice: costPrice ?? this.costPrice,
     qty: qty ?? this.qty,
     note: note ?? this.note,
@@ -168,6 +223,9 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
         unitName: unitName ?? list[i].unitName,
         unitQtyPerBase: unitQtyPerBase != 1 ? unitQtyPerBase : list[i].unitQtyPerBase,
         originalPrice: list[i].originalPrice,
+        tempPrice: list[i].tempPrice,
+        discountPerItem: list[i].discountPerItem,
+        showInReceipt: list[i].showInReceipt,
         costPrice: list[i].costPrice ?? costPrice,
         qty: list[i].qty + qty,
         note: list[i].note ?? note,
@@ -221,6 +279,9 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
       variantPriceAdjustment: adjustment,
       variantStock: variantStock,
       originalPrice: item.originalPrice,
+      tempPrice: item.tempPrice,
+      discountPerItem: item.discountPerItem,
+      showInReceipt: item.showInReceipt,
       costPrice: item.costPrice,
       qty: item.qty,
       note: item.note,
@@ -289,6 +350,9 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
       unitName: item.unitName,
       unitQtyPerBase: item.unitQtyPerBase,
       originalPrice: newOriginal,
+      tempPrice: item.tempPrice,
+      discountPerItem: item.discountPerItem,
+      showInReceipt: item.showInReceipt,
       costPrice: item.costPrice,
       qty: item.qty,
       note: item.note,
@@ -343,6 +407,84 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     if (i < 0) return;
     final list = [...state];
     list[i] = list[i].copyWith(note: note);
+    state = list;
+  }
+
+  /// Set HARGA SEMENTARA per unit (v2.2.57+116) — dipakai subtotal & struk.
+  /// null = kembali ke harga normal [price]. Menaikkan harga lebih rendah
+  /// dari harga normal → tetap valid (harga sementara bisa lebih murah).
+  void setTempPrice(int productId, int? tempPrice, {String? variantName}) {
+    final i = state.indexWhere(
+      (e) => e.productId == productId && e.variantName == variantName,
+    );
+    if (i < 0) return;
+    final list = [...state];
+    list[i] = list[i].copyWith(tempPrice: tempPrice);
+    state = list;
+  }
+
+  /// Set DISKON nominal per SATUAN (v2.2.57+116). null = tanpa diskon.
+  void setDiscountPerItem(int productId, int? discountPerItem,
+      {String? variantName}) {
+    final i = state.indexWhere(
+      (e) => e.productId == productId && e.variantName == variantName,
+    );
+    if (i < 0) return;
+    final list = [...state];
+    list[i] = list[i].copyWith(discountPerItem: discountPerItem);
+    state = list;
+  }
+
+  /// Set toggle "informasikan di struk cetak" (v2.2.57+116).
+  void setShowInReceipt(int productId, bool show, {String? variantName}) {
+    final i = state.indexWhere(
+      (e) => e.productId == productId && e.variantName == variantName,
+    );
+    if (i < 0) return;
+    final list = [...state];
+    list[i] = list[i].copyWith(showInReceipt: show);
+    state = list;
+  }
+
+  /// Restore SATU item dari map JSON (lanjutkan pesanan / tab terbuka).
+  /// Mengembalikan field harga sementara, diskon per satuan, catatan, dan
+  /// toggle struk — sama persis saat disimpan (v2.2.57+116).
+  void restoreFromJson(Map<String, dynamic> m) {
+    final qty = (m['qty'] as num?)?.toInt() ?? 1;
+    addProduct(
+      m['productId'] as int,
+      m['name'] as String,
+      (m['price'] as num).toInt(),
+      note: m['note'] as String?,
+      isService: (m['isService'] as bool?) ?? false,
+      weightKg: (m['weightKg'] as num?)?.toDouble(),
+      variantName: m['variantName'] as String?,
+      variantPriceAdjustment:
+          ((m['variantPriceAdjustment'] as num?)?.toInt()) ?? 0,
+      variantStock: (m['variantStock'] as num?)?.toInt(),
+      unitName: m['unitName'] as String?,
+      unitQtyPerBase: ((m['unitQtyPerBase'] as num?)?.toDouble()) ?? 1,
+      qty: 1,
+    );
+    final i = state.indexWhere(
+      (e) => e.productId == (m['productId'] as int) &&
+          e.variantName == (m['variantName'] as String?),
+    );
+    if (i < 0) return;
+    final list = [...state];
+    var item = list[i];
+    if (qty > 1) item = item.copyWith(qty: qty);
+    final tempPrice = (m['tempPrice'] as num?)?.toInt();
+    final discountPerItem = (m['discountPerItem'] as num?)?.toInt();
+    final showInReceipt = (m['showInReceipt'] as bool?) ?? true;
+    item = item.copyWith(
+      tempPrice: tempPrice,
+      discountPerItem: discountPerItem,
+      showInReceipt: showInReceipt,
+      originalPrice: (m['originalPrice'] as num?)?.toInt(),
+      costPrice: (m['costPrice'] as num?)?.toInt(),
+    );
+    list[i] = item;
     state = list;
   }
 

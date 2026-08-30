@@ -134,7 +134,10 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   /// Render label bitmap untuk SATU produk (dipakai TSPL + ESC/POS + preview).
   /// Ukuran font nama & harga memakai [_nameScale]/[_priceScale] — SAMA untuk
   /// preview dan print (konsistensi render).
-  img.Image _renderFor(Product p, int dpi) {
+  ///
+  /// [fullWidthBarcode] (v2.2.57+116): barcode direntang selebar label —
+  /// dipakai jalur struk thermal (barcode rata kiri-kanan kertas struk).
+  img.Image _renderFor(Product p, int dpi, {bool fullWidthBarcode = false}) {
     return LabelRenderer.renderLabelBitmap(
       barcode: p.barcode ?? '',
       name: p.name,
@@ -146,6 +149,37 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       heightPx: LabelRenderer.mmToPx(_labelH, dpi: dpi).round(),
       nameFontScale: _nameScale,
       priceFontScale: _priceScale,
+      fullWidthBarcode: fullWidthBarcode,
+    );
+  }
+
+  /// Lebar kertas struk (mm) dari pengaturan — 58 atau 80.
+  /// Label struk dirender selebar kertas (full-width barcode) supaya barcode
+  /// rata kiri-kanan di kertas struk (v2.2.57+116).
+  Future<double> _paperMm() async {
+    final w = await SecureStore.getPaperSize(); // '58' | '80'
+    return w == '80' ? 80.0 : 58.0;
+  }
+
+  /// Render bitmap label untuk jalur STRUK: selebar kertas [paperMm] (bukan
+  /// lebar label 40mm), tinggi proporsional, barcode FULL lebar. Preview dan
+  /// print pakai render yang SAMA → hasil cetak = preview.
+  Future<img.Image> _renderForStruk(Product p, int dpi) async {
+    final paperMm = await _paperMm();
+    return LabelRenderer.renderLabelBitmap(
+      barcode: p.barcode ?? '',
+      name: p.name,
+      price: p.sellPrice,
+      showName: _showName,
+      showPrice: _showPrice,
+      showBarcode: _showBarcode,
+      widthPx: LabelRenderer.mmToPx(paperMm, dpi: dpi).round(),
+      // Tinggi label struk proporsional: 40×30 → lebar kertas × 0.75.
+      heightPx: LabelRenderer.mmToPx(paperMm * (_labelH / _labelW), dpi: dpi)
+          .round(),
+      nameFontScale: _nameScale,
+      priceFontScale: _priceScale,
+      fullWidthBarcode: true,
     );
   }
 
@@ -315,7 +349,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     for (final p in _selected) {
       buf.add(
         LabelCommands.buildEscPosLabel(
-          bitmap: _renderFor(p, LabelDpi.dpi203),
+          bitmap: await _renderForStruk(p, LabelDpi.dpi203),
           name: p.name,
           price: p.sellPrice,
           showName: _showName,
@@ -671,7 +705,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.15),
+                    color: Colors.grey.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(
@@ -800,7 +834,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           ListTile(
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: Colors.grey.withOpacity(0.06),
+            tileColor: Colors.grey.withValues(alpha: 0.06),
             leading: Icon(icon, color: NusaConfig.activePrimary),
             title: Text(
               title,
@@ -829,7 +863,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
               decoration: BoxDecoration(
                 color: isDark
                     ? NusaConfig.darkSurface2.withValues(alpha: 0.5)
-                    : Colors.grey.withOpacity(0.04),
+                    : Colors.grey.withValues(alpha: 0.04),
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(12),
                 ),
@@ -958,22 +992,72 @@ class _LabelBitmapPreview extends StatelessWidget {
   }
 }
 
-/// Preview jalur struk thermal — bitmap ACTUAL di atas visual kertas struk
-/// 58mm (label 40mm ≈ 69% lebar kertas, center, lalu potong).
-class _StrukPreview extends StatelessWidget {
+/// Preview jalur struk thermal — render ACTUAL selebar kertas (58/80mm,
+/// barcode full-width) di atas visual kertas struk, lalu garis potong.
+/// Preview = hasil cetak (render sama dengan _printEscPos).
+class _StrukPreview extends StatefulWidget {
   final Product product;
   final _LabelPrintSheetState sheet;
 
   const _StrukPreview({required this.product, required this.sheet});
 
   @override
+  State<_StrukPreview> createState() => _StrukPreviewState();
+}
+
+class _StrukPreviewState extends State<_StrukPreview> {
+  img.Image? _bitmap;
+  String? _paper;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StrukPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.product != widget.product ||
+        oldWidget.sheet._nameScale != widget.sheet._nameScale ||
+        oldWidget.sheet._priceScale != widget.sheet._priceScale ||
+        oldWidget.sheet._showName != widget.sheet._showName ||
+        oldWidget.sheet._showPrice != widget.sheet._showPrice ||
+        oldWidget.sheet._showBarcode != widget.sheet._showBarcode) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final bmp = await widget.sheet._renderForStruk(widget.product, LabelDpi.dpi203);
+    final paper = await widget.sheet._paperMm();
+    if (!mounted) return;
+    setState(() {
+      _bitmap = bmp;
+      _paper = paper == 80 ? '80' : '58';
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bitmap = sheet._renderFor(product, LabelDpi.dpi203);
+    final bitmap = _bitmap;
+    if (bitmap == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
     final pngBytes = Uint8List.fromList(img.encodePng(bitmap));
-    // Visual kertas struk: 58mm lebar, label 40mm → ~69% lebar kertas.
-    const paperW = 190.0;
-    final bitmapW = paperW * (sheet._labelW / 58.0);
+    // Visual kertas struk: selebar bitmap (full paper width).
+    final paperW = 190.0;
+    final bitmapW = paperW;
     final bitmapH = bitmapW * bitmap.height / bitmap.width;
 
     return Column(
@@ -1033,7 +1117,7 @@ class _StrukPreview extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Kertas 58mm • label 40×30mm • bit-image ESC/POS',
+          'Kertas ${_paper ?? '58'}mm • label selebar kertas • bit-image ESC/POS',
           style: TextStyle(
             fontSize: 11,
             color: isDark
@@ -1134,6 +1218,9 @@ class _A4GridPreview extends StatelessWidget {
 
 /// Satu label mini di dalam preview lembar A4 — konten ACTUAL (barcode
 /// CODE128 + nama + harga) dirender sesuai isi label & ukuran font.
+/// Layout = persis [LabelRenderer.pdfLabel] (preview = hasil PDF):
+/// barcode selebar 90% label × tinggi 22% label, lalu nama (maks 2 baris),
+/// lalu harga — semua center.
 class _MiniLabel extends StatelessWidget {
   final Product product;
   final _LabelPrintSheetState sheet;
@@ -1151,12 +1238,11 @@ class _MiniLabel extends StatelessWidget {
     final showName = sheet._showName;
     final showPrice = sheet._showPrice;
     final barcode = product.barcode ?? '';
+    // Ukuran barcode SAMA dengan pdfLabel: lebar 90% label, tinggi 22%.
+    final barW = sheet._labelW * scale * 0.9;
+    final barH = sheet._labelH * scale * 0.22;
     final bars = showBarcode && barcode.trim().isNotEmpty
-        ? LabelRenderer.barcodeBars(
-            barcode,
-            sheet._labelW * scale - 3 * scale,
-            sheet._labelH * scale * 0.22,
-          )
+        ? LabelRenderer.barcodeBars(barcode, barW, barH)
         : const <bc.BarcodeElement>[];
 
     return Container(
@@ -1164,58 +1250,48 @@ class _MiniLabel extends StatelessWidget {
         color: Colors.white,
         border: Border.all(color: Colors.grey.shade400, width: 0.5),
       ),
-      padding: EdgeInsets.all(1.5 * scale),
+      padding: EdgeInsets.all(2 * scale),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Barcode: SizedBox UKURAN PASTI = ruang koordinat bars →
+          // painter tidak mungkin meluber keluar kotak (fix v2.2.57+116).
           if (bars.isNotEmpty)
-            Expanded(
-              flex: 26,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 2 * scale),
-                child: Center(
-                  child: CustomPaint(
-                    painter: _BarPainter(bars),
-                    size: Size(
-                      sheet._labelW * scale - 3 * scale,
-                      sheet._labelH * scale * 0.22,
-                    ),
-                  ),
-                ),
+            SizedBox(
+              width: barW,
+              height: barH,
+              child: CustomPaint(
+                painter: _BarPainter(bars),
+                size: Size(barW, barH),
               ),
             ),
+          if (bars.isNotEmpty && showName) SizedBox(height: 1.5 * scale),
           if (showName && product.name.trim().isNotEmpty)
-            Expanded(
-              flex: 34,
-              child: Center(
-                child: Text(
-                  product.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 7.5 * sheet._nameScale * scale / 2.6,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF111827),
-                    height: 1.1,
-                  ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 1 * scale),
+              child: Text(
+                product.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 7.5 * sheet._nameScale * scale / 2.6,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF111827),
+                  height: 1.1,
                 ),
               ),
             ),
+          if (showName && showPrice) SizedBox(height: 0.8 * scale),
           if (showPrice)
-            Expanded(
-              flex: 20,
-              child: Center(
-                child: Text(
-                  'Rp ${_fmtPrice(product.sellPrice)}',
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: 8 * sheet._priceScale * scale / 2.6,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF111827),
-                  ),
-                ),
+            Text(
+              'Rp ${_fmtPrice(product.sellPrice)}',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 8 * sheet._priceScale * scale / 2.6,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF111827),
               ),
             ),
         ],

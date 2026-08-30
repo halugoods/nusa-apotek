@@ -20,6 +20,10 @@ class ReceiptItem {
   /// fallback 'pcs' (renderer menampilkan qty polos).
   final String? unitLabel;
 
+  /// Diskon nominal per SATUAN (v2.2.57+116) — dipotong di subtotal,
+  /// ditampilkan sebagai baris "Disc." tambahan.
+  final int? discountPerItem;
+
   const ReceiptItem({
     required this.name,
     required this.qty,
@@ -28,12 +32,25 @@ class ReceiptItem {
     this.note,
     this.weightKg,
     this.unitLabel,
+    this.discountPerItem,
   });
 
   bool get isPerKg => weightKg != null;
-  bool get hasDiscount => originalPrice != null && originalPrice! > price;
-  int get discountNominal => hasDiscount ? originalPrice! - price : 0;
-  int get subtotal => isPerKg ? (price * weightKg!).ceil() : qty * price;
+
+  /// Harga per unit efektif (setelah harga sementara & diskon per satuan).
+  int get unitPrice => price;
+  bool get hasDiscount =>
+      (originalPrice != null && originalPrice! > price) ||
+      (discountPerItem != null && discountPerItem! > 0);
+  int get discountNominal =>
+      (hasDiscount && originalPrice != null && originalPrice! > price
+          ? originalPrice! - price
+          : 0) +
+      (discountPerItem ?? 0);
+  int get subtotal =>
+      isPerKg
+          ? (price * weightKg!).ceil() - (discountPerItem ?? 0)
+          : qty * price - (discountPerItem ?? 0) * qty;
 
   /// Subtotal KOTOR (sebelum diskon item) — harga ASLI di struk.
   int get grossSubtotal =>
@@ -42,7 +59,8 @@ class ReceiptItem {
           : qty * (originalPrice ?? price);
 
   /// Potongan diskon item total (per unit × qty).
-  int get discountTotal => hasDiscount ? discountNominal * (isPerKg ? 1 : qty) : 0;
+  int get discountTotal =>
+      discountNominal * (isPerKg ? 1 : qty);
 
   /// Format qty untuk baris item: "2 x Rp 5.000" atau "1.5 kg x Rp 5.000/kg"
   /// atau "2 dus (24 pcs)" bila produk pakai satuan jual (v2.2.43).
@@ -136,17 +154,22 @@ class ReceiptData {
       orderType: orderType,
       tableName: tableName,
       items: cartItems
+          // v2.2.57+116: item dengan toggle "informasikan di struk" OFF
+          // tidak dicetak di struk (transaksi tetap tersimpan lengkap).
+          .where((c) => c.showInReceipt)
           .map(
             (c) => ReceiptItem(
               // v2.2.43: nama + varian ("Nama — Varian") di struk.
               name: c.displayName,
               qty: c.qty,
-              price: c.price,
+              price: c.unitPrice,
               originalPrice: c.originalPrice,
               note: c.note,
               weightKg: c.weightKg,
               // v2.2.43: satuan jual dinamis (qtyLabel pakai ini).
               unitLabel: c.unitName,
+              // v2.2.57+116: diskon per satuan → baris "Disc." struk.
+              discountPerItem: c.discountPerItem,
             ),
           )
           .toList(),
@@ -204,6 +227,7 @@ class ReceiptData {
               note: m['note'] as String?,
               weightKg: (m['weightKg'] as num?)?.toDouble(),
               unitLabel: m['unitName'] as String?,
+              discountPerItem: (m['discountPerItem'] as num?)?.toInt(),
             );
           })
           .toList(),

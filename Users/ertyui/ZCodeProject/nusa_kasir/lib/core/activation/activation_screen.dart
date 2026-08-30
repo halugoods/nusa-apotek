@@ -6,6 +6,7 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/account_auth_service.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
+import 'package:nusa_kasir/core/utils/permission_helper.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
@@ -90,6 +91,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   @override
   void initState() {
     super.initState();
+    // v2.2.57+116: dialog izin pertama kali di layar LOGIN (aktivasi) — bukan
+    // nunggu setup. User yang baru install langsung ditanya sekali (kamera,
+    // notifikasi, penyimpanan, bluetooth) saat membuka aplikasi pertama kali.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      requestFirstInstallPermissions();
+    });
     _initAutoSignIn();
     NfcTagService.isAvailable().then((ok) {
       if (mounted) setState(() => _nfcAvailable = ok);

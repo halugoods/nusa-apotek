@@ -64,10 +64,10 @@ class DashboardHeader extends StatelessWidget {
           ),
 
           // Right: status backup cloud (v2.2.55) + Bell button
-          // v2.2.57+116: spacing antar elemen kanan 4px (user: 8px terlalu
-          // renggang). Ikon tetap 44x44 (tap target).
+          // v2.2.57+116: spacing antar elemen kanan 2px (user: 4px masih
+          // longgar). Ikon tetap 44x44 (tap target).
           const _CloudSyncChip(),
-          SizedBox(width: 4),
+          SizedBox(width: 2),
           GestureDetector(
             onTap: onBellTap,
             child: Container(
@@ -106,7 +106,7 @@ class DashboardHeader extends StatelessWidget {
           // Branch icon — antara lonceng dan logout. Tap → bottom sheet
           // pemilih cabang (slide-up). Hanya muncul jika ada cabang > 1.
           if (showBranchIcon && onBranchTap != null) ...[
-            SizedBox(width: 4),
+            SizedBox(width: 2),
             GestureDetector(
               onTap: onBranchTap,
               child: Container(
@@ -151,7 +151,7 @@ class DashboardHeader extends StatelessWidget {
             ),
           ],
           if (onLogout != null) ...[
-            SizedBox(width: 4),
+            SizedBox(width: 2),
             // Logout / Ganti Pengguna — switch role tanpa buka ulang app
             GestureDetector(
               onTap: onLogout,

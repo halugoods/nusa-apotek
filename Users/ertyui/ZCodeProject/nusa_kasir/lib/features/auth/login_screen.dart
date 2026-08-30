@@ -13,6 +13,7 @@ import 'package:nusa_kasir/shared/widgets/pin_keypad.dart';
 import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/shared/widgets/restore_backup_flow.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/utils/permission_helper.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 /// Full-screen PIN login — card-with-depth style (v1.7.17 design).
@@ -35,6 +36,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // v2.2.57+116: izin pertama kali juga diminta di layar PIN login — menutup
+    // jalur user yang sudah aktivasi tapi flag `nusa_permissions_asked` belum
+    // pernah diset (update dari versi lama). Helper ini aman: sekali jalan.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      requestFirstInstallPermissions();
+    });
     NfcTagService.isAvailable().then((ok) {
       if (mounted) setState(() => _nfcAvailable = ok);
     });

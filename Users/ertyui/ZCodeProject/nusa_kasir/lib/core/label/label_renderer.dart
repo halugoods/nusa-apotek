@@ -52,23 +52,25 @@ class LabelRenderer {
 
   /// Render SATU label ke bitmap MONOKROM (1-bit) ukuran [widthPx]×[heightPx].
   ///
-  /// Layout (v2.2.57+115, dirombak dari umpan balik user):
+  /// Layout (v2.2.57+116, adaptif):
   ///   ┌──────────────────────────────┐
-  ///   │          ▓▓▓▓▓▓▓▓▓▓          │  ← barcode CODE128, PENDEK & di TENGAH
-  ///   │         nama produk          │  ← nama, center, 1–2 baris
-  ///   │           Rp 12.500          │  ← harga, center, bold
+  ///   │         ▓▓▓▓▓▓▓▓▓▓▓▓         │  ← barcode CODE128, CENTER (atau
+  ///   │        nama produk           │     FULL lebar kertas utk struk)
+  ///   │         Rp 12.500            │  ← nama, center, 1–2 baris
   ///   └──────────────────────────────┘
-  ///
-  /// Semua elemen CENTER (tidak menempel kiri). Barcode dibuat ramping:
-  /// tingginya ~28% label, di posisi atas — bukan memenuhi label yang bikin
-  /// teks nama/harga terpisah jauh dari barcode (keluhan user).
   ///
   /// Isi label dinamis via [showName]/[showPrice]/[showBarcode]. Ukuran font
   /// nama & harga bisa diatur user via [nameFontScale]/[priceFontScale]
-  /// (1.0–3.0, v2.2.57+116) — font bitmap 5×7 digambar dengan perbesaran
-  /// skala tsb. Mengembalikan [img.Image] RGBA (putih/hitam) — output yang
-  /// sama dipakai pratinjau (encodePng), TSPL, dan ESC/POS (konsistensi
-  /// render).
+  /// (1.0–3.0, langkah 0.1 — v2.2.57+116). Font dirender fraksional:
+  /// supersampling 8× lalu downsampling, jadi tiap kenaikan 0.1x TERLIHAT
+  /// perubahannya (bukan dibulatkan).
+  ///
+  /// [fullWidthBarcode] (v2.2.57+116): barcode diregangkan selebar label
+  /// (margin kecil) — dipakai jalur struk thermal supaya barcode nyambung
+  /// rata kiri-kanan. Default false = barcode pendek di tengah (TSPL).
+  ///
+  /// Mengembalikan [img.Image] RGBA (putih/hitam) — output yang sama dipakai
+  /// pratinjau (encodePng), TSPL, dan ESC/POS (konsistensi render).
   static img.Image renderLabelBitmap({
     required String barcode,
     required String name,
@@ -80,6 +82,7 @@ class LabelRenderer {
     required int heightPx,
     double nameFontScale = 1.0,
     double priceFontScale = 1.0,
+    bool fullWidthBarcode = false,
   }) {
     final image = img.Image(widthPx, heightPx)
       ..fill(img.getColor(255, 255, 255)); // putih
@@ -91,16 +94,17 @@ class LabelRenderer {
     // slotnya sendiri, sisanya disebar merata di atas-bawah (center vertikal).
     var y = margin;
 
-    // ── 1) Barcode CODE128 — PENDEK & CENTER ──
-    //    Tinggi barcode = 26% tinggi label (bukan memenuhi label). Pakai
-    //    operasi dari package `barcode` supaya scan HID/kamera yang sama di
-    //    app ini membaca label yang sama.
+    // ── 1) Barcode CODE128 ──
+    //    TSPL: pendek & center (26% tinggi label). Struk: FULL lebar
+    //    (rata kiri-kanan) — [fullWidthBarcode].
     if (showBarcode && barcode.trim().isNotEmpty) {
-      final bw = widthPx - margin * 2;
+      final bw = fullWidthBarcode
+          ? widthPx - margin * 2
+          : widthPx - margin * 2;
       final bh = (heightPx * 0.26).round().clamp(24, 80);
       final bars = barcodeBars(barcode, bw.toDouble(), bh.toDouble());
       // Hitung bounding box barcode (bar paling kiri & kanan) supaya bisa
-      // di-center secara visual.
+      // di-center secara visual (TSPL) atau dipakai penuh (struk).
       var minX = widthPx, maxX = 0;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
@@ -111,7 +115,13 @@ class LabelRenderer {
         }
       }
       final barW = maxX - minX;
-      final offX = barW > 0 ? cx - barW ~/ 2 : 0;
+      // Struk: baris barcode direntang penuh ke kiri-kanan (pixel-accurate
+      // terhadap elemen barcode). TSPL: center.
+      final offX = fullWidthBarcode
+          ? margin - minX
+          : barW > 0
+              ? cx - barW ~/ 2
+              : 0;
       final topY = y;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
@@ -130,35 +140,105 @@ class LabelRenderer {
     }
 
     // ── 2) Nama produk — center, maks 2 baris ──
+    //    v2.2.57+116: bila nama MENTOK ke bawah (melebihi ruang ke harga),
+    //    nama ditaruh LEBIH RENDAH (di bawah barcode) dan harga digeser ke
+    //    bawah — supaya tidak tabrakan. Ditangani _placeName/_placePrice.
     if (showName && name.trim().isNotEmpty) {
-      final scale = nameFontScale.clamp(1.0, 3.0);
-      final charW = (5 * scale).round();
-      final advance = (6 * scale).round();
-      final lineH = (10 * scale).round();
-      final nameLines = _wrapName(name, widthPx - margin * 2, charW: charW);
-      for (var i = 0; i < nameLines.length && i < 2; i++) {
-        final lineW = nameLines[i].length * advance;
-        final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
-        _drawText5x7(image, widthPx, nameLines[i], lx, y,
-            blackColor: true, scale: scale);
-        y += lineH;
-      }
-      y += (2 * scale).round();
+      y = _placeName(
+        image,
+        widthPx,
+        heightPx,
+        name,
+        y,
+        cx,
+        margin,
+        nameFontScale.clamp(1.0, 3.0),
+        priceShown: showPrice && price >= 0,
+      );
     }
 
     // ── 3) Harga — center, bold-ish ──
     if (showPrice) {
-      final scale = priceFontScale.clamp(1.0, 3.0);
-      final advance = (6 * scale).round();
-      final priceText = 'Rp ${_formatPrice(price)}';
-      final lineW = priceText.length * advance;
-      final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
-      _drawText5x7(image, widthPx, priceText, lx, y,
-          blackColor: true, scale: scale);
-      y += (12 * scale).round();
+      y = _placePrice(
+        image,
+        widthPx,
+        heightPx,
+        price,
+        y,
+        cx,
+        margin,
+        priceFontScale.clamp(1.0, 3.0),
+      );
     }
 
     return image;
+  }
+
+  /// Tempatkan nama (center, maks 2 baris) — kembali ke y setelah nama.
+  /// Bila nama 2 baris penuh dan harga masih perlu ruang, nama dipindah
+  /// turun (di bawah barcode) dan ruang bawah dibagi rata (v2.2.57+116).
+  static int _placeName(
+    img.Image image,
+    int widthPx,
+    int heightPx,
+    String name,
+    int y,
+    int cx,
+    int margin,
+    double scale, {
+    required bool priceShown,
+  }) {
+    final charW = _fractionalTextAdvance(scale); // lebar char 5×7 fraksional
+    final advance = _fractionalTextAdvance(scale);
+    final lineH = _fractionalLineHeight(scale, isName: true);
+    final nameLines = _wrapName(name, widthPx - margin * 2, charW: charW);
+    final lineCount = nameLines.length > 2 ? 2 : nameLines.length;
+    final nameBlockH = lineCount * lineH;
+
+    // Ruang tersisa setelah nama → harga. Bila nama 2 baris dan ruang
+    // tersisa kurang dari tinggi harga → geser nama ke bawah (center blok
+    // di ruang bawah label).
+    final priceBlockH = priceShown ? _fractionalLineHeight(scale, isName: false) + 4 : 0;
+    final spaceBelow = heightPx - margin - y - priceBlockH;
+    final int nameY;
+    if (spaceBelow < nameBlockH + 2) {
+      // Nama mentok ke harga → letakkan nama di tengah ruang bawah label.
+      final availTop = y;
+      final availBot = heightPx - margin;
+      final availH = availBot - availTop;
+      nameY = availTop + ((availH - nameBlockH) ~/ 2).clamp(0, availH - nameBlockH);
+    } else {
+      nameY = y;
+    }
+
+    for (var i = 0; i < lineCount; i++) {
+      final line = nameLines[i];
+      final lineW = line.length * advance;
+      final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+      _drawText5x7Fractional(image, widthPx, line, lx, nameY + i * lineH,
+          scale: scale);
+    }
+    return nameY + nameBlockH;
+  }
+
+  /// Tempatkan harga (center) — kembali ke y setelah harga.
+  static int _placePrice(
+    img.Image image,
+    int widthPx,
+    int heightPx,
+    int price,
+    int y,
+    int cx,
+    int margin,
+    double scale,
+  ) {
+    final advance = _fractionalTextAdvance(scale);
+    final lineH = _fractionalLineHeight(scale, isName: false);
+    final priceText = 'Rp ${_formatPrice(price)}';
+    final lineW = priceText.length * advance;
+    final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+    _drawText5x7Fractional(image, widthPx, priceText, lx, y, scale: scale);
+    return y + lineH;
   }
 
   /// Ambil daftar piksel MONOKROM (true = hitam) dari hasil [renderLabelBitmap]
@@ -196,48 +276,86 @@ class LabelRenderer {
     return lines;
   }
 
+  /// Lebar karakter fraksional (px) — 5px × skala (v2.2.57+116).
+  static int _fractionalTextAdvance(double scale) =>
+      (6 * scale).round().clamp(6, 24);
+
+  /// Tinggi baris fraksional — nama 10px×skala, harga 12px×skala.
+  static int _fractionalLineHeight(double scale, {required bool isName}) =>
+      ((isName ? 10 : 12) * scale).round().clamp(10, 48);
+
   /// Gambar teks pakai font bitmap 5×7 (angka/huruf dasar) ke [img.Image].
   /// Cukup untuk nama produk + harga label kecil.
   ///
-  /// [scale] = perbesaran font (v2.2.57+116): 1.0 = 5×7 px, 2.0 = 10×14 px.
-  /// Setiap piksel font diperbesar menjadi blok [scale]×[scale] supaya
-  /// hasilnya tegas (tanpa anti-aliasing — cocok printer thermal 1-bit).
-  static void _drawText5x7(
+  /// [scale] = perbesaran font FRAKSIONAL (v2.2.57+116): 1.0 = 5×7 px,
+  /// 1.5 = 7.5×10.5 px, 2.0 = 10×14 px, dst. Tiap 0.1x TERLIHAT perubahannya.
+  /// Teknik: gambar glyph di "supersurface" 8× lebih besar, lalu
+  /// box-downsample rata-rata ke ukuran asli → teks tetap tegas (anti-
+  /// alias ringan) dan cocok printer thermal 1-bit (threshold 50%).
+  static void _drawText5x7Fractional(
     img.Image image,
     int widthPx,
     String text,
     int x,
     int y, {
-    bool blackColor = true,
     double scale = 1.0,
   }) {
-    final s = scale.clamp(1.0, 3.0).round();
+    final s = scale.clamp(1.0, 3.0);
+    // Ukuran glyph fraksional dalam satuan "dot" (1 dot = 1/8 supersample).
+    final dotAdv = (6 * s); // advance per char
+    final dotH = (7 * s); // tinggi glyph
+    // Ukuran supersurface (8× resolusi) untuk seluruh teks.
+    final ss = 8;
+    final totalW = (text.length * dotAdv * ss).ceil();
+    final totalH = (dotH * ss).ceil();
+    if (totalW <= 0 || totalH <= 0) return;
+    final buffer = img.Image(totalW, totalH)
+      ..fill(img.getColor(255, 255, 255));
     final chars = text.toUpperCase().split('');
-    var cx = x;
-    for (final ch in chars) {
-      final glyph = _font5x7(ch);
-      if (glyph == null) {
-        cx += 5 * s;
-        continue;
-      }
+    for (var ci = 0; ci < chars.length; ci++) {
+      final glyph = _font5x7(chars[ci]);
+      if (glyph == null) continue;
+      // Posisi char dalam supersurface (float, pakai dot*ss).
+      final charLeft = ci * dotAdv * ss;
+      final charTop = 0.0;
       for (var row = 0; row < 7; row++) {
         final bits = glyph[row];
         for (var col = 0; col < 5; col++) {
-          if ((bits & (1 << (4 - col))) != 0) {
-            for (var dy = 0; dy < s; dy++) {
-              final py = y + row * s + dy;
-              if (py < 0 || py >= image.height) continue;
-              for (var dx = 0; dx < s; dx++) {
-                final px = cx + col * s + dx;
-                if (px >= 0 && px < image.width && blackColor) {
-                  image.setPixelRgba(px, py, 0, 0, 0);
-                }
-              }
+          if ((bits & (1 << (4 - col))) == 0) continue;
+          // Kotak piksel glyph → persegi supersurface.
+          final px0 = (charLeft + col * s * ss).round();
+          final py0 = (charTop + row * s * ss).round();
+          final px1 = (charLeft + (col + 1) * s * ss).round();
+          final py1 = (charTop + (row + 1) * s * ss).round();
+          for (var by = py0; by < py1 && by < totalH; by++) {
+            for (var bx = px0; bx < px1 && bx < totalW; bx++) {
+              buffer.setPixelRgba(bx, by, 0, 0, 0);
             }
           }
         }
       }
-      cx += 6 * s; // 1px spasi antar karakter (diskalakan)
+    }
+    // Box-downsample 8× → target px, threshold 50% hitam.
+    for (var ty = 0; ty < totalH; ty += ss) {
+      final dstY = y + (ty / ss).round();
+      if (dstY < 0 || dstY >= image.height) continue;
+      for (var tx = 0; tx < totalW; tx += ss) {
+        final dstX = x + (tx / ss).round();
+        if (dstX < 0 || dstX >= image.width) continue;
+        // Hitung rata-rata blok ss×ss.
+        var sum = 0;
+        var cnt = 0;
+        for (var by = ty; by < ty + ss && by < totalH; by++) {
+          for (var bx = tx; bx < tx + ss && bx < totalW; bx++) {
+            final p = buffer.getPixel(bx, by);
+            if (img.getRed(p) < 128) sum++;
+            cnt++;
+          }
+        }
+        if (cnt > 0 && sum * 2 >= cnt) {
+          image.setPixelRgba(dstX, dstY, 0, 0, 0);
+        }
+      }
     }
   }
 

@@ -197,8 +197,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
   }
 
-  int get _subtotal =>
-      ref.watch(cartProvider).fold(0, (s, e) => s + e.subtotal);
+  // v2.2.57+116: subtotal = Σ (harga sementara/unit × qty) MINUS diskon per
+  // satuan (itemDiscountTotal) — diskon item dipotong di transaksi total.
+  int get _subtotal {
+    final cart = ref.watch(cartProvider);
+    return cart.fold(
+      0,
+      (s, e) => s + e.subtotal - e.itemDiscountTotal,
+    );
+  }
   // v2.2.55: true bila keranjang berisi minimal satu item LAYANAN. Item
   // manual/timbang default isService=false jadi aman. read (bukan watch)
   // supaya boleh dipanggil dari _confirmPayment; reaktivitas build tetap

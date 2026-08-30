@@ -6,8 +6,7 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
-import 'package:nusa_kasir/core/utils/secure_storage.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:nusa_kasir/core/utils/permission_helper.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
@@ -90,7 +89,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
       // First-install: minta izin sekali — DIALOG NATIVE ANDROID langsung
       // (bukan UI buatan sendiri), berurutan satu per satu oleh sistem.
-      if (mounted) await _askPermissionsOnce();
+      if (mounted) await requestFirstInstallPermissions();
 
       if (mounted) context.go('/home');
     } catch (e) {
@@ -99,25 +98,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _error = 'Gagal menyimpan: $e';
       });
     }
-  }
-
-  /// Izin pertama kali — hanya muncul sekali seumur hidup app.
-  ///
-  /// Setiap [Permission.x.request()] memunculkan dialog ASLI dari sistem
-  /// Android (permission_handler → framework dialog), bukan dialog custom.
-  /// Urut satu per satu agar tidak tumpang tindih. User bisa menolak dan
-  /// mengaktifkan lagi kapan saja lewat Pengaturan.
-  Future<void> _askPermissionsOnce() async {
-    try {
-      if (await SecureStore.getPermissionsAsked()) return;
-      await SecureStore.setPermissionsAsked(true);
-
-      await Permission.camera.request();
-      await Permission.notification.request();
-      await Permission.storage.request();
-      await Permission.bluetoothScan.request();
-      await Permission.bluetoothConnect.request();
-    } catch (_) {}
   }
 
   @override
