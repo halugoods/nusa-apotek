@@ -22,6 +22,7 @@ import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/debt_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/core/auth/employee_session.dart';
 import 'package:nusa_kasir/features/checkout/receipt_sheet.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
@@ -70,6 +71,24 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   // v2.2.54: filter transaksi per karyawan (null = semua).
   int? _employeeFilter;
   List<Employee> _employees = const [];
+
+  /// v2.2.57+121 (keamanan): boleh lihat SEMUA transaksi = Owner + role yang
+  /// punya akses menu "transaksi" TETAPI dengan privilege penuh. Default:
+  /// Owner & Manager lihat semua; kasir/gudang/custom role lain hanya transaksi
+  /// miliknya sendiri (cek di bawah memakai session).
+  ///
+  /// [session] null (belum login PIN) → otomatis restricted ke diri sendiri
+  /// (paling aman).
+  bool _canViewAll(EmployeeSession? session) {
+    if (session == null) return false;
+    final role = session.role;
+    // Owner & Manager: akses penuh bawaan (tidak mungkin dinonaktifkan).
+    if (role == 'Owner' || role == 'Manager') return true;
+    // Role lain: hanya lihat transaksi miliknya sendiri, KECUALI role tsb
+    // secara eksplisit punya hak (future: kolom "lihat semua transaksi" —
+    // sementara default karyawan = lihat punya sendiri).
+    return false;
+  }
 
   @override
   void initState() {
@@ -138,8 +157,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     if (_payFilter != 'Semua') {
       filtered = filtered.where((t) => t.paymentMethod == _payFilter).toList();
     }
-    // v2.2.54: filter per karyawan — hanya transaksi yang dibuat karyawan tsb.
-    if (_employeeFilter != null) {
+    // ── v2.2.57+121 (keamanan): batasi default karyawan ──
+    // Owner/Manager boleh lihat semua (dengan dropdown filter karyawan).
+    // Karyawan lain (Kasir/custom role) WAJIB hanya lihat transaksinya
+    // sendiri — mencegah karyawan mengintip omzet & transaksi rekan kerja.
+    final session = ref.read(employeeSessionProvider);
+    if (!_canViewAll(session)) {
+      final myId = session?.employeeId;
+      // Session null (belum login PIN) → tidak ada transaksi yang boleh
+      // ditampilkan (paling aman).
+      filtered = myId == null
+          ? const []
+          : filtered.where((t) => t.employeeId == myId).toList();
+      // Force filter karyawan ke diri sendiri (dropdown disembunyikan di
+      // build untuk non-owner).
+      _employeeFilter = myId;
+    } else if (_employeeFilter != null) {
+      // v2.2.54: filter per karyawan — hanya transaksi yang dibuat karyawan tsb.
       filtered = filtered
           .where((t) => t.employeeId == _employeeFilter)
           .toList();
@@ -1234,10 +1268,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           ),
           SizedBox(height: 8),
           // ── Filter karyawan (v2.2.54) ──
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: _employeeDropdown(isDark),
-          ),
+          // v2.2.57+121 (keamanan): dropdown HANYA tampil untuk Owner/Manager
+          // (yang bisa lihat semua transaksi). Karyawan lain otomatis hanya
+          // melihat transaksi miliknya — tidak bisa pilih karyawan lain.
+          if (_canViewAll(ref.read(employeeSessionProvider)))
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _employeeDropdown(isDark),
+            ),
           SizedBox(height: 8),
           Expanded(
             child: FutureBuilder<List<Transaction>>(

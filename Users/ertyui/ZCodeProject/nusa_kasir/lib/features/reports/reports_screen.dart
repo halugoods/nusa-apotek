@@ -11,6 +11,7 @@ import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/report_repository.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/finance_repository.dart';
+import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import "package:nusa_kasir/shared/widgets/top_toast.dart";
@@ -34,6 +35,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // tertentu (mis. kasir A saja). Null = semua karyawan.
   int? _employeeFilter;
   List<Employee> _employees = const [];
+
+  /// v2.2.57+121 (keamanan): employeeId yang WAJIB dipakai di SEMUA query
+  /// laporan — Owner/Manager = [_employeeFilter] (null = semua); karyawan
+  /// lain = employeeId diri sendiri (HANYA laporan miliknya; mencegah intip
+  /// omzet rekan kerja). Dropdown filter karyawan disembunyikan untuk
+  /// non-owner di build.
+  int? get _scopedEmployee {
+    final session = ref.read(employeeSessionProvider);
+    final role = session?.role ?? '';
+    if (role == 'Owner' || role == 'Manager') return _employeeFilter;
+    return session?.employeeId;
+  }
+
+  /// v2.2.57+121 (keamanan): boleh lihat laporan SEMUA karyawan — Owner &
+  /// Manager saja (sama dengan kebijakan transaksi).
+  bool get _canViewAllReports {
+    final session = ref.read(employeeSessionProvider);
+    final role = session?.role ?? '';
+    return role == 'Owner' || role == 'Manager';
+  }
 
   @override
   void initState() {
@@ -370,14 +391,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       final (from, to) = _range();
       final repo = ReportRepository(ref.read(databaseProvider));
 
-      final data = await repo.summary(from: from, to: to);
-      final top = await repo.topProducts(from: from, to: to);
-      final cats = await repo.salesByCategory(from: from, to: to);
-      final pays = await repo.salesByPaymentMethod(from: from, to: to);
+      // v2.2.57+121 (keamanan): export laporan ikut dibatasi ke scope
+      // karyawan — kasir hanya bisa share laporan miliknya sendiri.
+      final scope = _scopedEmployee;
+      final data = await repo.summary(from: from, to: to, onlyEmployee: scope);
+      final top = await repo.topProducts(
+          from: from, to: to, onlyEmployee: scope);
+      final cats = await repo.salesByCategory(
+          from: from, to: to, onlyEmployee: scope);
+      final pays = await repo.salesByPaymentMethod(
+          from: from, to: to, onlyEmployee: scope);
 
       Map<String, dynamic>? pl;
       try {
-        pl = await repo.profitLoss(from: from, to: to);
+        pl = await repo.profitLoss(from: from, to: to, onlyEmployee: scope);
       } catch (_) {}
 
       final file = await exportFullReportPdf(
@@ -488,7 +515,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               future: repo.summaryWithPrevious(
                 from,
                 to,
-                onlyEmployee: _employeeFilter,
+                onlyEmployee: _scopedEmployee,
               ),
               builder: (ctx, snap) {
                 if (snap.connectionState != ConnectionState.done) {
@@ -557,7 +584,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               future: repo.dailyRevenue(
                 from: from,
                 to: to,
-                onlyEmployee: _employeeFilter,
+                onlyEmployee: _scopedEmployee,
               ),
               builder: (ctx, snap) {
                 final daily = snap.data ?? {};
@@ -665,7 +692,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   from: from,
                   to: to,
                   limit: 5,
-                  onlyEmployee: _employeeFilter,
+                  onlyEmployee: _scopedEmployee,
                 ),
                 builder: (ctx, snap) {
                   final list = snap.data ?? [];
@@ -769,7 +796,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 future: repo.salesByCategory(
                   from: from,
                   to: to,
-                  onlyEmployee: _employeeFilter,
+                  onlyEmployee: _scopedEmployee,
                 ),
                 builder: (ctx, snap) {
                   final list = snap.data ?? [];
@@ -889,7 +916,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 future: repo.salesByPaymentMethod(
                   from: from,
                   to: to,
-                  onlyEmployee: _employeeFilter,
+                  onlyEmployee: _scopedEmployee,
                 ),
                 builder: (ctx, snap) {
                   final pays = snap.data ?? {};
@@ -1060,7 +1087,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               future: repo.getTransactions(
                 from: from,
                 to: to,
-                onlyEmployee: _employeeFilter,
+                onlyEmployee: _scopedEmployee,
               ),
               builder: (ctx, snap) {
                 if (snap.connectionState != ConnectionState.done) {
@@ -2254,8 +2281,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ),
           SizedBox(height: 2),
           // v2.2.55: filter per karyawan (Penjualan tab) — kartu full-width di
-          // bawah tab & periode.
-          if (_tab == 0)
+          // bawah tab & periode. v2.2.57+121 (keamanan): hanya Owner/Manager
+          // yang bisa pilih karyawan; kasir lain otomatis laporan miliknya.
+          if (_tab == 0 && _canViewAllReports)
             Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _employeeFilterDropdown(isDark),

@@ -14,12 +14,15 @@ import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/label/label_commands.dart';
 import 'package:nusa_kasir/core/label/label_font_config.dart';
 import 'package:nusa_kasir/core/label/label_renderer.dart';
+import 'package:nusa_kasir/core/label/label_size_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/utils/bluetooth_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -66,6 +69,13 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   List<Product> _all = [];
   final Set<int> _selectedIds = {};
 
+  // ── Step 1 (v2.2.57+121): cari & auto-scan barcode ──
+  // Searchbar: filter by nama / barcode live. Auto-scan: scanner eksternal
+  // (HID) / barcode diketik + Enter → produk ketemu → auto-centang.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+  bool _scannerActive = true;
+
   // ── Step 2: isi label ──
   bool _showName = true;
   bool _showPrice = true;
@@ -84,11 +94,38 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   bool _printing = false;
   String _status = '';
 
+  // ── Qty cetak per produk + ukuran label (v2.2.57+121) ──
+  // Berlaku ke SEMUA jalur: TSPL (perintah PRINT n), struk thermal (n×
+  // bitmap beruntun), PDF A4 (n× duplikat di grid).
+  int _qty = 1;
+
+  // Ukuran label fisik (mm) yang sedang dipilih — didukung oleh getter
+  // [_labelW]/[_labelH] (dipakai renderer, TSPL SIZE, PDF grid, preview).
+  double _labelWmm = LabelRenderer.defaultWidthMm; // 40
+  double _labelHmm = LabelRenderer.defaultHeightMm; // 30
+
   @override
   void initState() {
     super.initState();
     _loadProducts();
     _loadFontConfig();
+    _loadLabelSize();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadLabelSize() async {
+    final cfg = await LabelSizeConfig.load();
+    if (mounted) {
+      setState(() {
+        _labelWmm = cfg.widthMm;
+        _labelHmm = cfg.heightMm;
+      });
+    }
   }
 
   Future<void> _loadFontConfig() async {
@@ -126,10 +163,22 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   List<Product> get _selected =>
       _all.where((p) => _selectedIds.contains(p.id)).toList();
 
+  /// Produk yang TAMPAK di daftar pilih (v2.2.57+121) — filter live oleh
+  /// [_query] (nama / barcode). Kosong = tampil semua.
+  List<Product> get _filtered {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _all;
+    return _all.where((p) {
+      final name = p.name.toLowerCase();
+      final barcode = (p.barcode ?? '').toLowerCase();
+      return name.contains(q) || barcode.contains(q);
+    }).toList();
+  }
+
   // ── Render ──
 
-  double get _labelW => LabelRenderer.defaultWidthMm; // 40
-  double get _labelH => LabelRenderer.defaultHeightMm; // 30
+  double get _labelW => _labelWmm;
+  double get _labelH => _labelHmm;
 
   /// Render label bitmap untuk SATU produk (dipakai TSPL + ESC/POS + preview).
   /// Ukuran font nama & harga memakai [_nameScale]/[_priceScale] — SAMA untuk
@@ -291,6 +340,68 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
 
   // ── Jalur 1: TSPL (thermal label) ──
 
+  /// Auto-scan barcode (v2.2.57+121) — scanner eksternal HID/keyboard wedge:
+  /// barcode diketuk cepat + Enter → produk dicari (normalisasi konsisten
+  /// dengan POS), ketemu → langsung AUTO-CENTANG + scroll ke item di daftar.
+  /// Produk yang tidak ada di [_all] (tanpa barcode) tidak dianggap error.
+  Future<void> _handleExternalBarcode(String raw) async {
+    final repo = ref.read(productRepoProvider);
+    final norm = ProductRepository.normalizeBarcode(raw);
+    if (norm.isEmpty) return;
+    final product = await repo.byBarcode(norm);
+    if (product == null || !mounted) return;
+    // Auto-select: centang produk hasil scan (langsung siap cetak).
+    setState(() {
+      _selectedIds.add(product.id);
+      _query = '';
+      _searchCtrl.clear();
+      _scannerActive = false; // jeda 1.2 dtk supaya scan beruntun rapi
+    });
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _scannerActive = true);
+    });
+    TopToast.success(
+      context,
+      '${product.name} dipilih — ${_selectedIds.length} produk siap cetak',
+    );
+  }
+
+  /// Enter di kolom cari — jalur manual scan (ketik barcode lalu Enter),
+  /// konsisten dengan POS. Ketemu → auto-centang + focus kolom tetap untuk
+  /// scan beruntun.
+  Future<void> _handleSearchSubmit(String raw) async {
+    if (_scannerActive) return; // HID listener yang handle scan eksternal
+    final repo = ref.read(productRepoProvider);
+    final norm = ProductRepository.normalizeBarcode(raw);
+    if (norm.isEmpty) return;
+    final product = await repo.byBarcode(norm);
+    if (product == null) {
+      if (mounted) {
+        TopToast.error(context, 'Barcode tidak ditemukan di daftar produk');
+      }
+      return;
+    }
+    setState(() {
+      _selectedIds.add(product.id);
+      _query = '';
+      _searchCtrl.clear();
+    });
+    if (mounted) {
+      TopToast.success(context, '${product.name} dipilih');
+    }
+  }
+
+  /// Auto-scan jalur print label (v2.2.57+121) — produk dari scan barcode
+  /// (HID eksternal ATAU Enter kolom cari) DITAMBAHKAN ke pilihan, bukan
+  /// menggantikan. Setiap produk dicetak [_qty]×.
+  ///
+  /// Dipakai [HidBarcodeListener] di build (selalu aktif) dan [_searchCtrl]
+  /// (onSubmitted).
+  void _handleScanInput(String raw) {
+    if (!_scannerActive) return;
+    _handleExternalBarcode(raw);
+  }
+
   Future<bool> _printTspl() async {
     if (_selected.isEmpty) return false;
     var connected = false;
@@ -315,6 +426,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           labelWidthMm: _labelW,
           labelHeightMm: _labelH,
           gapMm: 2,
+          copies: _qty,
         ),
       );
     }
@@ -347,15 +459,20 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     }
     final buf = BytesBuilder();
     for (final p in _selected) {
-      buf.add(
-        LabelCommands.buildEscPosLabel(
-          bitmap: await _renderForStruk(p, LabelDpi.dpi203),
-          name: p.name,
-          price: p.sellPrice,
-          showName: _showName,
-          showPrice: _showPrice,
-        ),
-      );
+      final bitmap = await _renderForStruk(p, LabelDpi.dpi203);
+      // v2.2.57+121: qty cetak → kirim bitmap yang sama n× beruntun
+      // (feed+cut antar label, konsisten dengan qty di TSPL).
+      for (var i = 0; i < _qty; i++) {
+        buf.add(
+          LabelCommands.buildEscPosLabel(
+            bitmap: bitmap,
+            name: p.name,
+            price: p.sellPrice,
+            showName: _showName,
+            showPrice: _showPrice,
+          ),
+        );
+      }
     }
     final sent = await BluetoothUtils.sendBytes(buf.toBytes());
     if (!sent && mounted) {
@@ -371,6 +488,8 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     final doc = pw.Document(title: 'Label Barcode', author: 'NUSA Kasir');
     // Grid: label 40×30mm, margin 8mm, gap 4mm → ~4 kolom × 8 baris per A4.
     // Angka SAMA dengan preview _A4GridPreview (konsistensi layout).
+    // v2.2.57+121: ukuran label bisa dipilih user → kolom/baris dihitung
+    // ulang; qty cetak → tiap produk masuk [_qty]× ke grid.
     const pageW = 210.0, pageH = 297.0;
     const marginMm = 8.0, gapMm = 4.0;
     final cols =
@@ -379,10 +498,16 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
         ((pageH - 2 * marginMm + gapMm) / (_labelH + gapMm)).floor();
     final perPage = cols * rows;
 
-    for (var i = 0; i < _selected.length; i += perPage) {
-      final end =
-          i + perPage > _selected.length ? _selected.length : i + perPage;
-      final pageItems = _selected.sublist(i, end);
+    // Daftar label dengan duplikasi qty — urutan: semua produk × qty,
+    // lalu dibagi per halaman.
+    final expanded = <Product>[
+      for (final p in _selected)
+        for (var i = 0; i < _qty; i++) p,
+    ];
+
+    for (var i = 0; i < expanded.length; i += perPage) {
+      final end = i + perPage > expanded.length ? expanded.length : i + perPage;
+      final pageItems = expanded.sublist(i, end);
       final widgets = pageItems
           .map(
             (p) => LabelRenderer.pdfLabel(
@@ -465,7 +590,14 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenScaffold('Cetak Label Barcode', _buildBody());
+    // v2.2.57+121: HidBarcodeListener menangkap scanner eksternal (HID/USB/
+    // Bluetooth keyboard wedge) di layar ini — scan barcode langsung
+    // auto-centang produk tanpa mengetik. Keypad layar TIDAK muncul karena
+    // listener bekerja di level Focus (pola sama dengan POS).
+    return HidBarcodeListener(
+      onBarcode: _handleScanInput,
+      child: ScreenScaffold('Cetak Label Barcode', _buildBody()),
+    );
   }
 
   Widget _buildBody() {
@@ -473,16 +605,74 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       padding: const EdgeInsets.all(16),
       children: [
         _stepHeader('1', 'Pilih Produk (ber-barcode)'),
+        // ── Search + auto-scan barcode (v2.2.57+121) ──
+        // Ketik nama/barcode untuk filter daftar; scan barcode (scanner
+        // eksternal atau ketik + Enter) → produk auto-centang.
+        TextField(
+          controller: _searchCtrl,
+          onChanged: (v) => setState(() => _query = v),
+          onSubmitted: _handleSearchSubmit,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Cari nama atau scan barcode…',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () => setState(() {
+                      _query = '';
+                      _searchCtrl.clear();
+                    }),
+                  ),
+            filled: true,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(
+              Icons.qr_code_scanner,
+              size: 13,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Scan barcode (scanner eksternal / ketik + Enter) → produk '
+                'langsung dipilih',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         _selectAllRow(),
         const SizedBox(height: 8),
-        if (_all.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+        if (_filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
-                'Tidak ada produk dengan barcode.\nTambahkan barcode di Form Produk dulu.',
+                _all.isEmpty
+                    ? 'Tidak ada produk dengan barcode.\nTambahkan barcode di Form Produk dulu.'
+                    : 'Tidak ada produk cocok "$_query".',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13),
+                style: const TextStyle(fontSize: 13),
               ),
             ),
           )
@@ -546,6 +736,98 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             LabelFontConfig(nameScale: _nameScale, priceScale: v).save();
           },
         ),
+        const SizedBox(height: 16),
+        // ── Qty cetak per produk (v2.2.57+121) ──
+        // Berapa lembar label untuk SETIAP produk yang dipilih — berlaku ke
+        // semua jalur (TSPL PRINT n, struk bitmap beruntun, PDF duplikat).
+        Row(
+          children: [
+            Icon(
+              Icons.print_outlined,
+              size: 18,
+              color: NusaConfig.activePrimary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Qty Cetak per Produk',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? NusaConfig.darkTextPrimary
+                      : NusaConfig.textPrimary,
+                ),
+              ),
+            ),
+            _qtyStepper(
+              value: _qty,
+              onChanged: (v) => setState(() => _qty = v),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Tiap produk yang dipilih dicetak $_qty× (total ${_selected.length * _qty} label).',
+          style: TextStyle(
+            fontSize: 11,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextTertiary
+                : NusaConfig.textTertiary,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // ── Ukuran label (v2.2.57+121) ──
+        // Ukuran thermal label umum di pasaran (Rongta/HPRT/Godex/Xprinter).
+        // Berlaku ke jalur TSPL (SIZE) & PDF (grid) — struk tetap selebar
+        // kertas. Tersimpan di SecureStore.
+        Text(
+          'Ukuran Label',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextPrimary
+                : NusaConfig.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Cocokkan dengan kode/ukuran di kemasan stiker label Anda '
+          '(default 40×30mm untuk printer label).',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? NusaConfig.darkTextSecondary
+                : NusaConfig.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _labelSizes.map((s) {
+            final selected = (_labelWmm == s.$2 && _labelHmm == s.$3);
+            return ChoiceChip(
+              label: Text('${_sizeLabel(s.$1, s.$2, s.$3)}'),
+              selected: selected,
+              onSelected: (_) => setState(() {
+                _labelWmm = s.$2;
+                _labelHmm = s.$3;
+                LabelSizeConfig(widthMm: s.$2, heightMm: s.$3).save();
+              }),
+              selectedColor: NusaConfig.activePrimary,
+              labelStyle: TextStyle(
+                fontSize: 12,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).brightness == Brightness.dark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+              ),
+            );
+          }).toList(),
+        ),
         const SizedBox(height: 20),
 
         _stepHeader('3', 'Cara Cetak'),
@@ -570,7 +852,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                   product: _selected.first,
                   sheet: this,
                   dpi: LabelDpi.dpi203,
-                  paperNote: 'Printer label 40×30mm • bitmap 203 DPI',
+                  // v2.2.57+121: ukuran label mengikuti pilihan user.
+                  paperNote:
+                      'Printer label ${_mmLabel(_labelW, _labelH)} • $_qty× • bitmap 203 DPI',
                 ),
         ),
         _pathCard(
@@ -584,8 +868,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                   product: _selected.first,
                   sheet: this,
                 ),
-        ),
-        _pathCard(
+        ),        _pathCard(
           path: 2,
           icon: Icons.picture_as_pdf_outlined,
           title: 'PDF A4 (grid)',
@@ -652,7 +935,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     return Row(
       children: [
         Checkbox(
-          value: _all.isNotEmpty && _selectedIds.length == _all.length,
+          value: _filtered.isNotEmpty && _selectedIds.length == _all.length,
           onChanged: (v) => setState(() {
             if (v == true) {
               _selectedIds.addAll(_all.map((p) => p.id));
@@ -671,8 +954,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   }
 
   Widget _productList() {
+    // v2.2.57+121: tampilkan [_filtered] (filter live by nama/barcode).
     return Column(
-      children: _all.map((p) {
+      children: _filtered.map((p) {
         final sel = _selectedIds.contains(p.id);
         return Container(
           margin: const EdgeInsets.only(bottom: 6),
@@ -746,6 +1030,82 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
         );
       }).toList(),
     );
+  }
+
+  /// Stepper qty cetak per produk (v2.2.57+121) — 1–999.
+  Widget _qtyStepper({required int value, required ValueChanged<int> onChanged}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? NusaConfig.darkSurface2
+            : NusaConfig.backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove, size: 18),
+            visualDensity: VisualDensity.compact,
+            onPressed: value > 1 ? () => onChanged(value - 1) : null,
+          ),
+          Text(
+            '$value',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add, size: 18),
+            visualDensity: VisualDensity.compact,
+            onPressed: value < 999 ? () => onChanged(value + 1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Opsi ukuran label (v2.2.57+121) — (kode, lebar mm, tinggi mm).
+  /// 0 = default thermal label 40×30mm (tanpa kode); sisanya = kode stiker
+  /// label umum yang beredar (0,5×3,4cm = 5×34mm, dst) — user tinggal cocokkan
+  /// kode di kemasan stiker dengan pilihan di sini.
+  static const List<(int, double, double)> _labelSizes = [
+    (0, 40, 30), // default thermal label
+    (99, 5, 34),
+    (100, 38, 100),
+    (101, 50, 100),
+    (102, 50, 50),
+    (103, 32, 64),
+    (104, 25, 76),
+    (105, 25, 38),
+    (106, 25, 25),
+    (107, 19, 50),
+    (108, 19, 38),
+    (109, 13, 38),
+    (110, 16, 22),
+    (111, 13, 19),
+    (112, 9, 13),
+    (119, 102, 152),
+    (120, 78, 118),
+    (121, 38, 76),
+    (122, 17, 85),
+    (123, 12, 30),
+    (124, 40, 57),
+    (125, 17, 58),
+    (126, 17, 100),
+    (127, 25, 100),
+  ];
+
+  /// Label chip: kode (bila ada) + ukuran mm, mis. "105 · 25×38 mm".
+  String _sizeLabel(int code, double w, double h) {
+    final a = w == w.roundToDouble() ? w.toInt().toString() : w.toString();
+    final b = h == h.roundToDouble() ? h.toInt().toString() : h.toString();
+    return code == 0 ? '$a×$b mm' : '$code · $a×$b mm';
+  }
+
+  /// Label polos ukuran mm, mis. "40×30 mm" (dipakai caption preview).
+  String _mmLabel(double w, double h) {
+    final a = w == w.roundToDouble() ? w.toInt().toString() : w.toString();
+    final b = h == h.roundToDouble() ? h.toInt().toString() : h.toString();
+    return '$a×$b mm';
   }
 
   Widget _checkRow({
@@ -1117,7 +1477,8 @@ class _StrukPreviewState extends State<_StrukPreview> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Kertas ${_paper ?? '58'}mm • label selebar kertas • bit-image ESC/POS',
+          'Kertas ${_paper ?? '58'}mm • label selebar kertas • bit-image ESC/POS'
+          '${widget.sheet._qty > 1 ? ' • ${widget.sheet._qty}×' : ''}',
           style: TextStyle(
             fontSize: 11,
             color: isDark

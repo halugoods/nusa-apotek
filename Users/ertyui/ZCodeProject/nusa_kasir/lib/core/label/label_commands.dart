@@ -43,19 +43,22 @@ class LabelCommands {
   ///   CLS          → clear buffer
   ///   BITMAP x,y,w,h,0,data → image raster (tanpa native barcode — semua
   ///                    merk label printer paham BITMAP)
-  ///   PRINT 1      → cetak 1 label
+  ///   PRINT n      → cetak n label (v2.2.57+121: [copies] = qty cetak)
   ///
   /// [labelWidthMm]/[labelHeightMm] = ukuran label fisik (default 40×30).
   /// [gapMm] = jarak antar label (default 2).
+  /// [copies] (v2.2.57+121) = berapa lembar label dicetak (default 1).
   static Uint8List buildTspl(
     img.Image bitmap, {
     required double labelWidthMm,
     required double labelHeightMm,
     double gapMm = 2,
+    int copies = 1,
   }) {
     final black = LabelMono.toList(bitmap);
     final raster = _tsplRaster(black, bitmap.width, bitmap.height);
     final buf = StringBuffer();
+    final n = copies > 0 ? copies : 1;
 
     buf.write('SIZE ${_mm(labelWidthMm)}, ${_mm(labelHeightMm)}\r\n');
     buf.write('GAP ${_mm(gapMm)}, 0\r\n');
@@ -64,7 +67,7 @@ class LabelCommands {
       'BITMAP 0,0,${bitmap.width},${bitmap.height},0,',
     );
     buf.write('\r\n');
-    buf.write('PRINT 1\r\n');
+    buf.write('PRINT $n\r\n');
 
     // Gabung header text + raster bytes + terminasi.
     final head = Uint8List.fromList(buf.toString().codeUnits);

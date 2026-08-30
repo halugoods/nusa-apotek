@@ -146,12 +146,14 @@ class ReportRepository {
     DateTime? from,
     DateTime? to,
     int? branchId,
+    int? onlyEmployee,
   }) async {
     // ── Revenue (pendapatan) ──────────────────────────────────────
     final txList = await getTransactions(
       from: from,
       to: to,
       branchId: branchId,
+      onlyEmployee: onlyEmployee,
     );
     final normalTx = txList.where((t) => t.status == 'Normal');
     // Pendapatan = uang masuk: DP/QRIS/Transfer diterima + setoran piutang.

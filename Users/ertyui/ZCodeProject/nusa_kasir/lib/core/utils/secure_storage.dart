@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nusa_kasir/core/constants/app_constants.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/label/label_renderer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// DO NOT wipe the entire keystore on PlatformException.
@@ -327,6 +328,26 @@ class SecureStore {
         await SecureStore.read(key: _labelPriceFontKey) ?? '',
       ) ??
       1.0;
+
+  // -- Ukuran label fisik mm (Area B, v2.2.57+121) --
+  // Width × height kertas label printer (default 40×30mm). Dipakai jalur
+  // TSPL (SIZE) & PDF (grid); struk thermal selalu selebar kertas struk.
+  static const _labelWidthMmKey = 'nusa_label_width_mm';
+  static Future<void> setLabelWidthMm(double v) =>
+      SecureStore.write(key: _labelWidthMmKey, value: v.toString());
+  static Future<double> getLabelWidthMm() async =>
+      double.tryParse(
+        await SecureStore.read(key: _labelWidthMmKey) ?? '',
+      ) ??
+      LabelRenderer.defaultWidthMm;
+  static const _labelHeightMmKey = 'nusa_label_height_mm';
+  static Future<void> setLabelHeightMm(double v) =>
+      SecureStore.write(key: _labelHeightMmKey, value: v.toString());
+  static Future<double> getLabelHeightMm() async =>
+      double.tryParse(
+        await SecureStore.read(key: _labelHeightMmKey) ?? '',
+      ) ??
+      LabelRenderer.defaultHeightMm;
 
   // -- Cash drawer --
   static Future<void> setCashDrawerEnabled(bool v) =>
