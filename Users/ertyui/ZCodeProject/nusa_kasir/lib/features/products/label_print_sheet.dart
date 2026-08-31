@@ -5,6 +5,7 @@ import 'package:barcode/barcode.dart' as bc;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -22,6 +23,7 @@ import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
+import 'package:nusa_kasir/shared/widgets/animated_scanner_overlay.dart';
 import 'package:nusa_kasir/shared/widgets/hid_barcode_listener.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_product_image.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -94,13 +96,31 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   bool _printing = false;
   String _status = '';
 
-  // ── Qty cetak per produk + ukuran label (v2.2.57+121) ──
+  // ── Qty cetak per produk (v2.2.57+121, dipindah ke dalam tiap cara cetak) ──
   // Berlaku ke SEMUA jalur: TSPL (perintah PRINT n), struk thermal (n×
-  // bitmap beruntun), PDF A4 (n× duplikat di grid).
-  int _qty = 1;
+  // bitmap beruntun), PDF A4 (n× duplikat di grid). Stepper EDITABLE —
+  // user bisa ketik sendiri jumlahnya (pola _PosQtyField di POS), bukan
+  // cuma tombol −/+.
+  final TextEditingController _qtyCtrl = TextEditingController(text: '1');
+  int get _qty {
+    final v = int.tryParse(_qtyCtrl.text.replaceAll(RegExp(r'[^\d]'), ''));
+    if (v == null || v < 1) return 1;
+    return v > 999 ? 999 : v;
+  }
+
+  /// Set qty — min 1, max 999 (dipakai tombol −/+ dan edit manual).
+  void _setQty(int v) {
+    final clamped = v.clamp(1, 999);
+    _qtyCtrl.text = '$clamped';
+    _qtyCtrl.selection =
+        TextSelection.collapsed(offset: _qtyCtrl.text.length);
+  }
 
   // Ukuran label fisik (mm) yang sedang dipilih — didukung oleh getter
   // [_labelW]/[_labelH] (dipakai renderer, TSPL SIZE, PDF grid, preview).
+  // v2.2.57+121: dipilih lewat DROPDOWN di dalam jalur Thermal Label (TSPL),
+  // bukan chips global. Orientasi LANDSCAPE (lebar ≥ tinggi) supaya barcode
+  // lebar kiri-kanan — 19×50mm jadi 50×19mm, dst.
   double _labelWmm = LabelRenderer.defaultWidthMm; // 40
   double _labelHmm = LabelRenderer.defaultHeightMm; // 30
 
@@ -115,6 +135,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _qtyCtrl.dispose();
     super.dispose();
   }
 
@@ -402,6 +423,101 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     _handleExternalBarcode(raw);
   }
 
+  /// Scan barcode via KAMERA INTERNAL (v2.2.57+121) — mobile_scanner,
+  /// pola sama dengan layar Produk & Kasir. Hasil scan → produk auto-centang,
+  /// langsung siap cetak.
+  Future<void> _scanWithCamera() async {
+    final controller = MobileScannerController(
+      formats: const [
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+        BarcodeFormat.code128,
+        BarcodeFormat.code39,
+        BarcodeFormat.qrCode,
+      ],
+    );
+    String? scanned;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                size: 22,
+                color: NusaConfig.activePrimary,
+              ),
+              const SizedBox(width: 8),
+              const Text('Scan Barcode Produk'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScannerOverlay(
+                size: 280,
+                child: MobileScanner(
+                  controller: controller,
+                  onDetect: (capture) {
+                    final barcode = capture.barcodes.firstOrNull;
+                    if (barcode != null && barcode.rawValue != null) {
+                      scanned = barcode.rawValue;
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  errorBuilder: (context, error, child) {
+                    debugPrint('[LabelPrint] scanner error: $error');
+                    return Container(
+                      height: 280,
+                      width: 280,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.no_photography_outlined,
+                              size: 36,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Kamera tidak tersedia.\nBarcode manual di Form Produk.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.dispose();
+    if (scanned == null || !mounted) return;
+    await _handleExternalBarcode(scanned!);
+  }
+
   Future<bool> _printTspl() async {
     if (_selected.isEmpty) return false;
     var connected = false;
@@ -606,32 +722,62 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       children: [
         _stepHeader('1', 'Pilih Produk (ber-barcode)'),
         // ── Search + auto-scan barcode (v2.2.57+121) ──
-        // Ketik nama/barcode untuk filter daftar; scan barcode (scanner
-        // eksternal atau ketik + Enter) → produk auto-centang.
-        TextField(
-          controller: _searchCtrl,
-          onChanged: (v) => setState(() => _query = v),
-          onSubmitted: _handleSearchSubmit,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            hintText: 'Cari nama atau scan barcode…',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _query.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () => setState(() {
-                      _query = '';
-                      _searchCtrl.clear();
-                    }),
+        // Search bar PUTIH + icon kamera (scan internal) di kanan — selain
+        // scanner eksternal HID (auto-centang). Ketik nama/barcode filter
+        // daftar; scan kamera / HID → produk auto-centang.
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _query = v),
+            onSubmitted: _handleSearchSubmit,
+            textInputAction: TextInputAction.search,
+            style: const TextStyle(color: Colors.black87, fontSize: 15),
+            decoration: InputDecoration(
+              hintText: 'Cari nama atau scan barcode…',
+              hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+              prefixIcon: Icon(Icons.search, color: Colors.grey.shade600),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: _scanWithCamera,
+                    icon: Icon(
+                      Icons.qr_code_scanner_rounded,
+                      color: NusaConfig.activePrimary,
+                      size: 24,
+                    ),
+                    tooltip: 'Scan barcode (kamera)',
                   ),
-            filled: true,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
+                  if (_query.isNotEmpty)
+                    IconButton(
+                      icon: Icon(Icons.clear, color: Colors.grey.shade600),
+                      onPressed: () => setState(() {
+                        _query = '';
+                        _searchCtrl.clear();
+                      }),
+                    ),
+                ],
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
         ),
@@ -648,8 +794,8 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             const SizedBox(width: 4),
             Expanded(
               child: Text(
-                'Scan barcode (scanner eksternal / ketik + Enter) → produk '
-                'langsung dipilih',
+                'Scan barcode (kamera / scanner eksternal / ketik + Enter) → '
+                'produk langsung dipilih',
                 style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).brightness == Brightness.dark
@@ -737,98 +883,12 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           },
         ),
         const SizedBox(height: 16),
-        // ── Qty cetak per produk (v2.2.57+121) ──
-        // Berapa lembar label untuk SETIAP produk yang dipilih — berlaku ke
-        // semua jalur (TSPL PRINT n, struk bitmap beruntun, PDF duplikat).
-        Row(
-          children: [
-            Icon(
-              Icons.print_outlined,
-              size: 18,
-              color: NusaConfig.activePrimary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Qty Cetak per Produk',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? NusaConfig.darkTextPrimary
-                      : NusaConfig.textPrimary,
-                ),
-              ),
-            ),
-            _qtyStepper(
-              value: _qty,
-              onChanged: (v) => setState(() => _qty = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Tiap produk yang dipilih dicetak $_qty× (total ${_selected.length * _qty} label).',
-          style: TextStyle(
-            fontSize: 11,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? NusaConfig.darkTextTertiary
-                : NusaConfig.textTertiary,
-          ),
-        ),
+        // ── Ukuran label & qty DIPINDAH ke dalam tiap cara cetak ──
+        // (v2.2.57+121): ukuran label dropdown ada di jalur Thermal Label
+        // (TSPL) karena memang untuk printer label; qty stepper EDITABLE
+        // ada di dalam tiap cara cetak (TSPL / Struk / PDF) — dekat tombol
+        // Cetak, bukan di pengaturan global.
         const SizedBox(height: 16),
-        // ── Ukuran label (v2.2.57+121) ──
-        // Ukuran thermal label umum di pasaran (Rongta/HPRT/Godex/Xprinter).
-        // Berlaku ke jalur TSPL (SIZE) & PDF (grid) — struk tetap selebar
-        // kertas. Tersimpan di SecureStore.
-        Text(
-          'Ukuran Label',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? NusaConfig.darkTextPrimary
-                : NusaConfig.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Cocokkan dengan kode/ukuran di kemasan stiker label Anda '
-          '(default 40×30mm untuk printer label).',
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? NusaConfig.darkTextSecondary
-                : NusaConfig.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _labelSizes.map((s) {
-            final selected = (_labelWmm == s.$2 && _labelHmm == s.$3);
-            return ChoiceChip(
-              label: Text('${_sizeLabel(s.$1, s.$2, s.$3)}'),
-              selected: selected,
-              onSelected: (_) => setState(() {
-                _labelWmm = s.$2;
-                _labelHmm = s.$3;
-                LabelSizeConfig(widthMm: s.$2, heightMm: s.$3).save();
-              }),
-              selectedColor: NusaConfig.activePrimary,
-              labelStyle: TextStyle(
-                fontSize: 12,
-                color: selected
-                    ? Colors.white
-                    : Theme.of(context).brightness == Brightness.dark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
 
         _stepHeader('3', 'Cara Cetak'),
         Text(
@@ -846,6 +906,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           icon: Icons.print_outlined,
           title: 'Thermal Label (TSPL)',
           subtitle: 'Printer label khusus — Rongta/HPRT/Godex/BluePrint',
+          // v2.2.57+121: ukuran label + qty ADA DI SINI (dalam jalur TSPL)
+          // — dropdown ukuran (tanpa kode) + stepper qty editable.
+          sizeDropdown: _labelSizeDropdown(),
           preview: _selected.isEmpty
               ? null
               : _LabelBitmapPreview(
@@ -1032,73 +1095,42 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     );
   }
 
-  /// Stepper qty cetak per produk (v2.2.57+121) — 1–999.
-  Widget _qtyStepper({required int value, required ValueChanged<int> onChanged}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? NusaConfig.darkSurface2
-            : NusaConfig.backgroundColor,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.remove, size: 18),
-            visualDensity: VisualDensity.compact,
-            onPressed: value > 1 ? () => onChanged(value - 1) : null,
-          ),
-          Text(
-            '$value',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, size: 18),
-            visualDensity: VisualDensity.compact,
-            onPressed: value < 999 ? () => onChanged(value + 1) : null,
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Opsi ukuran label (v2.2.57+121) — (kode, lebar mm, tinggi mm).
-  /// 0 = default thermal label 40×30mm (tanpa kode); sisanya = kode stiker
-  /// label umum yang beredar (0,5×3,4cm = 5×34mm, dst) — user tinggal cocokkan
-  /// kode di kemasan stiker dengan pilihan di sini.
+  /// Semua ukuran diputar LANDSCAPE (lebar ≥ tinggi) supaya barcode lebar
+  /// kiri-kanan dan nama/harga muat — mis. "19×50" jadi 50×19. Kode tidak
+  /// ditampilkan ke user (hanya ukuran mm).
   static const List<(int, double, double)> _labelSizes = [
     (0, 40, 30), // default thermal label
-    (99, 5, 34),
-    (100, 38, 100),
-    (101, 50, 100),
+    (99, 34, 5),
+    (100, 100, 38),
+    (101, 100, 50),
     (102, 50, 50),
-    (103, 32, 64),
-    (104, 25, 76),
-    (105, 25, 38),
+    (103, 64, 32),
+    (104, 76, 25),
+    (105, 38, 25),
     (106, 25, 25),
-    (107, 19, 50),
-    (108, 19, 38),
-    (109, 13, 38),
-    (110, 16, 22),
-    (111, 13, 19),
-    (112, 9, 13),
-    (119, 102, 152),
-    (120, 78, 118),
-    (121, 38, 76),
-    (122, 17, 85),
-    (123, 12, 30),
-    (124, 40, 57),
-    (125, 17, 58),
-    (126, 17, 100),
-    (127, 25, 100),
+    (107, 50, 19),
+    (108, 38, 19),
+    (109, 38, 13),
+    (110, 22, 16),
+    (111, 19, 13),
+    (112, 13, 9),
+    (119, 152, 102),
+    (120, 118, 78),
+    (121, 76, 38),
+    (122, 85, 17),
+    (123, 30, 12),
+    (124, 57, 40),
+    (125, 58, 17),
+    (126, 100, 17),
+    (127, 100, 25),
   ];
 
-  /// Label chip: kode (bila ada) + ukuran mm, mis. "105 · 25×38 mm".
+  /// Label ukuran mm — "50×19 mm" (tanpa kode, v2.2.57+121).
   String _sizeLabel(int code, double w, double h) {
     final a = w == w.roundToDouble() ? w.toInt().toString() : w.toString();
     final b = h == h.roundToDouble() ? h.toInt().toString() : h.toString();
-    return code == 0 ? '$a×$b mm' : '$code · $a×$b mm';
+    return '$a×$b mm';
   }
 
   /// Label polos ukuran mm, mis. "40×30 mm" (dipakai caption preview).
@@ -1169,12 +1201,17 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
 
   /// Kartu jalur cetak — KLIK untuk buka/tutup preview ACTUAL jalur tsb.
   /// Preview + tombol cetak muncul di dalam kartu saat terbuka.
+  ///
+  /// v2.2.57+121: [sizeDropdown] (khusus TSPL — pilih ukuran label) dan
+  /// qty stepper EDITABLE ([_qtyControl]) ditampilkan di dalam kartu,
+  /// dekat tombol Cetak — bukan global.
   Widget _pathCard({
     required int path,
     required IconData icon,
     required String title,
     required String subtitle,
     required Widget? preview,
+    Widget? sizeDropdown,
   }) {
     final expanded = _expandedPath == path;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1231,7 +1268,16 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Ukuran label — hanya jalur TSPL (v2.2.57+121).
+                  if (sizeDropdown != null) ...[
+                    sizeDropdown,
+                    const SizedBox(height: 10),
+                  ],
                   preview,
+                  const SizedBox(height: 12),
+                  // Qty cetak — stepper EDITABLE di dalam tiap cara cetak
+                  // (v2.2.57+121): user bisa ketik sendiri jumlahnya.
+                  _qtyControl(),
                   const SizedBox(height: 12),
                   // Tombol cetak — ada DI DALAM preview (permintaan user).
                   FilledButton.icon(
@@ -1258,7 +1304,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                           ? 'Mencetak…'
                           : path == 2
                               ? 'Buka PDF — Print / Simpan'
-                              : 'Cetak ${_selected.length} Label',
+                              : 'Cetak ${_selected.length * _qty} Label',
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1278,6 +1324,178 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Stepper qty cetak EDITABLE (v2.2.57+121) — tombol −/+ ATAU ketik angka
+  /// langsung (pola _PosQtyField di POS). Min 1, max 999.
+  Widget _qtyControl() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: NusaConfig.activePrimary.withValues(alpha: 0.35),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.print_outlined, size: 18, color: NusaConfig.activePrimary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Qty Cetak per Produk',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? NusaConfig.darkTextPrimary
+                        : NusaConfig.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Tiap produk dicetak $_qty× (total ${_selected.length * _qty} label)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Stepper − [isi] + — qty bisa diketik manual.
+          Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? NusaConfig.darkSurface
+                  : NusaConfig.activeSoft,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: NusaConfig.activePrimary.withValues(alpha: 0.5),
+                width: 1.2,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _qtyBtn(Icons.remove, () => _setQty(_qty - 1)),
+                SizedBox(
+                  width: 44,
+                  child: TextField(
+                    controller: _qtyCtrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                _qtyBtn(Icons.add, () => _setQty(_qty + 1)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _qtyBtn(IconData icon, VoidCallback onTap) {
+    final enabled = icon == Icons.remove ? _qty > 1 : _qty < 999;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Center(
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled
+                  ? NusaConfig.activePrimary
+                  : NusaConfig.textTertiary.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Dropdown ukuran label (v2.2.57+121) — muncul di jalur Thermal Label
+  /// (TSPL). Tanpa kode, orientasi LANDSCAPE (lebar ≥ tinggi). Setiap
+  /// pemilihan langsung tersimpan (LabelSizeConfig) + preview ikut berubah.
+  Widget _labelSizeDropdown() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedIndex = _labelSizes.indexWhere(
+      (s) => _labelWmm == s.$2 && _labelHmm == s.$3,
+    );
+    final idx = selectedIndex >= 0 ? selectedIndex : 0;
+    final textPri = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
+    final textSec = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+    final border = isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.straighten_outlined,
+              size: 18, color: NusaConfig.activePrimary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: idx,
+                isExpanded: true,
+                icon: Icon(Icons.arrow_drop_down, size: 20, color: textSec),
+                style: TextStyle(fontSize: 13, color: textPri),
+                items: [
+                  for (var i = 0; i < _labelSizes.length; i++)
+                    DropdownMenuItem<int>(
+                      value: i,
+                      child: Text(
+                        _sizeLabel(_labelSizes[i].$1, _labelSizes[i].$2,
+                            _labelSizes[i].$3),
+                        style: const TextStyle(fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  final s = _labelSizes[v];
+                  setState(() {
+                    _labelWmm = s.$2;
+                    _labelHmm = s.$3;
+                    LabelSizeConfig(widthMm: s.$2, heightMm: s.$3).save();
+                  });
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );

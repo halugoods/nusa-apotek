@@ -287,7 +287,7 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
                   Text(
                     connected
                         ? (_userEmail.isNotEmpty ? _userEmail : 'Data pembukuan Anda')
-                        : 'Data pembukuan tersimpan otomatis di Google Sheets',
+                        : 'Spreadsheet dibuat & diisi otomatis oleh server NUSA',
                     style: TextStyle(fontSize: 12, color: textTer),
                   ),
                 ]),
@@ -305,9 +305,13 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
               ),
             ),
             SizedBox(height: 12),
-            Text('Sekali buat, link spreadsheet dipakai terus untuk semua pembukuan.',
+            Text('Tanpa login Google — server NUSA yang membuat & mengisi spreadsheet.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: textTer)),
+            SizedBox(height: 4),
+            Text('Sekali buat, link dipakai terus untuk semua pembukuan.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: textTer)),
           ] else ...[
             // Spreadsheet aktif — tampilkan link + tombol buka
             NusaCard(Padding(
