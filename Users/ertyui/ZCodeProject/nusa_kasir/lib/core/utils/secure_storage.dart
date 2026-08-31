@@ -533,6 +533,25 @@ class SecureStore {
   static Future<void> setImagesMigrated(bool v) =>
       SecureStore.write(key: 'nusa_images_migrated', value: v.toString());
 
+  // ── Image sync throttle ──
+  /// Timestamp (ms since epoch) sinkronisasi gambar terakhir dari cloud.
+  /// Dipakai untuk gate `syncAll()` — kalau baru sync <6 jam lalu & tidak ada
+  /// perubahan lokal, skip download-probe yang menggandakan traffic egress
+  /// (tiap start app nge-list+nge-download foto, padahal `nusa-images`
+  /// CDN-cache 1 jam — sync berulang sebelum TTL hangus = pemborosan
+  /// Cached Egress).
+  static Future<int> getLastImageSyncMs() async {
+    final v = await SecureStore.read(key: 'nusa_last_image_sync_ms');
+    return int.tryParse(v ?? '') ?? 0;
+  }
+
+  static Future<void> setLastImageSyncMs(int ms) =>
+      SecureStore.write(key: 'nusa_last_image_sync_ms', value: '$ms');
+
+  /// Interval minimum antara syncAll gambar (default 6 jam).
+  /// Bisa diturunkan via setLastImageSyncMs(0) untuk paksa sync.
+  static const int imageSyncIntervalMs = 6 * 60 * 60 * 1000;
+
   // ── PIN pad kasir (default: aktif) ────────────────────────────────
   static Future<bool> getPinPadEnabled() async {
     final v = await SecureStore.read(key: 'nusa_pinpad_kasir_enabled');

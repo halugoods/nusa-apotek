@@ -347,30 +347,49 @@ class ActivationRepository {
   /// autosync cycle hit conflict path → fresh uploads never propagated).
   /// If we cannot determine a real timestamp, return `null` and let the
   /// caller treat it as "cloud not proven newer than local" (safe path).
+  /// v2.2.57+122 (Cached Egress fix): timestamp backup TANPA download full
+  /// file. Sebelumnya `getBackupTimestamp()` download seluruh
+  /// `backup.sqlite.enc` (beberapa MB) tiap kali dipanggil — padahal
+  /// `_pullOnly()` memanggilnya tiap 30 detik → 8.640×/hari/device × MB =
+  /// sumber utama pembengkakan Cached Egress (791%).
+  ///
+  /// Sekarang: `info()` = HEAD request ke Storage → hanya metadata
+  /// `updated_at` dari objek (tanpa body). Jauh lebih hemat.
+  ///
+  /// Catatan: `updated_at` Storage adalah waktu terakhir objek DIUPLOAD.
+  /// Backup lama yang ditulis sebelum v2.2.57 tidak punya metadata utuh —
+  /// fallback ke sidecar `metadata.json` (yang tetap di-download, tapi
+  /// hanya ~200 B — bukan full archive). Kalau keduanya gagal → null
+  /// (caller anggap "cloud tidak terbukti lebih baru" = aman upload).
   Future<DateTime?> getBackupTimestamp() async {
     if (client == null) return null;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return null;
+    final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
-      final meta = await _readEmbeddedMetadata();
-      if (meta != null) {
-        final t = DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
-            DateTime.tryParse(meta['backupTime']?.toString() ?? '');
+      // 1. HEAD via info() — nol egress body.
+      final info = await client!.storage
+          .from('nusa-backups')
+          .info(path)
+          .timeout(const Duration(seconds: 8));
+      final updatedAt = info.updatedAt ??
+          info.metadata?['updated_at']?.toString();
+      if (updatedAt != null && updatedAt.isNotEmpty) {
+        final t = DateTime.tryParse(updatedAt);
         if (t != null) return t;
       }
-      // Legacy fallback: plaintext sidecar metadata.json
+      // 2. Fallback: sidecar metadata.json (~200 B, bukan full archive).
       final bytes = await client!.storage
           .from('nusa-backups')
-          .download('$uid/${NusaConfig.productId}/metadata.json');
+          .download('$uid/${NusaConfig.productId}/metadata.json')
+          .timeout(const Duration(seconds: 8));
       if (!bytes.isEmpty) {
         final m = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
         final t = DateTime.tryParse(m['updated_at']?.toString() ?? '') ??
             DateTime.tryParse(m['backupTime']?.toString() ?? '');
         if (t != null) return t;
       }
-      // Unknown — conservative: return null so the caller does not assume
-      // "cloud is newer" (which is what previously caused silent sync death).
       return null;
     } catch (_) {
       return null;

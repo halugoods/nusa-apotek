@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// Central service for storing images in Supabase Storage.
 ///
@@ -64,14 +65,27 @@ class ImageStorageService {
       // jpeg/png/webp/gif; storage_client menebak MIME dari ekstensi path,
       // tapi eksplisit lebih andal (hindari 415 invalid_mime_type).
       final contentType = _mimeFor(ext);
+      // v2.2.57+122 (Cached Egress): set Cache-Control eksplisit per upload.
+      // Default Supabase = max-age=3600 (1 jam). Aset JELAS statis (QRIS,
+      // logo toko) bisa 1 minggu + immutable → browser/CDN cache hit, hemat
+      // egress berulang. Foto produk/karyawan = 1 jam (sesuai default) →
+      // cache bust dengan `?v={epoch}` di URL kalau perlu paksa refresh.
+      final isStatic = category == 'settings'; // qris_*, store_logo_*
+      final cacheControl = isStatic
+          ? 'public, max-age=604800, immutable'
+          : 'public, max-age=3600';
       await _client.storage.from('nusa-images').uploadBinary(
             remotePath,
             bytes,
             fileOptions: FileOptions(
               upsert: true,
               contentType: contentType,
+              cacheControl: cacheControl,
             ),
           );
+      // v2.2.57+122: upload = file baru di server. Reset sync gate supaya
+      // syncAll berikutnya (di device ini atau sibling) menarik fresh copy.
+      await SecureStore.setLastImageSyncMs(0);
       return (ok: true, message: '');
     } catch (e) {
       debugPrint('[ImageStorage] Upload failed ($category): $e');
@@ -148,7 +162,21 @@ class ImageStorageService {
   /// produk, karyawan, QRIS/logo). Nama yang tidak ada di server → 404 → di-
   /// skip; yang ada → ter-download. Ini bikin sync gambar jalan untuk SEMUA
   /// user (bukan cuma yang kebetulan punya izin list).
-  Future<int> syncAll() async {
+  ///
+  /// v2.2.57+122 (Cached Egress throttle): kalau dipanggil terlalu sering
+  /// (default <6 jam dari sync sebelumnya) langsung return 0 tanpa probe —
+  /// `nusa-images` CDN cache sudah 1 jam, sync berulang sebelum TTL = sia-sia
+  /// + boros Cached Egress. Caller paksa sync dengan clear flag lewat
+  /// `clearSyncGate()` (mis. setelah upload gambar baru).
+  Future<int> syncAll({bool force = false}) async {
+    if (!force) {
+      final last = await SecureStore.getLastImageSyncMs();
+      if (last > 0 &&
+          DateTime.now().millisecondsSinceEpoch - last <
+              SecureStore.imageSyncIntervalMs) {
+        return 0; // skip — baru sync belum lama
+      }
+    }
     int count = 0;
     final categories = ['products', 'employees', 'settings'];
     final dir = await getApplicationDocumentsDirectory();
@@ -225,8 +253,15 @@ class ImageStorageService {
     if (count > 0) {
       debugPrint('[ImageStorage] Synced $count images from cloud');
     }
+    // v2.2.57+122: catat timestamp sync terakhir — dipakai gate berikutnya.
+    await SecureStore.setLastImageSyncMs(DateTime.now().millisecondsSinceEpoch);
     return count;
   }
+
+  /// v2.2.57+122: hapus gate sync (paksa syncAll berikutnya tidak skip).
+  /// Dipanggil setelah upload gambar baru / restore selesai — file baru di
+  /// server harus di-fetch ke local cache.
+  Future<void> clearSyncGate() => SecureStore.setLastImageSyncMs(0);
 
   /// First-time migration: upload all local images to Supabase.
   /// Only uploads images that don't already exist on the server.

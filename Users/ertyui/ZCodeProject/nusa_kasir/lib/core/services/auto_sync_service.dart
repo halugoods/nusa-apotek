@@ -59,9 +59,14 @@ class AutoSyncService {
   static const _flushWatchdog = Duration(seconds: 60);
   static const _networkTimeout = Duration(seconds: 8);
 
-  /// Periodic pull — cek cloud tiap 30s untuk device yang sama-sama terbuka
-  /// (owner + kasir realtime lihat data satu sama lain tanpa restart).
-  static const _pullInterval = Duration(seconds: 30);
+  /// Periodic pull — cek cloud tiap 5 menit untuk device yang sama-sama
+  /// terbuka (owner + kasir realtime lihat data satu sama lain tanpa
+  /// restart). v2.2.57+122 (Cached Egress fix): sebelumnya 30 detik →
+  /// 8.640 request HEAD/device/hari. Perubahan data tetap tersiar hampir
+  /// seketika lewat [RealtimeBackupNotifier.broadcastUpdated] (push side
+  /// announce ke device lain → mereka pullNow() segera). Jadi 5 menit cukup
+  /// untuk recovery, tanpa membebani Storage.
+  static const _pullInterval = Duration(minutes: 5);
 
   /// Status sinkronisasi global — chip awan di DashboardHeader.
   static final ValueNotifier<AutoSyncStatus> status =
