@@ -15,6 +15,7 @@ import 'package:nusa_kasir/data/repositories/transaction_repository.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:nusa_kasir/core/services/online_product_sync_service.dart';
+import 'package:nusa_kasir/core/services/sheets_live_sync.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
 
@@ -71,6 +72,16 @@ final autoSyncProvider = Provider<AutoSyncService>((ref) {
 final onlineOrderRepoProvider = Provider(
   (ref) => OnlineOrderRepository(ref.watch(databaseProvider)),
 );
+
+/// Live sync harian → Google Sheets (v2.2.57+122, cloud panas). Listen
+/// tableUpdates → debounce 2 dtk → append Transaksi (dedup by invoice di
+/// server). Kept alive for the whole app lifetime like [autoSyncProvider].
+final sheetsLiveSyncProvider = Provider<SheetsLiveSyncService>((ref) {
+  final svc = SheetsLiveSyncService(db: ref.watch(databaseProvider));
+  ref.onDispose(svc.dispose);
+  svc.start();
+  return svc;
+});
 
 /// Auto-sync produk online (v2.2.43) — debounce tableUpdates → syncOnlineProducts.
 /// Kept alive for the whole app lifetime (autoDispose would kill the watcher).

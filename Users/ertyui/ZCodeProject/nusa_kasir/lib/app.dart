@@ -335,6 +335,11 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
     try {
       ref.read(autoSyncProvider);
     } catch (_) {}
+    // v2.2.57+122: live sync harian → Google Sheets (cloud panas). Senyap
+    // bila spreadsheet belum di-link; ter-append dedup by invoice di server.
+    try {
+      ref.read(sheetsLiveSyncProvider);
+    } catch (_) {}
     // v2.2.57: subscribe realtime channel for delta "another device just
     // uploaded" notifications. On receipt → trigger immediate pull (soft
     // adopt if we can't safely hot-apply, otherwise close+restore+login).
@@ -371,6 +376,11 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       try {
         ref.read(autoSyncProvider).flushNow();
+      } catch (_) {}
+      // Live Sheets juga di-flush saat pause supaya transaksi terakhir
+      // sudah ada di spreadsheet sebelum device dikantongi.
+      try {
+        ref.read(sheetsLiveSyncProvider).flushNow();
       } catch (_) {}
     }
     // v2.2.57: on resume, pull immediately so devices that were idle on a
