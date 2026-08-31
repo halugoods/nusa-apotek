@@ -19,26 +19,37 @@ class ReceiptLine {
     required this.qty,
     required this.price,
     this.originalPrice,
+    this.discountPerItem,
   });
 
   final String name;
   final int qty;
+
+  /// Harga final per unit (termasuk harga sementara tempPrice & diskon
+  /// produk). Dipakai sebagai harga TERSIMPAN di struk.
   final int price;
 
   /// Harga jual sebelum diskon (null = tanpa diskon). Saat diisi, struk
   /// mencetak baris potongan NOMINAL per item ("Diskon: -Rp 5.000").
   final int? originalPrice;
 
-  int get subtotal => qty * price;
-  bool get hasDiscount => originalPrice != null && originalPrice! > price;
-  int get discountNominal => hasDiscount ? originalPrice! - price : 0;
+  /// Diskon nominal per SATUAN (v2.2.57+116) — potongan TAMBAHAN di luar
+  /// diskon produk (harga sementara). Diteruskan ke ReceiptItem.
+  final int? discountPerItem;
+
+  int get subtotal =>
+      qty * price - (discountPerItem ?? 0) * qty;
+  bool get hasDiscount =>
+      (originalPrice != null && originalPrice! > price) ||
+      (discountPerItem != null && discountPerItem! > 0);
+  int get discountNominal => discountPerItem ?? 0;
 
   /// Subtotal KOTOR (sebelum diskon item) — dipakai struk supaya harga yang
   /// dicetak adalah harga ASLI, bukan harga yang sudah dipotong diskon.
   int get grossSubtotal => qty * (originalPrice ?? price);
 
   /// Potongan diskon item TOTAL untuk semua qty (per unit × qty).
-  int get discountTotal => hasDiscount ? discountNominal * qty : 0;
+  int get discountTotal => (discountPerItem ?? 0) * qty;
 }
 
 /// Sanitize text for thermal printer (strip non-ASCII characters).
@@ -272,6 +283,7 @@ class ReceiptPrinter {
             qty: lines[i].qty,
             price: lines[i].price,
             originalPrice: lines[i].originalPrice,
+            discountPerItem: lines[i].discountPerItem,
             note: (itemNotes != null && i < itemNotes.length)
                 ? itemNotes[i]
                 : null,

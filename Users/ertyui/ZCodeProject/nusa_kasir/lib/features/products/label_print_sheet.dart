@@ -274,10 +274,19 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           return true;
         }
       }
+      // v2.2.57+122: discovery kosong / MAC tidak ketemu → DIRECT-CONNECT ke
+      // alamat tersimpan (pola Print Struk _autoPrintReceipt). Beberapa
+      // Android menyembunyikan bonded devices sampai connect eksplisit
+      // dicoba — tanpa fallback ini printer label "tidak terdeteksi" walau
+      // printer yang sama terdeteksi di modul Print Struk.
+      debugPrint('[LabelPrint] bonded list tak ada printer — direct connect $mac');
+      final ok = await printer.connect(
+        PrinterDevice(name: storedAddr.split('|').first, address: mac),
+      );
+      return ok;
     } finally {
       await printer.dispose();
     }
-    return false;
   }
 
   /// Printer label belum tersimpan → minta user pilih dari hasil scan,
@@ -291,6 +300,20 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       await printer.dispose();
     }
     if (devices.isEmpty) {
+      // v2.2.57+122: discovery label kosong, tapi printer STRUK mungkin sudah
+      // tersimpan (kasus: 1 printer untuk struk+label). Coba pakai printer
+      // struk itu dulu — langsung simpan sebagai label printer juga.
+      final savedStruk = await SecureStore.getPrinterAddress();
+      if (savedStruk != null && savedStruk.contains('|')) {
+        debugPrint(
+          '[LabelPrint] discovery kosong — pakai printer struk $savedStruk',
+        );
+        final ok = await _connectStored(savedStruk);
+        if (ok) {
+          await SecureStore.setLabelPrinterAddress(savedStruk);
+          return true;
+        }
+      }
       if (mounted) {
         TopToast.error(
             context,

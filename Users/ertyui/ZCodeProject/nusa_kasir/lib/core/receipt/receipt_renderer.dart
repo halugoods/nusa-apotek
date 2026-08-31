@@ -205,16 +205,25 @@ List<ReceiptPart> buildReceiptParts({
   parts.add(const ReceiptPartHr());
 
   // ── Items (compact, tanpa divider antar item — spec R/S) ──
-  for (final item in data.items) {
+  // v2.2.57+122: diskon TRANSAKSI dibagi proporsional ke tiap item
+  // (allocatedTransactionDiscounts) → subtotal per-item NETTO mencerminkan
+  // Grand Total (Σ item = Total), dan baris "Disc. (-RpX)" per item
+  // menampilkan potongan item + porsi diskon transaksinya.
+  final txnAlloc = data.allocatedTransactionDiscounts;
+  for (var i = 0; i < data.items.length; i++) {
+    final item = data.items[i];
+    final alloc = i < txnAlloc.length ? txnAlloc[i] : 0;
     final unitPrice = item.originalPrice ?? item.price;
     final qtyPrice = item.isPerKg
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
+    final netSubtotal = item.subtotal - alloc;
+    final itemDiscTotal = item.discountTotal + alloc;
     parts.add(ReceiptPartItem(
       item.name,
       qtyPrice,
-      receiptNum(item.subtotal),
-      item.hasDiscount ? '(-${receiptNum(item.discountTotal)})' : null,
+      receiptNum(netSubtotal),
+      itemDiscTotal > 0 ? '(-${receiptNum(itemDiscTotal)})' : null,
       item.note,
     ));
   }
@@ -532,16 +541,24 @@ String renderText({
   }
   sb.writeln(div);
 
-  for (final item in data.items) {
+  // v2.2.57+122: diskon transaksi dialokasikan proporsional ke item
+  // (sama dengan renderBytes/buildReceiptParts — Σ item = Total).
+  final txnAlloc = data.allocatedTransactionDiscounts;
+  for (var i = 0; i < data.items.length; i++) {
+    final item = data.items[i];
+    final alloc = i < txnAlloc.length ? txnAlloc[i] : 0;
     sb.writeln(item.name);
     final unitPrice = item.originalPrice ?? item.price;
     final qtyTxt = item.isPerKg
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
-    final discTxt = item.hasDiscount
-        ? '(-${receiptNum(item.discountTotal)})'
+    final itemDiscTotal = item.discountTotal + alloc;
+    final discTxt = itemDiscTotal > 0
+        ? '(-${receiptNum(itemDiscTotal)})'
         : '';
-    sb.writeln('  $qtyTxt  $discTxt ${receiptNum(item.subtotal)}'.trimRight());
+    sb.writeln(
+      '  $qtyTxt  $discTxt ${receiptNum(item.subtotal - alloc)}'.trimRight(),
+    );
     if (item.note != null && item.note!.isNotEmpty) {
       sb.writeln('  ↳ ${item.note}');
     }
@@ -653,15 +670,20 @@ Future<File> renderPdf({
   }
   widgets.add(pw.Divider(color: PdfColors.grey600));
 
-  // Items
-  for (final item in data.items) {
+  // Items — v2.2.57+122: diskon transaksi dialokasikan proporsional ke item
+  // (sama dengan renderBytes/renderText — Σ item = Total).
+  final txnAlloc = data.allocatedTransactionDiscounts;
+  for (var i = 0; i < data.items.length; i++) {
+    final item = data.items[i];
+    final alloc = i < txnAlloc.length ? txnAlloc[i] : 0;
     widgets.add(pw.Text(item.name, style: const pw.TextStyle(fontSize: 9)));
     final unitPrice = item.originalPrice ?? item.price;
     final qtyTxt = item.isPerKg
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
-    final discTxt = item.hasDiscount
-        ? 'Disc. (-${receiptNum(item.discountTotal)})'
+    final itemDiscTotal = item.discountTotal + alloc;
+    final discTxt = itemDiscTotal > 0
+        ? 'Disc. (-${receiptNum(itemDiscTotal)})'
         : '';
     widgets.add(
       pw.Padding(
@@ -670,7 +692,7 @@ Future<File> renderPdf({
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Expanded(child: pw.Text(qtyTxt, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700))),
-            pw.Text(receiptNum(item.subtotal), style: const pw.TextStyle(fontSize: 9)),
+            pw.Text(receiptNum(item.subtotal - alloc), style: const pw.TextStyle(fontSize: 9)),
           ],
         ),
       ),

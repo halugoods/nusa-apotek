@@ -27,6 +27,10 @@ class _ReceiptItem {
   final int? originalPrice;
   final String? note;
   final double? weightKg;
+
+  /// Diskon nominal per SATUAN (v2.2.57+116) — diteruskan ke ReceiptItem
+  /// supaya preview/print/share konsisten (baris "Disc." per item).
+  final int? discountPerItem;
   const _ReceiptItem({
     required this.name,
     required this.qty,
@@ -34,11 +38,17 @@ class _ReceiptItem {
     this.originalPrice,
     this.note,
     this.weightKg,
+    this.discountPerItem,
   });
   bool get isPerKg => weightKg != null;
-  bool get hasDiscount => originalPrice != null && originalPrice! > price;
-  int get discountNominal => hasDiscount ? originalPrice! - price : 0;
-  int get subtotal => isPerKg ? (price * weightKg!).ceil() : qty * price;
+  bool get hasDiscount =>
+      (originalPrice != null && originalPrice! > price) ||
+      (discountPerItem != null && discountPerItem! > 0);
+  int get discountNominal => discountPerItem ?? 0;
+  int get subtotal =>
+      isPerKg
+          ? (price * weightKg!).ceil() - (discountPerItem ?? 0)
+          : qty * price - (discountPerItem ?? 0) * qty;
 
   /// Subtotal KOTOR (sebelum diskon item) — struk menampilkan harga ASLI,
   /// bukan harga yang sudah dipotong diskon.
@@ -46,7 +56,8 @@ class _ReceiptItem {
       isPerKg ? (originalPrice ?? price) * weightKg!.ceil() : qty * (originalPrice ?? price);
 
   /// Potongan diskon item total (per unit × qty) — angka hemat yang benar.
-  int get discountTotal => hasDiscount ? discountNominal * qty : 0;
+  int get discountTotal =>
+      (discountPerItem ?? 0) * (isPerKg ? 1 : qty);
 }
 
 /// Thermal-style receipt dialog — matches GAS receipt modal design.
@@ -131,10 +142,14 @@ class ReceiptSheet extends ConsumerWidget {
           (c) => _ReceiptItem(
             name: c.name,
             qty: c.qty,
-            price: c.price,
+            // v2.2.57+122: harga sementara (tempPrice) ikut tampil di preview
+            // struk — sebelumnya c.price (harga asli) sehingga preview struk
+            // bisa beda dengan struk tercetak/tersimpan.
+            price: c.unitPrice,
             originalPrice: c.originalPrice,
             note: c.note,
             weightKg: c.weightKg,
+            discountPerItem: c.discountPerItem,
           ),
         )
         .toList();
@@ -262,6 +277,7 @@ class ReceiptSheet extends ConsumerWidget {
                   originalPrice: it.originalPrice,
                   note: it.note,
                   weightKg: it.weightKg,
+                  discountPerItem: it.discountPerItem,
                 ),
               )
               .toList(),
@@ -606,6 +622,7 @@ class ReceiptSheet extends ConsumerWidget {
                 qty: i.qty,
                 price: i.price,
                 originalPrice: i.originalPrice,
+                discountPerItem: i.discountPerItem,
               ),
             )
             .toList(),
@@ -712,6 +729,7 @@ class ReceiptSheet extends ConsumerWidget {
                 qty: i.qty,
                 price: i.price,
                 originalPrice: i.originalPrice,
+                discountPerItem: i.discountPerItem,
               ),
             )
             .toList(),

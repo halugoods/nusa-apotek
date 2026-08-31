@@ -334,16 +334,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final confirm = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             title: const Text('Lupa PIN?'),
             content: const Text(
               'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
               style: TextStyle(fontSize: 14, height: 1.5),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Batal'),
+              ),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: NusaConfig.activePrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: FilledButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('Lanjut'),
               ),
@@ -355,19 +365,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final newUid = await GoogleAuthService().signIn();
         if (!mounted || newUid == null) return;
         if (currentUid != null && newUid != currentUid) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akun Google berbeda.')));
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Akun Google berbeda.')),
+            );
           return;
         }
         await GoogleAuthService.ensureStored(newUid);
         final db = ref.read(databaseProvider);
         final repo = AttendanceRepository(db);
         final emps = await repo.getEmployees();
-        final owner = emps.cast<Employee?>().firstWhere((e) => e!.role == 'Owner' || e!.role == 'Manager', orElse: () => null);
+        final owner = emps.cast<Employee?>().firstWhere(
+          (e) => e!.role == 'Owner' || e!.role == 'Manager',
+          orElse: () => null,
+        );
         if (owner == null) return;
         final newPin = await _promptNewPinDialog();
         if (!mounted || newPin == null) return;
-        await repo.updateEmployee(id: owner.id, name: owner.name, pin: newPin, role: owner.role, status: owner.status);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
+        await repo.updateEmployee(
+          id: owner.id,
+          name: owner.name,
+          pin: newPin,
+          role: owner.role,
+          status: owner.status,
+        );
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
       },
     );
 
@@ -402,7 +427,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: NusaConfig.activePrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () {
               final v = ctrl.text.trim();
@@ -565,6 +592,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      // v2.2.57+122 (Bug fix): isScrollControlled + maxHeight supaya konten
+      // boleh lebih tinggi dari layar, lalu SingleChildScrollView membuat
+      // tombol "Download dari Cloud" SELALU bisa dijangkau — sebelumnya
+      // bottom sheet tidak bisa di-scroll sehingga tombol Download
+      // tersembunyi dan "Upload ke Cloud" rawan tertekan tak sengaja
+      // (menimpa database).
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -574,128 +608,97 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkDivider
-                    : NusaConfig.dividerColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Icon(Icons.cloud_sync, size: 40, color: NusaConfig.activePrimary),
-            const SizedBox(height: 12),
-            const Text(
-              'Sinkronisasi Cloud',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Upload / Download data antar perangkat',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Timestamp comparison
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface2
-                    : NusaConfig.backgroundColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  _syncInfoRow(
-                    'Cloud (Supabase)',
-                    _cloudTimeStr,
-                    Icons.cloud,
-                    isDark,
-                  ),
-                  const SizedBox(height: 8),
-                  _syncInfoRow(
-                    'Lokal (Perangkat ini)',
-                    _localTimeStr,
-                    Icons.phone_android,
-                    isDark,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Auto-sync info
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: NusaConfig.activePrimary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: NusaConfig.activePrimary.withValues(alpha: 0.3),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.9,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkDivider
+                      : NusaConfig.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.auto_awesome,
-                    size: 18,
-                    color: NusaConfig.activePrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Auto-sync aktif: perubahan dikirim ~1,2 dtk setelah '
-                      'Anda berhenti mengetik, digabung dalam 10 dtk, dan '
-                      'data ditarik dari cloud tiap 30 dtk (saat online). '
-                      'Konflik otomatis memilih data terbaru — yang lama '
-                      'disimpan sebagai snapshot, tanpa dialog.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        color: isDark
-                            ? NusaConfig.darkTextSecondary
-                            : NusaConfig.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 8),
+              Icon(Icons.cloud_sync, size: 40, color: NusaConfig.activePrimary),
+              const SizedBox(height: 12),
+              const Text(
+                'Sinkronisasi Cloud',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-            ),
-            if (_conflictCount > 0) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
+              Text(
+                'Upload / Download data antar perangkat',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Timestamp comparison
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? NusaConfig.darkSurface2
+                      : NusaConfig.backgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    _syncInfoRow(
+                      'Cloud (Supabase)',
+                      _cloudTimeStr,
+                      Icons.cloud,
+                      isDark,
+                    ),
+                    const SizedBox(height: 8),
+                    _syncInfoRow(
+                      'Lokal (Perangkat ini)',
+                      _localTimeStr,
+                      Icons.phone_android,
+                      isDark,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Auto-sync info
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: NusaConfig.warning.withValues(alpha: 0.12),
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: NusaConfig.warning.withValues(alpha: 0.4),
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.warning_amber_rounded,
+                      Icons.auto_awesome,
                       size: 18,
-                      color: NusaConfig.warning,
+                      color: NusaConfig.activePrimary,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Ada $_conflictCount cadangan otomatis lama tersimpan di folder aplikasi (file conflict_*.sqlite). Aman dihapus dari tombol di atas jika tidak diperlukan.',
+                        'Auto-sync aktif: perubahan dikirim ~1,2 dtk setelah '
+                        'Anda berhenti mengetik, digabung dalam 10 dtk, dan '
+                        'data ditarik dari cloud tiap 30 dtk (saat online). '
+                        'Konflik otomatis memilih data terbaru — yang lama '
+                        'disimpan sebagai snapshot, tanpa dialog.',
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.4,
@@ -708,71 +711,107 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
+              if (_conflictCount > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: NusaConfig.warning.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: NusaConfig.warning,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Ada $_conflictCount cadangan otomatis lama tersimpan di folder aplikasi (file conflict_*.sqlite). Aman dihapus dari tombol di atas jika tidak diperlukan.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              // Upload
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _syncing
+                      ? null
+                      : () {
+                          Navigator.pop(ctx);
+                          _doUpload();
+                        },
+                  icon: _syncing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('Upload ke Cloud (Simpan data lokal)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Download
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _syncing
+                      ? null
+                      : () {
+                          Navigator.pop(ctx);
+                          _confirmDownload();
+                        },
+                  icon: const Icon(Icons.cloud_download_outlined),
+                  label: const Text('Download dari Cloud (Timpa data lokal)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: NusaConfig.error,
+                    side: const BorderSide(color: NusaConfig.error),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '⚠ Download akan menimpa SEMUA data lokal dengan data dari cloud.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark
+                      ? NusaConfig.darkTextTertiary
+                      : NusaConfig.textTertiary,
+                ),
+              ),
             ],
-            const SizedBox(height: 16),
-            // Upload
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _syncing
-                    ? null
-                    : () {
-                        Navigator.pop(ctx);
-                        _doUpload();
-                      },
-                icon: _syncing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: const Text('Upload ke Cloud (Simpan data lokal)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: NusaConfig.activePrimary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Download
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _syncing
-                    ? null
-                    : () {
-                        Navigator.pop(ctx);
-                        _confirmDownload();
-                      },
-                icon: const Icon(Icons.cloud_download_outlined),
-                label: const Text('Download dari Cloud (Timpa data lokal)'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: NusaConfig.error,
-                  side: const BorderSide(color: NusaConfig.error),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '⚠ Download akan menimpa SEMUA data lokal dengan data dari cloud.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -978,58 +1017,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required VoidCallback? onTap,
     bool isDark = false,
     Widget? trailing,
-    Widget? subtitleWidget, // v2.2.57+115: subtitle non-teks (mis. FutureBuilder)
-  }) =>
-      InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(icon, color: NusaConfig.activePrimary),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    subtitleWidget ??
-                        (subtitle == null
-                            ? const SizedBox.shrink()
-                            : Text(
-                                subtitle,
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? NusaConfig.darkTextTertiary
-                                      : NusaConfig.textTertiary,
-                                ),
-                              )),
-                  ],
+    Widget?
+    subtitleWidget, // v2.2.57+115: subtitle non-teks (mis. FutureBuilder)
+  }) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Icon(icon, color: NusaConfig.activePrimary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-              if (trailing != null)
-                trailing
-              else
-                Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: isDark
-                      ? NusaConfig.darkTextTertiary
-                      : NusaConfig.textTertiary,
-                ),
-            ],
+                const SizedBox(height: 3),
+                subtitleWidget ??
+                    (subtitle == null
+                        ? const SizedBox.shrink()
+                        : Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                              color: isDark
+                                  ? NusaConfig.darkTextTertiary
+                                  : NusaConfig.textTertiary,
+                            ),
+                          )),
+              ],
+            ),
           ),
-        ),
-      );
+          if (trailing != null)
+            trailing
+          else
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: isDark
+                  ? NusaConfig.darkTextTertiary
+                  : NusaConfig.textTertiary,
+            ),
+        ],
+      ),
+    ),
+  );
 
   // ── Group Card (Material 3) ───────────────────────────────
   // Satu card menampung baris-baris menu berelasi, dipisah divider tipis.
@@ -1047,7 +1086,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (i > 0) children.add(divider);
       children.add(tiles[i]);
     }
-    return NusaCard(Padding(padding: EdgeInsets.zero, child: Column(children: children)));
+    return NusaCard(
+      Padding(
+        padding: EdgeInsets.zero,
+        child: Column(children: children),
+      ),
+    );
   }
 
   // ── Theme Chip ────────────────────────────────────────────
@@ -1445,33 +1489,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final info = await SecureStore.getLicenseInfo();
     final exp = info?.expiresAt;
     final now = DateTime.now();
-    final blocked = info == null ||
-        info.status == 'Expired' ||
-        info.status == 'Cancelled';
+    final blocked =
+        info == null || info.status == 'Expired' || info.status == 'Cancelled';
     final isExpired = !blocked && exp != null && exp.isBefore(now);
     final statusText = info == null
         ? 'Tidak Terdeteksi'
         : blocked
-            ? (info.status == 'Cancelled'
-                ? 'Dibatalkan'
-                : 'Kedaluwarsa')
-            : isExpired
-                ? 'Kedaluwarsa'
-                : 'Aktif';
+        ? (info.status == 'Cancelled' ? 'Dibatalkan' : 'Kedaluwarsa')
+        : isExpired
+        ? 'Kedaluwarsa'
+        : 'Aktif';
     final statusColor = (blocked || isExpired)
         ? (isDark ? Colors.red.shade300 : Colors.red.shade600)
         : NusaConfig.accentGreen;
     final tierLabel = info?.tier == 'trial'
         ? 'Trial'
         : info?.tier == '1month'
-            ? '1 Bulan'
-            : 'Lifetime';
+        ? '1 Bulan'
+        : 'Lifetime';
     final expText = exp != null
         ? '${exp.day}/${exp.month}/${exp.year}'
         : 'Seumur hidup';
     // v2.2.44 (L4/L5): tampilkan CTA perpanjang kalau status bermasalah
     // ATAU mendekati habis (H-7). Lifetime (exp null) tidak perlu.
-    final needsRenew = blocked ||
+    final needsRenew =
+        blocked ||
         isExpired ||
         (exp != null && exp.isBefore(now.add(const Duration(days: 7))));
 
@@ -1510,11 +1552,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(
-                      Icons.key,
-                      color: statusColor,
-                      size: 20,
-                    ),
+                    child: Icon(Icons.key, color: statusColor, size: 20),
                   ),
                   const SizedBox(width: 12),
                   const Text(
@@ -1532,7 +1570,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: isDark
                       ? NusaConfig.darkSurface2
@@ -1585,11 +1626,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               // v2.2.44 (L5): status + tier + expiry nyata.
               Row(
                 children: [
-                  Icon(
-                    Icons.check_circle,
-                    size: 14,
-                    color: statusColor,
-                  ),
+                  Icon(Icons.check_circle, size: 14, color: statusColor),
                   const SizedBox(width: 6),
                   Text(
                     'Status: $statusText',
@@ -1651,20 +1688,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (needsRenew)
                 ElevatedButton.icon(
                   onPressed: () async {
-                    final googleId =
-                        await GoogleAuthService.getStoredUserId();
+                    final googleId = await GoogleAuthService.getStoredUserId();
                     final uri = Uri.parse(
                       googleId != null && googleId.isNotEmpty
                           ? NusaConfig.paymentLink(googleId, 'lifetime')
                           : '${NusaConfig.paymentUrl}?product=${NusaConfig.productId}',
                     );
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                   icon: const Icon(Icons.credit_card_outlined, size: 18),
                   label: Text(
-                    (blocked || isExpired) ? 'Perpanjang Lisensi' : 'Perpanjang / Beli',
+                    (blocked || isExpired)
+                        ? 'Perpanjang Lisensi'
+                        : 'Perpanjang / Beli',
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: NusaConfig.activePrimary,
@@ -2187,8 +2228,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 .toDouble(),
                             min: receiptHeaderMinPx.toDouble(),
                             max: receiptHeaderMaxPx.toDouble(),
-                            divisions:
-                                receiptHeaderMaxPx - receiptHeaderMinPx,
+                            divisions: receiptHeaderMaxPx - receiptHeaderMinPx,
                             activeColor: NusaConfig.activePrimary,
                             inactiveColor: setDark
                                 ? NusaConfig.darkBorder
@@ -2222,10 +2262,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    
                     const SizedBox(height: 14),
 
-// ── Ukuran Logo (slider 1–100%) ──
+                    // ── Ukuran Logo (slider 1–100%) ──
                     Text(
                       'Ukuran Logo',
                       style: TextStyle(
@@ -2290,10 +2329,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    
                     const SizedBox(height: 20),
 
-// ── Ukuran Kertas ──
+                    // ── Ukuran Kertas ──
                     Text(
                       'Ukuran Kertas',
                       style: TextStyle(
@@ -2497,8 +2535,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       color: draft.headerWeight == w.$1
                                           ? NusaConfig.activePrimary
                                           : (setDark
-                                                ? NusaConfig
-                                                      .darkTextSecondary
+                                                ? NusaConfig.darkTextSecondary
                                                 : NusaConfig.textSecondary),
                                     ),
                                   ),
@@ -2574,7 +2611,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                           ),
                           clipBehavior: Clip.antiAlias,
-                          child: draft.logoPath != null &&
+                          child:
+                              draft.logoPath != null &&
                                   draft.logoPath!.isNotEmpty
                               ? Image.file(
                                   File(draft.logoPath!),
@@ -2617,8 +2655,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       );
                                       if (path != null) {
                                         setSt(() {
-                                          draft =
-                                              draft.copyWith(logoPath: path);
+                                          draft = draft.copyWith(
+                                            logoPath: path,
+                                          );
                                           fontDirty = true;
                                         });
                                       }
@@ -2653,8 +2692,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     const SizedBox(width: 8),
                                     TextButton(
                                       onPressed: () => setSt(() {
-                                        draft =
-                                            draft.copyWith(logoPath: null);
+                                        draft = draft.copyWith(logoPath: null);
                                         fontDirty = true;
                                       }),
                                       child: const Text(
@@ -2725,8 +2763,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                       color: draft.logoAlign == a.$1
                                           ? NusaConfig.activePrimary
                                           : (setDark
-                                                ? NusaConfig
-                                                      .darkTextSecondary
+                                                ? NusaConfig.darkTextSecondary
                                                 : NusaConfig.textSecondary),
                                     ),
                                     const SizedBox(height: 2),
@@ -2738,8 +2775,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         color: draft.logoAlign == a.$1
                                             ? NusaConfig.activePrimary
                                             : (setDark
-                                                  ? NusaConfig
-                                                        .darkTextSecondary
+                                                  ? NusaConfig.darkTextSecondary
                                                   : NusaConfig.textSecondary),
                                       ),
                                     ),
@@ -3096,9 +3132,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  testPrinting
-                                      ? 'Mencetak…'
-                                      : 'Tes Cetak',
+                                  testPrinting ? 'Mencetak…' : 'Tes Cetak',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
@@ -3551,9 +3585,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // v2.2.53: buka daftar tutorial dari cloud (tabel `tutorials`, via dashboard).
   void _openTutorial() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const TutorialScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const TutorialScreen()));
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -3649,12 +3683,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const Text(
                         'Tema',
                         style: TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 15),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          _themeChip('Terang', 'light', Icons.light_mode, isDark),
+                          _themeChip(
+                            'Terang',
+                            'light',
+                            Icons.light_mode,
+                            isDark,
+                          ),
                           const SizedBox(width: 8),
                           _themeChip('Gelap', 'dark', Icons.dark_mode, isDark),
                           const SizedBox(width: 8),
@@ -3674,7 +3715,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   thickness: 1,
                   indent: 16,
                   endIndent: 16,
-                  color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+                  color: isDark
+                      ? NusaConfig.darkDivider
+                      : NusaConfig.dividerColor,
                 ),
                 _menuTile(
                   icon: Icons.palette_outlined,
@@ -3957,7 +4000,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       // Mirror into SecureStore — single source of truth for
                       // receipt-sheet auto-print (printer_settings_sheet already
                       // writes it too; this covers older flows).
-                      await SecureStore.setPrinterAddress('${d.name}|${d.address}');
+                      await SecureStore.setPrinterAddress(
+                        '${d.name}|${d.address}',
+                      );
                       setState(() => _printerName = '${d.name}|${d.address}');
                     },
                   ),
@@ -4315,8 +4360,7 @@ class _UpdateHistorySheetState extends State<_UpdateHistorySheet> {
                       itemCount: releases.length,
                       itemBuilder: (context, i) {
                         final r = releases[i];
-                        final isCurrent =
-                            r.buildNumber == _installedBuild;
+                        final isCurrent = r.buildNumber == _installedBuild;
                         final expanded = _expandedIndex == i;
                         // Changelog di-render rapi: baris "- "/"* " → bullet
                         // list, "## " → judul section, sisanya paragraf.
@@ -4500,4 +4544,3 @@ class _ChangelogBody extends StatelessWidget {
     );
   }
 }
-

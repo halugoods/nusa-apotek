@@ -86,21 +86,35 @@ class LabelRenderer {
   }) {
     final image = img.Image(widthPx, heightPx)
       ..fill(img.getColor(255, 255, 255)); // putih
-    const margin = 8;
+
+    // Margin HORIZONTAL barcode (v2.2.57+122 — Bug fix "barcode terpotong").
+    // Printer label thermal memotong ±3 baris paling kanan: print head offset
+    // (quiet zone) + selotip label memakan tepi kanan. Margin KANAN dibuat
+    // lebih besar dari kiri supaya bar paling kanan selalu utuh & bisa di-scan
+    // walau skala barcode 1.1x–2.4x.
+    //
+    //   marginL = 8px  (203 DPI ≈ 1mm) — quiet zone Code128 wajib.
+    //   marginR = 16px (203 DPI ≈ 2mm) — kompensasi crop fisik print head.
+    //   edgeL / edgeR dipakai guard render supaya bar tak pernah keluar canvas.
+    final marginL = 8;
+    final marginR = 16;
+    const marginTop = 8;
     final cx = widthPx ~/ 2; // pusat horizontal
 
     // Baris elemen (dihitung dari atas). Urutan: barcode → nama → harga.
     // Pakai "blok" supaya tidak ada gap ngaco: setiap elemen menempati
     // slotnya sendiri, sisanya disebar merata di atas-bawah (center vertikal).
-    var y = margin;
+    var y = marginTop;
 
     // ── 1) Barcode CODE128 ──
     //    TSPL: pendek & center (26% tinggi label). Struk: FULL lebar
     //    (rata kiri-kanan) — [fullWidthBarcode].
     if (showBarcode && barcode.trim().isNotEmpty) {
-      final bw = fullWidthBarcode
-          ? widthPx - margin * 2
-          : widthPx - margin * 2;
+      // Lebar tersedia: lebar label minus margin kiri + KANAN (tidak
+      // simetris). fullWidthBarcode tetap pakai inset kanan ekstra supaya
+      // ujung kanan barcode tidak terpotong print head.
+      final availW = widthPx - marginL - marginR;
+      final bw = availW > 0 ? availW : widthPx - 8;
       final bh = (heightPx * 0.26).round().clamp(24, 80);
       final bars = barcodeBars(barcode, bw.toDouble(), bh.toDouble());
       // Hitung bounding box barcode (bar paling kiri & kanan) supaya bisa
@@ -108,7 +122,7 @@ class LabelRenderer {
       var minX = widthPx, maxX = 0;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
-          final x0 = (margin + el.left).round();
+          final x0 = (marginL + el.left).round();
           final x1 = x0 + el.width.round();
           if (x0 < minX) minX = x0;
           if (x1 > maxX) maxX = x1;
@@ -118,20 +132,25 @@ class LabelRenderer {
       // Struk: baris barcode direntang penuh ke kiri-kanan (pixel-accurate
       // terhadap elemen barcode). TSPL: center.
       final offX = fullWidthBarcode
-          ? margin - minX
+          ? marginL - minX
           : barW > 0
               ? cx - barW ~/ 2
               : 0;
       final topY = y;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
-          final x0 = (margin + el.left).round() + offX - minX;
+          final x0 = (marginL + el.left).round() + offX - minX;
           final y0 = topY + el.top.round();
           final w = el.width.round();
           final h = el.height.round();
           for (var yy = y0; yy < y0 + h && yy < heightPx; yy++) {
             for (var xx = x0; xx < x0 + w && xx < widthPx; xx++) {
-              if (xx >= 0 && xx < widthPx) image.setPixelRgba(xx, yy, 0, 0, 0);
+              // Guard: batas kiri/kanan memakai marginL/marginR (bukan
+              // canvas) — bar yang melampaui margin KANAN ikut digambar
+              // (tidak dipotong) selama masih dalam canvas.
+              if (xx >= marginL && xx <= widthPx - 1 - marginR) {
+                image.setPixelRgba(xx, yy, 0, 0, 0);
+              }
             }
           }
         }
@@ -151,7 +170,7 @@ class LabelRenderer {
         name,
         y,
         cx,
-        margin,
+        marginL, // teks pakai margin simetris kecil (8px) — bukan barcode
         nameFontScale.clamp(1.0, 3.0),
         priceShown: showPrice && price >= 0,
       );
@@ -166,7 +185,7 @@ class LabelRenderer {
         price,
         y,
         cx,
-        margin,
+        marginL,
         priceFontScale.clamp(1.0, 3.0),
       );
     }

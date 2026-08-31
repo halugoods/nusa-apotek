@@ -183,6 +183,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         final lines = cart
             .map((c) => ReceiptLine(name: c.name, qty: c.qty, price: c.price))
             .toList();
+        // Kitchen order tidak menampilkan harga — qty & nama saja. price
+        // tidak dipakai di render kitchen (printKitchenOrder).
         final notes = cart.map((c) => c.note).toList();
 
         await printer.printKitchenOrder(
@@ -3639,8 +3641,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               (c) => ReceiptLine(
                 name: c.name,
                 qty: c.qty,
-                price: c.price,
+                // v2.2.57+122: harga sementara (tempPrice) ikut di struk
+                // split bill — sebelumnya c.price (harga asli).
+                price: c.unitPrice,
                 originalPrice: c.originalPrice,
+                discountPerItem: c.discountPerItem,
               ),
             )
             .toList();

@@ -125,6 +125,51 @@ class ReceiptData {
     return itemDisc + discount;
   }
 
+  /// Alokasi diskon TRANSAKSI ([discount] — promo/manual/tier/poin) secara
+  /// PROPORSIONAL ke tiap item (v2.2.57+122).
+  ///
+  /// Bug fix: sebelumnya diskon transaksi hanya tampil di summary "Disc."
+  /// sehingga Σ subtotal item ≠ Grand Total. Sekarang potongan dibagi ke
+  /// tiap item sebanding subtotal nettonya (largest-remainder method, jadi
+  /// Σ alokasi == [discount] persis), lalu renderer mengurangi dari subtotal
+  /// item → akumulasi harga item di struk = Grand Total.
+  ///
+  /// Index paralel dengan [items] (0 = item pertama). Item dengan subtotal 0
+  /// atau saat tidak ada diskon transaksi mendapat 0.
+  List<int> get allocatedTransactionDiscounts {
+    final d = discount;
+    if (d <= 0 || items.isEmpty) return List.filled(items.length, 0);
+    final net = items.map((it) => it.subtotal).toList();
+    final totalNet = net.fold<int>(0, (a, b) => a + b);
+    if (totalNet <= 0) return List.filled(items.length, 0);
+
+    final alloc = List<int>.filled(items.length, 0);
+    final remainder = <double>[];
+    var used = 0;
+    for (var i = 0; i < items.length; i++) {
+      final exact = net[i] * d / totalNet;
+      final floor = exact.floor();
+      final a = floor > net[i] ? net[i] : floor; // tak boleh > subtotal item
+      alloc[i] = a;
+      used += a;
+      remainder.add(exact - floor);
+    }
+    // Sisa pembulatan (maks < items.length) → item dengan sisa pecahan
+    // terbesar dulu, supaya distribusi paling adil & Σ == d persis.
+    var sisa = d - used;
+    final order = List<int>.generate(items.length, (i) => i)
+      ..sort((a, b) => remainder[b].compareTo(remainder[a]));
+    for (final idx in order) {
+      if (sisa <= 0) break;
+      final room = net[idx] - alloc[idx];
+      if (room > 0) {
+        alloc[idx] += 1;
+        sisa -= 1;
+      }
+    }
+    return alloc;
+  }
+
   /// Catatan per item (paralel dengan [items], null = tidak ada).
   List<String?> get itemNotes => items.map((i) => i.note).toList();
 
