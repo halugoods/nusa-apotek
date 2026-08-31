@@ -51,10 +51,7 @@ class LabelPrintSheet extends ConsumerStatefulWidget {
   final List<Product>? initialProducts;
 
   /// Tampilkan sebagai halaman penuh.
-  static Future<void> show(
-    BuildContext context, {
-    List<Product>? products,
-  }) {
+  static Future<void> show(BuildContext context, {List<Product>? products}) {
     return Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => LabelPrintSheet(initialProducts: products),
@@ -112,8 +109,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   void _setQty(int v) {
     final clamped = v.clamp(1, 999);
     _qtyCtrl.text = '$clamped';
-    _qtyCtrl.selection =
-        TextSelection.collapsed(offset: _qtyCtrl.text.length);
+    _qtyCtrl.selection = TextSelection.collapsed(offset: _qtyCtrl.text.length);
   }
 
   // Ukuran label fisik (mm) yang sedang dipilih — didukung oleh getter
@@ -245,8 +241,10 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       showBarcode: _showBarcode,
       widthPx: LabelRenderer.mmToPx(paperMm, dpi: dpi).round(),
       // Tinggi label struk proporsional: 40×30 → lebar kertas × 0.75.
-      heightPx: LabelRenderer.mmToPx(paperMm * (_labelH / _labelW), dpi: dpi)
-          .round(),
+      heightPx: LabelRenderer.mmToPx(
+        paperMm * (_labelH / _labelW),
+        dpi: dpi,
+      ).round(),
       nameFontScale: _nameScale,
       priceFontScale: _priceScale,
       fullWidthBarcode: true,
@@ -279,7 +277,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       // Android menyembunyikan bonded devices sampai connect eksplisit
       // dicoba — tanpa fallback ini printer label "tidak terdeteksi" walau
       // printer yang sama terdeteksi di modul Print Struk.
-      debugPrint('[LabelPrint] bonded list tak ada printer — direct connect $mac');
+      debugPrint(
+        '[LabelPrint] bonded list tak ada printer — direct connect $mac',
+      );
       final ok = await printer.connect(
         PrinterDevice(name: storedAddr.split('|').first, address: mac),
       );
@@ -315,10 +315,15 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
         }
       }
       if (mounted) {
-        TopToast.error(
-            context,
-            'Tidak ada printer ditemukan. '
-            'Pairing dulu di pengaturan Bluetooth Android.');
+        // v2.2.57+122: toast gampang terlewat & pemula tidak tahu harus
+        // pairing manual dulu (persis kasus user: "otak-atik" ternyata pair
+        // di Settings Bluetooth). Tampilkan panduan langkah + pintasan.
+        final retry = await showModalBottomSheet<bool>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _printerHelpSheet(),
+        );
+        if (retry == true) return _pickLabelPrinter(); // scan ulang
       }
       return false;
     }
@@ -336,8 +341,157 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       await p.dispose();
     }
     await SecureStore.setLabelPrinterAddress(
-        '${picked.name}|${picked.address}');
+      '${picked.name}|${picked.address}',
+    );
     return true;
+  }
+
+  /// Sheet panduan saat TIDAK ADA printer terdeteksi — langkah pairing yang
+  /// jelas untuk pemula + pintasan langsung ke Pengaturan Bluetooth Android.
+  Widget _printerHelpSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.bluetooth_disabled_outlined,
+                color: NusaConfig.warning,
+                size: 28,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Printer Belum Terdeteksi',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _helpStep(
+            isDark,
+            '1',
+            'Pastikan printer label sudah NYALA dan mode Bluetooth-nya aktif.',
+          ),
+          _helpStep(
+            isDark,
+            '2',
+            'Buka Pengaturan Bluetooth di HP → cari nama printer → ketuk untuk PAIRING (konfirmasi di layar HP maupun printer bila diminta).',
+          ),
+          _helpStep(
+            isDark,
+            '3',
+            'Setelah ter-pairing, kembali ke aplikasi ini dan ketuk "Cari Ulang".',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => BluetoothUtils.openBluetoothSettings(),
+                  icon: const Icon(Icons.settings_bluetooth, size: 18),
+                  label: const Text(
+                    'Buka Bluetooth',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context, true),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text(
+                    'Cari Ulang',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark
+                      ? NusaConfig.darkTextSecondary
+                      : NusaConfig.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _helpStep(bool isDark, String num, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(top: 1),
+            decoration: BoxDecoration(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              num,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: isDark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _printerPickerSheet(List<PrinterDevice> devices) {
@@ -367,15 +521,64 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          ...devices.map(
-            (d) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading:
-                  Icon(Icons.print_outlined, color: NusaConfig.activePrimary),
-              title: Text(d.name, style: const TextStyle(fontSize: 14)),
-              subtitle: Text(d.address, style: const TextStyle(fontSize: 11)),
-              onTap: () => Navigator.pop(context, d),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: devices.length,
+              itemBuilder: (_, i) {
+                final d = devices[i];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.print_outlined,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  title: Text(d.name, style: const TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    d.address,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onTap: () => Navigator.pop(context, d),
+                );
+              },
             ),
+          ),
+          const SizedBox(height: 4),
+          // Pemula sering: printer belum di-pairing → tidak muncul di daftar.
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? NusaConfig.darkTextSecondary
+                    : NusaConfig.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Printer tidak muncul? Pairing dulu di Pengaturan Bluetooth.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? NusaConfig.darkTextSecondary
+                        : NusaConfig.textSecondary,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => BluetoothUtils.openBluetoothSettings(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Buka', style: TextStyle(fontSize: 12)),
+              ),
+            ],
           ),
         ],
       ),
@@ -553,7 +756,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     if (!connected) {
       if (mounted) {
         TopToast.error(
-            context, 'Printer label tidak ditemukan / belum tersambung');
+          context,
+          'Printer label tidak ditemukan / belum tersambung',
+        );
       }
       return false;
     }
@@ -584,15 +789,19 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     if (stored == null || stored.isEmpty) {
       if (mounted) {
         TopToast.error(
-            context, 'Atur printer struk dulu di Pengaturan → Printer Struk');
+          context,
+          'Atur printer struk dulu di Pengaturan → Printer Struk',
+        );
       }
       return false;
     }
     final ok = await _connectStored(stored);
     if (!ok) {
       if (mounted) {
-        TopToast.error(context,
-            'Printer struk tidak ditemukan. Cek Pengaturan → Printer Struk.');
+        TopToast.error(
+          context,
+          'Printer struk tidak ditemukan. Cek Pengaturan → Printer Struk.',
+        );
       }
       return false;
     }
@@ -631,10 +840,8 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     // ulang; qty cetak → tiap produk masuk [_qty]× ke grid.
     const pageW = 210.0, pageH = 297.0;
     const marginMm = 8.0, gapMm = 4.0;
-    final cols =
-        ((pageW - 2 * marginMm + gapMm) / (_labelW + gapMm)).floor();
-    final rows =
-        ((pageH - 2 * marginMm + gapMm) / (_labelH + gapMm)).floor();
+    final cols = ((pageW - 2 * marginMm + gapMm) / (_labelW + gapMm)).floor();
+    final rows = ((pageH - 2 * marginMm + gapMm) / (_labelH + gapMm)).floor();
     final perPage = cols * rows;
 
     // Daftar label dengan duplikasi qty — urutan: semua produk × qty,
@@ -796,7 +1003,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
               fillColor: Colors.white,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 12),
+                horizontal: 12,
+                vertical: 12,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -950,21 +1159,17 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           subtitle: 'Printer struk yang sudah dipakai — label beruntun',
           preview: _selected.isEmpty
               ? null
-              : _StrukPreview(
-                  product: _selected.first,
-                  sheet: this,
-                ),
-        ),        _pathCard(
+              : _StrukPreview(product: _selected.first, sheet: this),
+        ),
+        _pathCard(
           path: 2,
           icon: Icons.picture_as_pdf_outlined,
           title: 'PDF A4 (grid)',
-          subtitle: 'Banyak label sekaligus, siap dipotong / dicetak printer umum',
+          subtitle:
+              'Banyak label sekaligus, siap dipotong / dicetak printer umum',
           preview: _selected.isEmpty
               ? null
-              : _A4GridPreview(
-                  products: _selected,
-                  sheet: this,
-                ),
+              : _A4GridPreview(products: _selected, sheet: this),
         ),
         if (_status.isNotEmpty)
           Padding(
@@ -1252,8 +1457,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       child: Column(
         children: [
           ListTile(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             tileColor: Colors.grey.withValues(alpha: 0.06),
             leading: Icon(icon, color: NusaConfig.activePrimary),
             title: Text(
@@ -1304,9 +1510,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                   const SizedBox(height: 12),
                   // Tombol cetak — ada DI DALAM preview (permintaan user).
                   FilledButton.icon(
-                    onPressed: _printing
-                        ? null
-                        : () => _runPrint(path),
+                    onPressed: _printing ? null : () => _runPrint(path),
                     icon: _printing
                         ? const SizedBox(
                             width: 16,
@@ -1326,15 +1530,15 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                       _printing
                           ? 'Mencetak…'
                           : path == 2
-                              ? 'Buka PDF — Print / Simpan'
-                              : 'Cetak ${_selected.length * _qty} Label',
+                          ? 'Buka PDF — Print / Simpan'
+                          : 'Cetak ${_selected.length * _qty} Label',
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     path == 2
                         ? 'PDF dibuat dari render yang sama dengan preview — '
-                            'share sheet Android bisa langsung Print ke printer umum.'
+                              'share sheet Android bisa langsung Print ke printer umum.'
                         : 'Dikirim via Bluetooth ke printer yang tersimpan.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -1400,9 +1604,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           Container(
             height: 38,
             decoration: BoxDecoration(
-              color: isDark
-                  ? NusaConfig.darkSurface
-                  : NusaConfig.activeSoft,
+              color: isDark ? NusaConfig.darkSurface : NusaConfig.activeSoft,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: NusaConfig.activePrimary.withValues(alpha: 0.5),
@@ -1473,8 +1675,12 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       (s) => _labelWmm == s.$2 && _labelHmm == s.$3,
     );
     final idx = selectedIndex >= 0 ? selectedIndex : 0;
-    final textPri = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
-    final textSec = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+    final textPri = isDark
+        ? NusaConfig.darkTextPrimary
+        : NusaConfig.textPrimary;
+    final textSec = isDark
+        ? NusaConfig.darkTextSecondary
+        : NusaConfig.textSecondary;
     final border = isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor;
     return Container(
       padding: const EdgeInsets.all(10),
@@ -1485,8 +1691,11 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
       ),
       child: Row(
         children: [
-          Icon(Icons.straighten_outlined,
-              size: 18, color: NusaConfig.activePrimary),
+          Icon(
+            Icons.straighten_outlined,
+            size: 18,
+            color: NusaConfig.activePrimary,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -1500,8 +1709,11 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
                     DropdownMenuItem<int>(
                       value: i,
                       child: Text(
-                        _sizeLabel(_labelSizes[i].$1, _labelSizes[i].$2,
-                            _labelSizes[i].$3),
+                        _sizeLabel(
+                          _labelSizes[i].$1,
+                          _labelSizes[i].$2,
+                          _labelSizes[i].$3,
+                        ),
                         style: const TextStyle(fontSize: 13),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1630,7 +1842,10 @@ class _StrukPreviewState extends State<_StrukPreview> {
   }
 
   Future<void> _load() async {
-    final bmp = await widget.sheet._renderForStruk(widget.product, LabelDpi.dpi203);
+    final bmp = await widget.sheet._renderForStruk(
+      widget.product,
+      LabelDpi.dpi203,
+    );
     final paper = await widget.sheet._paperMm();
     if (!mounted) return;
     setState(() {
@@ -1750,10 +1965,10 @@ class _A4GridPreview extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final labelW = sheet._labelW, labelH = sheet._labelH;
     // Hitung grid SAMA seperti _buildPdf (konsistensi preview = hasil).
-    final cols =
-        ((_pageWmm - 2 * _marginMm + _gapMm) / (labelW + _gapMm)).floor();
-    final rows =
-        ((_pageHmm - 2 * _marginMm + _gapMm) / (labelH + _gapMm)).floor();
+    final cols = ((_pageWmm - 2 * _marginMm + _gapMm) / (labelW + _gapMm))
+        .floor();
+    final rows = ((_pageHmm - 2 * _marginMm + _gapMm) / (labelH + _gapMm))
+        .floor();
     final perPage = cols * rows;
     final pages = ((products.length + perPage - 1) / perPage).ceil();
     final shown = products.take(perPage).toList();
