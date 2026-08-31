@@ -206,6 +206,42 @@ class SpreadsheetService {
     });
   }
 
+  // ── Cold tier: arsip bulan lama (Blok 4 MASTER LIST) ────────────────
+
+  /// Daftar arsip bulanan user (bulan + tab + jumlah baris).
+  /// [bulan]/[tab] opsional untuk filter.
+  Future<List<Map<String, dynamic>>> fetchArchives({
+    String? bulan,
+    String? tab,
+  }) async {
+    final userId = await SpreadsheetService.uid();
+    if (userId == null || userId.isEmpty) return [];
+    final body = <String, dynamic>{'user_id': userId};
+    if (bulan != null) body['bulan'] = bulan;
+    if (tab != null) body['tab'] = tab;
+    final res = await _invoke('get_archives', body);
+    final list = res['archives'] as List?;
+    return list?.whereType<Map<String, dynamic>>().toList() ?? [];
+  }
+
+  /// Ambil ISI arsip satu bulan+tab (rows JSON dari Supabase).
+  Future<List<List<dynamic>>> fetchArchiveRows({
+    required String bulan,
+    required String tab,
+  }) async {
+    final userId = await SpreadsheetService.uid();
+    if (userId == null || userId.isEmpty) return [];
+    final res = await _invoke('get_archives', {
+      'user_id': userId,
+      'bulan': bulan,
+      'tab': tab,
+    });
+    final list = res['archives'] as List?;
+    if (list == null || list.isEmpty) return [];
+    final rows = (list.first as Map<String, dynamic>)['rows'] as List?;
+    return rows?.map((r) => (r as List).toList()).toList() ?? [];
+  }
+
   /// ── Formatting builder ─────────────────────────────────────────────
   /// Bangun request batchUpdate JSON (diteruskan verbatim oleh server ke
   /// Google Sheets API). `sheetId` = index tab (0-based, sesuai urutan

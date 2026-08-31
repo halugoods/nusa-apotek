@@ -32,6 +32,7 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
   String _error = '';
   bool _connecting = false;
   bool _syncing = false;
+  bool _archiving = false;
   String _syncingTab = '';
   final Map<String, DateTime?> _lastSync = {};
   int _syncedCount = 0;
@@ -426,6 +427,25 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
               ),
             ),
 
+            SizedBox(height: 12),
+            // Arsip bulan lama (cold tier — data dibaca dari Supabase)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _archiving ? null : _showArchives,
+                icon: _archiving
+                    ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.inventory_2_outlined, size: 18),
+                label: Text('Lihat Arsip Bulan Lama'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: NusaConfig.activePrimary,
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+
             SizedBox(height: 16),
             // Reset / putus koneksi
             SizedBox(
@@ -463,6 +483,135 @@ class _SpreadsheetScreenState extends ConsumerState<SpreadsheetScreen> {
         ]),
       ),
     );
+  }
+
+  // ── Arsip bulan lama (cold tier Supabase) ────────────────────────────
+
+  Future<void> _showArchives() async {
+    setState(() => _archiving = true);
+    List<Map<String, dynamic>> archives = [];
+    String? err;
+    try {
+      archives = await (_svc ?? SpreadsheetService(ref.read(databaseProvider))).fetchArchives();
+    } catch (e) {
+      err = e.toString();
+    }
+    if (mounted) setState(() => _archiving = false);
+    if (!mounted) return;
+    if (err != null) {
+      TopToast.error(context, 'Gagal memuat arsip: $err');
+      return;
+    }
+
+    // Kelompokkan per bulan → {bulan: {tab: rowCount}}
+    final byMonth = <String, Map<String, int>>{};
+    for (final a in archives) {
+      final bulan = a['bulan'] as String? ?? '';
+      final tab = a['tab'] as String? ?? '';
+      final rc = (a['row_count'] as num?)?.toInt() ?? 0;
+      byMonth.putIfAbsent(bulan, () => {})[tab] = rc;
+    }
+    final bulans = byMonth.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    if (bulans.isEmpty) {
+      TopToast.info(context, 'Belum ada arsip bulanan. Arsip otomatis dibuat tanggal 2 tiap bulan.');
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final textPri = isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary;
+        final textSec = isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary;
+        final textTer = isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary;
+        final surf = isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor;
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(Icons.inventory_2_outlined, color: NusaConfig.activePrimary, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Arsip Bulan Lama',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPri)),
+                  ),
+                ]),
+                SizedBox(height: 4),
+                Text(
+                  'Data bulan selesai tersimpan aman di cloud NUSA (Supabase) — '
+                  'spreadsheet tetap ramping untuk bulan berjalan.',
+                  style: TextStyle(fontSize: 12, color: textTer),
+                ),
+                SizedBox(height: 14),
+                for (final bulan in bulans) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: surf,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_bulanLabel(bulan),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: textPri)),
+                        SizedBox(height: 6),
+                        for (final e in (byMonth[bulan] ?? {})
+                            .entries
+                            .toList()
+                          ..sort((a, b) => b.value.compareTo(a.value)))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Row(children: [
+                              Expanded(child: Text(e.key,
+                                  style: TextStyle(fontSize: 12, color: textSec))),
+                              Text('${e.value} baris',
+                                  style: TextStyle(fontSize: 12, color: textTer)),
+                            ]),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _bulanLabel(String yyyyMm) {
+    const names = [
+      '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    final parts = yyyyMm.split('-');
+    if (parts.length != 2) return yyyyMm;
+    final m = int.tryParse(parts[1]) ?? 0;
+    if (m < 1 || m > 12) return yyyyMm;
+    return '${names[m]} ${parts[0]}';
   }
 
   Widget _syncTile(String label, IconData icon, {required bool isDark}) {
