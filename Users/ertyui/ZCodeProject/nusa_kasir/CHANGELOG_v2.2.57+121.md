@@ -1,4 +1,4 @@
-# NUSA v2.2.57+121 — Google Sheets Terpusat, Fix Dobel Diskon, Toko Online Sinkron
+# NUSA v2.2.57+121 — Google Sheets Terpusat, Fix Dobel Diskon, Print Label, Egress Fix
 
 Versi utama tetap **2.2.57** — hanya build number naik ke **+121**. Berlaku untuk **semua 8 varian**.
 
@@ -25,6 +25,16 @@ Versi utama tetap **2.2.57** — hanya build number naik ke **+121**. Berlaku un
 - Header menampilkan **status cloud sync** (tersambung/tersinkronisasi).
 - Tombol "Sinkronkan produk online" jadi **wrap-card**; abu-abu & nonaktif saat sudah sinkron.
 - Info toko **auto-fill dari Data Toko** (dua arah ke cloud), rename tidak menumpuk data.
+
+## 🏷️ Print Label Baru (F&B / Kelontong / Apotek)
+- Search produk, **autoscan barcode**, atur qty & ukuran label, cetak via printer TSPL.
+
+## 👥 Filter Role di Transaksi & Laporan
+- **Owner** melihat semua transaksi/laporan; **karyawan** otomatis ter-scope ke transaksi sendiri (mencegah karyawan melihat omzet orang lain).
+
+## 📶 Fix Cached Egress (Kuota Cloud Aman)
+- **Sebelumnya:** app mengunduh FULL backup tiap 30 detik hanya untuk baca timestamp → puluhan GB/bulan per device (kuota Cached Egress jebol).
+- **Sekarang:** cek timestamp pakai HEAD request (0 body), interval pull 30s → 5 menit, sinkron gambar dibatasi 6 jam, cache-control eksplisit di cloud. Realtime tetap cepat via notifikasi broadcast.
 
 ## 📦 Download
 APK per varian ada di masing-masing repo release (kelontong, fnb, laundry, bengkel, salon, apotek, fotocopy, servis).
