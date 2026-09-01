@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -470,11 +471,45 @@ class ActivationRepository {
       debugPrint(
         '[Backup] Uploaded DB + ${files.length - 2} images (${encrypted.length} bytes encrypted, metadata-in-archive)',
       );
+      // v2.2.57+122 Cloud Google (backup dobel): server yang menyalin backup
+      // terbaru dari bucket → Google Drive (akun company terpisah). Fire-
+      // and-forget — gagal TIDAK menggagalkan backup Supabase (jalur utama).
+      _triggerDriveSync(uid);
       return true;
     } catch (e) {
       debugPrint('[Backup] uploadBackupNow error: $e');
       return false;
     }
+  }
+
+  /// Cloud Google (v2.2.57+122): minta edge fn `cloud-google` menyalin backup
+  /// terbaru dari bucket `nusa-backups` ke Drive akun company. Server-side
+  /// copy (file tidak lewat HTTP body dari device). Senyap bila fitur belum
+  /// aktif (belum ada akun Drive / migration 0024 belum dijalankan).
+  void _triggerDriveSync(String uid) {
+    unawaited(() async {
+      try {
+        await Supabase.instance.client.functions.invoke(
+          'cloud-google',
+          body: {
+            'action': 'ensure',
+            'user_id': uid,
+            'variant': NusaConfig.productId,
+          },
+        );
+        await Supabase.instance.client.functions.invoke(
+          'cloud-google',
+          body: {
+            'action': 'sync_latest',
+            'user_id': uid,
+            'variant': NusaConfig.productId,
+          },
+        );
+        debugPrint('[Backup] Cloud Google: backup tersalin ke Drive');
+      } catch (_) {
+        // Drive belum aktif (belum add akun / 0024 belum jalan) — abaikan.
+      }
+    }());
   }
 
   /// Fetch the backup metadata (store name, owner, backup time).
