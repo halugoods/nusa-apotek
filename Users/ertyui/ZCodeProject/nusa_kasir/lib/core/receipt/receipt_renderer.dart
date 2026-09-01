@@ -121,20 +121,23 @@ class ReceiptPartImage extends ReceiptPart {
 }
 
 /// Layout item struk (spec R): nama full-width, lalu "qty x harga ASLI" di
-/// kiri + subtotal NETTO di kanan; item berdiskon tambah baris "Disc. (-RpX)".
+/// kiri + subtotal NETTO di kanan; item berdiskon tampilkan dua baris:
+/// "Disc. Produk (-X)" dan "Disc. Manual (-Y)" (v2.2.57+126).
 class ReceiptPartItem extends ReceiptPart {
   final String name;
   final String qtyPrice; // "2 x 15.000"
   final String subtotal; // "27.000" (netto)
-  final String? disc; // "(-3.000)" — null = tanpa diskon
+  final String? productDisc; // "(-1.000)" — diskon dari menu Produk
+  final String? manualDisc; // "(-2.000)" — diskon dari "Ubah Diskon" manual
   final String? note;
   const ReceiptPartItem(
     this.name,
     this.qtyPrice,
-    this.subtotal,
-    this.disc,
+    this.subtotal, {
+    this.productDisc,
+    this.manualDisc,
     this.note,
-  );
+  });
 }
 
 /// Bagian header — dirender PNG (satu renderer SAMA untuk print & preview).
@@ -207,8 +210,9 @@ List<ReceiptPart> buildReceiptParts({
   // ── Items (compact, tanpa divider antar item — spec R/S) ──
   // v2.2.57+122: diskon TRANSAKSI dibagi proporsional ke tiap item
   // (allocatedTransactionDiscounts) → subtotal per-item NETTO mencerminkan
-  // Grand Total (Σ item = Total), dan baris "Disc. (-RpX)" per item
-  // menampilkan potongan item + porsi diskon transaksinya.
+  // Grand Total (Σ item = Total).
+  // v2.2.57+126: tampilkan DUA baris diskon: "Disc. Produk" + "Disc. Manual"
+  // supaya user tahu mana diskon dari menu produk vs diskon ubah di kasir.
   final txnAlloc = data.allocatedTransactionDiscounts;
   for (var i = 0; i < data.items.length; i++) {
     final item = data.items[i];
@@ -218,13 +222,26 @@ List<ReceiptPart> buildReceiptParts({
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
     final netSubtotal = item.subtotal - alloc;
-    final itemDiscTotal = item.discountTotal + alloc;
+    // Diskon item total = produk + manual + alokasi diskon transaksi
+    final productDiscAmt = item.productDiscount ?? 0;
+    final manualDiscAmt = item.discountPerItem ?? 0;
+    final allocDiscAmt = alloc;
+    // Tampilkan baris "Disc. Produk" hanya kalau ada diskon produk
+    final pd = productDiscAmt > 0 ? '(-${receiptNum(productDiscAmt)})' : null;
+    // Tampilkan baris "Disc. Manual" hanya kalau ada diskon manual
+    final md = manualDiscAmt > 0 ? '(-${receiptNum(manualDiscAmt)})' : null;
+    // Alokasi diskon transaksi: gabung ke manual disc kalau ada, sonst单独的
+    final mdAmt = manualDiscAmt + allocDiscAmt;
+    final mdFinal = mdAmt > 0 ? '(-${receiptNum(mdAmt)})' : null;
+    // Kalau ada alokasi tapi tidak ada manual disc, tampilkan单独的 baris "Disc."
+    final allocOnly = allocDiscAmt > 0 && manualDiscAmt == 0;
     parts.add(ReceiptPartItem(
       item.name,
       qtyPrice,
       receiptNum(netSubtotal),
-      itemDiscTotal > 0 ? '(-${receiptNum(itemDiscTotal)})' : null,
-      item.note,
+      productDisc: pd,
+      manualDisc: allocOnly ? '(-${receiptNum(allocDiscAmt)})' : mdFinal,
+      note: item.note,
     ));
   }
   parts.add(const ReceiptPartHr());
@@ -393,7 +410,8 @@ Future<List<int>> renderBytes({
           :final name,
           :final qtyPrice,
           :final subtotal,
-          :final disc,
+          :final productDisc,
+          :final manualDisc,
           :final note
         ):
         // Baris 1: nama item full-width (wrap).
@@ -428,11 +446,23 @@ Future<List<int>> renderBytes({
             ),
           ),
         );
-        // Baris 3: "Disc. (-3.000)" hanya untuk item berdiskon (spec S).
-        if (disc != null) {
+        // Baris 3a: "Disc. Produk (-1.000)" — diskon dari menu Produk
+        if (productDisc != null) {
           bytes.addAll(
             generator.text(
-              sanReceipt('Disc. $disc'),
+              sanReceipt('Disc. Produk $productDisc'),
+              styles: PosStyles(
+                align: PosAlign.left,
+                fontType: itemFont,
+              ),
+            ),
+          );
+        }
+        // Baris 3b: "Disc. Manual (-2.000)" — diskon dari "Ubah Diskon" manual
+        if (manualDisc != null) {
+          bytes.addAll(
+            generator.text(
+              sanReceipt('Disc. Manual $manualDisc'),
               styles: PosStyles(
                 align: PosAlign.left,
                 fontType: itemFont,
@@ -543,6 +573,7 @@ String renderText({
 
   // v2.2.57+122: diskon transaksi dialokasikan proporsional ke item
   // (sama dengan renderBytes/buildReceiptParts — Σ item = Total).
+  // v2.2.57+126: tampilkan "Disc. Produk" + "Disc. Manual" terpisah.
   final txnAlloc = data.allocatedTransactionDiscounts;
   for (var i = 0; i < data.items.length; i++) {
     final item = data.items[i];
@@ -552,13 +583,20 @@ String renderText({
     final qtyTxt = item.isPerKg
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
-    final itemDiscTotal = item.discountTotal + alloc;
-    final discTxt = itemDiscTotal > 0
-        ? '(-${receiptNum(itemDiscTotal)})'
-        : '';
+    final pdAmt = item.productDiscount ?? 0;
+    final mdAmt = (item.discountPerItem ?? 0) + alloc;
+    // Baris qty + subtotal
     sb.writeln(
-      '  $qtyTxt  $discTxt ${receiptNum(item.subtotal - alloc)}'.trimRight(),
+      '  $qtyTxt  ${receiptNum(item.subtotal - alloc)}'.trimRight(),
     );
+    // Baris diskon produk
+    if (pdAmt > 0) {
+      sb.writeln('  Disc. Produk (-${receiptNum(pdAmt)})');
+    }
+    // Baris diskon manual (+ alokasi transaksi)
+    if (mdAmt > 0) {
+      sb.writeln('  Disc. Manual (-${receiptNum(mdAmt)})');
+    }
     if (item.note != null && item.note!.isNotEmpty) {
       sb.writeln('  ↳ ${item.note}');
     }
@@ -672,6 +710,7 @@ Future<File> renderPdf({
 
   // Items — v2.2.57+122: diskon transaksi dialokasikan proporsional ke item
   // (sama dengan renderBytes/renderText — Σ item = Total).
+  // v2.2.57+126: tampilkan "Disc. Produk" + "Disc. Manual" terpisah.
   final txnAlloc = data.allocatedTransactionDiscounts;
   for (var i = 0; i < data.items.length; i++) {
     final item = data.items[i];
@@ -681,10 +720,6 @@ Future<File> renderPdf({
     final qtyTxt = item.isPerKg
         ? '${item.qtyLabel} x ${receiptNum(unitPrice)}/kg'
         : '${item.qtyLabel} x ${receiptNum(unitPrice)}';
-    final itemDiscTotal = item.discountTotal + alloc;
-    final discTxt = itemDiscTotal > 0
-        ? 'Disc. (-${receiptNum(itemDiscTotal)})'
-        : '';
     widgets.add(
       pw.Padding(
         padding: const pw.EdgeInsets.only(left: 8),
@@ -697,11 +732,21 @@ Future<File> renderPdf({
         ),
       ),
     );
-    if (discTxt.isNotEmpty) {
+    final pdAmt = item.productDiscount ?? 0;
+    final mdAmt = (item.discountPerItem ?? 0) + alloc;
+    if (pdAmt > 0) {
       widgets.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(left: 8),
-          child: pw.Text(discTxt, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+          child: pw.Text('Disc. Produk (-${receiptNum(pdAmt)})', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+        ),
+      );
+    }
+    if (mdAmt > 0) {
+      widgets.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(left: 8),
+          child: pw.Text('Disc. Manual (-${receiptNum(mdAmt)})', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
         ),
       );
     }

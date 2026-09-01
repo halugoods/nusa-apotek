@@ -2418,14 +2418,14 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 _buildItemOptionCheckbox(
                   icon: Icons.discount_outlined,
                   title: 'Ubah Diskon per Jumlah',
-                  subtitle: 'Potongan tambahan per satuan item ini',
+                  subtitle: 'Ganti diskon produk dengan nominal baru per satuan',
                   value: enableDisc,
                   onChanged: (v) => setSt(() => enableDisc = v),
                 ),
                 if (enableDisc) ...[
                   const SizedBox(height: 8),
                   NusaFormField(
-                    label: 'Diskon per satuan (Rp) — kosongkan = tanpa diskon',
+                    label: 'Diskon per satuan (Rp) — kosongkan = diskon dari menu Produk',
                     controller: discCtrl,
                     hintText: '0',
                     keyboardType: TextInputType.number,

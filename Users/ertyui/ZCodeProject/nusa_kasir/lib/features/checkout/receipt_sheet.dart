@@ -31,6 +31,10 @@ class _ReceiptItem {
   /// Diskon nominal per SATUAN (v2.2.57+116) — diteruskan ke ReceiptItem
   /// supaya preview/print/share konsisten (baris "Disc." per item).
   final int? discountPerItem;
+
+  /// Diskon dari menu Produk per satuan (v2.2.57+126).
+  final int? productDiscount;
+
   const _ReceiptItem({
     required this.name,
     required this.qty,
@@ -39,16 +43,19 @@ class _ReceiptItem {
     this.note,
     this.weightKg,
     this.discountPerItem,
+    this.productDiscount,
   });
   bool get isPerKg => weightKg != null;
   bool get hasDiscount =>
       (originalPrice != null && originalPrice! > price) ||
+      (productDiscount != null && productDiscount! > 0) ||
       (discountPerItem != null && discountPerItem! > 0);
-  int get discountNominal => discountPerItem ?? 0;
+  int get discountNominal =>
+      (productDiscount ?? 0) + (discountPerItem ?? 0);
   int get subtotal =>
       isPerKg
-          ? (price * weightKg!).ceil() - (discountPerItem ?? 0)
-          : qty * price - (discountPerItem ?? 0) * qty;
+          ? (price * weightKg!).ceil() - discountNominal
+          : qty * price - discountNominal * qty;
 
   /// Subtotal KOTOR (sebelum diskon item) — struk menampilkan harga ASLI,
   /// bukan harga yang sudah dipotong diskon.
@@ -57,7 +64,7 @@ class _ReceiptItem {
 
   /// Potongan diskon item total (per unit × qty) — angka hemat yang benar.
   int get discountTotal =>
-      (discountPerItem ?? 0) * (isPerKg ? 1 : qty);
+      discountNominal * (isPerKg ? 1 : qty);
 }
 
 /// Thermal-style receipt dialog — matches GAS receipt modal design.
@@ -150,6 +157,7 @@ class ReceiptSheet extends ConsumerWidget {
             note: c.note,
             weightKg: c.weightKg,
             discountPerItem: c.discountPerItem,
+            productDiscount: c.productDiscount,
           ),
         )
         .toList();
@@ -206,6 +214,14 @@ class ReceiptSheet extends ConsumerWidget {
             originalPrice: (m['originalPrice'] as num?)?.toInt(),
             note: m['note'] as String?,
             weightKg: (m['weightKg'] as num?)?.toDouble(),
+            discountPerItem: (m['discountPerItem'] as num?)?.toInt(),
+            // v2.2.57+126: hitung productDiscount dari selisih originalPrice-price
+            productDiscount: (() {
+              final orig = (m['originalPrice'] as num?)?.toInt();
+              final price = (m['price'] as num?)?.toInt() ?? 0;
+              if (orig != null && orig > price) return orig - price;
+              return null;
+            })(),
           ),
         )
         .toList();
@@ -278,6 +294,7 @@ class ReceiptSheet extends ConsumerWidget {
                   note: it.note,
                   weightKg: it.weightKg,
                   discountPerItem: it.discountPerItem,
+                  productDiscount: it.productDiscount,
                 ),
               )
               .toList(),
@@ -623,6 +640,7 @@ class ReceiptSheet extends ConsumerWidget {
                 price: i.price,
                 originalPrice: i.originalPrice,
                 discountPerItem: i.discountPerItem,
+                productDiscount: i.productDiscount,
               ),
             )
             .toList(),
@@ -730,6 +748,7 @@ class ReceiptSheet extends ConsumerWidget {
                 price: i.price,
                 originalPrice: i.originalPrice,
                 discountPerItem: i.discountPerItem,
+                productDiscount: i.productDiscount,
               ),
             )
             .toList(),

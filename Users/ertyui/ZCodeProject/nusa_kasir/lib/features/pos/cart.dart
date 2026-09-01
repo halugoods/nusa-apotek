@@ -90,19 +90,25 @@ class CartItem {
     return base > unitPrice || discountPerItem != null;
   }
 
-  /// Potongan diskon per SATUAN (v2.2.57+119): diskon produk/grosir SUDAH
-  /// tercermin di [unitPrice] — tidak boleh dihitung lagi. Hanya
-  /// [discountPerItem] (fitur "Ubah Diskon" di keranjang, +116) yang
-  /// ditambahkan sebagai potongan tambahan.
+  /// Diskon dari MENU PRODUK per satuan = (originalPrice - unitPrice).
+  /// Null = tidak ada diskon produk. Ini jadi FALLBACK kalau user belum
+  /// pernah set diskon manual via "Ubah Diskon".
+  int get productDiscount {
+    if (originalPrice == null || originalPrice! <= unitPrice) return 0;
+    return (originalPrice! - unitPrice).clamp(0, unitPrice);
+  }
+
+  /// Potongan diskon per SATUAN: fitur "Ubah Diskon" (discountPerItem) GANTI
+  /// diskon dari menu Produk, bukan TAMBAH. Kalau user belum ubah, pakai
+  /// diskon produk (grosir/diskon) yang sudah tercermin di unitPrice.
   ///
-  /// FIX dobel diskon (+119): sebelumnya `(originalPrice - unitPrice)` ikut
-  /// dijumlahkan di sini, padahal [subtotal]/checkout/struk sudah memakai
-  /// [unitPrice] (harga final). Akibatnya produk berdiskon dari menu Produk
-  /// (87500 → diskon 37500) dihitung diskonnya DUA KALI → total 12500.
-  int get effectiveDiscountPerItem => (discountPerItem ?? 0).clamp(
-        0,
-        unitPrice,
-      );
+  /// FIX (+126): sebelumnya penjumlahan (salah). Ex: produk diskon 1rb di
+  /// menu, user ubah "Ubah Diskon" ke 2rb → HARUS total diskon 2rb,
+  /// BUKAN 3rb (1rb+2rb). Manual discount juga tidak boleh melebihi unitPrice.
+  int get effectiveDiscountPerItem =>
+      discountPerItem != null
+          ? discountPerItem!.clamp(0, unitPrice)
+          : productDiscount;
 
   /// Nominal total diskon item (per satuan × qty / berat).
   int get itemDiscountTotal => (effectiveDiscountPerItem *

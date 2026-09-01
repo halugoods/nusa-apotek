@@ -24,6 +24,12 @@ class ReceiptItem {
   /// ditampilkan sebagai baris "Disc." tambahan.
   final int? discountPerItem;
 
+  /// Diskon dari MENU PRODUK per satuan (v2.2.57+126): diskon grosir/
+  /// diskon yang sudah tercermin di [price]. Dipisah dari [discountPerItem]
+  /// supaya struk tampilkan dua baris: "Disc. Produk (-X)" dan "Disc. Manual
+  /// (-Y)" — user tahu mana diskon dari menu produk vs diskon ubah di kasir.
+  final int? productDiscount;
+
   const ReceiptItem({
     required this.name,
     required this.qty,
@@ -33,25 +39,24 @@ class ReceiptItem {
     this.weightKg,
     this.unitLabel,
     this.discountPerItem,
+    this.productDiscount,
   });
 
   bool get isPerKg => weightKg != null;
 
   /// Harga per unit efektif (setelah harga sementara & diskon per satuan).
-  /// FIX dobel diskon (+119): harga yang TERSIMPAN (price) sudah merupakan
-  /// harga final (termasuk diskon produk/grosir). Hanya [discountPerItem]
-  /// yang jadi potongan TAMBAHAN.
   int get unitPrice => price;
   bool get hasDiscount =>
       (originalPrice != null && originalPrice! > price) ||
+      (productDiscount != null && productDiscount! > 0) ||
       (discountPerItem != null && discountPerItem! > 0);
-  /// Potongan per SATUAN — diskon produk (originalPrice - price) TIDAK
-  /// dihitung lagi (sudah tercermin di [price]). Hanya discountPerItem.
-  int get discountNominal => discountPerItem ?? 0;
+  /// Total potongan per SATUAN = diskon produk + diskon manual (v2.2.57+126).
+  /// Tampilan struk pisahkan keduanya (Disc. Produk / Disc. Manual).
+  int get discountNominal => (productDiscount ?? 0) + (discountPerItem ?? 0);
   int get subtotal =>
       isPerKg
-          ? (price * weightKg!).ceil() - (discountPerItem ?? 0)
-          : qty * price - (discountPerItem ?? 0) * qty;
+          ? (price * weightKg!).ceil() - discountNominal
+          : qty * price - discountNominal * qty;
 
   /// Subtotal KOTOR (sebelum diskon item) — harga ASLI di struk.
   int get grossSubtotal =>
@@ -215,7 +220,9 @@ class ReceiptData {
               // v2.2.43: satuan jual dinamis (qtyLabel pakai ini).
               unitLabel: c.unitName,
               // v2.2.57+116: diskon per satuan → baris "Disc." struk.
+              // v2.2.57+126: pisahkan diskon produk vs diskon manual.
               discountPerItem: c.discountPerItem,
+              productDiscount: c.productDiscount,
             ),
           )
           .toList(),
@@ -274,6 +281,7 @@ class ReceiptData {
               weightKg: (m['weightKg'] as num?)?.toDouble(),
               unitLabel: m['unitName'] as String?,
               discountPerItem: (m['discountPerItem'] as num?)?.toInt(),
+              productDiscount: (m['productDiscount'] as num?)?.toInt(),
             );
           })
           .toList(),

@@ -3646,6 +3646,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 price: c.unitPrice,
                 originalPrice: c.originalPrice,
                 discountPerItem: c.discountPerItem,
+                productDiscount: c.productDiscount,
               ),
             )
             .toList();

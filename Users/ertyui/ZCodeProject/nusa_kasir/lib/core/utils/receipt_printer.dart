@@ -20,6 +20,7 @@ class ReceiptLine {
     required this.price,
     this.originalPrice,
     this.discountPerItem,
+    this.productDiscount,
   });
 
   final String name;
@@ -33,23 +34,28 @@ class ReceiptLine {
   /// mencetak baris potongan NOMINAL per item ("Diskon: -Rp 5.000").
   final int? originalPrice;
 
-  /// Diskon nominal per SATUAN (v2.2.57+116) — potongan TAMBAHAN di luar
-  /// diskon produk (harga sementara). Diteruskan ke ReceiptItem.
+  /// Diskon nominal per SATUAN (v2.2.57+116) — dari fitur "Ubah Diskon"
+  /// manual di kasir. Diteruskan ke ReceiptItem.
   final int? discountPerItem;
 
+  /// Diskon dari menu Produk per satuan (v2.2.57+126).
+  final int? productDiscount;
+
   int get subtotal =>
-      qty * price - (discountPerItem ?? 0) * qty;
+      qty * price - discountNominal * qty;
   bool get hasDiscount =>
       (originalPrice != null && originalPrice! > price) ||
+      (productDiscount != null && productDiscount! > 0) ||
       (discountPerItem != null && discountPerItem! > 0);
-  int get discountNominal => discountPerItem ?? 0;
+  int get discountNominal =>
+      (productDiscount ?? 0) + (discountPerItem ?? 0);
 
   /// Subtotal KOTOR (sebelum diskon item) — dipakai struk supaya harga yang
   /// dicetak adalah harga ASLI, bukan harga yang sudah dipotong diskon.
   int get grossSubtotal => qty * (originalPrice ?? price);
 
   /// Potongan diskon item TOTAL untuk semua qty (per unit × qty).
-  int get discountTotal => (discountPerItem ?? 0) * qty;
+  int get discountTotal => discountNominal * qty;
 }
 
 /// Sanitize text for thermal printer (strip non-ASCII characters).
@@ -284,6 +290,7 @@ class ReceiptPrinter {
             price: lines[i].price,
             originalPrice: lines[i].originalPrice,
             discountPerItem: lines[i].discountPerItem,
+            productDiscount: lines[i].productDiscount,
             note: (itemNotes != null && i < itemNotes.length)
                 ? itemNotes[i]
                 : null,
