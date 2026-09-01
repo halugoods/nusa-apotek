@@ -8,7 +8,6 @@ import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
-import 'package:nusa_kasir/core/services/cloud_google_service.dart';
 import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -473,30 +472,11 @@ class ActivationRepository {
       debugPrint(
         '[Backup] Uploaded DB + ${files.length - 2} images (${encrypted.length} bytes encrypted, metadata-in-archive)',
       );
-      // v2.2.57+123 Cloud Google (per-user): upload langsung dari device
-      // ke Google Drive user via GoogleSignIn + Drive REST API. Fire-and-forget
-      // — gagal TIDAK menggagalkan backup Supabase (jalur utama).
-      _triggerDriveUpload(encrypted);
       return true;
     } catch (e) {
       debugPrint('[Backup] uploadBackupNow error: $e');
       return false;
     }
-  }
-
-  /// Cloud Google (v2.2.57+123): upload backup ke Google Drive user langsung
-  /// dari device (per-user, via GoogleSignIn + Drive REST API). Fire-and-forget
-  /// — gagal TIDAK menggagalkan backup Supabase (jalur utama).
-  void _triggerDriveUpload(Uint8List encryptedBytes) {
-    unawaited(() async {
-      try {
-        await CloudGoogleService.I.uploadBackup(encryptedBytes);
-        debugPrint('[Backup] Cloud Google: upload selesai');
-      } catch (e) {
-        debugPrint('[Backup] Cloud Google error: $e');
-        // Drive belum connect / gagal — abaikan.
-      }
-    }());
   }
 
   /// Fetch the backup metadata (store name, owner, backup time).
