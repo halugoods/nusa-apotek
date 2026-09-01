@@ -8,6 +8,8 @@ import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/services/cloud_google_service.dart';
+import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -471,10 +473,10 @@ class ActivationRepository {
       debugPrint(
         '[Backup] Uploaded DB + ${files.length - 2} images (${encrypted.length} bytes encrypted, metadata-in-archive)',
       );
-      // v2.2.57+122 Cloud Google (backup dobel): server yang menyalin backup
-      // terbaru dari bucket → Google Drive (akun company terpisah). Fire-
-      // and-forget — gagal TIDAK menggagalkan backup Supabase (jalur utama).
-      _triggerDriveSync(uid);
+      // v2.2.57+123 Cloud Google (per-user): upload langsung dari device
+      // ke Google Drive user via GoogleSignIn + Drive REST API. Fire-and-forget
+      // — gagal TIDAK menggagalkan backup Supabase (jalur utama).
+      _triggerDriveUpload(encrypted);
       return true;
     } catch (e) {
       debugPrint('[Backup] uploadBackupNow error: $e');
@@ -482,32 +484,17 @@ class ActivationRepository {
     }
   }
 
-  /// Cloud Google (v2.2.57+122): minta edge fn `cloud-google` menyalin backup
-  /// terbaru dari bucket `nusa-backups` ke Drive akun company. Server-side
-  /// copy (file tidak lewat HTTP body dari device). Senyap bila fitur belum
-  /// aktif (belum ada akun Drive / migration 0024 belum dijalankan).
-  void _triggerDriveSync(String uid) {
+  /// Cloud Google (v2.2.57+123): upload backup ke Google Drive user langsung
+  /// dari device (per-user, via GoogleSignIn + Drive REST API). Fire-and-forget
+  /// — gagal TIDAK menggagalkan backup Supabase (jalur utama).
+  void _triggerDriveUpload(Uint8List encryptedBytes) {
     unawaited(() async {
       try {
-        await Supabase.instance.client.functions.invoke(
-          'cloud-google',
-          body: {
-            'action': 'ensure',
-            'user_id': uid,
-            'variant': NusaConfig.productId,
-          },
-        );
-        await Supabase.instance.client.functions.invoke(
-          'cloud-google',
-          body: {
-            'action': 'sync_latest',
-            'user_id': uid,
-            'variant': NusaConfig.productId,
-          },
-        );
-        debugPrint('[Backup] Cloud Google: backup tersalin ke Drive');
-      } catch (_) {
-        // Drive belum aktif (belum add akun / 0024 belum jalan) — abaikan.
+        await CloudGoogleService.I.uploadBackup(encryptedBytes);
+        debugPrint('[Backup] Cloud Google: upload selesai');
+      } catch (e) {
+        debugPrint('[Backup] Cloud Google error: $e');
+        // Drive belum connect / gagal — abaikan.
       }
     }());
   }
