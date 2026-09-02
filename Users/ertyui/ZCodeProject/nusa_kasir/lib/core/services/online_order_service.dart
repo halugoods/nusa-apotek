@@ -74,14 +74,37 @@ class OnlineOrderService {
   /// order/promo selalu menunjuk ke row toko yang sama.
   String? _resolvedStoreId;
 
+  /// Kunci SecureStore untuk canonical store_id (v2.2.57+127). Persist
+  /// agar semua instance service (realtime listener buat instance baru!)
+  /// memakai store_id row ASLI, bukan activation key yang bisa beda
+  /// setelah clear-data/reinstall — root cause order online tak terlihat.
+  /// (final, bukan const — productId bukan compile-time constant.)
+  static final String _canonicalStoreIdKey =
+      'nusa_online_canonical_store_id_${NusaConfig.productId}';
+
   /// Get the store_id (derived from activation key for uniqueness).
-  /// Setelah [getStoreSettings] berhasil, memakai store_id row asli —
-  /// supaya clear-data/re-login (key mungkin beda) tidak membuat toko
-  /// baru atau sync ke store yang salah.
+  /// Urutan resolve (v2.2.57+127):
+  ///   1. cache instance ([_resolvedStoreId]),
+  ///   2. canonical persisted di SecureStore (bertahan restart),
+  ///   3. fallback activation key.
   Future<String?> get storeId async {
     if (_resolvedStoreId != null) return _resolvedStoreId;
+    final persisted = await SecureStore.read(key: _canonicalStoreIdKey);
+    if (persisted != null && persisted.isNotEmpty) {
+      _resolvedStoreId = persisted;
+      return persisted;
+    }
     final key = await SecureStore.getActivation();
     return key; // activation key as store_id
+  }
+
+  /// Simpan canonical store_id (hasil response edge fn) ke cache + SecureStore.
+  Future<void> _persistStoreId(String id) async {
+    if (id.isEmpty) return;
+    if (_resolvedStoreId != id) {
+      _resolvedStoreId = id;
+      await SecureStore.write(key: _canonicalStoreIdKey, value: id);
+    }
   }
 
   /// Klasifikasi error → OnlineStoreError yang bisa ditampilkan ke user.
@@ -179,6 +202,20 @@ class OnlineOrderService {
         if (logoUrl != null) 'logo_url': logoUrl,
       });
       debugPrint('[OnlineOrderService] upsertStore: status=${res.status}');
+      if (res.status < 400) {
+        // v2.2.57+127: simpan canonical store_id dari response (row asli di
+        // server) supaya operasi + realtime berikutnya menunjuk row yang sama.
+        try {
+          final data = res.data;
+          if (data is Map) {
+            final rowId = (data['store_id'] ?? data['store']?['store_id'])
+                as String?;
+            if (rowId != null && rowId.isNotEmpty) {
+              await _persistStoreId(rowId);
+            }
+          }
+        } catch (_) {}
+      }
       return (ok: res.status < 400, error: OnlineStoreError.unknown);
     } catch (e) {
       debugPrint('[OnlineOrderService] upsertStore ERROR: $e');
@@ -231,7 +268,9 @@ class OnlineOrderService {
         if (rowStoreId != null && rowStoreId.isNotEmpty) {
           // Pakai store_id row asli untuk operasi berikutnya (sync
           // produk/order/promo selalu menunjuk row yang sama).
-          _resolvedStoreId = rowStoreId;
+          // v2.2.57+127: persist ke SecureStore — semua instance service
+          // (termasuk realtime listener baru) ikut memakai id yang benar.
+          await _persistStoreId(rowStoreId);
         }
       }
       return store;
@@ -400,9 +439,14 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return [];
     try {
+      // v2.2.57+127: kirim user_id+variant — edge fn fallback ambil order
+      // via row toko asli bila store_id (activation key baru) tak berisi apa-apa.
+      final userId = await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'get_orders',
         'store_id': sid,
+        if (userId != null) 'user_id': userId,
+        'variant': NusaConfig.productId,
         'status': status,
         'limit': limit,
       });
@@ -422,9 +466,12 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return false;
     try {
+      final userId = await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'update_order',
         'store_id': sid,
+        if (userId != null) 'user_id': userId,
+        'variant': NusaConfig.productId,
         'order_id': orderId,
         'status': status,
         'processed_by': processedBy ?? '',

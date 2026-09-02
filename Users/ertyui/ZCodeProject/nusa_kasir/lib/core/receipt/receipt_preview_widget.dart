@@ -229,7 +229,7 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
           width: contentW,
         );
 
-      case ReceiptPartItem(:final name, :final qtyPrice, :final subtotal, :final productDisc, :final manualDisc, :final note):
+      case ReceiptPartItem(:final name, :final qtyPrice, :final subtotal, :final disc, :final note):
         return Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: Column(
@@ -249,17 +249,12 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
                   ],
                 ),
               ),
-              // Disc. Produk — diskon dari menu Produk
-              if (productDisc != null)
+              // Disc. — SATU baris gabungan (produk+manual+transaksi,
+              // v2.2.57+127).
+              if (disc != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Text('Disc. Produk $productDisc', style: monoGrey),
-                ),
-              // Disc. Manual — diskon dari "Ubah Diskon" manual di kasir
-              if (manualDisc != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text('Disc. Manual $manualDisc', style: monoGrey),
+                  child: Text('Disc. $disc', style: monoGrey),
                 ),
               if (note != null && note.isNotEmpty)
                 Padding(

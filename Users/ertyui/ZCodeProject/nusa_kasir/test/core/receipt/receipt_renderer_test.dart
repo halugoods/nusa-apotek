@@ -20,15 +20,19 @@ void main() {
       expect(data.cashReturn, 7700);
     });
 
-    test('item berdiskon memuat harga ASLI + baris Disc. (-RpX)', () {
+    test('item berdiskon memuat harga ASLI + baris Disc. (-RpX) — format +127', () {
       final text = renderText(config: config, data: data, storeName: 'NUSA MART');
-      // Item pertama: Dimsum Original — harga asli 15.000
+      // Format +127 (user): nama → qty × harga ASLI = SUBTOTAL BRUTO →
+      // satu baris Disc. gabungan → total menyesuaikan.
+      // Item pertama: Dimsum Original — harga asli 15.000 × 2 = 30.000.
       expect(text, contains('Dimsum Original'));
       expect(text, contains('2 x 15.000'));
-      // Subtotal netto (qty × harga final): 2 × 13.500 = 27.000
-      expect(text, contains('27.000'));
+      expect(text, contains('30.000')); // bruto, BUKAN netto 27.000
       // Diskonto total item pertama: (15000-13500) × 2 = 3.000
       expect(text, contains('(-3.000)'));
+      // Total baris = bruto − disc = 27.000 tetap benar secara math
+      // (Σ(subtotal − disc) = grand total — dijamin ReceiptData.sample).
+      expect(data.total, data.items.fold<int>(0, (s, e) => s + e.subtotal - e.discountTotal));
     });
 
     test('summary: Disc. (-RpX) total = diskon item + diskon transaksi', () {

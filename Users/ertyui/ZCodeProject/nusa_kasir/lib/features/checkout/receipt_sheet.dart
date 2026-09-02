@@ -52,15 +52,19 @@ class _ReceiptItem {
       (discountPerItem != null && discountPerItem! > 0);
   int get discountNominal =>
       (productDiscount ?? 0) + (discountPerItem ?? 0);
+
+  /// Harga ASLI per unit (sebelum diskon produk manapun).
+  int get grossUnitPrice => originalPrice ?? (price + (productDiscount ?? 0));
+
+  /// Subtotal bruto = harga asli × qty — potongan tampil sbg baris "Disc."
+  /// gabungan (format v2.2.57+127).
   int get subtotal =>
       isPerKg
-          ? (price * weightKg!).ceil() - discountNominal
-          : qty * price - discountNominal * qty;
+          ? (grossUnitPrice * weightKg!).ceil()
+          : grossUnitPrice * qty;
 
-  /// Subtotal KOTOR (sebelum diskon item) — struk menampilkan harga ASLI,
-  /// bukan harga yang sudah dipotong diskon.
-  int get grossSubtotal =>
-      isPerKg ? (originalPrice ?? price) * weightKg!.ceil() : qty * (originalPrice ?? price);
+  /// Subtotal KOTOR (identik [subtotal] — potongan = baris "Disc.").
+  int get grossSubtotal => subtotal;
 
   /// Potongan diskon item total (per unit × qty) — angka hemat yang benar.
   int get discountTotal =>

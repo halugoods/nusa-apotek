@@ -126,6 +126,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     _loadProducts();
     _loadFontConfig();
     _loadLabelSize();
+    // v2.2.57+127: preload lebar kertas struk ke cache sekali di awal —
+    // render preview struk jadi sinkron (realtime).
+    _paperMm();
   }
 
   @override
@@ -157,20 +160,15 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
 
   Future<void> _loadProducts() async {
     final repo = ref.read(productRepoProvider);
-    // Label tanpa barcode tidak berguna → hanya produk ber-barcode.
+    // v2.2.57+127: SEMUA produk bisa dipilih — produk tanpa barcode tetap
+    // bisa dicetak (label cuma nama+harga; renderer skip barcode kosong).
     final all = await repo.getProducts();
-    final withBarcode = all.where((p) {
-      final b = p.barcode;
-      return b != null && b.trim().isNotEmpty;
-    }).toList();
     if (mounted) {
       setState(() {
-        _all = withBarcode;
+        _all = all;
         if (widget.initialProducts != null) {
           for (final p in widget.initialProducts!) {
-            if (p.barcode != null && p.barcode!.trim().isNotEmpty) {
-              _selectedIds.add(p.id);
-            }
+            _selectedIds.add(p.id);
           }
         }
       });
@@ -223,15 +221,27 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   /// Label struk dirender selebar kertas (full-width barcode) supaya barcode
   /// rata kiri-kanan di kertas struk (v2.2.57+116).
   Future<double> _paperMm() async {
+    // v2.2.57+127: cache — preview struk jadi SYNC (realtime mengikuti
+    // slider font tanpa tutup-buka card). Paper size jarang berubah;
+    // reload tiap kali sheet dibuka via [_loadLabelSize].
+    if (_cachedPaperMm != null) return _cachedPaperMm!;
     final w = await SecureStore.getPaperSize(); // '58' | '80'
-    return w == '80' ? 80.0 : 58.0;
+    _cachedPaperMm = w == '80' ? 80.0 : 58.0;
+    return _cachedPaperMm!;
   }
+
+  /// Cache lebar kertas struk (58/80) — di-load sekali di initState.
+  double? _cachedPaperMm;
 
   /// Render bitmap label untuk jalur STRUK: selebar kertas [paperMm] (bukan
   /// lebar label 40mm), tinggi proporsional, barcode FULL lebar. Preview dan
   /// print pakai render yang SAMA → hasil cetak = preview.
-  Future<img.Image> _renderForStruk(Product p, int dpi) async {
-    final paperMm = await _paperMm();
+  ///
+  /// v2.2.57+127: SYNC — paper size dari cache (initState), jadi preview
+  /// struk bisa render di build() → realtime mengikuti slider font, pola
+  /// sama dengan preview TSPL & PDF.
+  img.Image _renderForStruk(Product p, int dpi) {
+    final paperMm = _cachedPaperMm ?? 58.0;
     return LabelRenderer.renderLabelBitmap(
       barcode: p.barcode ?? '',
       name: p.name,
@@ -807,7 +817,9 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     }
     final buf = BytesBuilder();
     for (final p in _selected) {
-      final bitmap = await _renderForStruk(p, LabelDpi.dpi203);
+      // v2.2.57+127: render sync (paper size dari cache) — await tidak lagi
+      // diperlukan, tapi tetap dipanggil di fungsi async ini tanpa masalah.
+      final bitmap = _renderForStruk(p, LabelDpi.dpi203);
       // v2.2.57+121: qty cetak → kirim bitmap yang sama n× beruntun
       // (feed+cut antar label, konsisten dengan qty di TSPL).
       for (var i = 0; i < _qty; i++) {
@@ -950,7 +962,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _stepHeader('1', 'Pilih Produk (ber-barcode)'),
+        _stepHeader('1', 'Pilih Produk'),
         // ── Search + auto-scan barcode (v2.2.57+121) ──
         // Search bar PUTIH + icon kamera (scan internal) di kanan — selain
         // scanner eksternal HID (auto-centang). Ketik nama/barcode filter
@@ -1047,7 +1059,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             child: Center(
               child: Text(
                 _all.isEmpty
-                    ? 'Tidak ada produk dengan barcode.\nTambahkan barcode di Form Produk dulu.'
+                    ? 'Belum ada produk.\nTambahkan produk dulu di Form Produk.'
                     : 'Tidak ada produk cocok "$_query".',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13),
@@ -1069,11 +1081,35 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           onChanged: (v) => setState(() => _showPrice = v),
           label: 'Harga',
         ),
-        _checkRow(
-          value: _showBarcode,
-          onChanged: (v) => setState(() => _showBarcode = v),
-          label: 'Barcode',
-        ),
+        // v2.2.57+127: checkbox Barcode otomatis DISABLE bila semua produk
+        // terpilih tidak ber-barcode — tidak ada yang bisa dicetak, jadi
+        // user tidak bingung kenapa barcode tidak muncul.
+        Builder(builder: (context) {
+          final selected = _selected;
+          final noneHaveBarcode = selected.isNotEmpty &&
+              selected.every(
+                (p) => p.barcode == null || p.barcode!.trim().isEmpty,
+              );
+          if (noneHaveBarcode && _showBarcode) {
+            // Auto-matikan sekali (di build — aman, cuma sinkronisasi UI).
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _showBarcode) setState(() => _showBarcode = false);
+            });
+          }
+          return _checkRow(
+            value: _showBarcode && !noneHaveBarcode,
+            // Kalau noneHaveBarcode: toggle tidak berpengaruh (tetap off).
+            onChanged: (v) {
+              if (noneHaveBarcode) return;
+              setState(() => _showBarcode = v ?? false);
+            },
+            label: 'Barcode',
+            enabled: !noneHaveBarcode,
+            hint: noneHaveBarcode
+                ? 'Semua produk terpilih tanpa barcode'
+                : null,
+          );
+        }),
         const SizedBox(height: 12),
         // ── Ukuran font label (v2.2.57+116) ──
         // User bisa sesuaikan ukuran font nama & harga — berlaku ke SEMUA
@@ -1223,10 +1259,18 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   }
 
   Widget _selectAllRow() {
+    // v2.2.57+127: produk tanpa barcode ikut terpilih — checkbox "Barcode"
+    // otomatis nonaktif bila SEMUA terpilih tanpa barcode (label cuma
+    // nama & harga; renderer sudah skip barcode kosong per item).
+    final allSelected = _filtered.isNotEmpty && _selectedIds.length == _all.length;
+    final selected = _selected;
+    final noneHaveBarcode = selected.isNotEmpty &&
+        selected.every((p) => p.barcode == null || p.barcode!.trim().isEmpty);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Checkbox(
-          value: _filtered.isNotEmpty && _selectedIds.length == _all.length,
+          value: allSelected,
           onChanged: (v) => setState(() {
             if (v == true) {
               _selectedIds.addAll(_all.map((p) => p.id));
@@ -1240,86 +1284,204 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
           'Pilih Semua (${_selectedIds.length}/${_all.length})',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         ),
+        if (noneHaveBarcode) ...[
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: Colors.orange.withValues(alpha: 0.4),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 12,
+                  color: Colors.orange.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Tanpa barcode — label nama & harga',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark ? Colors.orange.shade300 : Colors.orange.shade800,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
 
   Widget _productList() {
-    // v2.2.57+121: tampilkan [_filtered] (filter live by nama/barcode).
-    return Column(
-      children: _filtered.map((p) {
-        final sel = _selectedIds.contains(p.id);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: sel ? NusaConfig.activePrimary : Colors.transparent,
-              width: 1.5,
-            ),
+    // v2.2.57+127: daftar checkbox dibungkus CARD STATIS 3D raised SCROLLABLE
+    // — saat produk sudah ratusan/ribuan, yang tampak ±5 item, sisanya di-
+    // scroll atas-bawah di dalam card (page tidak memanjang tak terbatas).
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.10);
+    return Container(
+      // Tinggi card ≈ 5 item (± 64px/item) + padding — sisanya discroll.
+      height: 340,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+      decoration: BoxDecoration(
+        // Permukaan 3D: gradient halus terang→gelap + border + double shadow
+        // (atas terang, bawah gelap) = kesan raised.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [const Color(0xFF2A2D34), const Color(0xFF1E2128)]
+              : [Colors.white, const Color(0xFFF4F5F7)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          child: Row(
-            children: [
-              Checkbox(
-                value: sel,
-                onChanged: (v) => setState(() {
-                  if (v == true) {
-                    _selectedIds.add(p.id);
-                  } else {
-                    _selectedIds.remove(p.id);
-                  }
-                }),
+          BoxShadow(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.white.withValues(alpha: 0.9),
+            blurRadius: 1,
+            offset: const Offset(0, -1),
+          ),
+        ],
+      ),
+      // ListView.builder = efisien utk ribuan produk (lazy build per item).
+      child: ListView.builder(
+        itemCount: _filtered.length,
+        itemBuilder: (context, i) {
+          final p = _filtered[i];
+          final sel = _selectedIds.contains(p.id);
+          final hasBarcode = p.barcode != null && p.barcode!.trim().isNotEmpty;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: sel ? NusaConfig.activePrimary : Colors.transparent,
+                width: 1.5,
               ),
-              NusaProductImage(
-                imagePath: p.imagePath,
-                width: 34,
-                height: 34,
-                borderRadius: BorderRadius.circular(6),
-                placeholder: Container(
+            ),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: sel,
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      _selectedIds.add(p.id);
+                    } else {
+                      _selectedIds.remove(p.id);
+                    }
+                  }),
+                ),
+                NusaProductImage(
+                  imagePath: p.imagePath,
                   width: 34,
                   height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.inventory_2_outlined,
-                    size: 18,
-                    color: Colors.grey,
+                  borderRadius: BorderRadius.circular(6),
+                  placeholder: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${p.barcode}  •  ${formatRupiah(p.sellPrice)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      // Ber-barcode → tampil barcode • harga; tanpa barcode
+                      // → badge oranye (label cuma nama & harga — renderer
+                      // otomatis skip barcode kosong, tidak crash).
+                      hasBarcode
+                          ? Text(
+                              '${p.barcode}  •  ${formatRupiah(p.sellPrice)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                color: Colors.grey.shade600,
+                              ),
+                            )
+                          : Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(5),
+                                    border: Border.all(
+                                      color: Colors.orange.withValues(alpha: 0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Tanpa barcode',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.orange,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  formatRupiah(p.sellPrice),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1372,12 +1534,42 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
     required bool value,
     required ValueChanged<bool> onChanged,
     required String label,
+    bool enabled = true,
+    String? hint,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         Checkbox(value: value, onChanged: (v) => onChanged(v ?? value)),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 14)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: enabled
+                      ? null
+                      : (isDark
+                          ? NusaConfig.darkTextTertiary
+                          : NusaConfig.textTertiary),
+                ),
+              ),
+              if (hint != null)
+                Text(
+                  hint,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1808,69 +2000,26 @@ class _LabelBitmapPreview extends StatelessWidget {
 /// Preview jalur struk thermal — render ACTUAL selebar kertas (58/80mm,
 /// barcode full-width) di atas visual kertas struk, lalu garis potong.
 /// Preview = hasil cetak (render sama dengan _printEscPos).
-class _StrukPreview extends StatefulWidget {
+///
+/// v2.2.57+127: STATELESS render SYNC di build() — pola persis
+/// [_LabelBitmapPreview] (TSPL). Setiap perubahan slider font nama/harga
+/// / isi label → parent setState → build() jalan ulang → bitmap render
+/// ULANG LANGSUNG → preview REALTIME (sebelumnya StatefulWidget dengan
+/// didUpdateWidget yang membandingkan field instance sheet yang SAMA —
+/// tidak pernah trigger, user harus tutup-buka card).
+class _StrukPreview extends StatelessWidget {
   final Product product;
   final _LabelPrintSheetState sheet;
 
   const _StrukPreview({required this.product, required this.sheet});
 
   @override
-  State<_StrukPreview> createState() => _StrukPreviewState();
-}
-
-class _StrukPreviewState extends State<_StrukPreview> {
-  img.Image? _bitmap;
-  String? _paper;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(covariant _StrukPreview oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.product != widget.product ||
-        oldWidget.sheet._nameScale != widget.sheet._nameScale ||
-        oldWidget.sheet._priceScale != widget.sheet._priceScale ||
-        oldWidget.sheet._showName != widget.sheet._showName ||
-        oldWidget.sheet._showPrice != widget.sheet._showPrice ||
-        oldWidget.sheet._showBarcode != widget.sheet._showBarcode) {
-      _load();
-    }
-  }
-
-  Future<void> _load() async {
-    final bmp = await widget.sheet._renderForStruk(
-      widget.product,
-      LabelDpi.dpi203,
-    );
-    final paper = await widget.sheet._paperMm();
-    if (!mounted) return;
-    setState(() {
-      _bitmap = bmp;
-      _paper = paper == 80 ? '80' : '58';
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bitmap = _bitmap;
-    if (bitmap == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
-          ),
-        ),
-      );
-    }
+    // Render langsung di build — paper size dari cache (preload initState).
+    final bitmap = sheet._renderForStruk(product, LabelDpi.dpi203);
     final pngBytes = Uint8List.fromList(img.encodePng(bitmap));
+    final paperMm = sheet._cachedPaperMm ?? 58.0;
     // Visual kertas struk: selebar bitmap (full paper width).
     final paperW = 190.0;
     final bitmapW = paperW;
@@ -1933,8 +2082,8 @@ class _StrukPreviewState extends State<_StrukPreview> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Kertas ${_paper ?? '58'}mm • label selebar kertas • bit-image ESC/POS'
-          '${widget.sheet._qty > 1 ? ' • ${widget.sheet._qty}×' : ''}',
+          'Kertas ${paperMm == 80 ? '80' : '58'}mm • label selebar kertas • bit-image ESC/POS'
+          '${sheet._qty > 1 ? ' • ${sheet._qty}×' : ''}',
           style: TextStyle(
             fontSize: 11,
             color: isDark

@@ -109,7 +109,15 @@ Future<void> _checkOnlineOrders(AppDatabase db) async {
   );
 
   try {
-    final key = await SecureStore.getActivation();
+    // v2.2.57+127: pakai canonical store_id (persisted) — activation key
+    // bisa beda dengan row server setelah clear-data/reinstall sehingga
+    // order online tidak pernah terlihat di polling ini.
+    final persistedId = await SecureStore.read(
+      key: 'nusa_online_canonical_store_id_${NusaConfig.productId}',
+    );
+    final key = persistedId?.isNotEmpty == true
+        ? persistedId
+        : await SecureStore.getActivation();
     if (key == null) return;
 
     if (NusaConfig.supabaseUrl.isNotEmpty && NusaConfig.supabaseAnon.isNotEmpty) {

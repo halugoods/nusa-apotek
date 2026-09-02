@@ -41,8 +41,7 @@ class ReceiptLine {
   /// Diskon dari menu Produk per satuan (v2.2.57+126).
   final int? productDiscount;
 
-  int get subtotal =>
-      qty * price - discountNominal * qty;
+  int get subtotal => qty * grossUnitPrice;
   bool get hasDiscount =>
       (originalPrice != null && originalPrice! > price) ||
       (productDiscount != null && productDiscount! > 0) ||
@@ -50,9 +49,11 @@ class ReceiptLine {
   int get discountNominal =>
       (productDiscount ?? 0) + (discountPerItem ?? 0);
 
-  /// Subtotal KOTOR (sebelum diskon item) — dipakai struk supaya harga yang
-  /// dicetak adalah harga ASLI, bukan harga yang sudah dipotong diskon.
-  int get grossSubtotal => qty * (originalPrice ?? price);
+  /// Harga ASLI per unit (sebelum diskon produk manapun).
+  int get grossUnitPrice => originalPrice ?? (price + (productDiscount ?? 0));
+
+  /// Subtotal KOTOR — harga asli × qty (potongan jadi baris "Disc.").
+  int get grossSubtotal => subtotal;
 
   /// Potongan diskon item TOTAL untuk semua qty (per unit × qty).
   int get discountTotal => discountNominal * qty;

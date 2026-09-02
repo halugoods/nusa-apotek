@@ -91,26 +91,30 @@ class CartItem {
   }
 
   /// Diskon dari MENU PRODUK per satuan = (originalPrice - unitPrice).
-  /// Null = tidak ada diskon produk. Ini jadi FALLBACK kalau user belum
-  /// pernah set diskon manual via "Ubah Diskon".
+  /// Hanya untuk TAMPILAN (coret harga & baris "Disc." struk gabungan) —
+  /// TIDAK dipotong lagi dari total karena [price] sudah harga efektif
+  /// (v2.2.57+127, fix dobel diskon). Nilai ASLI (tanpa clamp ke unitPrice)
+  /// supaya math struk konsisten: grossSubtotal − disc = total
+  /// (mis. 87.500 − 50.000 = 37.500).
   int get productDiscount {
     if (originalPrice == null || originalPrice! <= unitPrice) return 0;
-    return (originalPrice! - unitPrice).clamp(0, unitPrice);
+    return originalPrice! - unitPrice;
   }
 
-  /// Potongan diskon per SATUAN: fitur "Ubah Diskon" (discountPerItem) GANTI
-  /// diskon dari menu Produk, bukan TAMBAH. Kalau user belum ubah, pakai
-  /// diskon produk (grosir/diskon) yang sudah tercermin di unitPrice.
+  /// Potongan diskon MANUAL per SATUAN — fitur "Ubah Diskon" di keranjang.
   ///
-  /// FIX (+126): sebelumnya penjumlahan (salah). Ex: produk diskon 1rb di
-  /// menu, user ubah "Ubah Diskon" ke 2rb → HARUS total diskon 2rb,
-  /// BUKAN 3rb (1rb+2rb). Manual discount juga tidak boleh melebihi unitPrice.
+  /// FIX (+127): diskon produk/menu TIDAK lagi masuk di sini (sebelumnya
+  /// fallback ke [productDiscount]). [price] sudah = harga efektif (diskon
+  /// menu/grosir tercermin di unitPrice), jadi kalau productDiscount dipotong
+  /// LAGI dari total, diskon menu kena 2× — contoh user: produk 87.500
+  /// diskon menu 50rb → tampil 12.500, seharusnya 37.500. Sekarang
+  /// [itemDiscountTotal] = potongan manual SAJA; diskon produk hanya tampil
+  /// sbg coret harga + baris "Disc." struk (gabungan, v2.2.57+127).
   int get effectiveDiscountPerItem =>
-      discountPerItem != null
-          ? discountPerItem!.clamp(0, unitPrice)
-          : productDiscount;
+      (discountPerItem ?? 0).clamp(0, unitPrice);
 
-  /// Nominal total diskon item (per satuan × qty / berat).
+  /// Potongan diskon MANUAL (Ubah Diskon) per satuan × qty / berat.
+  /// Diskon produk/menu TIDAK dihitung di sini — sudah tercermin di price.
   int get itemDiscountTotal => (effectiveDiscountPerItem *
           (isPerKg ? 1 : qty));
 

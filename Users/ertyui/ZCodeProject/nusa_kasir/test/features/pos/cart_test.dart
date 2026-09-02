@@ -300,52 +300,55 @@ void main() {
     });
   });
 
-  group('FIX dobel diskon (v2.2.57+119)', () {
-    test('produk berdiskon: tanpa diskon manual → pakai diskon produk sebagai fallback', () {
-      // Produk: harga 87500, diskon 37500 → effectivePrice 50000 (dari menu
-      // Produk). originalPrice = coret 87500. Tanpa discountPerItem manual,
-      // effectiveDiscountPerItem = productDiscount (fallback).
+  group('FIX dobel diskon (v2.2.57+127 — REPLACEMENT, bukan ADDITIVE)', () {
+    test('produk berdiskon menu: TANPA diskon manual → total = harga efektif (TIDAK dobel potong)', () {
+      // BUG user (+126): produk 87500, diskon menu 50rb → price 37500,
+      // TAPI productDiscount dipotong LAGI dari total → tampil 12.500.
+      // FIX (+127): effectiveDiscountPerItem = manual ONLY — diskon menu
+      // sudah TERMINAT di dalam price, productDiscount cuma DISPLAY
+      // (coret + baris Disc. struk).
       final n = CartNotifier();
-      n.addProduct(1, 'Produk Diskon', 50000, originalPrice: 87500);
+      n.addProduct(1, 'Produk Diskon', 37500, originalPrice: 87500);
       final item = n.state.single;
-      expect(item.unitPrice, 50000);
+      expect(item.unitPrice, 37500);
       expect(item.hasDiscount, isTrue);
-      expect(item.productDiscount, 37500);
-      expect(item.effectiveDiscountPerItem, 37500);
-      expect(item.itemDiscountTotal, 37500);
-      // Subtotal pakai harga final 50000.
-      expect(item.subtotal, 50000);
-      // Di checkout: 50000 - 37500 = 12500 (total diskon = 37500 dari produk).
-      expect(n.total - item.itemDiscountTotal, 12500);
+      expect(item.productDiscount, 50000); // display only
+      expect(item.effectiveDiscountPerItem, 0); // TIDAK fallback lagi
+      expect(item.itemDiscountTotal, 0);
+      expect(item.subtotal, 37500);
+      // Total keranjang = harga efektif — bukan 12.500.
+      expect(n.total, 37500);
     });
 
-    test('diskon per satuan manual GANTI diskon produk (bukan tambah)', () {
-      // FIX (+126): diskon manual REPLACES product discount, bukan menjumlahkan.
-      // Produk 87500 → diskon 37500 → 50000. User ubah "Ubah Diskon" ke 5000
-      // → HARUS 45000 di checkout (BUKAN 4500).
+    test('produk tanpa diskon + diskon manual 50rb → total 37.500 (kasus user)', () {
+      // Produk 87500 (tanpa diskon menu), manual diskon 50rb → 37.500.
+      final n = CartNotifier();
+      n.addProduct(1, 'Produk', 87500);
+      n.setDiscountPerItem(1, 50000);
+      final item = n.state.single;
+      expect(item.unitPrice, 87500);
+      expect(item.productDiscount, 0);
+      expect(item.effectiveDiscountPerItem, 50000);
+      expect(item.itemDiscountTotal, 50000);
+      expect(item.subtotal, 87500);
+      expect(n.total, 87500);
+      // Di checkout: 87500 - 50000 = 37.500.
+      expect(n.total - item.itemDiscountTotal, 37500);
+    });
+
+    test('produk berdiskon menu + diskon manual → manual dipotong dari harga efektif', () {
+      // price 50000 (diskon menu 37500 sudah di dalamnya) + manual 5000
+      // → total 45000 (manual GANTI efek akhir, bukan menjumlahkan jadi 0).
       final n = CartNotifier();
       n.addProduct(1, 'Produk Diskon', 50000, originalPrice: 87500);
       n.setDiscountPerItem(1, 5000);
       final item = n.state.single;
       expect(item.unitPrice, 50000);
-      expect(item.productDiscount, 37500); // diskon produk tetap ada
-      expect(item.effectiveDiscountPerItem, 5000); // TETAPI manual GANTI
+      expect(item.productDiscount, 37500); // display tetap ada
+      expect(item.effectiveDiscountPerItem, 5000); // manual only
       expect(item.itemDiscountTotal, 5000);
       expect(item.subtotal, 50000);
-      // Di checkout: 50000 - 5000 = 45000 (manual GANTI, bukan 12500).
       expect(n.total - item.itemDiscountTotal, 45000);
-    });
-
-    test('produk tanpa diskon + diskon manual tetap jalan', () {
-      final n = CartNotifier();
-      n.addProduct(1, 'Produk', 50000);
-      n.setDiscountPerItem(1, 10000);
-      final item = n.state.single;
-      expect(item.effectiveDiscountPerItem, 10000);
-      expect(item.itemDiscountTotal, 10000);
-      expect(item.subtotal, 50000);
-      expect(n.total, 50000);
-      expect(n.total - item.itemDiscountTotal, 40000);
     });
 
     test('diskon manual tidak boleh lebih besar dari harga unit (di-clamp)', () {
@@ -354,11 +357,12 @@ void main() {
       n.setDiscountPerItem(1, 50000); // exceeds unitPrice
       expect(n.state.single.effectiveDiscountPerItem, 30000);
       expect(n.state.single.itemDiscountTotal, 30000);
+      expect(n.total - n.state.single.itemDiscountTotal, 0);
     });
 
     test('tempPrice (harga sementara) + discountPerItem tidak dobel', () {
       // Harga sementara 40000 dari harga normal 50000 → coret 50000.
-      // productDiscount = 10000. User ubah diskon manual ke 5000 → GANTI.
+      // productDiscount = 10000 (display). Manual 5000 → total 35000.
       final n = CartNotifier();
       n.addProduct(1, 'Produk', 50000, originalPrice: 50000);
       n.setTempPrice(1, 40000);
@@ -366,23 +370,24 @@ void main() {
       final item = n.state.single;
       expect(item.unitPrice, 40000);
       expect(item.productDiscount, 10000);
-      expect(item.effectiveDiscountPerItem, 5000); // manual GANTI product discount
+      expect(item.effectiveDiscountPerItem, 5000); // manual only
       expect(item.itemDiscountTotal, 5000);
       expect(item.subtotal, 40000);
       expect(n.total - item.itemDiscountTotal, 35000);
     });
 
-    test('tempPrice tanpa diskon manual → pakai productDiscount dari originalPrice', () {
-      // Tanpa manual discount, productDiscount = originalPrice - tempPrice.
+    test('tempPrice tanpa diskon manual → total = harga sementara (TIDAK dobel)', () {
+      // Tanpa manual, total = tempPrice 40000 — productDiscount 10000 cuma
+      // display (struk: 1 x 50.000 = 50.000 / Disc. (-10.000) / Total 40.000).
       final n = CartNotifier();
       n.addProduct(1, 'Produk', 50000, originalPrice: 50000);
       n.setTempPrice(1, 40000);
       final item = n.state.single;
       expect(item.unitPrice, 40000);
       expect(item.productDiscount, 10000);
-      expect(item.effectiveDiscountPerItem, 10000); // fallback ke productDiscount
-      expect(item.itemDiscountTotal, 10000);
-      expect(n.total - item.itemDiscountTotal, 30000);
+      expect(item.effectiveDiscountPerItem, 0); // tidak fallback lagi
+      expect(item.itemDiscountTotal, 0);
+      expect(n.total, 40000);
     });
   });
 }

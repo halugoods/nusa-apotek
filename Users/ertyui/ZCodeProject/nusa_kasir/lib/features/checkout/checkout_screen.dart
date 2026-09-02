@@ -199,8 +199,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
   }
 
-  // v2.2.57+116: subtotal = Σ (harga sementara/unit × qty) MINUS diskon per
-  // satuan (itemDiscountTotal) — diskon item dipotong di transaksi total.
+  // v2.2.57+127: subtotal = Σ (harga sementara/unit × qty) MINUS diskon
+  // MANUAL per satuan (itemDiscountTotal). Diskon produk/menu sudah tercermin
+  // di price — TIDAK dikurang lagi (fix dobel diskon: 87.500 → 12.500).
   int get _subtotal {
     final cart = ref.watch(cartProvider);
     return cart.fold(

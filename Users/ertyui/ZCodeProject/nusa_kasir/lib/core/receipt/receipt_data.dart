@@ -20,14 +20,14 @@ class ReceiptItem {
   /// fallback 'pcs' (renderer menampilkan qty polos).
   final String? unitLabel;
 
-  /// Diskon nominal per SATUAN (v2.2.57+116) — dipotong di subtotal,
-  /// ditampilkan sebagai baris "Disc." tambahan.
+  /// Diskon nominal per SATUAN (v2.2.57+116) — potongan manual "Ubah Diskon"
+  /// di kasir. Digabung dengan [productDiscount] jadi SATU baris "Disc."
+  /// (v2.2.57+127 — user: 2 baris disc bikin customer bingung).
   final int? discountPerItem;
 
-  /// Diskon dari MENU PRODUK per satuan (v2.2.57+126): diskon grosir/
-  /// diskon yang sudah tercermin di [price]. Dipisah dari [discountPerItem]
-  /// supaya struk tampilkan dua baris: "Disc. Produk (-X)" dan "Disc. Manual
-  /// (-Y)" — user tahu mana diskon dari menu produk vs diskon ubah di kasir.
+  /// Diskon dari MENU PRODUK per satuan (v2.2.57+126): selisih harga asli
+  /// ([originalPrice]) vs [price]. Digabung dengan [discountPerItem] jadi
+  /// SATU baris "Disc." di struk (v2.2.57+127).
   final int? productDiscount;
 
   const ReceiptItem({
@@ -50,21 +50,26 @@ class ReceiptItem {
       (originalPrice != null && originalPrice! > price) ||
       (productDiscount != null && productDiscount! > 0) ||
       (discountPerItem != null && discountPerItem! > 0);
-  /// Total potongan per SATUAN = diskon produk + diskon manual (v2.2.57+126).
-  /// Tampilan struk pisahkan keduanya (Disc. Produk / Disc. Manual).
+  /// Total potongan per SATUAN = diskon produk + diskon manual → SATU
+  /// baris "Disc." di struk (v2.2.57+127, format user).
   int get discountNominal => (productDiscount ?? 0) + (discountPerItem ?? 0);
+  /// Harga ASLI per unit sebelum diskon manapun (menu/grosir/manual).
+  /// originalPrice = coret yang tersimpan; fallback price + productDiscount
+  /// untuk data yang tidak menyimpan originalPrice.
+  int get grossUnitPrice => originalPrice ?? (price + (productDiscount ?? 0));
+  /// Subtotal item = harga asli × qty (sebelum potongan manapun). Renderer
+  /// menampilkan baris ini lalu "Disc. (-gabungan)" di bawahnya — format
+  /// user v2.2.57+127: nama → qty × harga asli = subtotal → Disc. → total.
   int get subtotal =>
       isPerKg
-          ? (price * weightKg!).ceil() - discountNominal
-          : qty * price - discountNominal * qty;
+          ? (grossUnitPrice * weightKg!).ceil()
+          : grossUnitPrice * qty;
 
-  /// Subtotal KOTOR (sebelum diskon item) — harga ASLI di struk.
-  int get grossSubtotal =>
-      isPerKg
-          ? (originalPrice ?? price) * weightKg!.ceil()
-          : qty * (originalPrice ?? price);
+  /// Subtotal KOTOR = harga asli × qty (identik [subtotal] — potongan
+  /// ditampilkan sebagai baris "Disc." terpisah, format v2.2.57+127).
+  int get grossSubtotal => subtotal;
 
-  /// Potongan diskon item total (per unit × qty).
+  /// Potongan diskon item total (per unit × qty) = gabungan produk+manual.
   int get discountTotal =>
       discountNominal * (isPerKg ? 1 : qty);
 
@@ -306,9 +311,9 @@ class ReceiptData {
       dateStr: '17/08/2026  15:42',
       cashierName: 'Halu',
       items: [
-        ReceiptItem(name: 'Dimsum Original', qty: 2, price: 13500, originalPrice: 15000),
+        ReceiptItem(name: 'Dimsum Original', qty: 2, price: 13500, originalPrice: 15000, productDiscount: 1500),
         ReceiptItem(name: 'Dimsum Mentai', qty: 1, price: 20000),
-        ReceiptItem(name: 'Dimsum Keju', qty: 3, price: 17100, originalPrice: 18000),
+        ReceiptItem(name: 'Dimsum Keju', qty: 3, price: 17100, originalPrice: 18000, productDiscount: 900),
         ReceiptItem(name: 'Es Teh Manis', qty: 2, price: 5000),
         ReceiptItem(name: 'Air Mineral', qty: 1, price: 4000),
       ],

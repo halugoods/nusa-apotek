@@ -709,8 +709,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final cart = ref.watch(cartProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalItems = cart.fold(0, (s, e) => s + e.qty);
-    // v2.2.57+116: total = subtotal (harga sementara) MINUS diskon per satuan
-    // — konsisten dengan checkout & struk.
+    // v2.2.57+127: total = Σ subtotal — diskon MANUAL per satuan saja.
+    // Diskon produk/menu sudah tercermin di price (jangan kurang lagi, fix
+    // dobel diskon: 87.500 + diskon 50rb harus 37.500, bukan 12.500).
     final totalPrice = cart.fold(0, (s, e) => s + e.subtotal - e.itemDiscountTotal);
     final isWide = MediaQuery.of(context).size.width > 720;
 
@@ -2115,8 +2116,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           (c) => c.toJson(),
         )
         .toList();
-    // v2.2.57+116: total pakai subtotal setelah harga sementara MINUS diskon
-    // per satuan — konsisten dengan checkout.
+    // v2.2.57+127: total = Σ subtotal — diskon MANUAL per satuan saja
+    // (diskon produk/menu sudah di price; konsisten checkout, fix dobel).
     final total = cart.fold<int>(
       0,
       (s, e) => s + e.subtotal - e.itemDiscountTotal,
@@ -2295,6 +2296,20 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   // ── FnB: Note dialog per item ──
 
+  /// Hitung harga efektif per unit dari input sheet — tempPrice (bila
+  /// checkbox aktif + terisi) ganti harga normal [item.price].
+  int _sheetUnitPrice(CartItem item, bool enablePrice, String priceText) {
+    if (!enablePrice) return item.price;
+    final v = int.tryParse(priceText.trim());
+    return v ?? item.price;
+  }
+
+  /// Hitung diskon manual per unit dari input sheet (0 bila kosong/mati).
+  int _sheetDiscPerItem(bool enableDisc, String discText) {
+    if (!enableDisc) return 0;
+    return int.tryParse(discText.trim()) ?? 0;
+  }
+
   /// Bottom-sheet item keranjang (v2.2.57+116) — klik card produk di
   /// keranjang:
   ///   • Ubah HARGA SEMENTARA (per unit)
@@ -2305,6 +2320,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   /// cetak, reprint riwayat, dan laporan (HPP/laba tetap memakai harga jual
   /// final). Route profesional: subtotal keranjang & checkout langsung
   /// menghitung ulang (subtotal - diskon item).
+  ///
+  /// v2.2.57+127: PREVIEW REAL-TIME — ketik harga/diskon → efeknya langsung
+  /// tampil (inline di bawah input + blok ringkasan total cart sebelum
+  /// tombol Simpan), tanpa perlu simpan dulu.
   void _showItemSheet(CartItem item) {
     final priceCtrl = TextEditingController(
       text: item.tempPrice != null ? '${item.tempPrice}' : '',
@@ -2322,6 +2341,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     var enableNote = (item.note ?? '').isNotEmpty;
     final isDark =
         Theme.of(context).brightness == Brightness.dark;
+    // Preview real-time (v2.2.57+127): ketik di field → setState → recompute
+    // preview. Listener controller dipasang SEKALI di luar builder; setState
+    // sheet diambil dari StatefulBuilder via [sheetSetState].
+    StateSetter? sheetSetState;
+    void refresh() => sheetSetState?.call(() {});
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2329,8 +2354,180 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => Padding(
+      builder: (ctx) {
+        priceCtrl.addListener(refresh);
+        discCtrl.addListener(refresh);
+        return StatefulBuilder(
+        builder: (ctx, setSt) {
+          sheetSetState = setSt;
+          // Preview real-time: state efektif dihitung dari input saat ini.
+          int unitPriceOf() =>
+              _sheetUnitPrice(item, enablePrice, priceCtrl.text);
+          int discOf() => _sheetDiscPerItem(enableDisc, discCtrl.text);
+          // Nominal diskon yang DIHITUNG: manual (Ubah Diskon). Diskon
+          // produk (coret) sudah tercermin di price — tidak dipotong (+127).
+          int itemSubtotalOf() {
+            final unit = unitPriceOf() - discOf().clamp(0, unitPriceOf());
+            return item.isPerKg
+                ? (unit * item.weightKg!).ceil()
+                : unit * item.qty;
+          }
+
+          // Selisih total cart bila perubahan disimpan vs kondisi sekarang.
+          int cartDeltaOf() =>
+              itemSubtotalOf() - (item.subtotal - item.itemDiscountTotal);
+
+          // Preview inline di bawah input (harga sementara / diskon).
+          Widget previewInline({required bool forPrice}) {
+      final unit = unitPriceOf();
+      final disc = discOf().clamp(0, unit);
+      final effUnit = unit - disc;
+      final lines = <Widget>[];
+      if (forPrice) {
+        final orig = item.originalPrice;
+        lines.add(Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Harga jadi: ',
+              style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ),
+            Text(
+              formatRupiah(effUnit),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+            if (orig != null && orig > effUnit) ...[
+              const SizedBox(width: 4),
+              Text(
+                formatRupiah(orig),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+            ],
+          ],
+        ));
+      } else {
+        lines.add(Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Diskon: ',
+              style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ),
+            Text(
+              formatRupiah(disc),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: NusaConfig.warning,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Harga jadi: ',
+              style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+            ),
+            Text(
+              formatRupiah(effUnit),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+          ],
+        ));
+      }
+      lines.add(const SizedBox(height: 2));
+      lines.add(Text(
+        'Subtotal item (${item.qtyLabel}): ${formatRupiah(itemSubtotalOf())}',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+        ),
+      ));
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: NusaConfig.activePrimary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: NusaConfig.activePrimary.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: lines,
+          ),
+        ),
+      );
+    }
+
+          // Blok ringkasan perubahan total cart — di atas tombol Simpan.
+          Widget summaryBlock() {
+            final delta = cartDeltaOf();
+            final color = delta < 0
+                ? NusaConfig.success
+                : delta > 0
+                    ? NusaConfig.warning
+                    : isDark
+                        ? NusaConfig.darkTextTertiary
+                        : NusaConfig.textTertiary;
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface2 : NusaConfig.backgroundColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 16,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Total keranjang menjadi: '
+                      '${formatRupiah((ref.read(cartProvider.notifier).total + delta).clamp(0, 1 << 62))}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (delta != 0)
+                    Text(
+                      '${delta > 0 ? '+' : '-'}${formatRupiah(delta.abs())}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }
+
+          return Padding(
           padding: EdgeInsets.fromLTRB(
             20,
             12,
@@ -2379,7 +2576,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 if (item.hasDiscount) ...[
                   SizedBox(height: 2),
                   Text(
-                    'Potongan: ${formatRupiah(item.itemDiscountTotal)}',
+                    'Potongan: ${formatRupiah(item.itemDiscountTotal + item.productDiscount * (item.isPerKg ? 1 : item.qty))}',
                     style: TextStyle(
                       fontSize: 11,
                       color: NusaConfig.warning,
@@ -2413,6 +2610,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           : NusaConfig.textTertiary,
                     ),
                   ),
+                  // Preview real-time (v2.2.57+127): efek harga langsung
+                  // terlihat saat mengetik.
+                  previewInline(forPrice: true),
                 ],
                 const SizedBox(height: 6),
                 _buildItemOptionCheckbox(
@@ -2430,6 +2630,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     hintText: '0',
                     keyboardType: TextInputType.number,
                   ),
+                  // Preview real-time (v2.2.57+127): diskon + harga jadi +
+                  // subtotal item langsung terlihat.
+                  previewInline(forPrice: false),
                 ],
                 const SizedBox(height: 6),
                 _buildItemOptionCheckbox(
@@ -2505,6 +2708,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   ),
                 ),
                 SizedBox(height: 18),
+                // ── Ringkasan perubahan total (v2.2.57+127, real-time) ──
+                summaryBlock(),
+                SizedBox(height: 12),
                 // ── Simpan ──
                 SizedBox(
                   width: double.infinity,
@@ -2564,12 +2770,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               ],
             ),
           ),
-        ),
-      ),
+          ); // Padding — akhir return builder sheet
+        }, // builder StatefulBuilder
+        ); // StatefulBuilder
+      }, // builder showModalBottomSheet
     );
   }
-
-  /// Baris opsi item di bottom-sheet keranjang (v2.2.57+120): checkbox +
   /// ikon + judul + deskripsi. Form muncul hanya saat checkbox aktif —
   /// sheet tetap ringkas dan user yang kontrol apa yang mau diubah.
   Widget _buildItemOptionCheckbox({
