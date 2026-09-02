@@ -50,6 +50,55 @@ class LabelRenderer {
     }
   }
 
+  /// Lebar printable ESC/POS dalam DOT per lebar kertas — konvensi receipt
+  /// renderer (v2.2.57+128): 58mm = 384 dot (48mm), 80mm = 576 dot (72mm).
+  /// Label struk dirender PERSIS selebar printable ini: printer struk buang
+  /// segala dot melebihi printable area (bitmap 462px di printer 384-dot
+  /// = kanan tercrop ±17mm + konten center bergeser kanan).
+  static int strukPrintablePx({required double paperMm, int dpi = LabelDpi.dpi203}) {
+    // Konstanta dot @203dpi (lebar generator ESC/POS), diskalakan per DPI.
+    final dots = paperMm == 80 ? 576 : 384;
+    return (dots * dpi / LabelDpi.dpi203).round();
+  }
+
+  /// Render bitmap label untuk jalur STRUK (dipakai [_renderForStruk]):
+  /// selebar PRINTABLE kertas (384 dot @58mm / 576 @80mm — bukan lebar fisik),
+  /// barcode FULL width dengan margin SIMETRIS [c] kiri-kanan, teks center
+  /// pada pusat printable. Preview & print pakai render yang SAMA.
+  ///
+  /// Sebelum v2.2.57+128 render pakai lebar fisik (58mm → 462px): printer
+  /// 384-dot buang 78 dot kanan → baris kanan barcode hilang + teks yang
+  /// di-center pada 462px tampak geser ±5mm ke kanan di kertas.
+  static img.Image renderStrukLabelBitmap({
+    required String barcode,
+    required String name,
+    required int price,
+    required bool showName,
+    required bool showPrice,
+    required bool showBarcode,
+    required double paperMm,
+    double heightMm = 30,
+    int dpi = LabelDpi.dpi203,
+    double nameFontScale = 1.0,
+    double priceFontScale = 1.0,
+  }) {
+    final widthPx = strukPrintablePx(paperMm: paperMm, dpi: dpi);
+    final heightPx = mmToPx(heightMm, dpi: dpi).round();
+    return renderLabelBitmap(
+      barcode: barcode,
+      name: name,
+      price: price,
+      showName: showName,
+      showPrice: showPrice,
+      showBarcode: showBarcode,
+      widthPx: widthPx,
+      heightPx: heightPx,
+      nameFontScale: nameFontScale,
+      priceFontScale: priceFontScale,
+      fullWidthBarcode: true,
+    );
+  }
+
   /// Render SATU label ke bitmap MONOKROM (1-bit) ukuran [widthPx]×[heightPx].
   ///
   /// Layout (v2.2.57+116, adaptif):
@@ -96,10 +145,22 @@ class LabelRenderer {
     //   marginL = 8px  (203 DPI ≈ 1mm) — quiet zone Code128 wajib.
     //   marginR = 16px (203 DPI ≈ 2mm) — kompensasi crop fisik print head.
     //   edgeL / edgeR dipakai guard render supaya bar tak pernah keluar canvas.
+    //
+    // v2.2.57+128: [fullWidthBarcode] (jalur struk) pakai margin SIMETRIS [c]
+    // — kertas struk TIDAK punya crop print-head seperti label die-cut, dan
+    // barcode full-width harus rata kiri-kanan (permintaan user "sisi kanan
+    // kiri sama"), plus guard dipasang di EDGE printable (bukan margin — bar
+    // paling kanan justru konten yang diminta full).
     final marginL = 8;
     final marginR = 16;
+    final c = fullWidthBarcode ? marginL : marginR;
+    final edgeL = fullWidthBarcode ? 0 : marginL;
+    final edgeR = fullWidthBarcode ? 0 : marginR;
     const marginTop = 8;
-    final cx = widthPx ~/ 2; // pusat horizontal
+    // Pusat area CETAK (bukan canvas) — v2.2.57+128. Dengan margin kanan
+    // lebih besar, canvas center ≠ pusat area tercetak; teks di-center pada
+    // pusat printable supaya TIDAK tampak geser ke kanan di kertas.
+    final cx = (edgeL + (widthPx - edgeR)) ~/ 2; // pusat horizontal
 
     // Baris elemen (dihitung dari atas). Urutan: barcode → nama → harga.
     // Pakai "blok" supaya tidak ada gap ngaco: setiap elemen menempati
@@ -111,44 +172,53 @@ class LabelRenderer {
     //    (rata kiri-kanan) — [fullWidthBarcode].
     if (showBarcode && barcode.trim().isNotEmpty) {
       // Lebar tersedia: lebar label minus margin kiri + KANAN (tidak
-      // simetris). fullWidthBarcode tetap pakai inset kanan ekstra supaya
-      // ujung kanan barcode tidak terpotong print head.
-      final availW = widthPx - marginL - marginR;
+      // simetris). fullWidthBarcode (struk) simetris [c] — rata kiri-kanan.
+      final availW = widthPx - marginL - c;
       final bw = availW > 0 ? availW : widthPx - 8;
       final bh = (heightPx * 0.26).round().clamp(24, 80);
       final bars = barcodeBars(barcode, bw.toDouble(), bh.toDouble());
-      // Hitung bounding box barcode (bar paling kiri & kanan) supaya bisa
-      // di-center secara visual (TSPL) atau dipakai penuh (struk).
-      var minX = widthPx, maxX = 0;
+      // Bounding box bar HITAM dalam koordinat barcode (el.left/el.width) —
+      // generator menyisakan quiet zone internal; full-width harus diskalakan
+      // dari konten ASLI, bukan lebar request.
+      double bMin = 0, bMax = 0;
+      var hasBars = false;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
-          final x0 = (marginL + el.left).round();
-          final x1 = x0 + el.width.round();
-          if (x0 < minX) minX = x0;
-          if (x1 > maxX) maxX = x1;
+          final l = el.left, r = el.left + el.width;
+          if (!hasBars || l < bMin) bMin = l;
+          if (!hasBars || r > bMax) bMax = r;
+          hasBars = true;
         }
       }
-      final barW = maxX - minX;
-      // Struk: baris barcode direntang penuh ke kiri-kanan (pixel-accurate
-      // terhadap elemen barcode). TSPL: center.
-      final offX = fullWidthBarcode
-          ? marginL - minX
-          : barW > 0
-              ? cx - barW ~/ 2
-              : 0;
+      // v2.2.57+128: full-width (struk) → SKALA UNIFORM bar supaya konten
+      // mengisi PERSIS [marginL, widthPx-c] (rata kiri-kanan, permintaan
+      // user "sisi kanan kiri sama"). Skala linear menjaga RASIO modul →
+      // tetap scannable. TSPL → tanpa skala, center visual.
+      final scale = fullWidthBarcode && hasBars && (bMax - bMin) > 0
+          ? bw / (bMax - bMin)
+          : 1.0;
+      final barW = hasBars ? ((bMax - bMin) * scale).round() : 0;
       final topY = y;
       for (final el in bars) {
         if (el is bc.BarcodeBar && el.black) {
-          final x0 = (marginL + el.left).round() + offX - minX;
+          // Koordinat konten: 0 = bar hitam paling kiri (hilangkan quiet
+          // zone internal generator).
+          final cxContent = ((el.left - bMin) * scale).round();
+          // Struk: mulai dari marginL kiri → mengisi sampai widthPx-c.
+          // TSPL: center konten pada pusat area cetak [cx].
+          final x0 = fullWidthBarcode
+              ? marginL + cxContent
+              : (barW > 0 ? cx - barW ~/ 2 : marginL) + cxContent;
           final y0 = topY + el.top.round();
-          final w = el.width.round();
+          final w = (el.width * scale).round();
           final h = el.height.round();
           for (var yy = y0; yy < y0 + h && yy < heightPx; yy++) {
             for (var xx = x0; xx < x0 + w && xx < widthPx; xx++) {
-              // Guard: batas kiri/kanan memakai marginL/marginR (bukan
-              // canvas) — bar yang melampaui margin KANAN ikut digambar
-              // (tidak dipotong) selama masih dalam canvas.
-              if (xx >= marginL && xx <= widthPx - 1 - marginR) {
+              // Guard: jalur LABEL (TSPL) menjaga margin kanan 16px (crop
+              // print head); jalur STRUK full-width — guard di EDGE printable
+              // (0..widthPx-1) karena bar paling kanan justru konten yang
+              // diminta full.
+              if (xx >= edgeL && xx <= widthPx - 1 - edgeR) {
                 image.setPixelRgba(xx, yy, 0, 0, 0);
               }
             }
@@ -162,6 +232,8 @@ class LabelRenderer {
     //    v2.2.57+116: bila nama MENTOK ke bawah (melebihi ruang ke harga),
     //    nama ditaruh LEBIH RENDAH (di bawah barcode) dan harga digeser ke
     //    bawah — supaya tidak tabrakan. Ditangani _placeName/_placePrice.
+    //    v2.2.57+128: wrap & clamp teks pakai AREA CETAK (edgeL/edgeR) —
+    //    dijalur label margin kanan 16px membuat cx canvas ≠ pusat tercetak.
     if (showName && name.trim().isNotEmpty) {
       y = _placeName(
         image,
@@ -170,9 +242,11 @@ class LabelRenderer {
         name,
         y,
         cx,
-        marginL, // teks pakai margin simetris kecil (8px) — bukan barcode
+        fullWidthBarcode ? edgeL + c : marginL, // teks: margin simetris area
         nameFontScale.clamp(1.0, 3.0),
         priceShown: showPrice && price >= 0,
+        wrapInset: fullWidthBarcode ? c : marginL,
+        clampR: fullWidthBarcode ? widthPx - c : widthPx - marginR,
       );
     }
 
@@ -185,8 +259,9 @@ class LabelRenderer {
         price,
         y,
         cx,
-        marginL,
+        fullWidthBarcode ? edgeL + c : marginL,
         priceFontScale.clamp(1.0, 3.0),
+        clampR: fullWidthBarcode ? widthPx - c : widthPx - marginR,
       );
     }
 
@@ -206,11 +281,14 @@ class LabelRenderer {
     int margin,
     double scale, {
     required bool priceShown,
+    int wrapInset = 8,
+    int? clampR,
   }) {
     final charW = _fractionalTextAdvance(scale); // lebar char 5×7 fraksional
     final advance = _fractionalTextAdvance(scale);
     final lineH = _fractionalLineHeight(scale, isName: true);
-    final nameLines = _wrapName(name, widthPx - margin * 2, charW: charW);
+    final r = clampR ?? widthPx - margin;
+    final nameLines = _wrapName(name, r - wrapInset - margin, charW: charW);
     final lineCount = nameLines.length > 2 ? 2 : nameLines.length;
     final nameBlockH = lineCount * lineH;
 
@@ -233,7 +311,7 @@ class LabelRenderer {
     for (var i = 0; i < lineCount; i++) {
       final line = nameLines[i];
       final lineW = line.length * advance;
-      final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+      final lx = (cx - lineW ~/ 2).clamp(margin, r - lineW);
       _drawText5x7Fractional(image, widthPx, line, lx, nameY + i * lineH,
           scale: scale);
     }
@@ -249,13 +327,15 @@ class LabelRenderer {
     int y,
     int cx,
     int margin,
-    double scale,
-  ) {
+    double scale, {
+    int? clampR,
+  }) {
     final advance = _fractionalTextAdvance(scale);
     final lineH = _fractionalLineHeight(scale, isName: false);
     final priceText = 'Rp ${_formatPrice(price)}';
     final lineW = priceText.length * advance;
-    final lx = (cx - lineW ~/ 2).clamp(margin, widthPx - margin - lineW);
+    final r = clampR ?? widthPx - margin;
+    final lx = (cx - lineW ~/ 2).clamp(margin, r - lineW);
     _drawText5x7Fractional(image, widthPx, priceText, lx, y, scale: scale);
     return y + lineH;
   }

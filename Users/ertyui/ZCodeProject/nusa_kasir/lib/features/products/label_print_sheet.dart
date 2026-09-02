@@ -233,31 +233,30 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
   /// Cache lebar kertas struk (58/80) — di-load sekali di initState.
   double? _cachedPaperMm;
 
-  /// Render bitmap label untuk jalur STRUK: selebar kertas [paperMm] (bukan
-  /// lebar label 40mm), tinggi proporsional, barcode FULL lebar. Preview dan
-  /// print pakai render yang SAMA → hasil cetak = preview.
+  /// Render bitmap label untuk jalur STRUK: selebar PRINTABLE kertas (384
+  /// dot @58mm / 576 @80mm — bukan lebar fisik), tinggi proporsional, barcode
+  /// FULL lebar. Preview dan print pakai render yang SAMA → hasil cetak =
+  /// preview.
   ///
-  /// v2.2.57+127: SYNC — paper size dari cache (initState), jadi preview
-  /// struk bisa render di build() → realtime mengikuti slider font, pola
-  /// sama dengan preview TSPL & PDF.
+  /// v2.2.57+128: pakai [LabelRenderer.renderStrukLabelBitmap] — dulu render
+  /// 462px (58mm fisik) padahal printer struk hanya mencetak 384 dot → kanan
+  /// bitmap dibuang printer (baris barcode kanan hilang) + teks center
+  /// bergeser kanan ±5mm.
   img.Image _renderForStruk(Product p, int dpi) {
     final paperMm = _cachedPaperMm ?? 58.0;
-    return LabelRenderer.renderLabelBitmap(
+    return LabelRenderer.renderStrukLabelBitmap(
       barcode: p.barcode ?? '',
       name: p.name,
       price: p.sellPrice,
       showName: _showName,
       showPrice: _showPrice,
       showBarcode: _showBarcode,
-      widthPx: LabelRenderer.mmToPx(paperMm, dpi: dpi).round(),
-      // Tinggi label struk proporsional: 40×30 → lebar kertas × 0.75.
-      heightPx: LabelRenderer.mmToPx(
-        paperMm * (_labelH / _labelW),
-        dpi: dpi,
-      ).round(),
+      paperMm: paperMm,
+      // Tinggi label struk proporsional: 40×30 → tinggi = printable × 0.75.
+      heightMm: 48.0 * (_labelH / _labelW),
+      dpi: dpi,
       nameFontScale: _nameScale,
       priceFontScale: _priceScale,
-      fullWidthBarcode: true,
     );
   }
 
@@ -1101,7 +1100,7 @@ class _LabelPrintSheetState extends ConsumerState<LabelPrintSheet> {
             // Kalau noneHaveBarcode: toggle tidak berpengaruh (tetap off).
             onChanged: (v) {
               if (noneHaveBarcode) return;
-              setState(() => _showBarcode = v ?? false);
+              setState(() => _showBarcode = v);
             },
             label: 'Barcode',
             enabled: !noneHaveBarcode,
