@@ -37,14 +37,32 @@ import 'package:nusa_kasir/core/label/label_renderer.dart';
       final p = image.getPixel(x, y);
       if ((img.getRed(p) + img.getGreen(p) + img.getBlue(p)) < 384) {
         if (x < minX) minX = x;
-        if (x > pMaxX(maxX, x)) maxX = x;
+        if (x > maxX) maxX = x;
       }
     }
   }
   return (minX, maxX);
 }
 
-int pMaxX(int cur, int x) => x > cur ? x : cur;
+/// Band baris terbawah yang berisi piksel hitam (blok teks harga — baris
+/// dipindai dari bawah, diberi toleransi gap 2 baris antar baris glyph).
+/// Return (y0, y1, minX, maxX); empty → minX > maxX.
+(int, int, int, int) lowestInkBand(img.Image image) {
+  var minY = -1, maxY = -1, minX = image.width, maxX = -1;
+  for (var y = image.height - 1; y >= 0; y--) {
+    final (_, rowMax) = blackExtentXIn(image, y, y + 1);
+    final hasInk = rowMax >= 0;
+    if (hasInk) {
+      if (maxY == -1) maxY = y;
+      minY = y;
+    } else if (maxY != -1 && maxY - y > 2) {
+      break; // band selesai (gap > 2 baris di bawah elemen atasnya)
+    }
+  }
+  if (maxY == -1) return (-1, -1, image.width, -1);
+  (minX, maxX) = blackExtentXIn(image, minY, maxY + 1);
+  return (minY, maxY, minX, maxX);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -87,12 +105,16 @@ void main() {
         showBarcode: true,
         paperMm: 58,
       );
-      final (pMinX, pMaxX) = blackExtentXIn(bitmap, bitmap.height - 24, bitmap.height);
+      // Ukur BAND TEKS TERBAWAH (blok harga) — bukan N baris terbawah
+      // mentah: kalau region kosong, (minX+maxX)/2 = (width-1)/2 = trivial
+      // pass (bug test lama: asersi jalan tanpa mengukur apa pun).
+      final (y0, y1, pMinX, pMaxX) = lowestInkBand(bitmap);
+      expect(y0, greaterThan(0), reason: 'baris harga harus ada');
       final mid = (pMinX + pMaxX) / 2;
       expect(mid, closeTo(192, 5),
           reason: 'pusat printable = 384/2 = 192 — tidak geser kanan');
       // ignore: avoid_print
-      print('Harga struk: mid=$mid (pusat 192)');
+      print('Harga struk: band=$y0..$y1 minX=$pMinX maxX=$pMaxX mid=$mid');
     });
 
     test('renderStrukLabelBitmap @80mm: lebar 576', () {
@@ -127,13 +149,37 @@ void main() {
       final (minX, maxX) = blackExtentX(bitmap);
       expect(maxX, lessThanOrEqualTo(320 - 1 - 16),
           reason: 'guard margin kanan 16px tetap aktif di jalur label');
-      // Center area cetak: pusat = 8 + (320-8-16)/2 = 160.
-      final (pMinX, pMaxX) = blackExtentXIn(bitmap, bitmap.height - 24, bitmap.height);
+      // Center area cetak: pusat = 8 + (320-8-16)/2 = 160. Band teks
+      // terbawah (blok harga) diukur nyata — region kosong = mid trivial.
+      final (y0, y1, pMinX, pMaxX) = lowestInkBand(bitmap);
+      expect(y0, greaterThan(0), reason: 'baris harga harus ada');
       final mid = (pMinX + pMaxX) / 2;
       expect(mid, closeTo(160, 5),
           reason: 'teks center pada pusat area cetak, bukan geser kanan');
       // ignore: avoid_print
-      print('TSPL 40mm: minX=$minX maxX=$maxX harga mid=$mid');
+      print('TSPL 40mm: minX=$minX maxX=$maxX harga band=$y0..$y1 mid=$mid');
+    });
+
+    test('barcode TSPL center VISUAL terhadap area cetak (bukan kapalioff)', () {
+      // Barcode pendek: konten harus center pada pusat area cetak
+      // [8..304] → pusat 156, bukan canvas center 160.
+      final bitmap = LabelRenderer.renderLabelBitmap(
+        barcode: '8991234567890',
+        name: 'PRODUK A',
+        price: 12500,
+        showName: false, // isolasi band barcode (ink teratas)
+        showPrice: false,
+        showBarcode: true,
+        widthPx: 320,
+        heightPx: 240,
+      );
+      // Barcode = satu-satunya tinta → extent global = extent barcode.
+      final (minX, maxX) = blackExtentX(bitmap);
+      final mid = (minX + maxX) / 2;
+      expect(mid, closeTo(156, 5),
+          reason: 'pusat area cetak TSPL = 8 + (320-8-16)/2 = 156');
+      // ignore: avoid_print
+      print('TSPL barcode: minX=$minX maxX=$maxX mid=$mid (pusat 156)');
     });
   });
 }
