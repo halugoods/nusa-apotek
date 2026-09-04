@@ -57,7 +57,6 @@ class SoundService {
     NusaSound.lowStock: 'lowstock',
   };
   static const _ringKey = 'ring';
-  static const _bucket = 'nusa-sounds';
   static const _versionStoreKey = 'nusa_sounds_version';
 
   final Map<NusaSound, AudioPool?> _pools = {};
@@ -165,9 +164,11 @@ class SoundService {
     return d;
   }
 
+  /// Custom sounds tinggal di R2 nusa-images dengan prefix `sounds/`
+  /// (worker /img/{path} publik + Cache-Control — pengganti bucket publik
+  /// nusa-sounds Supabase).
   Uri _publicUrl(String filename) =>
-      Uri.parse('${NusaConfig.supabaseUrl}/storage/v1/object/public/'
-          '$_bucket/$filename');
+      Uri.parse('${NusaConfig.cloudBaseUrl}/img/sounds/$filename');
 
   /// Cek manifest cloud sekali per sesi. Kalau version > versi tersimpan:
   /// unduh file yang belum ada di cache, hapus file yang sudah di-reset dari

@@ -854,6 +854,19 @@ async function getStore(ctx: Ctx, p: Row): Promise<Response> {
   return json({ store: storePayload(data) });
 }
 
+// ─── Public storefront lookup by slug only (legacy, tanpa variant) ──
+async function getStoreBySlug(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const slug = p.slug as string | undefined;
+  if (!slug) return errorJson('slug required', 400);
+  const data = await db
+    .prepare('SELECT * FROM store_settings WHERE slug = ? AND is_active = 1 LIMIT 1')
+    .bind(slug)
+    .first<Row>();
+  if (!data) return errorJson('Store not found or inactive', 404);
+  return json({ store: storePayload(data) });
+}
+
 // ─── Public storefront lookup: /toko/{variant}/{slug} ──────────────
 async function getStoreByVariantSlug(ctx: Ctx, p: Row): Promise<Response> {
   const db = ctx.env.DB;
@@ -875,6 +888,113 @@ async function getStoreByVariantSlug(ctx: Ctx, p: Row): Promise<Response> {
 
 function formatRupiah(n: number): string {
   return `Rp ${(n || 0).toLocaleString('id-ID')}`;
+}
+
+// ─── Storefront read actions (pengganti PostgREST langsung di web) ──
+// Web storefront dulu query PostgREST langsung (anon). Di arsitektur
+// Cloudflare, pembacaan publik ini lewat worker dengan LIMIT ketat.
+// Bentuk payload mengikuti src/lib/supabase.ts lama:
+//   * is_published/is_active → boolean
+//   * promos: end_date IS NULL OR >= now
+//   * orders by phone: 08xx normalized, limit 30
+
+async function getProductsPublic(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  if (!storeId) return errorJson('store_id required', 400);
+  const category = p.category as string | undefined;
+
+  let sql = 'SELECT * FROM online_products WHERE store_id = ? AND is_published = 1';
+  const binds: unknown[] = [storeId];
+  if (category && category !== 'Semua') {
+    sql += ' AND category = ?';
+    binds.push(category);
+  }
+  sql += ' ORDER BY name ASC LIMIT 500';
+
+  const res = await db.prepare(sql).bind(...binds).all<Row>();
+  const products = (res.results ?? []).map((r) => ({
+    ...r,
+    is_published: !!r.is_published,
+    original_price: null, // kolom tidak ada di D1 (lihat port notes)
+  }));
+  return json({ products });
+}
+
+async function getBranchesPublic(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  if (!storeId) return errorJson('store_id required', 400);
+  const res = await db
+    .prepare('SELECT * FROM branches WHERE store_id = ? AND is_active = 1 ORDER BY sort ASC, id ASC LIMIT 100')
+    .bind(storeId)
+    .all<Row>();
+  return json({ branches: (res.results ?? []).map((r) => ({ ...r, is_active: !!r.is_active })) });
+}
+
+async function getPromosPublic(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  if (!storeId) return errorJson('store_id required', 400);
+  const now = new Date().toISOString();
+  const res = await db
+    .prepare(`SELECT * FROM promos WHERE store_id = ? AND is_active = 1
+              AND (end_date IS NULL OR end_date >= ?)
+              ORDER BY created_at DESC LIMIT 100`)
+    .bind(storeId, now)
+    .all<Row>();
+  return json({ promos: (res.results ?? []).map((r) => ({ ...r, is_active: !!r.is_active })) });
+}
+
+async function getCustomerPublic(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  const phone = normalizePhoneTo08(p.phone as string | undefined);
+  if (!storeId || !phone) return errorJson('store_id and phone required', 400);
+  const row = await db
+    .prepare('SELECT * FROM online_customers WHERE store_id = ? AND phone = ? LIMIT 1')
+    .bind(storeId, phone)
+    .first<Row>();
+  if (!row) return json({ customer: null });
+  return json({
+    customer: {
+      ...row,
+      promo_history: jsonish(row.promo_history),
+    },
+  });
+}
+
+async function getOrdersByPhone(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  const phone = normalizePhoneTo08(p.phone as string | undefined);
+  if (!storeId || !phone) return errorJson('store_id and phone required', 400);
+  const res = await db
+    .prepare('SELECT * FROM online_orders WHERE store_id = ? AND customer_phone = ? ORDER BY created_at DESC LIMIT 30')
+    .bind(storeId, phone)
+    .all<Row>();
+  return json({ orders: (res.results ?? []).map(orderPayload) });
+}
+
+// Pembatalan oleh pembeli: hanya "Online Baru" → "Dibatalkan", dan hanya
+// milik phone tsb (frontend kirim id numerik).
+async function cancelOrderByPhone(ctx: Ctx, p: Row): Promise<Response> {
+  const db = ctx.env.DB;
+  const storeId = p.store_id as string | undefined;
+  const phone = normalizePhoneTo08(p.phone as string | undefined);
+  const id = Number(p.id);
+  if (!storeId || !phone || !Number.isFinite(id)) {
+    return errorJson('store_id, phone, id required', 400);
+  }
+  const res = await db
+    .prepare(`UPDATE online_orders SET status = 'Dibatalkan'
+              WHERE id = ? AND store_id = ? AND customer_phone = ? AND status = 'Online Baru'`)
+    .bind(id, storeId, phone)
+    .run();
+  if ((res.meta?.changes ?? 0) > 0) {
+    await publishOrderEvent(ctx, storeId, 'order_updated', { id, status: 'Dibatalkan' });
+  }
+  return json({ ok: (res.meta?.changes ?? 0) > 0 });
 }
 
 // ─── Registrasi route (side-effect saat import) ─────────────────────
@@ -899,6 +1019,7 @@ export const onlineStoreHandlers: Record<string, Handler> = {
   update_order: safe(updateOrder),
   get_store: safe(getStore),
   get_store_by_variant_slug: safe(getStoreByVariantSlug),
+  get_store_by_slug: safe(getStoreBySlug),
   submit_order: safe(submitOrder),
   redeem_points: safe(redeemPoints),
   sync_branches: safe(syncBranches),
@@ -906,6 +1027,13 @@ export const onlineStoreHandlers: Record<string, Handler> = {
   get_promos: safe(getPromos),
   sync_print_form_configs: safe(syncPrintFormConfigs),
   get_print_form_configs: safe(getPrintFormConfigs),
+  // Storefront publik (pengganti PostgREST langsung dari web):
+  get_products: safe(getProductsPublic),
+  get_branches: safe(getBranchesPublic),
+  get_promos_public: safe(getPromosPublic),
+  get_customer: safe(getCustomerPublic),
+  get_orders_by_phone: safe(getOrdersByPhone),
+  cancel_order_by_phone: safe(cancelOrderByPhone),
 };
 
 Router.registerAll('online-store', onlineStoreHandlers);

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
-import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// AI chat message.
@@ -167,9 +166,10 @@ class AiService {
   /// Canonical UID (nusa_account_uid → nusa_google_user_id) sebagai owner.
   static Future<String?> ownerId() => SecureStore.resolveCanonicalUid();
 
-  /// URL edge function langsung (untuk SSE manual via http).
+  /// URL endpoint worker (untuk SSE manual via http). POST lain memakai
+  /// CloudGateway.invoke — action dari body pindah ke path otomatis.
   static String functionUrl() =>
-      '${NusaConfig.supabaseUrl}/functions/v1/ai-assistant';
+      '${CloudGateway.baseUrl}/api/ai-assistant';
 
   /// Ambil konfigurasi AI untuk [owner] (dipakai app + dashboard).
   static Future<AiSettings?> getSettings(String? owner) async {
@@ -180,8 +180,6 @@ class AiService {
       final res = await http.get(
         url,
         headers: {
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
         },
       ).timeout(const Duration(seconds: 15));
@@ -202,14 +200,11 @@ class AiService {
   }) async {
     try {
       final res = await http.post(
-        Uri.parse(functionUrl()),
+        Uri.parse('$functionUrl()/save_settings'),
         headers: {
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'action': 'save_settings',
           'owner': owner,
           'base_url': baseUrl,
           'api_key': apiKey,
@@ -231,14 +226,11 @@ class AiService {
   }) async {
     try {
       final res = await http.post(
-        Uri.parse(functionUrl()),
+        Uri.parse('$functionUrl()/history'),
         headers: {
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'action': 'history',
           'owner': owner,
           'limit': limit,
         }),
@@ -261,14 +253,11 @@ class AiService {
   }) async {
     try {
       final res = await http.post(
-        Uri.parse(functionUrl()),
+        Uri.parse('$functionUrl()/history_messages'),
         headers: {
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'action': 'history_messages',
           'owner': owner,
           'session_id': sessionId,
           'limit': limit,
@@ -291,14 +280,11 @@ class AiService {
   }) async {
     try {
       final res = await http.post(
-        Uri.parse(functionUrl()),
+        Uri.parse('$functionUrl()/history_delete'),
         headers: {
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'action': 'history_delete',
           'owner': owner,
           'session_id': sessionId,
         }),
@@ -374,10 +360,8 @@ class AiService {
 
     final client = http.Client();
     try {
-      final req = http.Request('POST', Uri.parse(functionUrl()))
+      final req = http.Request('POST', Uri.parse('$functionUrl()/chat'))
         ..headers.addAll({
-          'Authorization': 'Bearer ${NusaConfig.supabaseAnon}',
-          'apikey': NusaConfig.supabaseAnon,
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         })

@@ -86,3 +86,4 @@
 # Nusa Kasir build artifacts (sudah ada di .gitignore nusa_kasir, aman)
 /Users/ertyui/ZCodeProject/nusa_kasir/build/
 /Users/ertyui/ZCodeProject/nusa_kasir/.dart_tool/
+!/Users/ertyui/ZCodeProject/nusa-cloud/  
