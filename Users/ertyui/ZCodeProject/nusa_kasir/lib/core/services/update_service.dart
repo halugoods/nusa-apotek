@@ -6,9 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Result of an update check.
 @immutable
@@ -379,9 +379,8 @@ class UpdateService {
   /// Gagal jaringan TIDAK pernah memblokir app — balik no-update.
   static Future<ForceUpdateInfo> pingAndCheck() async {
     try {
-      final client = Supabase.instance.client;
       final key = await SecureStore.getActivation();
-      final res = await client.functions.invoke(
+      final res = await CloudGateway.shared.invoke(
         'app_ping',
         body: {
           if (key != null && key.isNotEmpty) 'key': key,

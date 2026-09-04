@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -168,8 +168,7 @@ Future<void> _receiveAtLaunch() async {
     final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null) return;
 
-    final client = Supabase.instance.client;
-    final repo = ActivationRepository(client);
+    final repo = ActivationRepository();
     final cloudTime = await repo.getBackupTimestamp().timeout(
       const Duration(seconds: 3),
       onTimeout: () => null,
@@ -270,7 +269,7 @@ void _syncImagesFromCloud() {
       final uid = await SecureStore.resolveCanonicalUid();
       if (uid == null) return;
 
-      final svc = ImageStorageService(Supabase.instance.client, uid);
+      final svc = ImageStorageService(uid);
 
       // First-time: upload existing local images to cloud
       final migrated = await SecureStore.getImagesMigrated();
@@ -377,11 +376,10 @@ Future<void> _hydrateImagesFromDb() async {
 /// employees jarang terisi — photo hanya lokal + base64 legacy).
 Future<void> _relinkImagesFromCloud() async {
   try {
-    if (!Supabase.instance.isInitialized) return;
     final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null) return;
 
-    final svc = ImageStorageService(Supabase.instance.client, uid);
+    final svc = ImageStorageService(uid);
     final db = AppDatabase();
     var relinked = 0;
     try {
@@ -450,15 +448,12 @@ void main() async {
       await NotificationService.init();
     } catch (_) {}
 
-    if (NusaConfig.supabaseUrl.isNotEmpty &&
-        NusaConfig.supabaseAnon.isNotEmpty) {
-      try {
-        await Supabase.initialize(
-          url: NusaConfig.supabaseUrl,
-          publishableKey: NusaConfig.supabaseAnon,
-        );
-      } catch (_) {}
-    }
+    // ── Cloud gateway init ─────────────────────────────────────────────
+    // Muat JWT tersimpan / buat sesi anon (legacy uid) untuk REST + storage
+    // + realtime. Tidak throw — app tetap jalan offline (fail-open).
+    try {
+      await CloudGateway.shared.init();
+    } catch (_) {}
 
     // ── CRITICAL: apply pending device-migration backup FIRST ──
     // Kalau user baru selesai restore "Data Ditemukan" (restoreDirect →
@@ -591,10 +586,8 @@ void main() async {
     if (initialLocation == '/home' || initialLocation == '/login') {
       try {
         final uid = await GoogleAuthService.getStoredUserId();
-        if (uid != null &&
-            uid.isNotEmpty &&
-            Supabase.instance.isInitialized) {
-          final res = await Supabase.instance.client.functions
+        if (uid != null && uid.isNotEmpty) {
+          final res = await CloudGateway.shared
               .invoke(
                 'register_activation',
                 body: {

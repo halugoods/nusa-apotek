@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:drift/drift.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
@@ -120,7 +120,7 @@ class SpreadsheetService {
   /// Invoke edge fn `sheets-admin` dengan retry untuk error transient.
   Future<Map<String, dynamic>> _invoke(String action, Map<String, dynamic> body) async {
     return _withRetry(() async {
-      final res = await Supabase.instance.client.functions.invoke(
+      final res = await CloudGateway.shared.invoke(
         _edgeFunction,
         body: {'action': action, ...body},
       );

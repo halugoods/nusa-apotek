@@ -27,8 +27,8 @@ import 'package:nusa_kasir/shared/services/nfc_tag_service.dart';
 import 'package:nusa_kasir/core/payment/payment_sheet.dart';
 import 'package:nusa_kasir/core/payment/payment_webview.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nfc_manager/nfc_manager.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Activation & auth screen with 4 branches:
@@ -658,7 +658,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     // kedaluwarsa. Kalau offline → fallback ke key lokal (jangan blokir
     // user yang sah karena jaringan).
     try {
-      final res = await Supabase.instance.client.functions.invoke(
+      final res = await CloudGateway.shared.invoke(
         'register_activation',
         body: {'googleUserId': googleUserId, 'product': NusaConfig.productId},
       );
@@ -739,7 +739,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
 
     // Try cloud check — user might have a license from another device
     try {
-      final res = await Supabase.instance.client.functions.invoke(
+      final res = await CloudGateway.shared.invoke(
         'register_activation',
         body: {'googleUserId': googleUserId, 'product': NusaConfig.productId},
       );

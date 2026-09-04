@@ -1,28 +1,32 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
-/// Email + password auth via Supabase Auth — jalur akun alternatif selain
-/// Google OAuth. UID akun (UUID `auth.users`) dipakai sebagai identitas
-/// lisensi dengan cara yang SAMA persis seperti Google user ID 21-digit:
-/// disimpan ke `nusa_account_uid` (secure storage) lalu dikirim sebagai
-/// `googleUserId` ke edge fn `register_activation`. Karena kolom
-/// `licenses.google_user_id` bertipe text, UUID dan ID Google bisa hidup
-/// berdampingan tanpa perubahan schema.
+/// Email + password auth via gateway /api/auth — jalur akun alternatif selain
+/// Google OAuth. UID akun dipakai sebagai identitas lisensi dengan cara yang
+/// SAMA persis seperti Google user ID 21-digit: disimpan ke
+/// `nusa_account_uid` (secure storage) lalu dikirim sebagai `googleUserId`
+/// ke edge fn `register_activation`.
 class AccountAuthService {
   static const uidKey = 'nusa_account_uid';
   static const emailKey = 'nusa_account_email';
 
-  /// Sign in with email + password. Returns the Supabase user UID on success,
+  /// Sign in with email + password. Returns the account UID on success,
   /// null on invalid credentials / network failure.
   Future<String?> signIn(String email, String password) async {
     try {
-      final res = await Supabase.instance.client.auth.signInWithPassword(
-        email: email.trim(),
-        password: password,
+      final res = await CloudGateway.shared.invokeRaw(
+        'auth',
+        'login',
+        body: {'email': email.trim(), 'password': password},
       );
-      final uid = res.user?.id;
-      if (uid == null) return null;
+      if (!res.ok || res.data is! Map) return null;
+      final account = res.data['account'];
+      final uid = account is Map ? account['id']?.toString() : null;
+      final jwt = res.data['jwt'] as String?;
+      if (uid == null || uid.isEmpty) return null;
+      if (jwt != null && jwt.isNotEmpty) {
+        await CloudGateway.shared.setSession(jwt);
+      }
       await SecureStore.write(key: uidKey, value: uid);
       await SecureStore.write(key: emailKey, value: email.trim());
       return uid;
@@ -33,36 +37,44 @@ class AccountAuthService {
     }
   }
 
-  /// Register a new email + password account via Supabase Auth.
+  /// Register a new email + password account via gateway /api/auth.
   ///
   /// Returns one of:
-  /// - `'ok'` — session langsung ada (email confirmation dimatikan) → uid
+  /// - `'ok'` — akun langsung aktif (JWT sudah tersimpan sebagai sesi) → uid
   ///   sudah tersimpan.
-  /// - `'confirm_email'` — pendaftaran berhasil tapi perlu konfirmasi email
-  ///   dulu sebelum bisa login.
   /// - `'exists'` — email sudah terdaftar.
   /// - `'error'` — kegagalan lain (jaringan dll).
   Future<String> signUp(String email, String password) async {
     try {
-      final res = await Supabase.instance.client.auth.signUp(
-        email: email.trim(),
-        password: password,
+      final res = await CloudGateway.shared.invokeRaw(
+        'auth',
+        'signup',
+        body: {'email': email.trim(), 'password': password},
       );
-      final uid = res.user?.id;
-      if (uid != null) {
-        await SecureStore.write(key: uidKey, value: uid);
-        await SecureStore.write(key: emailKey, value: email.trim());
-        return res.session != null ? 'ok' : 'confirm_email';
+      if (res.ok && res.data is Map) {
+        final account = res.data['account'];
+        final uid = account is Map ? account['id']?.toString() : null;
+        final jwt = res.data['jwt'] as String?;
+        if (uid != null && uid.isNotEmpty) {
+          if (jwt != null && jwt.isNotEmpty) {
+            await CloudGateway.shared.setSession(jwt);
+          }
+          await SecureStore.write(key: uidKey, value: uid);
+          await SecureStore.write(key: emailKey, value: email.trim());
+          return 'ok';
+        }
       }
-      // Supabase v2: kalau email sudah dipakai, `user` null + error.
-      return 'exists';
-    } on AuthException catch (e) {
-      if (e.message.toLowerCase().contains('already registered') ||
-          e.message.toLowerCase().contains('already been registered')) {
+      // Server menolak — email kemungkinan sudah terdaftar.
+      final data = res.data is Map ? res.data as Map : const {};
+      final err = data['error']?.toString() ?? '';
+      if (err.toLowerCase().contains('already registered') ||
+          err.toLowerCase().contains('already been registered') ||
+          err.toLowerCase().contains('sudah terdaftar') ||
+          res.status == 409) {
         return 'exists';
       }
       // ignore: avoid_print
-      print('[AccountAuth] Gagal sign up: ${e.message}');
+      print('[AccountAuth] Gagal sign up: $err');
       return 'error';
     } catch (e) {
       // ignore: avoid_print
@@ -74,11 +86,12 @@ class AccountAuthService {
   /// Kirim email reset password (link ke halaman reset di nusa-online).
   Future<bool> resetPassword(String email) async {
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(
-        email.trim(),
-        redirectTo: '${NusaConfig.landingPageUrl}/reset-password',
+      final res = await CloudGateway.shared.invokeRaw(
+        'auth',
+        'reset_request',
+        body: {'email': email.trim()},
       );
-      return true;
+      return res.ok;
     } catch (e) {
       // ignore: avoid_print
       print('[AccountAuth] Gagal reset password: $e');
@@ -86,10 +99,10 @@ class AccountAuthService {
     }
   }
 
-  /// Sign out: putuskan sesi Supabase + hapus uid akun lokal.
+  /// Sign out: putuskan sesi cloud + hapus uid akun lokal.
   Future<void> signOut() async {
     try {
-      await Supabase.instance.client.auth.signOut();
+      await CloudGateway.shared.signOut();
     } catch (_) {}
     await SecureStore.delete(key: uidKey);
   }
@@ -117,7 +130,6 @@ class AccountAuthService {
   static Future<bool> shouldRemember() async =>
       (await SecureStore.read(key: rememberKey)) != '0';
 
-  /// UID dari sesi Supabase yang sedang aktif, jika ada.
-  static String? currentUid() =>
-      Supabase.instance.client.auth.currentUser?.id;
+  /// UID dari sesi akun yang sedang aktif, jika ada (baca UID tersimpan).
+  static Future<String?> currentUidAsync() => SecureStore.read(key: uidKey);
 }

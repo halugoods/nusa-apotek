@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -37,8 +37,7 @@ enum BackupVariantStatus {
 }
 
 class ActivationRepository {
-  final SupabaseClient? client;
-  ActivationRepository(this.client);
+  ActivationRepository();
 
   Future<bool> get isActivated async =>
       (await SecureStore.getActivation()) != null;
@@ -64,28 +63,17 @@ class ActivationRepository {
     return SecureStore.resolveCanonicalUid();
   }
 
-  /// Ensure an anonymous Supabase session exists so background storage calls
-  /// (auto-sync upload/download) work without forcing interactive auth.
+  /// Ensure a cloud session exists so background storage calls (auto-sync
+  /// upload/download) work without forcing interactive auth.
   ///
-  /// v2.2.37: BLOCKING + RETRY. Sebelumnya `signInAnonymously()` dipanggil
-  /// tanpa menunggu — `hasBackup()` langsung lanjut ke `storage.list(...)`
-  /// padahal sesi anon belum ada → storage gagal → dialog "Data Ditemukan"
-  /// tidak pernah muncul (bug login kritis #1). Sekarang tunggu sesi sampai
-  /// benar-benar ada, retry maksimal 3x dengan jeda 300ms, baru lanjut.
+  /// CloudGateway.init() sudah memuat JWT tersimpan / membuat sesi anon
+  /// dengan legacy uid (path R2 = uid lama). Tidak ada langkah auth tambahan
+  /// yang perlu dilakukan di sini — senggat jaringan ditangani gateway.
   Future<void> _ensureAnonAuth() async {
-    if (client == null) return;
-    final auth = client!.auth;
-    if (auth.currentSession != null) return;
-    for (var attempt = 0; attempt < 3; attempt++) {
+    if (!CloudGateway.shared.hasSession) {
       try {
-        final res = await auth.signInAnonymously();
-        if (res.session != null) return;
-      } catch (e) {
-        debugPrint('[Auth] signInAnonymously attempt $attempt: $e');
-      }
-      if (attempt < 2) {
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
+        await CloudGateway.shared.init();
+      } catch (_) {}
     }
   }
 
@@ -100,39 +88,37 @@ class ActivationRepository {
 
     await SecureStore.saveActivation(key);
 
-    if (client != null) {
-      try {
-        final ownerEmail = await GoogleAuthService.getStoredEmail();
-        final res = await client!.functions.invoke(
-          'register_activation',
-          body: {
-            'key': key,
-            'googleUserId': googleUserId,
-            'product': NusaConfig.productId,
-            if (ownerEmail != null) 'ownerEmail': ownerEmail,
-          },
-        );
-        if (res.status >= 400) {
-          final data = res.data as Map<String, dynamic>?;
-          final err = data?['error'] as String? ?? 'Aktivasi gagal';
-          if (res.status == 403) {
-            await SecureStore.clearActivation();
-            return ActivationResult(false, 'Key dibatalkan atau tidak valid');
-          }
-          if (res.status == 409) {
-            await SecureStore.clearActivation();
-            return ActivationResult(
-              false,
-              data?['message'] as String? ??
-                  'Akun Google sudah dipakai untuk license lain',
-            );
-          }
+    try {
+      final ownerEmail = await GoogleAuthService.getStoredEmail();
+      final res = await CloudGateway.shared.invoke(
+        'register_activation',
+        body: {
+          'key': key,
+          'googleUserId': googleUserId,
+          'product': NusaConfig.productId,
+          if (ownerEmail != null) 'ownerEmail': ownerEmail,
+        },
+      );
+      if (res.status >= 400) {
+        final data = res.data as Map<String, dynamic>?;
+        final err = data?['error'] as String? ?? 'Aktivasi gagal';
+        if (res.status == 403) {
           await SecureStore.clearActivation();
-          return ActivationResult(false, err);
+          return ActivationResult(false, 'Key dibatalkan atau tidak valid');
         }
-      } catch (_) {
-        // offline: keep local activation
+        if (res.status == 409) {
+          await SecureStore.clearActivation();
+          return ActivationResult(
+            false,
+            data?['message'] as String? ??
+                'Akun Google sudah dipakai untuk license lain',
+          );
+        }
+        await SecureStore.clearActivation();
+        return ActivationResult(false, err);
       }
+    } catch (_) {
+      // offline: keep local activation
     }
     return ActivationResult(true);
   }
@@ -161,16 +147,14 @@ class ActivationRepository {
   /// (restore data salah varian = data user hilang dari layar). Cek murah:
   /// PRAGMA user_version + nama tabel + kategori produk dari sqlite bytes.
   Future<bool> hasBackup() async {
-    if (client == null) return false;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
     try {
       final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
-      final bytes = await client!.storage
-          .from('nusa-backups')
-          .download(path);
-      if (bytes.isEmpty) return false;
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-backups', path);
+      if (bytes == null || bytes.isEmpty) return false;
       // v2.2.42: verifikasi ISI backup (decrypt + unpack + cek varian) —
       // kalau isinya data varian lain, anggap TIDAK ADA (dialog Data
       // Ditemukan tak muncul → user setup dari nol untuk varian ini).
@@ -188,15 +172,14 @@ class ActivationRepository {
   /// "ada tapi isinya varian lain". v2.2.43: dipakai UI untuk menampilkan
   /// pesan jelas (bukan diam-diam setup ulang) saat folder tercemar.
   Future<BackupVariantStatus> checkBackupVariant() async {
-    if (client == null) return BackupVariantStatus.none;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return BackupVariantStatus.none;
     try {
       final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
-      final bytes =
-          await client!.storage.from('nusa-backups').download(path);
-      if (bytes.isEmpty) return BackupVariantStatus.none;
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-backups', path);
+      if (bytes == null || bytes.isEmpty) return BackupVariantStatus.none;
       // v2.2.57+130: decrypt+unpack di background isolate.
       final files = await decryptAndUnpackInIsolate(bytes, uid);
       final sqlite = files['nusa_kasir.sqlite'];
@@ -358,38 +341,23 @@ class ActivationRepository {
   /// `_pullOnly()` memanggilnya tiap 30 detik → 8.640×/hari/device × MB =
   /// sumber utama pembengkakan Cached Egress (791%).
   ///
-  /// Sekarang: `info()` = HEAD request ke Storage → hanya metadata
-  /// `updated_at` dari objek (tanpa body). Jauh lebih hemat.
-  ///
-  /// Catatan: `updated_at` Storage adalah waktu terakhir objek DIUPLOAD.
-  /// Backup lama yang ditulis sebelum v2.2.57 tidak punya metadata utuh —
-  /// fallback ke sidecar `metadata.json` (yang tetap di-download, tapi
-  /// hanya ~200 B — bukan full archive). Kalau keduanya gagal → null
+  /// Sekarang: `getBackupTimestamp` membaca sidecar `metadata.json` (~200 B,
+  /// bukan full archive). Gateway tidak menyediakan HEAD/info() per objek;
+  /// backup baru selalu menulis metadata.json (uploadBackupNow) — fallback
+  /// `DateTime.now()` TETAP dihindari. Kalau sidecar gagal → null
   /// (caller anggap "cloud tidak terbukti lebih baru" = aman upload).
   Future<DateTime?> getBackupTimestamp() async {
-    if (client == null) return null;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return null;
-    final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
-      // 1. HEAD via info() — nol egress body.
-      final info = await client!.storage
-          .from('nusa-backups')
-          .info(path)
+      final bytes = await CloudGateway.shared
+          .storageDownload(
+            'nusa-backups',
+            '$uid/${NusaConfig.productId}/metadata.json',
+          )
           .timeout(const Duration(seconds: 8));
-      final updatedAt = info.updatedAt ??
-          info.metadata?['updated_at']?.toString();
-      if (updatedAt != null && updatedAt.isNotEmpty) {
-        final t = DateTime.tryParse(updatedAt);
-        if (t != null) return t;
-      }
-      // 2. Fallback: sidecar metadata.json (~200 B, bukan full archive).
-      final bytes = await client!.storage
-          .from('nusa-backups')
-          .download('$uid/${NusaConfig.productId}/metadata.json')
-          .timeout(const Duration(seconds: 8));
-      if (!bytes.isEmpty) {
+      if (bytes != null && bytes.isNotEmpty) {
         final m = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
         final t = DateTime.tryParse(m['updated_at']?.toString() ?? '') ??
             DateTime.tryParse(m['backupTime']?.toString() ?? '');
@@ -413,7 +381,6 @@ class ActivationRepository {
   /// the sidecar metadata.json failed to upload (root cause of stuck-amber
   /// + always-conflict bug seen on percetakanrks@gmail.com 2026-08-26).
   Future<bool> uploadBackupNow({String? storeName, String? ownerName}) async {
-    if (client == null) return false;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
@@ -452,16 +419,13 @@ class ActivationRepository {
       // v2.2.57+130: pack + gzip + encrypt SEKALI jalan di background isolate
       // (encryptInIsolate menerima map file mentah, lalu pack → gzip → AES).
       final encrypted = await encryptInIsolate(files, uid);
-      await client!.storage
-          .from('nusa-backups')
-          .uploadBinary(
-            path,
-            encrypted,
-            fileOptions: const FileOptions(
-              upsert: true,
-              contentType: 'application/octet-stream',
-            ),
-          );
+      await CloudGateway.shared.storageUpload(
+        'nusa-backups',
+        path,
+        encrypted,
+        contentType: 'application/octet-stream',
+        upsert: true,
+      );
 
       await SecureStore.saveLastBackupTime(now);
       debugPrint(
@@ -479,16 +443,14 @@ class ActivationRepository {
   /// back to the legacy plaintext `metadata.json` for backups written by
   /// older versions (graceful upgrade path — existing backups remain usable).
   Future<Map<String, dynamic>?> getBackupMetadata() async {
-    if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
     try {
       final embedded = await _readEmbeddedMetadata();
       if (embedded != null) return embedded;
-      final bytes = await client!.storage
-          .from('nusa-backups')
-          .download('$uid/${NusaConfig.productId}/metadata.json');
-      if (bytes.isEmpty) return null;
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-backups', '$uid/${NusaConfig.productId}/metadata.json');
+      if (bytes == null || bytes.isEmpty) return null;
       return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     } catch (_) {
       return null;
@@ -499,14 +461,12 @@ class ActivationRepository {
   /// legacy (unpacked) backups or on any error — caller will fall back to
   /// the plaintext sidecar.
   Future<Map<String, dynamic>?> _readEmbeddedMetadata() async {
-    if (client == null) return null;
     final uid = await _googleUserId();
     if (uid == null) return null;
     try {
-      final bytes = await client!.storage
-          .from('nusa-backups')
-          .download('$uid/${NusaConfig.productId}/backup.sqlite.enc');
-      if (bytes.isEmpty) return null;
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-backups', '$uid/${NusaConfig.productId}/backup.sqlite.enc');
+      if (bytes == null || bytes.isEmpty) return null;
       // v2.2.57+130: decrypt+unpack di background isolate.
       final packed = await decryptAndUnpackInIsolate(bytes, uid);
       final meta = packed['metadata.json'];
@@ -540,14 +500,13 @@ class ActivationRepository {
   /// (lihat RestoreBackupFlow / _autoRestoreIfNeeded) supaya swap aman.
   /// Returns true on success.
   Future<bool> restoreDirect() async {
-    if (client == null) return false;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
-      final bytes = await client!.storage.from('nusa-backups').download(path);
-      if (bytes.isEmpty) return false;
+      final bytes = await CloudGateway.shared.storageDownload('nusa-backups', path);
+      if (bytes == null || bytes.isEmpty) return false;
       // v2.2.57+130: decrypt+unpack SEKALI di background isolate (arsip bisa
       // puluhan MB — sebelumnya decrypt di main isolate lalu unpack lagi).
       // _backupBelongsToVariant menerima plaintext sqlite langsung dari map.
@@ -661,14 +620,13 @@ class ActivationRepository {
   /// RestoreBackupFlow) gunakan restoreDirect() (live swap setelah drift
   /// ditutup).
   Future<bool> restoreFromCloud() async {
-    if (client == null) return false;
     await _ensureAnonAuth();
     final uid = await _googleUserId();
     if (uid == null) return false;
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
     try {
-      final bytes = await client!.storage.from('nusa-backups').download(path);
-      if (bytes.isEmpty) return false;
+      final bytes = await CloudGateway.shared.storageDownload('nusa-backups', path);
+      if (bytes == null || bytes.isEmpty) return false;
       // v2.2.57+130: decrypt+unpack di background isolate; ambil sqlite saja.
       final files = await decryptAndUnpackInIsolate(bytes, uid);
       final decryptedSqlite = files['nusa_kasir.sqlite'];
@@ -751,24 +709,19 @@ class ActivationRepository {
   /// reads → login fails, menu buttons dead). Sync here = stage for next
   /// launch; the pending swap is atomic.
   Future<bool> syncIfNewer() async {
-    if (client == null) return false;
     try {
       await _ensureAnonAuth();
       final uid = await _googleUserId();
       if (uid == null) return false;
 
       // Check if cloud backup exists and get its timestamp.
-      // v2.2.38: anon key tidak bisa `list()` folder (404) — probe download
-      // dulu; kalau ada, pakai metadata.json untuk timestamp (upload selalu
-      // menulis updated_at). Fallback: anggap backup ada & lebih baru (yang
-      // penting data user ketemu, bukan dilewati karena takut menimpa).
+      // Probe download dulu; kalau ada, pakai metadata.json untuk timestamp
+      // (upload selalu menulis updated_at). Fallback: anggap backup ada &
+      // lebih baru (yang penting data user ketemu, bukan dilewati karena
+      // takut menimpa).
       final cp = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
-      try {
-        final probe = await client!.storage.from('nusa-backups').download(cp);
-        if (probe.isEmpty) return false;
-      } catch (_) {
-        return false;
-      }
+      final probe = await CloudGateway.shared.storageDownload('nusa-backups', cp);
+      if (probe == null || probe.isEmpty) return false;
       final meta = await getBackupMetadata();
       final cloudTime = meta != null
           ? DateTime.tryParse(meta['updated_at']?.toString() ?? '') ??
@@ -784,7 +737,7 @@ class ActivationRepository {
       debugPrint('[Sync] Cloud backup newer ($cloudTime), downloading...');
 
       // Download & decrypt (v2.2.57+130: di background isolate)
-      final bytes = await client!.storage.from('nusa-backups').download(cp);
+      final bytes = probe;
       if (bytes.isEmpty) return false;
 
       final packedFiles = await decryptAndUnpackInIsolate(bytes, uid);
@@ -842,7 +795,6 @@ class ActivationRepository {
   /// Upload using old activation-key encryption. Used for migration.
   @Deprecated('Use uploadBackupNow() which encrypts with Google ID')
   Future<bool> uploadBackup(String activationKey) async {
-    if (client == null) return false;
     final uid = await _googleUserId();
     if (uid == null) return false;
     final path = '$uid/${NusaConfig.productId}/backup.sqlite.enc';
@@ -855,16 +807,13 @@ class ActivationRepository {
       final encrypted = await Isolate.run(
         () => BackupCrypto.encrypt(raw, activationKey),
       );
-      await client!.storage
-          .from('nusa-backups')
-          .uploadBinary(
-            path,
-            encrypted,
-            fileOptions: const FileOptions(
-              upsert: true,
-              contentType: 'application/octet-stream',
-            ),
-          );
+      await CloudGateway.shared.storageUpload(
+        'nusa-backups',
+        path,
+        encrypted,
+        contentType: 'application/octet-stream',
+        upsert: true,
+      );
       return true;
     } catch (_) {
       return false;
@@ -873,13 +822,12 @@ class ActivationRepository {
 
   @Deprecated('Use restoreFromCloud() which decrypts with Google ID')
   Future<bool> downloadAndRestore(String activationKey) async {
-    if (client == null) return false;
     await _ensureAnonAuth();
     final path = await _backupPath();
     if (path == null) return false;
     try {
-      final bytes = await client!.storage.from('nusa-backups').download(path);
-      if (bytes.isEmpty) return false;
+      final bytes = await CloudGateway.shared.storageDownload('nusa-backups', path);
+      if (bytes == null || bytes.isEmpty) return false;
       final decrypted = await decryptInIsolate(bytes, activationKey);
       final dir = await getApplicationDocumentsDirectory();
       final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));

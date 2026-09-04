@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/ai_insight_worker.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Unique task names registered with workmanager.
 const _stokTaskName = 'nusa_kasir_stok_check';
@@ -120,19 +120,14 @@ Future<void> _checkOnlineOrders(AppDatabase db) async {
         : await SecureStore.getActivation();
     if (key == null) return;
 
-    if (NusaConfig.supabaseUrl.isNotEmpty && NusaConfig.supabaseAnon.isNotEmpty) {
+    // Pastikan gateway punya sesi (JWT anon/legacy) sebelum invoke.
+    if (!CloudGateway.shared.hasSession) {
       try {
-        // Check if already initialized
-        Supabase.instance.client;
-      } catch (_) {
-        await Supabase.initialize(
-          url: NusaConfig.supabaseUrl, publishableKey: NusaConfig.supabaseAnon,
-        );
-      }
+        await CloudGateway.shared.init();
+      } catch (_) {}
     }
 
-    final supabase = Supabase.instance.client;
-    final res = await supabase.functions.invoke('online-store', body: {
+    final res = await CloudGateway.shared.invoke('online-store', body: {
       'action': 'get_orders',
       'store_id': key,
       'status': 'Online Baru',

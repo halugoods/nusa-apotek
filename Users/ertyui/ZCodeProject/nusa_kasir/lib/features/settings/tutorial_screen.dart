@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,17 +33,29 @@ class _TutorialScreenState extends State<TutorialScreen> {
   Future<void> _fetchCloud() async {
     setState(() => _state = _LoadState.loading);
     try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('tutorials')
-          .select()
-          .contains('variants', [NusaConfig.productId])
-          .order('sort_order', ascending: true)
-          .order('created_at', ascending: false);
+      // Gateway endpoint `tutorial-manager` action `list` — mengembalikan
+      // rows JSON tabel `tutorials` (id,title,yt_url,thumbnail_url,
+      // description,variants,sort_order) yang sudah difilter per varian
+      // + terurut (sort_order asc, created_at desc).
+      final res = await CloudGateway.shared.invokeRaw(
+        'tutorial-manager',
+        'list',
+        body: {'variant': NusaConfig.productId},
+      );
+      final data = res.data;
+      final rows = data is List
+          ? data
+          : (data is Map ? (data['rows'] ?? data['tutorials']) : null);
+      if (res.status >= 400 || rows is! List) {
+        throw Exception('tutorial list gagal (${res.status})');
+      }
       if (!mounted) return;
       setState(() {
-        _items = (rows as List)
-            .map((r) => TutorialItem.fromRow(r as Map<String, dynamic>))
+        _items = rows
+            .whereType<Map>()
+            .map((r) => TutorialItem.fromRow(
+                  Map<String, dynamic>.from(r),
+                ))
             .toList();
         _state = _LoadState.loaded;
       });

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// AI chat message.
 class ChatMessage {
@@ -162,9 +162,7 @@ class AiStreamEvent {
 /// - Provider configurable: `ai_settings` per owner (dashboard nusa-online).
 /// - Riwayat chat cloud: `ai_chat_history` (via owner + session_id).
 class AiService {
-  final SupabaseClient supabase;
-
-  AiService(this.supabase);
+  AiService();
 
   /// Canonical UID (nusa_account_uid → nusa_google_user_id) sebagai owner.
   static Future<String?> ownerId() => SecureStore.resolveCanonicalUid();
@@ -330,7 +328,7 @@ class AiService {
     };
 
     try {
-      final res = await supabase.functions.invoke('ai-assistant', body: body);
+      final res = await CloudGateway.shared.invoke('ai-assistant', body: body);
       if (res.status >= 400) {
         return const AiResponse(reply: 'Maaf, AI Assistant sedang tidak tersedia.');
       }

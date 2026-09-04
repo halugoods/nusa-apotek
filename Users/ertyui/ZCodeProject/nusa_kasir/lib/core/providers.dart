@@ -3,7 +3,6 @@
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
 import 'package:nusa_kasir/data/repositories/online_order_repository.dart';
@@ -50,11 +49,7 @@ final recipeRepoProvider = Provider(
 );
 
 final activationRepoProvider = Provider<ActivationRepository>((ref) {
-  try {
-    return ActivationRepository(Supabase.instance.client);
-  } catch (_) {
-    return ActivationRepository(null);
-  }
+  return ActivationRepository();
 });
 
 /// Auto cloud sync — starts on app init, flushed on app pause.
@@ -62,7 +57,7 @@ final activationRepoProvider = Provider<ActivationRepository>((ref) {
 final autoSyncProvider = Provider<AutoSyncService>((ref) {
   final db = ref.watch(databaseProvider);
   final repo = ref.watch(activationRepoProvider);
-  final svc = AutoSyncService(db: db, repo: repo, client: repo.client);
+  final svc = AutoSyncService(db: db, repo: repo);
   ref.onDispose(svc.dispose);
   svc.start();
   return svc;
@@ -76,10 +71,7 @@ final onlineOrderRepoProvider = Provider(
 /// Kept alive for the whole app lifetime (autoDispose would kill the watcher).
 final onlineProductSyncProvider = Provider<OnlineProductSyncService>((ref) {
   final db = ref.watch(databaseProvider);
-  final svc = OnlineProductSyncService(
-    db: db,
-    client: Supabase.instance.client,
-  );
+  final svc = OnlineProductSyncService(db: db);
   ref.onDispose(svc.dispose);
   svc.start();
   return svc;

@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -1336,7 +1335,6 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                       .resolveCanonicalUid();
                                   if (uid != null) {
                                     ImageStorageService(
-                                      Supabase.instance.client,
                                       uid,
                                     ).uploadImage('employees', photoPath!);
                                   }

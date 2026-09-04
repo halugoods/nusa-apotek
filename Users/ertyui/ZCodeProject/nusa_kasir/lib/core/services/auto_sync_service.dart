@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
 import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -50,7 +49,6 @@ class AutoSyncStatus {
 class AutoSyncService {
   final AppDatabase db;
   final ActivationRepository repo;
-  final SupabaseClient? client;
 
   /// v2.2.57+130: debounce 5 MENIT (dulu 1.2s). Root cause bom egress:
   /// backup full di-upload setiap kali ada DB write. Backup arsip baru
@@ -97,7 +95,7 @@ class AutoSyncService {
   bool _inFlight = false;
   bool _disposed = false;
 
-  AutoSyncService({required this.db, required this.repo, required this.client});
+  AutoSyncService({required this.db, required this.repo});
 
   void start() {
     if (_sub != null) return;
@@ -239,11 +237,6 @@ class AutoSyncService {
   Future<void> pullNow() => _pullOnly();
 
   Future<void> _pushOnce() async {
-    if (client == null) {
-      status.value = AutoSyncStatus(AutoSyncPhase.failed,
-          lastOkAt: status.value.lastOkAt);
-      return;
-    }
     final cloudTime =
         await repo.getBackupTimestamp().timeout(_networkTimeout);
     final lastSeen = await SecureStore.getLastCloudSeen();

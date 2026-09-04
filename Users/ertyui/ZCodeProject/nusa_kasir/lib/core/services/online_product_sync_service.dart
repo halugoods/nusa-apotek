@@ -5,7 +5,6 @@ import 'package:nusa_kasir/core/services/online_order_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Fase sinkronisasi produk online — dipakai chip status cloud di header
 /// Toko Online (v2.2.57+120). Beda dari AutoSyncPhase (backup DB): ini
@@ -31,7 +30,6 @@ class OnlineSyncStatus {
 /// mengunggah, merah = gagal, abu = belum pernah).
 class OnlineProductSyncService {
   final AppDatabase db;
-  final SupabaseClient client;
 
   static const _debounce = Duration(seconds: 8);
 
@@ -44,7 +42,7 @@ class OnlineProductSyncService {
   bool _inFlight = false;
   bool _disposed = false;
 
-  OnlineProductSyncService({required this.db, required this.client});
+  OnlineProductSyncService({required this.db});
 
   void start() {
     if (_sub != null) return;
@@ -102,7 +100,7 @@ class OnlineProductSyncService {
     status.value = OnlineSyncStatus(OnlineSyncPhase.uploading,
         lastOkAt: status.value.lastOkAt, lastCount: status.value.lastCount);
     try {
-      final svc = OnlineOrderService(client);
+      final svc = OnlineOrderService();
       final result = await svc.syncOnlineProducts(db);
       if (result.error != null) {
         debugPrint('[OnlineSync] ⚠ ${result.error}');

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
@@ -21,9 +22,10 @@ import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/skeleton_list.dart';
 import 'package:nusa_kasir/shared/widgets/empty_state.dart';
 import 'package:nusa_kasir/features/auth/employee_session_provider.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class OnlineOrdersScreen extends ConsumerStatefulWidget {
   OnlineOrdersScreen({super.key});
@@ -37,7 +39,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
   List<OnlineOrder> _allOrders = []; // unfiltered cache for stats
   bool _loading = true;
   late TabController _tabController;
-  RealtimeChannel? _channel;
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _channelSub;
   // Label tab = status AKTUAL di DB (satu sumber). Sebelumnya 'Verifikasi'/
   // 'Baru' tidak cocok dengan status asli ("Menunggu Verifikasi Pembeli"/
   // "Online Baru") sehingga filter dua tab itu TIDAK berfungsi (v2.2.27).
@@ -67,7 +70,8 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
   @override
   void dispose() {
-    _channel?.unsubscribe();
+    _channelSub?.cancel();
+    _channel?.sink.close();
     _tabController.dispose();
     _search.removeListener(_applySearch);
     _search.dispose();
@@ -119,47 +123,39 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
   void _listenSupabase() async {
     try {
-      final supabase = Supabase.instance.client;
-      final svc = OnlineOrderService(supabase);
+      final svc = OnlineOrderService();
       final storeId = await svc.storeId;
       if (storeId == null) return;
 
-      _channel = supabase
-          .channel('online-orders-$storeId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.insert,
-            schema: 'public',
-            table: 'online_orders',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'store_id',
-              value: storeId,
-            ),
-            callback: (payload) {
-              // ORDER BARU MASUK — simpan ke DB lokal SEKARANG (bukan nunggu
-              // polling 2 menit stok_alert_worker) + notif realtime. Ini
-              // akar "notif delay" — sebelumnya callback hanya _load() dari
-              // DB lokal yang belum berisi order baru.
-              _handleRealtimeInsert(payload.newRecord);
-            },
-          )
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'online_orders',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'store_id',
-              value: storeId,
-            ),
-            callback: (payload) {
-              if (mounted) _load();
-            },
-          )
-          .subscribe();
+      final ws = CloudGateway.shared.wsChannel('orders:$storeId');
+      if (ws == null) return;
+      await ws.ready.timeout(const Duration(seconds: 8));
+      _channel = ws;
+      _channelSub = ws.stream.listen((message) {
+        if (!mounted) return;
+        try {
+          // Pesan gateway: JSON string {"event": ..., "payload": {...}}.
+          final dynamic decoded = message is String
+              ? jsonDecode(message)
+              : message;
+          if (decoded is! Map) return;
+          final event = '${decoded['event'] ?? ''}';
+          if (event == 'order_new') {
+            // Payload = row order baru dari server.
+            final payload = decoded['payload'];
+            if (payload is Map) {
+              _handleRealtimeInsert(
+                Map<String, dynamic>.from(payload),
+              );
+            }
+          } else if (event == 'order_updated') {
+            _load();
+          }
+        } catch (_) {}
+      }, onError: (_) {}, cancelOnError: false);
     } catch (e) {
       // ignore: avoid_print
-      print('[OnlineOrders] Gagal subscribe Supabase realtime: $e');
+      print('[OnlineOrders] Gagal subscribe realtime (WS): $e');
     }
   }
 
@@ -330,7 +326,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
     // Update Supabase
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       await svc.updateOrderStatus(
         invoice: order.invoice,
         status: newStatus,
@@ -467,7 +463,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
     // Update Supabase (outside transaction — network call)
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       await svc.updateOrderStatus(
         invoice: order.invoice,
         status: 'Lunas',
@@ -513,7 +509,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
 
     // Try Supabase
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       await svc.updateOrderStatus(
         invoice: order.invoice,
         status: 'Direfund',

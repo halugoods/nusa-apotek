@@ -6,7 +6,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
@@ -142,7 +141,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     final needs = svc.any((s) => s.fieldsJson == null);
     if (!needs) return;
     try {
-      final online = OnlineOrderService(Supabase.instance.client);
+      final online = OnlineOrderService();
       final configs = await online.getPrintFormConfigs();
       if (configs.isEmpty) return;
       final db = ref.read(databaseProvider);
@@ -1073,7 +1072,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
       try {
         final db = ref.read(databaseProvider);
         final svc = await PrintServiceTypeRepository(db).getAll();
-        final online = OnlineOrderService(Supabase.instance.client);
+        final online = OnlineOrderService();
         await online.syncPrintFormConfigs([
           for (final s in svc)
             {

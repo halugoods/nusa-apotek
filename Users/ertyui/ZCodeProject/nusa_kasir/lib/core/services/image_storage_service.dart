@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
-/// Central service for storing images in Supabase Storage.
+/// Central service for storing images in cloud storage (R2 via CloudGateway).
 ///
 /// All images (product photos, employee photos, QRIS, logos) are uploaded
 /// to the `nusa-images` bucket and cached locally for offline access.
@@ -15,10 +15,9 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 /// Local cache is namespaced by product/account to prevent basename collisions.
 /// Remote path:  `{user_id}/{productId}/{category}/{filename}`
 class ImageStorageService {
-  final SupabaseClient _client;
   final String _uid;
 
-  ImageStorageService(this._client, this._uid);
+  ImageStorageService(this._uid);
 
   /// Build remote path with product namespace to prevent cross-variant leakage.
   String _remotePath(String category, String filename) =>
@@ -62,27 +61,18 @@ class ImageStorageService {
       final bytes = await file.readAsBytes();
       final ext = p.extension(filename).toLowerCase();
       // Pastikan contentType eksplisit — bucket nusa-images cuma menerima
-      // jpeg/png/webp/gif; storage_client menebak MIME dari ekstensi path,
-      // tapi eksplisit lebih andal (hindari 415 invalid_mime_type).
+      // jpeg/png/webp/gif (eksplisit lebih andal — hindari 415 invalid_mime).
       final contentType = _mimeFor(ext);
-      // v2.2.57+122 (Cached Egress): set Cache-Control eksplisit per upload.
-      // Default Supabase = max-age=3600 (1 jam). Aset JELAS statis (QRIS,
-      // logo toko) bisa 1 minggu + immutable → browser/CDN cache hit, hemat
-      // egress berulang. Foto produk/karyawan = 1 jam (sesuai default) →
-      // cache bust dengan `?v={epoch}` di URL kalau perlu paksa refresh.
-      final isStatic = category == 'settings'; // qris_*, store_logo_*
-      final cacheControl = isStatic
-          ? 'public, max-age=604800, immutable'
-          : 'public, max-age=3600';
-      await _client.storage.from('nusa-images').uploadBinary(
-            remotePath,
-            bytes,
-            fileOptions: FileOptions(
-              upsert: true,
-              contentType: contentType,
-              cacheControl: cacheControl,
-            ),
-          );
+      final ok = await CloudGateway.shared.storageUpload(
+        'nusa-images',
+        remotePath,
+        bytes,
+        contentType: contentType,
+        upsert: true,
+      );
+      if (!ok) {
+        return (ok: false, message: 'Upload ditolak server — cek koneksi & coba lagi');
+      }
       // v2.2.57+122: upload = file baru di server. Reset sync gate supaya
       // syncAll berikutnya (di device ini atau sibling) menarik fresh copy.
       await SecureStore.setLastImageSyncMs(0);
@@ -91,16 +81,7 @@ class ImageStorageService {
       debugPrint('[ImageStorage] Upload failed ($category): $e');
       final msg = '$e';
       String reason = msg;
-      if (msg.contains('415') || msg.toLowerCase().contains('mime')) {
-        reason = 'MIME ditolak (415) — ekstensi file tidak didukung';
-      } else if (msg.contains('404') || msg.contains('bucket')) {
-        reason = 'Bucket/objek tidak ditemukan (404)';
-      } else if (msg.contains('403') || msg.toLowerCase().contains('rls') ||
-          msg.toLowerCase().contains('policy')) {
-        // Upload memakai anon key (app tidak buat sesi Supabase Auth) —
-        // 403 di sini berarti policy bucket, bukan "belum login Google".
-        reason = 'Upload ditolak server (403) — cek koneksi & coba lagi';
-      } else if (msg.contains('network') || msg.contains('socket') ||
+      if (msg.contains('network') || msg.contains('socket') ||
           msg.contains('timeout') || msg.contains('internet')) {
         reason = 'Jaringan bermasalah';
       }
@@ -123,9 +104,9 @@ class ImageStorageService {
   Future<String?> downloadImage(String category, String filename) async {
     try {
       final remotePath = _remotePath(category, filename);
-      final bytes = await _client.storage
-          .from('nusa-images')
-          .download(remotePath);
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-images', remotePath);
+      if (bytes == null || bytes.isEmpty) return null;
 
       final dir = await getApplicationDocumentsDirectory();
       final localFile = File(
@@ -153,10 +134,9 @@ class ImageStorageService {
   ) async {
     try {
       final remotePath = _remotePath(category, filename);
-      final bytes = await _client.storage
-          .from('nusa-images')
-          .download(remotePath);
-      if (bytes.isEmpty) return null;
+      final bytes = await CloudGateway.shared
+          .storageDownload('nusa-images', remotePath);
+      if (bytes == null || bytes.isEmpty) return null;
       final dir = await getApplicationDocumentsDirectory();
       final localFile = File(p.join(dir.path, filename));
       await localFile.writeAsBytes(bytes, flush: true);
@@ -172,7 +152,7 @@ class ImageStorageService {
     try {
       final filename = p.basename(localPath);
       final remotePath = _remotePath(category, filename);
-      await _client.storage.from('nusa-images').remove([remotePath]);
+      await CloudGateway.shared.storageRemove('nusa-images', [remotePath]);
     } catch (_) {}
 
     try {
@@ -229,23 +209,21 @@ class ImageStorageService {
     for (final cat in categories) {
       try {
         final remoteDir = _remoteDir(cat);
-        // Coba list dulu (kalau izinnya ada — varian/role tertentu).
-        // Kalau 404, lanjut ke probe download per kandidat.
-        List<dynamic> files = [];
+        // List dulu isi folder di server (R2 via worker). Kalau gagal/kosong,
+        // lanjut ke probe download per kandidat nama lokal.
+        List<Map<String, dynamic>> files = [];
         try {
-          files = await _client.storage
-              .from('nusa-images')
-              .list(path: remoteDir);
+          files = await CloudGateway.shared.storageList('nusa-images', remoteDir);
         } catch (_) {
           files = [];
         }
 
         // Kalau LIST berhasil, jangan probe nama lokal yang jelas tidak ada
         // di daftar server (kalau tidak, tiap start probe 404 per kandidat).
-        // Kalau list gagal (anon tanpa izin list), lanjut jalur probe lama.
+        // Kalau list gagal, lanjut jalur probe lama.
         final listed = <String>{
           for (final f in files)
-            if (f is Map && f['name'] is String) f['name'] as String,
+            if (f['name'] is String) f['name'] as String,
         };
 
         final names = <String>{
@@ -264,10 +242,9 @@ class ImageStorageService {
 
           final remotePath = _remotePath(cat, name);
           try {
-            final bytes = await _client.storage
-                .from('nusa-images')
-                .download(remotePath);
-            if (bytes.isEmpty) continue;
+            final bytes = await CloudGateway.shared
+                .storageDownload('nusa-images', remotePath);
+            if (bytes == null || bytes.isEmpty) continue;
             await localFile.writeAsBytes(bytes, flush: true);
             count++;
           } catch (_) {
@@ -328,10 +305,14 @@ class ImageStorageService {
 
         // Check if already on server
         try {
-          await _client.storage.from('nusa-images').download(remotePath);
-          // File exists on server — skip
-          knownRemote.add(remotePath);
-          continue;
+          final existing = await CloudGateway.shared
+              .storageDownload('nusa-images', remotePath);
+          if (existing != null && existing.isNotEmpty) {
+            // File exists on server — skip
+            knownRemote.add(remotePath);
+            continue;
+          }
+          // File doesn't exist — upload it
         } catch (_) {
           // File doesn't exist — upload it
         }

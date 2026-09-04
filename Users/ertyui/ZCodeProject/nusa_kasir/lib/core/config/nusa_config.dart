@@ -23,6 +23,13 @@ abstract class NusaConfig {
 		static const String landingPageUrl = "https://nusa-online.vercel.app";
 		static String _whatsappOrder = "https://wa.me/628976280303?text=Halo%2C%20saya%20mau%20beli%20NUSA%20Fotocopy";
 		static String _applicationId = "com.nusa.fotocopy";
+  // v2.2.57+130: Supabase diganti Cloudflare worker (CloudGateway).
+  // cloudBaseUrl overridable per-varian via --dart-define (_build_all.py).
+  static const String cloudBaseUrl = String.fromEnvironment('NUSA_CLOUD_BASE', defaultValue: 'https://nusa-cloud.halugoods.workers.dev');
+  /// Admin key untuk endpoint admin dari app (sama dgn NUSA_ADMIN_KEY worker).
+  /// Dipakai juga sbg fallback auth license-manager (satu key global).
+  static const String nusaAdminKey = String.fromEnvironment('NUSA_ADMIN_KEY', defaultValue: '280303');
+  // DEPRECATED — masih dipakai beberapa file sampai refactor C selesai.
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://sakeuhcbcnueplzlkltm.supabase.co');
   static const String supabaseAnon = String.fromEnvironment('SUPABASE_ANON', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNha2V1aGNiY251ZXBsemxrbHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODIzMDEsImV4cCI6MjA5OTI1ODMwMX0.WvjZJ8Sd3o5T8a4vMApyvoCoS01Qv493mo1PxyWO06M');
 

@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -88,8 +87,7 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen> {
         // (v2.2.57+115 Area I: sama dengan path backup supaya foto tidak pecah).
         final uid = await SecureStore.resolveCanonicalUid();
         if (uid != null) {
-          ImageStorageService(Supabase.instance.client, uid)
-              .uploadImage('settings', path);
+          ImageStorageService(uid).uploadImage('settings', path);
         }
       } catch (_) {}
     } catch (_) {

@@ -4,7 +4,6 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
@@ -1279,7 +1278,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final uid = await SecureStore.resolveCanonicalUid();
       if (uid == null) return null;
       final filename = photoPath.split(RegExp(r'[\\/]')).last;
-      final svc = ImageStorageService(Supabase.instance.client, uid);
+      final svc = ImageStorageService(uid);
       final cached = await svc.ensureLocal('employees', filename);
       if (cached != null && await File(cached).exists()) return cached;
     } catch (_) {}

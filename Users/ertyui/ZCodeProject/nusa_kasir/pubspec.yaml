@@ -19,7 +19,9 @@ dependencies:
   path: ^1.9.1
   flutter_secure_storage: ^9.2.4
   cryptography: ^2.7.0
-  supabase_flutter: ^2.5.0
+  # v2.2.57+130: supabase_flutter DIGANTI CloudGateway (Cloudflare worker).
+  # web_socket_channel = realtime (Durable Objects); http = REST worker.
+  web_socket_channel: ^3.0.1
   mobile_scanner: ^6.0.2
   nfc_manager: ^3.0.1
   esc_pos_bluetooth: ^0.4.1
@@ -61,9 +63,9 @@ dev_dependencies:
   drift_dev: ^2.22.1
   sqlite3: ^3.5.0
 
-# NOTE: esc_pos_bluetooth pins rxdart ^0.26.0 while supabase_flutter >=2.5.0
-# requires rxdart >=0.27.5 <0.29.0. No single rxdart version satisfies both,
-# so we force a compatible version to keep both packages.
+# NOTE (+130): supabase_flutter dihapus — konflik rxdart dengan
+# esc_pos_bluetooth ikut hilang. Override rxdart 0.27.5 tetap dipasang
+# untuk esc_pos_bluetooth.
 #
 # flutter_bluetooth_basic 0.1.7 (dari esc_pos_bluetooth) memakai jcenter() yang
 # sudah DIHAPUS di Gradle 9 → build gagal "Could not find method jcenter()".

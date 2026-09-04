@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
@@ -125,10 +125,10 @@ class _OnlineStoreSetupScreenState
   /// Dipakai upsertStore supaya web bisa render <img>.
   String _buildLogoPublicUrl(String localPath) {
     try {
-      return Supabase.instance.client.storage
-          .from('nusa-images')
-          .getPublicUrl(
-              '$_logoUid/${NusaConfig.productId}/settings/${p.basename(localPath)}');
+      return CloudGateway.shared.storagePublicUrl(
+        'nusa-images',
+        '$_logoUid/${NusaConfig.productId}/settings/${p.basename(localPath)}',
+      );
     } catch (_) {
       return '';
     }
@@ -178,7 +178,7 @@ class _OnlineStoreSetupScreenState
     } catch (_) {}
 
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       final store = await svc.getStoreSettings();
       if (store != null) {
         _isActive = store['is_active'] == true;
@@ -277,7 +277,7 @@ class _OnlineStoreSetupScreenState
     final isActive = activate ?? _isActive;
 
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       // Kirim tema app (warna) ke server — website memakai warna yang sama.
       final themeId = ref.read(themePresetProvider);
       final theme = NusaConfig.themePresets[themeId];
@@ -416,7 +416,7 @@ class _OnlineStoreSetupScreenState
     }
     setState(() => _saving = true);
     try {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       final themeId = ref.read(themePresetProvider);
       final theme = NusaConfig.themePresets[themeId];
       final result = await svc.upsertStore(
@@ -466,7 +466,7 @@ class _OnlineStoreSetupScreenState
     }
     setState(() => _slugStatus = 'checking');
     _slugDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final svc = OnlineOrderService(Supabase.instance.client);
+      final svc = OnlineOrderService();
       final available = await svc.isSlugAvailable(s);
       if (!mounted) return;
       setState(() {
@@ -504,7 +504,7 @@ class _OnlineStoreSetupScreenState
     );
     try {
       final db = ref.read(databaseProvider);
-      final online = OnlineOrderService(Supabase.instance.client);
+      final online = OnlineOrderService();
       final result = await online.syncOnlineProducts(db);
       _imgFailedNames
         ..clear()
@@ -575,16 +575,17 @@ class _OnlineStoreSetupScreenState
         final uid = await GoogleAuthService.getStoredUserId();
         if (uid != null) {
           _logoUid = uid;
-          final svc = ImageStorageService(Supabase.instance.client, uid);
+          final svc = ImageStorageService(uid);
           final ok = await svc.uploadImage('settings', path);
           if (ok) {
-            // URL publik (policy SELECT bucket nusa-images) — dikirim ke
-            // store_settings supaya web bisa render <img>.
-            final publicUrl = Supabase.instance.client.storage
-                .from('nusa-images')
-                .getPublicUrl('$uid/${NusaConfig.productId}/settings/'
-                    '${p.basename(path)}');
-            final online = OnlineOrderService(Supabase.instance.client);
+            // URL publik — dikirim ke store_settings supaya web bisa
+            // render <img>.
+            final publicUrl = CloudGateway.shared.storagePublicUrl(
+              'nusa-images',
+              '$uid/${NusaConfig.productId}/settings/'
+                  '${p.basename(path)}',
+            );
+            final online = OnlineOrderService();
             await online.upsertStore(
               storeName: _nameCtrl.text.trim().isEmpty
                   ? 'Toko Saya'

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:functions_client/functions_client.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
@@ -12,7 +12,6 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:path/path.dart' as p;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Klasifikasi kegagalan edge function — dipakai UI untuk menampilkan
 /// pesan yang akurat (jangan bilang "Cek koneksi" saat sebenarnya 404).
@@ -33,14 +32,11 @@ enum OnlineStoreError {
   unknown,
 }
 
-/// Handles all Supabase communication for the online store feature.
-/// Uses Supabase Edge Function `online-store` for admin operations
-/// (which runs with service_role to bypass RLS) and direct calls for
-/// public data reads.
+/// Handles all cloud communication for the online store feature.
+/// Uses cloud edge function `online-store` for admin operations
+/// and public calls for public data reads.
 class OnlineOrderService {
-  final SupabaseClient supabase;
-
-  OnlineOrderService(this.supabase);
+  OnlineOrderService();
 
   /// Normalisasi nomor WA ke format 08xx (GAS pattern):
   /// strip karakter non-digit, lalu 62→0, lalu 8→08.
@@ -109,7 +105,7 @@ class OnlineOrderService {
 
   /// Klasifikasi error → OnlineStoreError yang bisa ditampilkan ke user.
   OnlineStoreError _classify(Object? e) {
-    if (e is FunctionException) {
+    if (e is CloudResult) {
       if (e.status == 404) return OnlineStoreError.notDeployed;
       if (e.status >= 500) return OnlineStoreError.serverError;
       return OnlineStoreError.unknown;
@@ -122,15 +118,17 @@ class OnlineOrderService {
 
   /// Invoke edge function + retry 1x saat error server transient (5xx).
   /// Error lain (404, no internet, dll) langsung dilempar ulang.
-  Future<FunctionResponse> _invoke(String function, Map body) async {
+  Future<CloudResult> _invoke(String function, Map body) async {
     try {
-      return await supabase.functions.invoke(function, body: body);
+      return await CloudGateway.shared
+          .invoke(function, body: Map<String, dynamic>.from(body));
     } catch (e) {
       final cls = _classify(e);
       if (cls == OnlineStoreError.serverError) {
         debugPrint('[OnlineOrderService] retry 1x setelah error server: $e');
         await Future.delayed(const Duration(milliseconds: 600));
-        return await supabase.functions.invoke(function, body: body);
+        return await CloudGateway.shared
+            .invoke(function, body: Map<String, dynamic>.from(body));
       }
       rethrow;
     }
@@ -219,7 +217,7 @@ class OnlineOrderService {
       return (ok: res.status < 400, error: OnlineStoreError.unknown);
     } catch (e) {
       debugPrint('[OnlineOrderService] upsertStore ERROR: $e');
-      if (e is FunctionException && e.status == 409) {
+      if (e is CloudResult && e.status == 409) {
         return (ok: false, error: OnlineStoreError.slugTaken);
       }
       return (ok: false, error: _classify(e));
@@ -358,9 +356,10 @@ class OnlineOrderService {
               String publicUrl = '';
               if (prevSig == sig) {
                 // Unchanged — pakai URL publik lama tanpa upload ulang.
-                publicUrl = supabase.storage
-                    .from('nusa-images')
-                    .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
+                publicUrl = CloudGateway.shared.storagePublicUrl(
+                  'nusa-images',
+                  '$uid/${NusaConfig.productId}/products/$filename',
+                );
                 imageUrl = publicUrl;
               } else {
                 bool uploaded = false;
@@ -371,7 +370,7 @@ class OnlineOrderService {
                       debugPrint('[OnlineOrderService] Retry upload ${prod.name} attempt $attempt');
                       await Future.delayed(Duration(seconds: attempt));
                     }
-                    final svc = ImageStorageService(supabase, uid);
+                    final svc = ImageStorageService(uid);
                     final r = await svc.uploadImageDetailed('products', knownImage);
                     uploaded = r.ok;
                     failReason = r.message;
@@ -382,9 +381,10 @@ class OnlineOrderService {
                 }
                 if (uploaded) {
                   await SecureStore.write(key: sigKey, value: sig);
-                  imageUrl = supabase.storage
-                      .from('nusa-images')
-                      .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
+                  imageUrl = CloudGateway.shared.storagePublicUrl(
+                    'nusa-images',
+                    '$uid/${NusaConfig.productId}/products/$filename',
+                  );
                   imgSuccess++;
                 } else {
                   imgFailed++;

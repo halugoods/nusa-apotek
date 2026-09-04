@@ -1,14 +1,14 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:nusa_kasir/core/activation/activation_repository.dart';
-import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 
 /// Pushes realtime "backup_updated" events so other devices on the same
-/// Google account get notified within ~1s instead of waiting for the next
+/// account get notified within ~1s instead of waiting for the next
 /// poll tick. Complements the file-based pull in [AutoSyncService].
 ///
 /// v2.2.57: this is the "hybrid B" delta push. We don't ship a full CRDT or
@@ -18,23 +18,18 @@ class RealtimeBackupNotifier {
   RealtimeBackupNotifier._();
   static final RealtimeBackupNotifier I = RealtimeBackupNotifier._();
 
-  RealtimeChannel? _channel;
-  String? _joinedName;
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _sub;
 
-  /// Channel name shared by all devices signed into the same Google account.
+  /// Channel name shared by all devices signed into the same account.
   /// Mirrors CallService pattern.
   Future<String?> _channelName() async {
-    try {
-      if (!Supabase.instance.isInitialized) return null;
-    } catch (_) {
-      return null;
-    }
     // v2.2.57+115 (Area I): channel memakai canonical UID (sama dengan path
     // backup) supaya semua device di akun yang sama bertemu di satu channel —
     // sebelum ini device Google UID vs email UUID tidak pernah saling lihat.
     final uid = await SecureStore.resolveCanonicalUid();
     if (uid == null || uid.isEmpty) return null;
-    return 'nusa-sync-$uid';
+    return 'backup_updated:$uid';
   }
 
   Future<void> start() async {
@@ -42,22 +37,33 @@ class RealtimeBackupNotifier {
     final name = await _channelName();
     if (name == null) return;
     try {
-      _channel = Supabase.instance.client.channel(name).onBroadcast(
-        event: 'backup_updated',
-        callback: (payload) {
-          try {
-            final p = Map<String, dynamic>.from(payload as Map);
-            final deviceId = '${p['deviceId'] ?? ''}';
-            // Ignore our own broadcast (the originator doesn't need to pull
-            // from itself).
-            if (deviceId == _myDeviceId()) return;
-            debugPrint('[RealtimeSync] backup_updated from $deviceId');
-            // Trigger immediate pull on the receiving device.
-            RealtimeSyncService.I.onRemoteBackupUpdated();
-          } catch (_) {}
-        },
-      ).subscribe();
-      _joinedName = name;
+      final ws = CloudGateway.shared.wsChannel(name);
+      if (ws == null) return;
+      // Tunggu handshake selesai sebelum listen (ws.ready).
+      await ws.ready.timeout(const Duration(seconds: 8));
+      _sub = ws.stream.listen((message) {
+        try {
+          // Pesan gateway: JSON string {"event": ..., "payload": {...}}.
+          final dynamic decoded = message is String
+              ? jsonDecode(message)
+              : message;
+          if (decoded is! Map) return;
+          final event = '${decoded['event'] ?? ''}';
+          if (event != 'backup_updated') return;
+          final payload = decoded['payload'];
+          final p = payload is Map
+              ? Map<String, dynamic>.from(payload)
+              : <String, dynamic>{};
+          final deviceId = '${p['deviceId'] ?? ''}';
+          // Ignore our own broadcast (the originator doesn't need to pull
+          // from itself).
+          if (deviceId == _myDeviceId()) return;
+          debugPrint('[RealtimeSync] backup_updated from $deviceId');
+          // Trigger immediate pull on the receiving device.
+          RealtimeSyncService.I.onRemoteBackupUpdated();
+        } catch (_) {}
+      }, onError: (_) {}, cancelOnError: false);
+      _channel = ws;
     } catch (_) {
       _channel = null;
     }
@@ -65,10 +71,13 @@ class RealtimeBackupNotifier {
 
   Future<void> stop() async {
     try {
-      await _channel?.unsubscribe();
+      await _sub?.cancel();
     } catch (_) {}
+    try {
+      _channel?.sink.close();
+    } catch (_) {}
+    _sub = null;
     _channel = null;
-    _joinedName = null;
   }
 
   /// Broadcast after a successful upload. Includes our deviceId so listeners
@@ -76,13 +85,13 @@ class RealtimeBackupNotifier {
   Future<void> broadcastUpdated() async {
     if (_channel == null) return;
     try {
-      await _channel!.sendBroadcastMessage(
-        event: 'backup_updated',
-        payload: {
+      _channel!.sink.add(jsonEncode({
+        'event': 'backup_updated',
+        'payload': {
           'deviceId': _myDeviceId(),
           'at': DateTime.now().toUtc().toIso8601String(),
         },
-      );
+      }));
     } catch (e) {
       debugPrint('[RealtimeSync] broadcast failed: $e');
     }
