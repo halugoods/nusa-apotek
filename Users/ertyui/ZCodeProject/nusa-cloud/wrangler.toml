@@ -1,0 +1,43 @@
+# NUSA Cloud — Cloudflare Worker config
+name = "nusa-cloud"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── Durable Object (realtime: backup_updated / ring / order_*) ─────
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDO"]
+
+# ── D1 ──────────────────────────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "nusa-db"
+# isi setelah: wrangler d1 create nusa-db
+database_id = "REPLACE_ME"
+
+# ── R2 buckets ──────────────────────────────────────────────────────
+[[r2_buckets]]
+binding = "BUCKET_BACKUPS"
+bucket_name = "nusa-backups"
+
+[[r2_buckets]]
+binding = "BUCKET_IMAGES"
+bucket_name = "nusa-images"
+
+[[r2_buckets]]
+binding = "BUCKET_THUMBS"
+bucket_name = "nusa-tutorial-thumbnails"
+
+# ── Cron triggers: license harian 07:00 UTC (14:00 WIB),
+#    arsip sheets tiap tanggal 1, 00:30 UTC ─────────────────────────
+[triggers]
+crons = ["0 7 * * *", "30 0 1 * *"]
+
+# ── Environment vars (non-secret) ───────────────────────────────────
+[vars]
+NUSACLOUD_ENV = "production"
