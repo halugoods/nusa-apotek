@@ -31,8 +31,14 @@ import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 ///   benar ada local-unsynced-work DAN cloud is proven newer; adopsi normal
 ///   diam.
 ///
-/// Push side tetap debounced 1.2s (coalesce 10s) — sama dengan v2.2.55,
-/// terbukti cukup menggabungkan burst edit tanpa terasa lambat.
+/// Push side kini debounced 5 menit (coalesce 30s) — v2.2.57+130. Dulu 1.2s
+/// (coalesce 10s): tiap transaksi/ubah produk = upload backup FULL di
+/// belakang layar (bomb egress: 2-3 user aktif sudah makan kuota Cached
+/// Egress Supabase sampai HTTP 402, project restricted). Data lama belum
+/// hilang — masih ada flush-on-pause (throttled) + pull realtime (WS/
+/// broadcast) + restore manual. Sekarang arsip backup DB-only (tanpa
+/// gambar) + crypto di isolate, jadi tiap upload ringan; 5 menit tetap
+/// menjaga RPO wajar untuk kasir offline-first.
 enum AutoSyncPhase { idle, uploading, ok, failed }
 
 class AutoSyncStatus {
@@ -46,18 +52,26 @@ class AutoSyncService {
   final ActivationRepository repo;
   final SupabaseClient? client;
 
-  /// Near-realtime — debounce 1.2s menggabungkan burst edit (import, form
-  /// multi-step) tapi backup keluar hampir seketika.
-  static const _debounce = Duration(milliseconds: 1200);
+  /// v2.2.57+130: debounce 5 MENIT (dulu 1.2s). Root cause bom egress:
+  /// backup full di-upload setiap kali ada DB write. Backup arsip baru
+  /// DB-only + isolate, tapi tetap jangan upload tiap transaksi — bisnis
+  /// lifetime Rp249rb tidak sanggup biaya egress per-user.
+  static const _debounce = Duration(minutes: 5);
 
-  /// Safety net: paksa flush tiap 10s supaya data tetap mengalir walau
-  /// ada burst panjang.
-  static const _coalesce = Duration(seconds: 10);
+  /// Safety net: paksa flush tiap 30 menit supaya perubahan yang tidak
+  /// berhenti (burst panjang) tetap terkirim walau debounce belum lewat.
+  static const _coalesce = Duration(minutes: 30);
 
   /// v2.2.57: hard cap per upload cycle. Tanpa ini, satu hang request bikin
   /// `_inFlight` stuck forever → autosync mati total (insiden utama).
   static const _flushWatchdog = Duration(seconds: 60);
   static const _networkTimeout = Duration(seconds: 8);
+
+  /// v2.2.57+130 (A1.4): flush-on-pause hanya kalau ada perubahan yang
+  /// belum terupload ≥2 menit sejak upload terakhir. App pause setiap kali
+  /// user ganti app/lock screen — tanpa gate ini tiap pause = upload penuh
+  /// (perangkat kasir sering lock/unlock puluhan kali sehari).
+  static const _pauseFlushGate = Duration(minutes: 2);
 
   /// Periodic pull — cek cloud tiap 5 menit untuk device yang sama-sama
   /// terbuka (owner + kasir realtime lihat data satu sama lain tanpa
@@ -67,6 +81,9 @@ class AutoSyncService {
   /// announce ke device lain → mereka pullNow() segera). Jadi 5 menit cukup
   /// untuk recovery, tanpa membebani Storage.
   static const _pullInterval = Duration(minutes: 5);
+
+  /// Waktu upload sukses terakhir (local) — untuk gate flush-on-pause.
+  DateTime? _lastUploadAt;
 
   /// Status sinkronisasi global — chip awan di DashboardHeader.
   static final ValueNotifier<AutoSyncStatus> status =
@@ -126,11 +143,27 @@ class AutoSyncService {
   /// Flush pending upload immediately. Also called on app pause.
   /// Hard-wrapped with [_flushWatchdog] so a hung request cannot wedge
   /// the service (the v2.2.55 bug: `_inFlight` stuck true forever).
-  Future<void> flushNow() async {
+  ///
+  /// v2.2.57+130 (A1.4): [force] = false (default) menerapkan gate
+  /// [_pauseFlushGate] — skip kalau belum ada ≥2 menit sejak upload sukses
+  /// terakhir. Panggilan internal (debounce/coalesce timer) TIDAK dipaksa;
+  /// panggilan app-pause pakai default (gated). Semua caller yang benar-
+  /// benar butuh upload sekarang (tombol manual, sebelum restore) pakai
+  /// `force: true`.
+  Future<void> flushNow({bool force = false}) async {
     _debounceTimer?.cancel();
     _coalesceTimer?.cancel();
     if (_inFlight || _disposed) return;
     if (_lastLocalChange == null) return;
+
+    // Gate anti-bom egress: pause tanpa perubahan berarti → jangan upload.
+    // (Debounce 5 menit sudah melewatkan sebagian besar pause biasa; gate
+    // ini menahan kasus "edit lalu langsung lock screen".)
+    if (!force &&
+        _lastUploadAt != null &&
+        DateTime.now().difference(_lastUploadAt!) < _pauseFlushGate) {
+      return;
+    }
 
     if (!await repo.isActivated) return;
     // v2.2.57+115 (Area I): satu canonical UID untuk backup — prefer UID akun
@@ -158,6 +191,8 @@ class AutoSyncService {
     } finally {
       _inFlight = false;
       if (_lastLocalChange != null && !_disposed) {
+        // Reschedule TANPA force — debounce penuh 5 menit berlaku lagi
+        // (kalau gagal upload, retry tetap di-throttle, bukan loop cepat).
         _schedule();
       }
     }
@@ -283,6 +318,7 @@ class AutoSyncService {
       ownerName: await meta.getOwnerName(),
     );
     if (ok) {
+      _lastUploadAt = DateTime.now();
       await SecureStore.setLastCloudSeen(now);
       _lastLocalChange = null;
       await SecureStore.setLastLocalChange(now);

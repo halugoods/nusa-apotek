@@ -1,4 +1,4 @@
-import 'dart:convert';
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1268,20 +1268,13 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                   return;
                                 }
                               }
-                              // B1 (v2.2.45): simpan foto sebagai BASE64 supaya
-                              // ikut backup cloud (kolom photo_base64). File
-                              // lokal (photoPath) TIDAK ikut backup DB.
-                              String? photoBase64;
-                              if (photoPath != null &&
-                                  File(photoPath!).existsSync()) {
-                                try {
-                                  photoBase64 = base64Encode(
-                                    File(photoPath!).readAsBytesSync(),
-                                  );
-                                } catch (_) {
-                                  photoBase64 = null;
-                                }
-                              }
+                              // v2.2.57+130 (A1.3): JANGAN simpan foto sebagai
+                              // BASE64 lagi — kolom photo_base64 membengkakkan
+                              // DB + arsip backup (OOM + bom egress). Foto
+                              // file-first: file lokal; pemulihan setelah
+                              // restore lewat base64 legacy yang masih ada
+                              // di DB lama (hydrate) atau sync gambar cloud.
+                              const photoBase64 = null;
                               if (employee == null) {
                                 await repo.addEmployee(
                                   name: name,

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
@@ -9,6 +10,14 @@ import 'package:cryptography/cryptography.dart';
 /// the same Google account can decrypt the backup. No activation key needed.
 ///
 /// Data is gzip-compressed before encryption to reduce storage (~5x-10x).
+///
+/// v2.2.57+130: pack/gzip/AES jalan di BACKGROUND ISOLATE via [encryptInIsolate]
+/// / [decryptInIsolate] / [packInIsolate] / [unpackInIsolate]. Sebelumnya semua
+/// CPU-bound work (byte-per-byte pack + gzip + AES atas arsip yang bisa puluhan
+/// MB) berjalan di MAIN isolate → jank parah / ANR, dan pada device dengan DB
+/// besar (17 MB base64 foto) memicu OOM kill = "force closed" tanpa dialog.
+/// Semua fungsi isolate adalah TOP-LEVEL (bukan method class) supaya aman
+/// dikirim ke Isolate.run tanpa menutup closure atas objek berat.
 class BackupCrypto {
   static final _aes = AesGcm.with256bits();
 
@@ -198,4 +207,50 @@ class BackupCrypto {
     final compressed = await _aes.decrypt(box, secretKey: secretKey);
     return _gunzip(compressed);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v2.2.57+130: BACKGROUND-ISOLATE wrappers (top-level functions).
+//
+// Arsip backup bisa puluhan MB; packFiles loop byte-per-byte + GZipCodec +
+// AES-256-GCM semuanya CPU-bound. Menjalankannya di main isolate memblok
+// UI thread berdetik-detik (jank/ANR) dan menggandakan puncak memori sampai
+// Android LMK membunuh app ("force closed" tanpa dialog pada DB besar).
+// Isolate.run() mengeksekusi closure di isolate terpisah lalu mengembalikan
+// hasilnya via message passing — send/recv Uint8List antar isolate adalah
+// zero-copy transfer di Dart native, jadi tidak ada duplikasi memori tambahan.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// (pack + gzip + AES-encrypt) di background isolate.
+Future<Uint8List> encryptInIsolate(
+  Map<String, Uint8List> files,
+  String uid,
+) {
+  return Isolate.run(() => BackupCrypto.encrypt(BackupCrypto.packFiles(files), uid));
+}
+
+/// (AES-decrypt + gunzip + unpack) di background isolate → map file.
+Future<Map<String, Uint8List>> decryptAndUnpackInIsolate(
+  Uint8List encrypted,
+  String uid,
+) {
+  return Isolate.run(() async {
+    final plain = await BackupCrypto.decrypt(encrypted, uid);
+    return BackupCrypto.unpackFiles(Uint8List.fromList(plain));
+  });
+}
+
+/// (AES-decrypt + gunzip) saja di background isolate → plaintext arsip NUS1.
+Future<List<int>> decryptInIsolate(Uint8List encrypted, String uid) {
+  return Isolate.run(() => BackupCrypto.decrypt(encrypted, uid));
+}
+
+/// Pack files saja di background isolate (dipakai ekspor lokal manual).
+Future<Uint8List> packInIsolate(Map<String, Uint8List> files) {
+  return Isolate.run(() => BackupCrypto.packFiles(files));
+}
+
+/// Unpack arsip NUS1 di background isolate (dipakai _applyPendingRestore).
+Future<Map<String, Uint8List>> unpackInIsolate(Uint8List archive) {
+  return Isolate.run(() => BackupCrypto.unpackFiles(archive));
 }

@@ -17,12 +17,12 @@ import 'package:nusa_kasir/core/utils/receipt_printer.dart';
 import 'package:nusa_kasir/core/services/notification_service.dart';
 import 'package:nusa_kasir/core/services/stok_alert_worker.dart';
 import 'package:nusa_kasir/core/services/ai_insight_worker.dart';
+import 'package:nusa_kasir/core/services/backup_crypto.dart' show unpackInIsolate;
 import 'package:nusa_kasir/core/services/update_service.dart';
 import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
-import 'package:nusa_kasir/core/services/backup_crypto.dart';
 import 'package:nusa_kasir/data/repositories/attendance_repository.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:drift/drift.dart';
@@ -112,8 +112,10 @@ Future<void> _applyPendingRestore() async {
 
     final bytes = await pending.readAsBytes();
 
-    // Try NUS1 archive format first (new — includes images)
-    final files = BackupCrypto.unpackFiles(bytes);
+    // Try NUS1 archive format first (new — includes images).
+    // v2.2.57+130: unpack di background isolate (arsip bisa puluhan MB) —
+    // jangan blok main thread saat startup.
+    final files = await unpackInIsolate(bytes);
 
     // ── CRITICAL: clear stale SQLite sidecar files (-wal/-shm) first ──
     // If a previous session left a WAL/journal behind, SQLite would replay
@@ -302,18 +304,126 @@ Future<void> _hydrateImagesFromDb() async {
     final employees = AttendanceRepository(db);
     final p = await products.hydrateImages();
     final e = await employees.hydratePhotos();
+    // v2.2.57+130 (A1.3): kompaksi BASE64 sekali per launch. Setelah hydrate
+    // (foto base64 sudah ditulis ke disk), nolkan kolom image_base64 /
+    // photo_base64 yang file fisiknya ADA — DB mengecil drastis (DB user
+    // besar: 17 MB → ~0.3 MB) → arsip backup ringan, tidak OOM, tidak bom
+    // egress. Idempoten & murah: hanya scan kolom, tanpa tulis kalau sudah
+    // bersih. Kompaksi berjalan PALING BERAT di isolate via SQL UPDATE…
+    // tidak perlu — drift utk SQLite jalan di background zone secara default.
+    var compacted = 0;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final prods = await db.select(db.products).get();
+      for (final pr in prods) {
+        final b64 = pr.imageBase64;
+        if (b64 == null || b64.isEmpty) continue;
+        final path = pr.imagePath;
+        final ok = path != null &&
+            path.isNotEmpty &&
+            await File(path).exists();
+        if (!ok) continue; // file belum ada → biarkan hydrate device lain
+        await (db.update(db.products)..where((t) => t.id.equals(pr.id)))
+            .write(const ProductsCompanion(imageBase64: Value(null)));
+        compacted++;
+      }
+      final emps = await db.select(db.employees).get();
+      for (final em in emps) {
+        final b64 = em.photoBase64;
+        if (b64 == null || b64.isEmpty) continue;
+        final path = em.photoPath;
+        final ok = path != null &&
+            path.isNotEmpty &&
+            await File(path).exists();
+        if (!ok) continue;
+        await (db.update(db.employees)..where((t) => t.id.equals(em.id)))
+            .write(const EmployeesCompanion(photoBase64: Value(null)));
+        compacted++;
+      }
+      // VACUUM hanya sekali per launch & hanya bila ada yang dibersihkan —
+      // reclaim ruang file DB sungguhan (tanpa ini file tetap gemuk).
+      if (compacted > 0) {
+        await db.customStatement('VACUUM');
+        try {
+          final f = File('${dir.path}/nusa_kasir.sqlite');
+          if (await f.exists()) {
+            debugPrint('[Compact] base64 cleared=$compacted, '
+                'db=${(await f.length()) ~/ 1024} KB');
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[Compact] skip: $e');
+    }
     await db.close();
-    if (p > 0 || e > 0) {
-      debugPrint('[Hydrate] Restored product images=$p, employee photos=$e');
+    if (p > 0 || e > 0 || compacted > 0) {
+      debugPrint('[Hydrate] Restored product images=$p, employee photos=$e, '
+          'compacted=$compacted');
     }
   } catch (err) {
     debugPrint('[Hydrate] error: $err');
   }
 }
 
+/// v2.2.57+130 (A1.2): relink foto produk dari bucket setelah restore.
+/// Arsip backup baru (+130) TIDAK mengemas file gambar — DB-only. Di device
+/// baru / setelah clear data, `imagePath` di DB menunjuk file lokal yang
+/// tidak ada, dan base64 sudah kosong (kompaksi A1.3) → tanpa fungsi ini
+/// foto produk hilang. Sini tarik gambar dari `nusa-images/{uid}/
+/// {productId}/products/{basename}` dengan NAMA FILE ASLI (bucket selalu
+/// diisi nama asli; prefix `{productId}_` hanya penamaan cache lokal lama)
+/// lalu tulis ke documents dir + perbarui imagePath di DB. Idempoten: produk
+/// yang filenya sudah ada di-skip. Employees photo tidak direlink (bucket
+/// employees jarang terisi — photo hanya lokal + base64 legacy).
+Future<void> _relinkImagesFromCloud() async {
+  try {
+    if (!Supabase.instance.isInitialized) return;
+    final uid = await SecureStore.resolveCanonicalUid();
+    if (uid == null) return;
+
+    final svc = ImageStorageService(Supabase.instance.client, uid);
+    final db = AppDatabase();
+    var relinked = 0;
+    try {
+      final rows = await db.select(db.products).get();
+      for (final pr in rows) {
+        final path = pr.imagePath;
+        final hasFile = path != null &&
+            path.isNotEmpty &&
+            await File(path).exists();
+        if (hasFile) continue;
+        final b64 = pr.imageBase64;
+        if (b64 != null && b64.isNotEmpty) continue; // hydrate yang urus
+        final name = p.basename(path ?? '');
+        if (name.isEmpty || !name.startsWith('product_')) continue;
+        final restored = await svc.downloadOriginal('products', name);
+        if (restored == null) continue;
+        await (db.update(db.products)..where((t) => t.id.equals(pr.id)))
+            .write(ProductsCompanion(imagePath: Value(restored)));
+        relinked++;
+      }
+    } finally {
+      await db.close();
+    }
+    if (relinked > 0) {
+      debugPrint('[Relink] Product images restored from bucket: $relinked');
+    }
+  } catch (e) {
+    debugPrint('[Relink] error: $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _setupErrorHandlers();
+  // v2.2.57+130 (A1.6): seed NusaConfig.appBuildNumber dari PackageInfo
+  // SEBELUM UI mana pun membaca konstanta. Dulu const int — label "Terpasang"
+  // dan force-update salah banding (konstanta sudah di-bump saat prep rilis
+  // tapi APK terpasang masih build lama).
+  try {
+    await SecureStore.loadInstalledVersion();
+    NusaConfig.seedBuildNumber(await SecureStore.installedBuildNumber());
+  } catch (_) {}
   // DateFormat('...', 'id') dipakai di beberapa layar (mis. Tanggal Mulai
   // Kerja karyawan). Tanpa init ini, format locale id melempar dan layar
   // bisa blank — init sekali di awal (v2.2.35 fix blank tambah karyawan).
@@ -383,6 +493,13 @@ void main() async {
     // UI langsung tampil. Idempoten: hanya yang file-nya hilang diproses.
     try {
       await _hydrateImagesFromDb();
+    } catch (_) {}
+
+    // v2.2.57+130 (A1.2): relink foto produk dari bucket nusa-images untuk
+    // produk yang base64-nya sudah kosong (kompaksi) dan filenya tidak ada —
+    // jalur pemulihan baru karena arsip backup tidak lagi mengemas gambar.
+    try {
+      await _relinkImagesFromCloud();
     } catch (_) {}
 
     // Register background tasks

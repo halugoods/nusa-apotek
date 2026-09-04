@@ -332,7 +332,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
       await svc.updateOrderStatus(
-        orderId: order.id,
+        invoice: order.invoice,
         status: newStatus,
         processedBy: session?.name,
       );
@@ -469,7 +469,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
       await svc.updateOrderStatus(
-        orderId: order.id,
+        invoice: order.invoice,
         status: 'Lunas',
         processedBy: session?.name,
       );
@@ -515,7 +515,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     try {
       final svc = OnlineOrderService(Supabase.instance.client);
       await svc.updateOrderStatus(
-        orderId: order.id,
+        invoice: order.invoice,
         status: 'Direfund',
         processedBy: session?.name,
       );

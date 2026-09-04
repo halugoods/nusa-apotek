@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,7 +9,6 @@ import 'package:nusa_kasir/core/activation/activation_key.dart';
 import 'package:nusa_kasir/core/activation/activation_public_key.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
-import 'package:nusa_kasir/core/services/auto_sync_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
@@ -174,8 +174,11 @@ class ActivationRepository {
       // v2.2.42: verifikasi ISI backup (decrypt + unpack + cek varian) —
       // kalau isinya data varian lain, anggap TIDAK ADA (dialog Data
       // Ditemukan tak muncul → user setup dari nol untuk varian ini).
-      final decrypted = await BackupCrypto.decrypt(bytes, uid);
-      return await _backupBelongsToVariant(decrypted, uid);
+      // v2.2.57+130: decrypt+unpack di background isolate.
+      final files = await decryptAndUnpackInIsolate(bytes, uid);
+      final sqlite = files['nusa_kasir.sqlite'];
+      if (sqlite == null) return false;
+      return await _backupBelongsToVariant(sqlite, uid);
     } catch (_) {
       return false;
     }
@@ -194,8 +197,11 @@ class ActivationRepository {
       final bytes =
           await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return BackupVariantStatus.none;
-      final decrypted = await BackupCrypto.decrypt(bytes, uid);
-      final ok = await _backupBelongsToVariant(decrypted, uid);
+      // v2.2.57+130: decrypt+unpack di background isolate.
+      final files = await decryptAndUnpackInIsolate(bytes, uid);
+      final sqlite = files['nusa_kasir.sqlite'];
+      if (sqlite == null) return BackupVariantStatus.none;
+      final ok = await _backupBelongsToVariant(sqlite, uid);
       return ok
           ? BackupVariantStatus.matches
           : BackupVariantStatus.wrongVariant;
@@ -208,9 +214,9 @@ class ActivationRepository {
   /// (folder yang tercemar / setup keliru) TIDAK boleh di-restore — datanya
   /// bukan punya user untuk varian ini.
   ///
-  /// Input [archive] = bytes hasil `BackupCrypto.decrypt()` (gzip/NUS1 arsip
-  /// berisi nusa_kasir.sqlite + gambar) — di-unpack di sini, jadi aman
-  /// dipanggil dengan hasil decrypt langsung. Heuristik:
+  /// Input [sqliteBytes] = bytes nusa_kasir.sqlite hasil decrypt+unpack
+  /// (v2.2.57+130: pemanggil sudah menjalankan decryptAndUnpackInIsolate,
+  /// fungsi ini tinggal inspeksi). Heuristik:
   /// 1. user_version < 20 → backup sangat lama / rusak → tolak.
   /// 2. Tabel kunci (products, transactions, employees) tidak ada → bukan
   ///    DB NUSA → tolak.
@@ -222,7 +228,7 @@ class ActivationRepository {
   /// 4. metadata.json `variantKey` (ditulis mulai v2.2.42) beda dari varian
   ///    ini → tolak. Backup baru selalu membawa identitas varian di metadata.
   Future<bool> _backupBelongsToVariant(
-    List<int> archive,
+    List<int> sqliteBytes,
     String googleUserId,
   ) async {
     try {
@@ -239,10 +245,7 @@ class ActivationRepository {
       // metaVariant == null → metadata missing, fall through to sqlite check
       // metaVariant == NusaConfig.productId → metadata matches, continue
 
-      // Unpack arsip → sqlite (atau raw sqlite kalau format lama).
-      final files = BackupCrypto.unpackFiles(Uint8List.fromList(archive));
-      final sqlite = files['nusa_kasir.sqlite'];
-      if (sqlite == null) return false;
+      final sqlite = Uint8List.fromList(sqliteBytes);
 
       // Tulis bytes sqlite ke file temp di documents dir (relatif — pola sama
       // dengan _migrateSqliteBytes) lalu baca ringkasan schema.
@@ -438,25 +441,17 @@ class ActivationRepository {
         const JsonEncoder.withIndent('  ').convert(meta).codeUnits,
       );
 
-      // Collect all product, employee, and QRIS image files
-      final dirContents = dir.listSync();
-      for (final entity in dirContents) {
-        if (entity is File) {
-          final name = p.basename(entity.path);
-          if ((name.startsWith('product_') ||
-                  name.startsWith('photo_') ||
-                  name.startsWith('qris_')) &&
-              (name.endsWith('.jpg') ||
-                  name.endsWith('.jpeg') ||
-                  name.endsWith('.png') ||
-                  name.endsWith('.webp'))) {
-            files[name] = await entity.readAsBytes();
-          }
-        }
-      }
+      // v2.2.57+130: file gambar (product_*/photo_*/qris_*) TIDAK lagi ikut
+      // arsip backup. Arsip gemuk (30+ MB) yang dikemas setiap kali autosync
+      // jalan = bom egress + OOM (root cause force close user DB besar).
+      // Gambar redundan: tersimpan di bucket nusa-images saat sync toko
+      // online / syncAll, dan path fisiknya tetap ada di device. Setelah
+      // restore di device baru, _relinkImagesFromCloud() (main.dart) +
+      // syncAll menarik gambar dari bucket.
 
-      final packed = BackupCrypto.packFiles(files);
-      final encrypted = await BackupCrypto.encrypt(packed, uid);
+      // v2.2.57+130: pack + gzip + encrypt SEKALI jalan di background isolate
+      // (encryptInIsolate menerima map file mentah, lalu pack → gzip → AES).
+      final encrypted = await encryptInIsolate(files, uid);
       await client!.storage
           .from('nusa-backups')
           .uploadBinary(
@@ -470,7 +465,7 @@ class ActivationRepository {
 
       await SecureStore.saveLastBackupTime(now);
       debugPrint(
-        '[Backup] Uploaded DB + ${files.length - 2} images (${encrypted.length} bytes encrypted, metadata-in-archive)',
+        '[Backup] Uploaded DB (${encrypted.length} bytes encrypted, metadata-in-archive, no images)',
       );
       return true;
     } catch (e) {
@@ -512,11 +507,8 @@ class ActivationRepository {
           .from('nusa-backups')
           .download('$uid/${NusaConfig.productId}/backup.sqlite.enc');
       if (bytes.isEmpty) return null;
-      final decrypted = await BackupCrypto.decrypt(
-        Uint8List.fromList(bytes),
-        uid,
-      );
-      final packed = BackupCrypto.unpackFiles(Uint8List.fromList(decrypted));
+      // v2.2.57+130: decrypt+unpack di background isolate.
+      final packed = await decryptAndUnpackInIsolate(bytes, uid);
       final meta = packed['metadata.json'];
       if (meta == null) return null;
       return jsonDecode(utf8.decode(meta)) as Map<String, dynamic>;
@@ -556,7 +548,12 @@ class ActivationRepository {
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
-      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // v2.2.57+130: decrypt+unpack SEKALI di background isolate (arsip bisa
+      // puluhan MB — sebelumnya decrypt di main isolate lalu unpack lagi).
+      // _backupBelongsToVariant menerima plaintext sqlite langsung dari map.
+      final packedFiles = await decryptAndUnpackInIsolate(bytes, uid);
+      final decryptedSqlite = packedFiles['nusa_kasir.sqlite'];
+      if (decryptedSqlite == null) return false;
 
       // ── v2.2.57+115 (Area J): tolak backup dari versi LEBIH BARU ──
       // Backup yang dibuat oleh build lebih baru bisa membawa schema/kolom
@@ -581,11 +578,10 @@ class ActivationRepository {
       // v2.2.42: jangan pernah restore backup yang isinya data varian LAIN
       // (folder tercemar — mis. nusa-fnb berisi produk servis). Restore data
       // salah varian = data user hilang dari layar varian ini.
-      if (!await _backupBelongsToVariant(decrypted, uid)) return false;
+      if (!await _backupBelongsToVariant(decryptedSqlite, uid)) return false;
       final dir = await getApplicationDocumentsDirectory();
 
-      // Unpack archive (DB + images) directly — no restart needed
-      final packedFiles = BackupCrypto.unpackFiles(Uint8List.fromList(decrypted));
+      // Write archive entries (DB + images) directly — no restart needed
       var imageCount = 0;
       final rootCanonical = p.normalize(Directory(dir.path).absolute.path);
       for (final entry in packedFiles.entries) {
@@ -673,7 +669,10 @@ class ActivationRepository {
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
-      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      // v2.2.57+130: decrypt+unpack di background isolate; ambil sqlite saja.
+      final files = await decryptAndUnpackInIsolate(bytes, uid);
+      final decryptedSqlite = files['nusa_kasir.sqlite'];
+      if (decryptedSqlite == null) return false;
       // ── v2.2.57+115 (Area J): tolak backup versi lebih baru ──
       final meta = await _readEmbeddedMetadata();
       final backupApp = meta?['appVersion']?.toString() ?? '';
@@ -685,14 +684,14 @@ class ActivationRepository {
       }
       _lastBackupVersionError = null;
       // v2.2.42: jangan pernah stage backup yang isinya data varian LAIN.
-      if (!await _backupBelongsToVariant(decrypted, uid)) return false;
+      if (!await _backupBelongsToVariant(decryptedSqlite, uid)) return false;
       final dir = await getApplicationDocumentsDirectory();
 
       // v2.2.39: migrasi schema eksplisit sebelum di-stage — backup lama
       // (ver 26-30 dari varian lain) butuh kolom/tabel baru; kalau tidak,
       // drift tidak akan migrasi saat koneksi baru dibuka (user_version sudah
       // di-cache) → query produk error → loading abadi (lihat restoreDirect).
-      final migrated = await _migrateSqliteBytes(decrypted, uid);
+      final migrated = await _migrateSqliteBytes(decryptedSqlite, uid);
 
       final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
       await pending.writeAsBytes(migrated, flush: true);
@@ -784,25 +783,24 @@ class ActivationRepository {
 
       debugPrint('[Sync] Cloud backup newer ($cloudTime), downloading...');
 
-      // Download & decrypt
+      // Download & decrypt (v2.2.57+130: di background isolate)
       final bytes = await client!.storage.from('nusa-backups').download(cp);
       if (bytes.isEmpty) return false;
 
-      final decrypted = await BackupCrypto.decrypt(bytes, uid);
+      final packedFiles = await decryptAndUnpackInIsolate(bytes, uid);
+      final decryptedSqlite = packedFiles['nusa_kasir.sqlite'];
+      if (decryptedSqlite == null) return false;
       // v2.2.42: jangan pernah sync backup yang isinya data varian LAIN —
       // kalau cloud tercemar, cukup adopsi timestamp-nya tanpa menimpa lokal.
-      if (!await _backupBelongsToVariant(decrypted, uid)) {
+      if (!await _backupBelongsToVariant(decryptedSqlite, uid)) {
         if (cloudTime != null) await SecureStore.setLastCloudSeen(cloudTime);
         return false;
       }
       final dir = await getApplicationDocumentsDirectory();
 
-      // Unpack archive (DB + images). The DB goes to .pending (applied at
-      // next launch); images are written directly — safe, they're not open
+      // Write archive entries (DB + images). The DB goes to .pending (applied
+      // at next launch); images are written directly — safe, they're not open
       // by any connection.
-      final packedFiles = BackupCrypto.unpackFiles(
-        Uint8List.fromList(decrypted),
-      );
       var imageCount = 0;
       final rootCanonical = p.normalize(Directory(dir.path).absolute.path);
       for (final entry in packedFiles.entries) {
@@ -853,7 +851,10 @@ class ActivationRepository {
       final file = File(p.join(dir.path, 'nusa_kasir.sqlite'));
       if (!await file.exists()) return false;
       final raw = await file.readAsBytes();
-      final encrypted = await BackupCrypto.encrypt(raw, activationKey);
+      // v2.2.57+130: gzip+encrypt di background isolate.
+      final encrypted = await Isolate.run(
+        () => BackupCrypto.encrypt(raw, activationKey),
+      );
       await client!.storage
           .from('nusa-backups')
           .uploadBinary(
@@ -879,7 +880,7 @@ class ActivationRepository {
     try {
       final bytes = await client!.storage.from('nusa-backups').download(path);
       if (bytes.isEmpty) return false;
-      final decrypted = await BackupCrypto.decrypt(bytes, activationKey);
+      final decrypted = await decryptInIsolate(bytes, activationKey);
       final dir = await getApplicationDocumentsDirectory();
       final pending = File(p.join(dir.path, 'nusa_kasir.sqlite.pending'));
       await pending.writeAsBytes(decrypted, flush: true);

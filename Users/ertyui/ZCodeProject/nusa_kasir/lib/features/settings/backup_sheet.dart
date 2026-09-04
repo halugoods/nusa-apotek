@@ -79,7 +79,8 @@ class _BackupSheetBody extends StatelessWidget {
         }
       }
 
-      final packed = BackupCrypto.packFiles(archiveFiles);
+      // v2.2.57+130: pack di background isolate (arsip bisa puluhan MB).
+      final packed = await packInIsolate(archiveFiles);
 
       // Write archive to temp for sharing
       final outDir = await getTemporaryDirectory();
@@ -119,7 +120,7 @@ class _BackupSheetBody extends StatelessWidget {
 
       if (ext == '.nus1') {
         // NUS1 archive: extract SQLite + images
-        final unpacked = BackupCrypto.unpackFiles(bytes);
+        final unpacked = await unpackInIsolate(bytes);
         for (final entry in unpacked.entries) {
           if (entry.key == 'nusa_kasir.sqlite') {
             final dbFile = File(p.join(dir.path, 'nusa_kasir.sqlite'));

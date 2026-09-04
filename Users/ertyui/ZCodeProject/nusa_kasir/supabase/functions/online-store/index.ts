@@ -340,9 +340,14 @@ async function getOrders(supabase: any, params: any) {
 //   "Direfund"                    → []   (terminal)
 //   "Dibatalkan"                  → []
 async function updateOrder(supabase: any, params: any) {
-  const { store_id, order_id, status, processed_by } = params;
-  if (!store_id || !order_id || !status) {
-    return jsonResponse({ error: "store_id, order_id, status required" }, 400);
+  // v2.2.57+130 (A1.5): app kini mengirim `invoice` (kunci bersama app ↔
+  // server). `order_id` tetap diterima untuk kompatibilitas dashboard lama.
+  const { store_id, order_id, invoice, status, processed_by } = params;
+  if (!store_id || (!order_id && !invoice) || !status) {
+    return jsonResponse(
+      { error: "store_id, invoice (atau order_id), status required" },
+      400,
+    );
   }
 
   // Validate state transition
@@ -356,11 +361,12 @@ async function updateOrder(supabase: any, params: any) {
     "Dibatalkan": [],
   };
 
-  // Get current status
+  // Get current status — lookup by invoice bila ada, fallback order_id.
+  const byInvoice = !!invoice;
   const { data: existing } = await supabase
     .from("online_orders")
     .select("status, used_points, customer_phone, store_id")
-    .eq("id", order_id)
+    .eq(byInvoice ? "invoice" : "id", byInvoice ? invoice : order_id)
     .eq("store_id", store_id)
     .single();
 
@@ -391,7 +397,7 @@ async function updateOrder(supabase: any, params: any) {
   const { error } = await supabase
     .from("online_orders")
     .update(updates)
-    .eq("id", order_id)
+    .eq(byInvoice ? "invoice" : "id", byInvoice ? invoice : order_id)
     .eq("store_id", store_id);
 
   if (error) return jsonResponse({ error: error.message }, 500);

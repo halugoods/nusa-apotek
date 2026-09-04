@@ -347,32 +347,50 @@ class OnlineOrderService {
             final file = File(knownImage);
             if (await file.exists()) {
               final filename = p.basename(knownImage);
-              bool uploaded = false;
-              String failReason = 'upload gagal';
-              for (int attempt = 0; attempt < 3; attempt++) {
-                try {
-                  if (attempt > 0) {
-                    debugPrint('[OnlineOrderService] Retry upload ${prod.name} attempt $attempt');
-                    await Future.delayed(Duration(seconds: attempt));
-                  }
-                  final svc = ImageStorageService(supabase, uid);
-                  final r = await svc.uploadImageDetailed('products', knownImage);
-                  uploaded = r.ok;
-                  failReason = r.message;
-                  if (uploaded) break;
-                } catch (e) {
-                  failReason = '$e';
-                }
-              }
-              if (uploaded) {
-                imageUrl = supabase.storage
+              // v2.2.57+130 (A1.7): dedupe upload — skip bila file tidak
+              // berubah (size+mtime sama dengan sync sukses terakhir).
+              // Dulu SETIAP sync manual upload ulang SEMUA gambar (183
+              // produk ≈ 30 MB) → bom egress. Nama file product_{id}_{ts}
+              // unik per simpan, jadi kunci = nama file.
+              final sig = '${await file.length()}:${file.lastModifiedSync().millisecondsSinceEpoch}';
+              final sigKey = 'imgsync_$filename';
+              final prevSig = await SecureStore.read(key: sigKey);
+              String publicUrl = '';
+              if (prevSig == sig) {
+                // Unchanged — pakai URL publik lama tanpa upload ulang.
+                publicUrl = supabase.storage
                     .from('nusa-images')
                     .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
-                imgSuccess++;
+                imageUrl = publicUrl;
               } else {
-                imgFailed++;
-                failedNames.add(prod.name);
-                failReasons[prod.name] = failReason;
+                bool uploaded = false;
+                String failReason = 'upload gagal';
+                for (int attempt = 0; attempt < 3; attempt++) {
+                  try {
+                    if (attempt > 0) {
+                      debugPrint('[OnlineOrderService] Retry upload ${prod.name} attempt $attempt');
+                      await Future.delayed(Duration(seconds: attempt));
+                    }
+                    final svc = ImageStorageService(supabase, uid);
+                    final r = await svc.uploadImageDetailed('products', knownImage);
+                    uploaded = r.ok;
+                    failReason = r.message;
+                    if (uploaded) break;
+                  } catch (e) {
+                    failReason = '$e';
+                  }
+                }
+                if (uploaded) {
+                  await SecureStore.write(key: sigKey, value: sig);
+                  imageUrl = supabase.storage
+                      .from('nusa-images')
+                      .getPublicUrl('$uid/${NusaConfig.productId}/products/$filename');
+                  imgSuccess++;
+                } else {
+                  imgFailed++;
+                  failedNames.add(prod.name);
+                  failReasons[prod.name] = failReason;
+                }
               }
             } else {
               imgFailed++;
@@ -458,8 +476,13 @@ class OnlineOrderService {
     }
   }
 
+  /// v2.2.57+130 (A1.5): update status order via INVOICE, bukan id lokal.
+  /// Dulu kirim `order.id` (autoincrement SQLite lokal) — server pakai
+  /// BIGINT identity sendiri → id tidak pernah cocok → status order web
+  /// tidak pernah ter-update dari app (404 diam-diam). Invoice adalah kunci
+  /// bersama app ↔ server (dibuat server saat submit_order).
   Future<bool> updateOrderStatus({
-    required int orderId,
+    required String invoice,
     required String status,
     String? processedBy,
   }) async {
@@ -472,7 +495,7 @@ class OnlineOrderService {
         'store_id': sid,
         if (userId != null) 'user_id': userId,
         'variant': NusaConfig.productId,
-        'order_id': orderId,
+        'invoice': invoice,
         'status': status,
         'processed_by': processedBy ?? '',
       });

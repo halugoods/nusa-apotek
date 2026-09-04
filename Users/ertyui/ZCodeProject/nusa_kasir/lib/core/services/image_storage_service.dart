@@ -139,6 +139,34 @@ class ImageStorageService {
     }
   }
 
+  /// v2.2.57+130 (A2 relink): download gambar DENGAN NAMA FILE ASLI (tanpa
+  /// prefix `{productId}_`) — dipakai _relinkImagesFromCloud() setelah restore
+  /// untuk memulihkan file yang ditunjuk `imagePath` di DB. Backup baru
+  /// (+130) tidak lagi mengemas file gambar di arsip NUS1, jadi device baru /
+  /// setelah clear-data perlu menarik gambar langsung dari bucket dengan nama
+  /// yang SAMA seperti yang tersimpan di DB (`product_{id}_{ts}.jpg`).
+  /// Remote path tetap tanpa prefix (nama upload = nama asli, lihat
+  /// uploadImageDetailed + syncOnlineProducts yang pakai p.basename).
+  Future<String?> downloadOriginal(
+    String category,
+    String filename,
+  ) async {
+    try {
+      final remotePath = _remotePath(category, filename);
+      final bytes = await _client.storage
+          .from('nusa-images')
+          .download(remotePath);
+      if (bytes.isEmpty) return null;
+      final dir = await getApplicationDocumentsDirectory();
+      final localFile = File(p.join(dir.path, filename));
+      await localFile.writeAsBytes(bytes, flush: true);
+      return localFile.path;
+    } catch (e) {
+      debugPrint('[ImageStorage] DownloadOriginal failed ($filename): $e');
+      return null;
+    }
+  }
+
   /// Delete an image from Supabase and optionally from local disk.
   Future<void> deleteImage(String category, String localPath) async {
     try {

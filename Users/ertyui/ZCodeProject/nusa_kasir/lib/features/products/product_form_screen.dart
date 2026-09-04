@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
@@ -573,18 +573,13 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
       final supplierVal = _hasSupplier && _supplier != null
           ? Value<int?>(_supplier!.id)
           : const Value<int?>(null);
-      // B1 (v2.2.45): simpan image sebagai BASE64 DARI file lokal supaya ikut
-      // backup cloud (kolom image_base64). File lokal (imagePath) TIDAK ikut
-      // backup DB → kalau cuma path, foto hilang setelah restore ke device baru.
-      // Kalau gambar diganti/ada, encode ulang; kalau tidak ada gambar → null.
-      String? imageBase64;
-      if (_imagePath != null && File(_imagePath!).existsSync()) {
-        try {
-          imageBase64 = base64Encode(File(_imagePath!).readAsBytesSync());
-        } catch (_) {
-          imageBase64 = null; // jangan sampai gagal menyimpan karena foto
-        }
-      }
+      // v2.2.57+130 (A1.3): JANGAN simpan foto sebagai BASE64 lagi. Dulu
+      // base64 ikut backup DB-only sehingga foto bertahan setelah restore —
+      // tapi di DB besar (183 produk) kolom ini membengkak 17+ MB: bikin
+      // arsip backup gemuk → OOM saat pack/encrypt + bom egress upload.
+      // Foto sekarang file-first: file lokal + bucket nusa-images, dan
+      // restore memulihkannya via _relinkImagesFromCloud() / syncAll().
+      const imageBase64 = null;
       int? createdId;
       if (_isEdit) {
         await (db.update(
