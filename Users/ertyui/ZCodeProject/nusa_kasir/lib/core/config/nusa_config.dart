@@ -25,7 +25,7 @@ abstract class NusaConfig {
 		static String _applicationId = "com.nusa.fotocopy";
   // v2.2.57+130: Supabase diganti Cloudflare worker (CloudGateway).
   // cloudBaseUrl overridable per-varian via --dart-define (_build_all.py).
-  static const String cloudBaseUrl = String.fromEnvironment('NUSA_CLOUD_BASE', defaultValue: 'https://nusa-cloud.halugoods.workers.dev');
+  static const String cloudBaseUrl = String.fromEnvironment('NUSA_CLOUD_BASE', defaultValue: 'https://nusa-cloud.halugoods-indonesia.workers.dev');
   /// Admin key untuk endpoint admin dari app (sama dgn NUSA_ADMIN_KEY worker).
   /// Dipakai juga sbg fallback auth license-manager (satu key global).
   static const String nusaAdminKey = String.fromEnvironment('NUSA_ADMIN_KEY', defaultValue: '280303');
