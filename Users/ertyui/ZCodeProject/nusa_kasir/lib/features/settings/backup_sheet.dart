@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/backup_crypto.dart';
 import 'package:nusa_kasir/core/utils/secure_storage.dart';
@@ -32,18 +33,14 @@ class _BackupSheetBody extends StatelessWidget {
     return p.join(dir.path, 'nusa_kasir.sqlite');
   }
 
-  /// Check if a file is an image we should include in backup.
-  bool _isImageFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    if (ext != '.jpg' && ext != '.jpeg' && ext != '.png' && ext != '.webp') {
-      return false;
-    }
-    return name.startsWith('product_') ||
-        name.startsWith('photo_') ||
-        name.startsWith('qris_');
-  }
-
-  /// Backup: pack SQLite + all images into a single NUS1 archive.
+  /// Backup: pack SQLite (DB-only, no images) into a single NUS1 archive.
+  ///
+  /// v2.2.57+130 (A1): file gambar (product_*/photo_*/qris_*) TIDAK lagi
+  /// ikut arsip backup lokal. Arsip gemuk (30+ MB) = bom egress + OOM.
+  /// Gambar redundan: tersimpan di bucket nusa-images saat sync toko online
+  /// / syncAll, dan path fisiknya tetap ada di device. Setelah restore di
+  /// device baru, _relinkImagesFromCloud() (main.dart) + syncAll menarik
+  /// gambar dari bucket.
   Future<void> _backup(BuildContext ctx) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -53,7 +50,7 @@ class _BackupSheetBody extends StatelessWidget {
         return;
       }
 
-      // Pack SQLite + images into NUS1 archive
+      // Pack SQLite only (no images) into NUS1 archive
       final archiveFiles = <String, Uint8List>{};
       archiveFiles['nusa_kasir.sqlite'] = await dbFile.readAsBytes();
 
@@ -69,16 +66,6 @@ class _BackupSheetBody extends StatelessWidget {
             Uint8List.fromList(utf8.encode(orderJson));
       }
 
-      final dirContents = dir.listSync();
-      for (final entity in dirContents) {
-        if (entity is File) {
-          final name = p.basename(entity.path);
-          if (_isImageFile(name)) {
-            archiveFiles[name] = await entity.readAsBytes();
-          }
-        }
-      }
-
       // v2.2.57+130: pack di background isolate (arsip bisa puluhan MB).
       final packed = await packInIsolate(archiveFiles);
 
@@ -86,22 +73,26 @@ class _BackupSheetBody extends StatelessWidget {
       final outDir = await getTemporaryDirectory();
       final ts = DateTime.now();
       final name =
-          'nusa_kasir_full_${ts.year}${ts.month.toString().padLeft(2, '0')}${ts.day.toString().padLeft(2, '0')}_${ts.hour.toString().padLeft(2, '0')}${ts.minute.toString().padLeft(2, '0')}.nus1';
+          'nusa_kasir_db_${ts.year}${ts.month.toString().padLeft(2, '0')}${ts.day.toString().padLeft(2, '0')}_${ts.hour.toString().padLeft(2, '0')}${ts.minute.toString().padLeft(2, '0')}.nus1';
       final out = File(p.join(outDir.path, name));
       await out.writeAsBytes(packed, flush: true);
 
       if (ctx.mounted) Navigator.of(ctx).pop();
       await Share.shareXFiles(
         [XFile(out.path)],
-        subject: 'Backup NUSA Kasir (Full)',
-        text: 'File backup lengkap NUSA Kasir — termasuk database + semua gambar',
+        subject: 'Backup NUSA Kasir (Database)',
+        text: 'File backup database NUSA Kasir — gambar tidak ikut (tersimpan di cloud)',
       );
     } catch (e) {
       if (ctx.mounted) TopToast.error(ctx, 'Gagal backup: $e');
     }
   }
 
-  /// Restore: accept both .sqlite (legacy) and .nus1 (archive with images).
+  /// Restore: accept both .sqlite (legacy) and .nus1 (archive).
+  /// v2.2.57+130 (A1): arsip baru DB-only — gambar TIDAK di-restore dari
+  /// file. Setelah DB dipulihkan, _relinkImagesFromCloud() (main.dart) +
+  /// syncAll menarik gambar dari bucket nusa-images. Arsip LAMA (dengan
+  /// gambar) tetap kompatibel — gambar lama di-restore dari arsip.
   Future<void> _restore(BuildContext ctx) async {
     try {
       final result = await FilePicker.pickFiles(
@@ -119,15 +110,12 @@ class _BackupSheetBody extends StatelessWidget {
       await db.close();
 
       if (ext == '.nus1') {
-        // NUS1 archive: extract SQLite + images
+        // NUS1 archive: extract SQLite (+ legacy images if present)
         final unpacked = await unpackInIsolate(bytes);
         for (final entry in unpacked.entries) {
           if (entry.key == 'nusa_kasir.sqlite') {
             final dbFile = File(p.join(dir.path, 'nusa_kasir.sqlite'));
             await dbFile.writeAsBytes(entry.value, flush: true);
-          } else if (_isImageFile(entry.key)) {
-            final imgFile = File(p.join(dir.path, entry.key));
-            await imgFile.writeAsBytes(entry.value, flush: true);
           } else if (entry.key == 'feature_toggles.json') {
             final json = utf8.decode(entry.value);
             await SecureStore.saveFeatureToggles(json);
@@ -140,9 +128,12 @@ class _BackupSheetBody extends StatelessWidget {
             ref.read(menuOrderProvider.notifier).state =
                 (jsonDecode(json) as List<dynamic>).cast<String>();
           }
+          // NOTE: gambar TIDAK di-restore dari arsip — baik arsip baru
+          // (tanpa gambar) maupun arsip lama (dengan gambar). Gambar
+          // dipulihkan dari cloud via _relinkImagesFromCloud() / syncAll.
         }
       } else {
-        // Legacy .sqlite — just copy the DB; images may be lost
+        // Legacy .sqlite — just copy the DB
         final dbFile = File(p.join(dir.path, 'nusa_kasir.sqlite'));
         await dbFile.writeAsBytes(bytes, flush: true);
       }
@@ -167,16 +158,18 @@ class _BackupSheetBody extends StatelessWidget {
               SizedBox(height: 16),
               ListTile(
                 leading: Icon(Icons.backup),
-                title: Text('Backup Lengkap (Database + Gambar)'),
-                subtitle: Text(
-                    'Simpan database & semua gambar dalam satu file .nus1'),
+                title: Text('Backup Database'),
+                subtitle: Text(NusaConfig.cloudEnabled
+                    ? 'Simpan database dalam file .nus1 (gambar tersimpan di cloud)'
+                    : 'Simpan database dalam file .nus1'),
                 onTap: () => _backup(context),
               ),
               ListTile(
                 leading: Icon(Icons.restore),
-                title: Text('Restore Backup'),
-                subtitle: Text(
-                    'Pilih file backup (.nus1 atau .sqlite)'),
+                title: Text('Restore Database'),
+                subtitle: Text(NusaConfig.cloudEnabled
+                    ? 'Pilih file backup (.nus1 atau .sqlite) — gambar diunduh dari cloud'
+                    : 'Pilih file backup (.nus1 atau .sqlite)'),
                 onTap: () => _restore(context),
               ),
               SizedBox(height: 8),

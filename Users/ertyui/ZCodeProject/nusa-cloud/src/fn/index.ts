@@ -7,6 +7,7 @@
  */
 // ── License & aktivasi ───────────────────────────────────────────────
 import './license_manager';
+import './license_cron';
 import './register_activation';
 import './app_ping';
 
@@ -20,3 +21,7 @@ import './tutorial_manager';
 import './ai_assistant';
 import './midtrans';
 import './instanpay';
+
+// ── Export & backup recovery ─────────────────────────────────────────
+import './export_backup';
+import './backup_cron';

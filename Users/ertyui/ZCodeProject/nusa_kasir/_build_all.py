@@ -430,7 +430,7 @@ def setup_logo(variant_id: str):
         print(f"  ✓ ic_launcher.png → mipmap-{density} ({size}×{size})")
 
 
-def update_config(variant: dict):
+def update_config(variant: dict, lite: bool = False):
     """Update all 3 config files for the given variant."""
     v = variant
 
@@ -500,8 +500,13 @@ def update_config(variant: dict):
     return True
 
 
-def build_apk(variant_id: str):
-    """Run Flutter build and reject an output left by an earlier build."""
+def build_apk(variant_id: str, lite: bool = False):
+    """Run Flutter build and reject an output left by an earlier build.
+    
+    Args:
+        variant_id: The variant identifier (e.g. 'fnb', 'laundry').
+        lite: If True, build NUSA Lite (offline-only, CLOUD_ENABLED=false).
+    """
     apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
     try:
         os.remove(apk_src)
@@ -517,9 +522,14 @@ def build_apk(variant_id: str):
     if r.returncode != 0:
         print(f"  ❌ pub get failed:\n{r.stderr[-500:]}")
         return False
-    print("  → Building release APK...")
+    mode = "LITE (offline)" if lite else "FULL (cloud)"
+    print(f"  → Building release APK [{mode}]...")
     started = time.time()
-    r = subprocess.run([FLUTTER, "build", "apk", "--release"], cwd=BASE_DIR,
+    # Build command — add --dart-define=CLOUD_ENABLED=false for Lite builds
+    cmd = [FLUTTER, "build", "apk", "--release"]
+    if lite:
+        cmd.append("--dart-define=CLOUD_ENABLED=false")
+    r = subprocess.run(cmd, cwd=BASE_DIR,
                        capture_output=True, text=True, timeout=2400)
     if r.returncode != 0:
         print(f"  ❌ Build failed:\n{r.stderr[-1000:]}")
@@ -561,27 +571,28 @@ def main():
         for source, backup in backups:
             shutil.copy2(source, backup)
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        for i, variant in enumerate(variants, 1):
+        # Build each variant twice: FULL (cloud) + LITE (offline)
+        total_builds = len(variants) * 2
+        build_idx = 0
+        for variant in variants:
             vid = variant["id"]
-            print(f"\n{'='*50}\n  [{i}/{len(variants)}] {variant['name']} ({vid})\n{'='*50}")
-            # Keep one canonical APK per variant locally. Older versioned artifacts
-            # are stale and must not be carried into the next release upload.
-            apk_dst = os.path.join(OUTPUT_DIR, f"nusa-{vid}.apk")
-            for filename in os.listdir(OUTPUT_DIR):
-                if filename == f"nusa-{vid}.apk" or re.fullmatch(
-                    rf"nusa-{re.escape(vid)}-v[^/]+\.apk", filename
-                ):
-                    try:
-                        os.remove(os.path.join(OUTPUT_DIR, filename))
-                    except FileNotFoundError:
-                        pass
-            if not update_config(variant) or not validate_variant(variant) or not build_apk(vid):
-                failed.append(vid)
-                continue
-            apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
-            shutil.copy2(apk_src, apk_dst)
-            print(f"  APK saved: {apk_dst} ({os.path.getsize(apk_dst) / (1024 * 1024):.1f} MB)")
-            success.append(vid)
+            for lite in [False, True]:
+                build_idx += 1
+                mode = "LITE" if lite else "FULL"
+                print(f"\n{'='*50}\n  [{build_idx}/{total_builds}] {variant['name']} ({vid}) [{mode}]\n{'='*50}")
+                # Output filename: nusa-{vid}.apk (FULL) or nusa-{vid}_lite.apk (LITE)
+                apk_name = f"nusa-{vid}_lite.apk" if lite else f"nusa-{vid}.apk"
+                apk_dst = os.path.join(OUTPUT_DIR, apk_name)
+                # Remove stale APK of same name
+                if os.path.exists(apk_dst):
+                    os.remove(apk_dst)
+                if not update_config(variant) or not validate_variant(variant) or not build_apk(vid, lite=lite):
+                    failed.append(f"{vid}_{mode}")
+                    continue
+                apk_src = os.path.join(BASE_DIR, "build", "app", "outputs", "flutter-apk", "app-release.apk")
+                shutil.copy2(apk_src, apk_dst)
+                print(f"  APK saved: {apk_dst} ({os.path.getsize(apk_dst) / (1024 * 1024):.1f} MB)")
+                success.append(f"{vid}_{mode}")
     finally:
         print("\n  Restoring original config...")
         for source, backup in backups:

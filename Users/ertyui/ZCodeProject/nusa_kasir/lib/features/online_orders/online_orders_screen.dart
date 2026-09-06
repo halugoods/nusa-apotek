@@ -121,6 +121,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
       });
   }
 
+  // v2.2.57+130 (A3): listen via CloudGateway.wsChannel (WS), bukan Supabase.
   void _listenSupabase() async {
     try {
       final svc = OnlineOrderService();
@@ -324,7 +325,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     final repo = OnlineOrderRepository(ref.read(databaseProvider));
     await repo.updateStatus(order.id, newStatus, processedBy: session?.name);
 
-    // Update Supabase
+    // v2.2.57+130 (A3): update via CloudGateway (OnlineOrderService → invoke).
     try {
       final svc = OnlineOrderService();
       await svc.updateOrderStatus(
@@ -461,7 +462,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
       return;
     }
 
-    // Update Supabase (outside transaction — network call)
+    // v2.2.57+130 (A3): update via CloudGateway (outside transaction).
     try {
       final svc = OnlineOrderService();
       await svc.updateOrderStatus(
@@ -470,7 +471,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
         processedBy: session?.name,
       );
     } catch (_) {
-      // Supabase sync failed but local DB is consistent — will sync on next poll
+      // CloudGateway sync failed but local DB consistent — sync on next poll
     }
 
     if (mounted) {
@@ -507,7 +508,7 @@ class _OnlineOrdersScreenState extends ConsumerState<OnlineOrdersScreen>
     final repo = OnlineOrderRepository(ref.read(databaseProvider));
     await repo.updateStatus(order.id, 'Direfund', processedBy: session?.name);
 
-    // Try Supabase
+    // v2.2.57+130 (A3): update via CloudGateway
     try {
       final svc = OnlineOrderService();
       await svc.updateOrderStatus(

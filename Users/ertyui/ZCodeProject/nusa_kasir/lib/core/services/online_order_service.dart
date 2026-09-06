@@ -447,7 +447,7 @@ class OnlineOrderService {
   }
 
   /// ---------------------------------------------------------------
-  /// Orders (live via Supabase Realtime)
+  /// Orders (live via CloudGateway WS — wsChannel('orders:{storeId}'))
   /// ---------------------------------------------------------------
 
   Future<List<Map<String, dynamic>>> getOrders({

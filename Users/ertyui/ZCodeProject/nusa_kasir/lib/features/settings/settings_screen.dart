@@ -326,73 +326,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return id?.toString();
       },
       onBarcode: AuthMethods.barcode(ref),
-      // v2.2.50 (A5): "Lupa PIN?" → Google re-auth + set PIN baru
-      onForgotPin: () async {
-        Navigator.of(context).pop(); // tutup dialog pin
-        if (!mounted) return;
-        final confirm = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text('Lupa PIN?'),
-            content: const Text(
-              'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
-              style: TextStyle(fontSize: 14, height: 1.5),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Batal'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: NusaConfig.activePrimary,
+      // v2.2.50 (A5): "Lupa PIN?" → Google re-auth + set PIN baru (cloud-only)
+      onForgotPin: NusaConfig.cloudEnabled
+          ? () async {
+              Navigator.of(context).pop(); // tutup dialog pin
+              if (!mounted) return;
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                   ),
+                  title: const Text('Lupa PIN?'),
+                  content: const Text(
+                    'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
+                    style: TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Batal'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Lanjut'),
+                    ),
+                  ],
                 ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Lanjut'),
-              ),
-            ],
-          ),
-        );
-        if (confirm != true || !mounted) return;
-        final currentUid = await GoogleAuthService.getStoredUserId();
-        final newUid = await GoogleAuthService().signIn();
-        if (!mounted || newUid == null) return;
-        if (currentUid != null && newUid != currentUid) {
-          if (mounted)
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Akun Google berbeda.')),
-            );
-          return;
-        }
-        await GoogleAuthService.ensureStored(newUid);
-        final db = ref.read(databaseProvider);
-        final repo = AttendanceRepository(db);
-        final emps = await repo.getEmployees();
-        final owner = emps.cast<Employee?>().firstWhere(
-          (e) => e!.role == 'Owner' || e!.role == 'Manager',
-          orElse: () => null,
-        );
-        if (owner == null) return;
-        final newPin = await _promptNewPinDialog();
-        if (!mounted || newPin == null) return;
-        await repo.updateEmployee(
-          id: owner.id,
-          name: owner.name,
-          pin: newPin,
-          role: owner.role,
-          status: owner.status,
-        );
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
-      },
+              );
+              if (confirm != true || !mounted) return;
+              final currentUid = await GoogleAuthService.getStoredUserId();
+              final newUid = await GoogleAuthService().signIn();
+              if (!mounted || newUid == null) return;
+              if (currentUid != null && newUid != currentUid) {
+                if (mounted)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Akun Google berbeda.')),
+                  );
+                return;
+              }
+              await GoogleAuthService.ensureStored(newUid);
+              final db = ref.read(databaseProvider);
+              final repo = AttendanceRepository(db);
+              final emps = await repo.getEmployees();
+              final owner = emps.cast<Employee?>().firstWhere(
+                (e) => e!.role == 'Owner' || e!.role == 'Manager',
+                orElse: () => null,
+              );
+              if (owner == null) return;
+              final newPin = await _promptNewPinDialog();
+              if (!mounted || newPin == null) return;
+              await repo.updateEmployee(
+                id: owner.id,
+                name: owner.name,
+                pin: newPin,
+                role: owner.role,
+                status: owner.status,
+              );
+              if (mounted)
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
+            }
+          : null,
     );
 
     return result?.success == true;
@@ -1717,34 +1719,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               const SizedBox(height: 12),
 
-              // Backup button
-              OutlinedButton.icon(
-                onPressed: _backingUp
-                    ? null
-                    : () {
-                        Navigator.pop(ctx);
-                        _backupNow();
-                      },
-                icon: _backingUp
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_upload_outlined, size: 18),
-                label: Text(_backingUp ? 'Menyimpan...' : 'Backup ke Cloud'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: NusaConfig.activePrimary,
-                  side: BorderSide(color: NusaConfig.activePrimary),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              // Backup button — cloud-only (upload ke Google Drive)
+              if (NusaConfig.cloudEnabled)
+                OutlinedButton.icon(
+                  onPressed: _backingUp
+                      ? null
+                      : () {
+                          Navigator.pop(ctx);
+                          _backupNow();
+                        },
+                  icon: _backingUp
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined, size: 18),
+                  label: Text(_backingUp ? 'Menyimpan...' : 'Backup ke Cloud'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: NusaConfig.activePrimary,
+                    side: BorderSide(color: NusaConfig.activePrimary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Backup cloud tersimpan di akun Google Anda. Gunakan Sinkronisasi Cloud untuk upload/download manual.',
+              if (NusaConfig.cloudEnabled)
+                const SizedBox(height: 6),
+              if (NusaConfig.cloudEnabled)
+                Text(
+                  'Backup cloud tersimpan di akun Google Anda. Gunakan Sinkronisasi Cloud untuk upload/download manual.',
                 style: TextStyle(
                   fontSize: 11,
                   color:
@@ -3825,13 +3830,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   isDark: isDark,
                   onTap: () => showBackupSheet(context, ref),
                 ),
-                _menuTile(
-                  icon: Icons.cloud_sync,
-                  title: 'Sinkronisasi Cloud',
-                  subtitle: 'Upload / Download antar perangkat via Google',
-                  isDark: isDark,
-                  onTap: () => _showCloudSync(),
-                ),
+                if (NusaConfig.cloudEnabled)
+                  _menuTile(
+                    icon: Icons.cloud_sync,
+                    title: 'Sinkronisasi Cloud',
+                    subtitle: 'Upload / Download antar perangkat via Google',
+                    isDark: isDark,
+                    onTap: () => _showCloudSync(),
+                  ),
               ],
             ),
 

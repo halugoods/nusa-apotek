@@ -142,9 +142,9 @@ class CloudGateway {
     return res.bodyBytes;
   }
 
-  Future<List<Map<String, dynamic>>> storageList(String bucket, String path) async {
+  Future<List<Map<String, dynamic>>> storageList(String bucket, String prefix) async {
     final res = await http.get(
-      Uri.parse('$baseUrl/storage/$bucket?prefix=${Uri.encodeComponent(path)}'),
+      Uri.parse('$baseUrl/storage/$bucket?prefix=${Uri.encodeComponent(prefix)}'),
       headers: _headers(),
     ).timeout(const Duration(seconds: 30));
     if (res.statusCode >= 400) return [];
@@ -163,6 +163,10 @@ class CloudGateway {
 
   String storagePublicUrl(String bucket, String path) =>
       bucket == 'nusa-images' ? '$baseUrl/img/$path' : '$baseUrl/storage/$bucket/$path';
+
+  /// v2.2.57+130 (A1): convenience — public URL untuk bucket nusa-images.
+  /// Equivalent: storagePublicUrl('nusa-images', path).
+  String getPublicUrl(String path) => '$baseUrl/img/$path';
 
   // ── Realtime (WebSocket via Durable Object) ────────────────────────
 

@@ -17,6 +17,13 @@ export async function runCrons(env: Env): Promise<void> {
     const { runSheetsArchiveCron } = await import('./fn/sheets_archive_cron');
     await runSheetsArchiveCron(env);
   }
+  // Backup cron: export D1 + .nus1 ke Google Drive (hanya jika env tersedia)
+  try {
+    const { runBackup } = await import('./fn/backup_cron');
+    await runBackup(env as any);
+  } catch (e: any) {
+    console.error(`[Cron] Backup failed: ${e?.message ?? e}`);
+  }
 }
 
 async function licenseCron(env: Env): Promise<void> {

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -8,7 +10,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/activation/activation_key.dart';
+import 'package:nusa_kasir/core/cloud/cloud_gateway.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/google_auth_service.dart';
+import 'package:nusa_kasir/core/services/image_storage_service.dart';
 import 'package:nusa_kasir/core/utils/image_utils.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/product_discount.dart';
@@ -117,6 +122,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
   final _barcodeCtrl = TextEditingController();
   bool _isOnline = false;
   String? _imagePath;
+  /// v2.2.57+130 (A2): simpan id produk baru untuk path R2 upload.
+  int? _createdId;
   /// Fallback base64 untuk render foto saat file lokal hilang.
   String? _imageBase64;
   DateTime? _expiryDate;
@@ -486,11 +493,55 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
     TopToast.success(context, 'Foto diperbarui');
   }
 
+  /// v2.2.57+130 (A2): upload gambar produk ke R2 (CloudGateway.storageUpload).
+  /// Path: nusa-images/{uid}/{productId}/products/{filename}.
+  /// Fallback path "new" untuk produk baru sebelum sync berikutnya (nama file
+  /// product_{id}_{ts} mencerminkan produk unik).
   void _uploadToCloud(String localPath) {
-    // Skip per-image upload — full DB backup via uploadBackupNow()
-    // already includes all product images in the encrypted archive.
-    // Supabase Auth user is always null because the app uses
-    // GoogleSignIn plugin, not Supabase Auth.
+    _uploadToCloudImpl(localPath);
+  }
+
+  Future<void> _uploadToCloudImpl(String localPath) async {
+    try {
+      final uid = await GoogleAuthService.getStoredUserId();
+      if (uid == null) return;
+      // Path: nusa-images/{uid}/{productId}/products/{filename} — match
+      // ImageStorageService._remotePath convention. Untuk produk baru,
+      // _createdId sudah tersedia sebagai field state setelah insert.
+      final pid = _isEdit ? widget.productId : _createdId;
+      if (pid != null) {
+        final filename = localPath.split('/').last;
+        final remotePath = '$uid/${NusaConfig.productId}/products/$filename';
+        // Langsung pakai CloudGateway.storageUpload untuk kontrol path penuh.
+        final file = File(localPath);
+        if (!await file.exists()) return;
+        final bytes = await file.readAsBytes();
+        final ext = filename.contains('.') ? filename.split('.').last.toLowerCase() : '';
+        final mime = switch (ext) {
+              'jpg' || 'jpeg' => 'image/jpeg',
+              'png' => 'image/png',
+              'webp' => 'image/webp',
+              'gif' => 'image/gif',
+              _ => 'application/octet-stream',
+            };
+        final ok = await CloudGateway.shared.storageUpload(
+          'nusa-images',
+          remotePath,
+          bytes,
+          contentType: mime,
+          upsert: true,
+        );
+        if (ok) debugPrint('[ProductForm] R2 upload OK: $remotePath');
+      } else {
+        // Produk belum punya id lokal — fallback via ImageStorageService.
+        final svc = ImageStorageService(uid);
+        final ok = await svc.uploadImage('products', localPath);
+        if (ok) debugPrint('[ProductForm] R2 upload OK (fallback path)');
+      }
+    } catch (e) {
+      // Non-fatal — backup arsip tetap mencakup gambar.
+      debugPrint('[ProductForm] R2 upload gagal (non-fatal): $e');
+    }
   }
 
   String? _serializeVariants() {
@@ -641,6 +692,8 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                 imageBase64: Value(imageBase64),
               ),
             );
+        // v2.2.57+130 (A2): simpan id baru untuk path R2 upload.
+        _createdId = createdId;
       }
       // Satuan dinamis (v2.2.43): simpan konversi per produk bila aktif.
       final recipeRepoForUnits = RecipeRepository(db);

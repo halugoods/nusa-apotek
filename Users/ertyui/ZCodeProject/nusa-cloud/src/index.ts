@@ -36,6 +36,8 @@ export interface Env {
   RESEND_FROM_EMAIL: string;
   GOOGLE_OAUTH_CLIENT_ID: string;
   GOOGLE_OAUTH_CLIENT_SECRET: string;
+  GOOGLE_DRIVE_REFRESH_TOKEN: string;
+  GOOGLE_DRIVE_FOLDER_ID: string;
 }
 
 export default {

@@ -172,9 +172,25 @@ export class Router {
     // ── /api/{fn}/{action} ────────────────────────────────────────────
     if (path.startsWith('/api/') && req.method === 'POST') {
       const seg = path.slice('/api/'.length).split('/').filter(Boolean);
-      if (seg.length < 2) return errorJson('bad path, use /api/{fn}/{action}', 404);
-      const fn = seg[0];
-      const action = seg.slice(1).join('/');
+      const fn = (seg[0] ?? '').replace(/_/g, '-');
+      let action = seg.slice(1).join('/');
+
+      const params = await readBody(req);
+
+      // ── Fallback untuk app lama yang kirim action via body (CloudGateway.invoke
+      //   baca body.action, bukan path). Kalau path action kosong/tidak ketemu,
+      //   coba ambil dari body.action atau tebak dari presence of 'key' di body
+      //   (key ada → activate, tidak → check).
+      if (!action || !this.fns.has(`${fn}/${action}`)) {
+        const bodyAction = (params as any).action as string | undefined;
+        if (bodyAction && this.fns.has(`${fn}/${bodyAction}`)) {
+          action = bodyAction;
+        } else if (params && (params as any).key && this.fns.has(`${fn}/activate`)) {
+          action = 'activate';
+        } else if (this.fns.has(`${fn}/check`)) {
+          action = 'check';
+        }
+      }
 
       // auth/* → modul auth (di-import dinamis agar router tetap tipis)
       if (fn === 'auth') {
@@ -184,10 +200,11 @@ export class Router {
         return (handler as FnHandler)({ env, req, jwt: null, isAdmin: false }, {});
       }
 
+      if (!action) return errorJson('bad path, use /api/{fn}/{action}', 404);
+
       const handler = this.fns.get(`${fn}/${action}`);
       if (!handler) return errorJson(`unknown: ${fn}/${action}`, 404);
 
-      const params = await readBody(req);
       // action juga diisi di params supaya port edge fn yang membaca
       // params.action tetap jalan tanpa perubahan.
       params.action = action;

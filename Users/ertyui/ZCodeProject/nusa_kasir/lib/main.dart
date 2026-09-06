@@ -364,16 +364,15 @@ Future<void> _hydrateImagesFromDb() async {
   }
 }
 
-/// v2.2.57+130 (A1.2): relink foto produk dari bucket setelah restore.
-/// Arsip backup baru (+130) TIDAK mengemas file gambar — DB-only. Di device
-/// baru / setelah clear data, `imagePath` di DB menunjuk file lokal yang
-/// tidak ada, dan base64 sudah kosong (kompaksi A1.3) → tanpa fungsi ini
-/// foto produk hilang. Sini tarik gambar dari `nusa-images/{uid}/
-/// {productId}/products/{basename}` dengan NAMA FILE ASLI (bucket selalu
-/// diisi nama asli; prefix `{productId}_` hanya penamaan cache lokal lama)
-/// lalu tulis ke documents dir + perbarui imagePath di DB. Idempoten: produk
-/// yang filenya sudah ada di-skip. Employees photo tidak direlink (bucket
-/// employees jarang terisi — photo hanya lokal + base64 legacy).
+/// v2.2.57+130 (A1.2): relink foto produk & karyawan dari bucket setelah
+/// restore. Arsip backup baru (+130) TIDAK mengemas file gambar — DB-only.
+/// Di device baru / setelah clear data, `imagePath`/`photoPath` di DB menunjuk
+/// file lokal yang tidak ada, dan base64 sudah kosong (kompaksi A1.3) → tanpa
+/// fungsi ini foto hilang. Sini tarik gambar dari `nusa-images/{uid}/
+/// {productId}/{products|employees}/{basename}` dengan NAMA FILE ASLI (bucket
+/// selalu diisi nama asli; prefix `{productId}_` hanya penamaan cache lokal
+/// lama) lalu tulis ke documents dir + perbarui path di DB. Idempoten: yang
+/// filenya sudah ada di-skip.
 Future<void> _relinkImagesFromCloud() async {
   try {
     final uid = await SecureStore.resolveCanonicalUid();
@@ -381,8 +380,10 @@ Future<void> _relinkImagesFromCloud() async {
 
     final svc = ImageStorageService(uid);
     final db = AppDatabase();
-    var relinked = 0;
+    var relinkedProducts = 0;
+    var relinkedEmployees = 0;
     try {
+      // ── Produk ──
       final rows = await db.select(db.products).get();
       for (final pr in rows) {
         final path = pr.imagePath;
@@ -398,13 +399,33 @@ Future<void> _relinkImagesFromCloud() async {
         if (restored == null) continue;
         await (db.update(db.products)..where((t) => t.id.equals(pr.id)))
             .write(ProductsCompanion(imagePath: Value(restored)));
-        relinked++;
+        relinkedProducts++;
+      }
+
+      // ── Karyawan ──
+      final emps = await db.select(db.employees).get();
+      for (final em in emps) {
+        final path = em.photoPath;
+        final hasFile = path != null &&
+            path.isNotEmpty &&
+            await File(path).exists();
+        if (hasFile) continue;
+        final b64 = em.photoBase64;
+        if (b64 != null && b64.isNotEmpty) continue; // hydrate yang urus
+        final name = p.basename(path ?? '');
+        if (name.isEmpty || !name.startsWith('photo_')) continue;
+        final restored = await svc.downloadOriginal('employees', name);
+        if (restored == null) continue;
+        await (db.update(db.employees)..where((t) => t.id.equals(em.id)))
+            .write(EmployeesCompanion(photoPath: Value(restored)));
+        relinkedEmployees++;
       }
     } finally {
       await db.close();
     }
-    if (relinked > 0) {
-      debugPrint('[Relink] Product images restored from bucket: $relinked');
+    if (relinkedProducts > 0 || relinkedEmployees > 0) {
+      debugPrint('[Relink] Restored from bucket: '
+          'products=$relinkedProducts, employees=$relinkedEmployees');
     }
   } catch (e) {
     debugPrint('[Relink] error: $e');

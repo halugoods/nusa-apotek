@@ -20,6 +20,9 @@ class RealtimeBackupNotifier {
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
+  bool _shouldRun = false;
+  Timer? _reconnectTimer;
+  static const _reconnectDelay = Duration(seconds: 5);
 
   /// Channel name shared by all devices signed into the same account.
   /// Mirrors CallService pattern.
@@ -33,14 +36,26 @@ class RealtimeBackupNotifier {
   }
 
   Future<void> start() async {
-    if (_channel != null) return;
+    if (_shouldRun) return;
+    _shouldRun = true;
+    _connect();
+  }
+
+  /// v2.2.57+130 (A3): auto-reconnect saat koneksi WS terputus (network flap,
+  /// worker restart). Pola: retry dengan delay tetap; berhenti saat stop().
+  Future<void> _connect() async {
+    if (!_shouldRun) return;
     final name = await _channelName();
     if (name == null) return;
     try {
       final ws = CloudGateway.shared.wsChannel(name);
-      if (ws == null) return;
+      if (ws == null) {
+        _scheduleReconnect();
+        return;
+      }
       // Tunggu handshake selesai sebelum listen (ws.ready).
       await ws.ready.timeout(const Duration(seconds: 8));
+      _channel = ws;
       _sub = ws.stream.listen((message) {
         try {
           // Pesan gateway: JSON string {"event": ..., "payload": {...}}.
@@ -62,14 +77,34 @@ class RealtimeBackupNotifier {
           // Trigger immediate pull on the receiving device.
           RealtimeSyncService.I.onRemoteBackupUpdated();
         } catch (_) {}
-      }, onError: (_) {}, cancelOnError: false);
-      _channel = ws;
+      }, onError: (_) {
+        // Koneksi error — reconnect otomatis.
+        _scheduleReconnect();
+      }, onDone: () {
+        // Channel ditutup (server restart / network) — reconnect.
+        _scheduleReconnect();
+      }, cancelOnError: false);
     } catch (_) {
       _channel = null;
+      _scheduleReconnect();
     }
   }
 
+  void _scheduleReconnect() {
+    if (!_shouldRun) return;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(_reconnectDelay, () {
+      if (!_shouldRun) return;
+      _sub = null;
+      _channel = null;
+      _connect();
+    });
+  }
+
   Future<void> stop() async {
+    _shouldRun = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     try {
       await _sub?.cancel();
     } catch (_) {}

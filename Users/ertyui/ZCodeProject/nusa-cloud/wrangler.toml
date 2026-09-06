@@ -17,8 +17,7 @@ new_sqlite_classes = ["RoomDO"]
 [[d1_databases]]
 binding = "DB"
 database_name = "nusa-db"
-# isi setelah: wrangler d1 create nusa-db
-database_id = "REPLACE_ME"
+database_id = "d09aa97a-fb82-4556-ba6c-88b04c4cfb67"
 
 # ── R2 buckets ──────────────────────────────────────────────────────
 [[r2_buckets]]

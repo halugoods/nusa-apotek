@@ -1583,67 +1583,68 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         return id?.toString();
       },
       onBarcode: AuthMethods.barcode(ref, expectedEmployeeId: emp.id),
-      // v2.2.50 (A5): "Lupa PIN?" → Google re-auth + set PIN baru
-      onForgotPin: () async {
-        Navigator.of(context).pop(); // tutup dialog pin
-        if (!mounted) return;
-        final confirm = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Lupa PIN?'),
-            content: const Text(
-              'Anda harus login ulang dengan akun Google pemilik toko '
-              'untuk mengatur PIN baru. Lanjutkan?',
-              style: TextStyle(fontSize: 14, height: 1.5),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Batal'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: NusaConfig.activePrimary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      // v2.2.50 (A5): "Lupa PIN?" → Google re-auth + set PIN baru (cloud-only)
+      onForgotPin: NusaConfig.cloudEnabled
+          ? () async {
+              Navigator.of(context).pop(); // tutup dialog pin
+              if (!mounted) return;
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: const Text('Lupa PIN?'),
+                  content: const Text(
+                    'Anda harus login ulang dengan akun Google pemilik toko '
+                    'untuk mengatur PIN baru. Lanjutkan?',
+                    style: TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Batal'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: NusaConfig.activePrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Lanjut'),
+                    ),
+                  ],
                 ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Lanjut'),
-              ),
-            ],
-          ),
-        );
-        if (confirm != true || !mounted) return;
-        final currentUid = await GoogleAuthService.getStoredUserId();
-        final newUid = await GoogleAuthService().signIn();
-        if (!mounted) return;
-        if (newUid == null) return;
-        if (currentUid != null && newUid != currentUid) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Akun Google berbeda. Gunakan akun pemilik toko.')),
-            );
-          }
-          return;
-        }
-        await GoogleAuthService.ensureStored(newUid);
-        final db = ref.read(databaseProvider);
-        final repo = AttendanceRepository(db);
-        final emps = await repo.getEmployees();
-        final owner = emps.cast<Employee?>().firstWhere(
-              (e) => e!.role == 'Owner' || e!.role == 'Manager',
-              orElse: () => null,
-            );
-        if (owner == null) return;
-        final newPin = await _promptNewPinDialog();
-        if (!mounted || newPin == null) return;
-        await repo.updateEmployee(id: owner.id, name: owner.name, pin: newPin, role: owner.role, status: owner.status);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PIN berhasil diubah')),
-          );
-        }
-      },
+              );
+              if (confirm != true || !mounted) return;
+              final currentUid = await GoogleAuthService.getStoredUserId();
+              final newUid = await GoogleAuthService().signIn();
+              if (!mounted || newUid == null) return;
+              if (currentUid != null && newUid != currentUid) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Akun Google berbeda. Gunakan akun pemilik toko.')),
+                  );
+                }
+                return;
+              }
+              await GoogleAuthService.ensureStored(newUid);
+              final db = ref.read(databaseProvider);
+              final repo = AttendanceRepository(db);
+              final emps = await repo.getEmployees();
+              final owner = emps.cast<Employee?>().firstWhere(
+                    (e) => e!.role == 'Owner' || e!.role == 'Manager',
+                    orElse: () => null,
+                  );
+              if (owner == null) return;
+              final newPin = await _promptNewPinDialog();
+              if (!mounted || newPin == null) return;
+              await repo.updateEmployee(id: owner.id, name: owner.name, pin: newPin, role: owner.role, status: owner.status);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PIN berhasil diubah')),
+                );
+              }
+            }
+          : null,
     );
 
     if (result == null || !result.success) {
@@ -1993,42 +1994,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   },
                                 ),
                               const SizedBox(width: 8),
-                              // Tombol PANGGIL — selalu ada. Device yang login
-                              // sebagai karyawan tsb akan berbunyi (ringtone).
-                              _contactActionBtn(
-                                ctx,
-                                isDark: isDark,
-                                icon: Icons.notifications_active_rounded,
-                                label: 'Panggil',
-                                color: NusaConfig.info,
-                                keepOpen: true,
-                                onTap: () async {
-                                  try {
-                                    final session = ref.read(
-                                      employeeSessionProvider,
-                                    );
-                                    final ok = await CallService.I.call(
-                                      employeeId: e.id,
-                                      employeeName: e.name,
-                                      by: session?.name ?? 'Owner',
-                                    );
-                                    if (!ok) throw Exception();
-                                    if (ctx.mounted) {
-                                      TopToast.success(
-                                        ctx,
-                                        'Memanggil ${e.name}…',
+                              // Tombol PANGGIL — cloud-only (butuh internet untuk
+                              // broadcast ke device karyawan). Hidden di Lite.
+                              if (NusaConfig.cloudEnabled)
+                                _contactActionBtn(
+                                  ctx,
+                                  isDark: isDark,
+                                  icon: Icons.notifications_active_rounded,
+                                  label: 'Panggil',
+                                  color: NusaConfig.info,
+                                  keepOpen: true,
+                                  onTap: () async {
+                                    try {
+                                      final session = ref.read(
+                                        employeeSessionProvider,
                                       );
-                                    }
-                                  } catch (_) {
-                                    if (ctx.mounted) {
-                                      TopToast.error(
-                                        ctx,
-                                        'Gagal memanggil (butuh internet)',
+                                      final ok = await CallService.I.call(
+                                        employeeId: e.id,
+                                        employeeName: e.name,
+                                        by: session?.name ?? 'Owner',
                                       );
+                                      if (!ok) throw Exception();
+                                      if (ctx.mounted) {
+                                        TopToast.success(
+                                          ctx,
+                                          'Memanggil ${e.name}…',
+                                        );
+                                      }
+                                    } catch (_) {
+                                      if (ctx.mounted) {
+                                        TopToast.error(
+                                          ctx,
+                                          'Gagal memanggil (butuh internet)',
+                                        );
+                                      }
                                     }
-                                  }
-                                },
-                              ),
+                                  },
+                                ),
                             ],
                           ),
                         );
@@ -2120,6 +2122,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Build menu items — only show menus this variant + role can access
     final featureToggles = ref.watch(featureTogglesProvider);
     final menuOrder = ref.watch(menuOrderProvider);
+    // Cloud-dependent menus — hidden in NUSA Lite (offline-only) builds.
+    const _cloudMenus = {'ai_chat', 'spreadsheet', 'pesanan_online'};
     final filteredItems = _items
         .where((item) {
           final id = item['id'] as String;
@@ -2127,6 +2131,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           if (featureToggles.containsKey(id)) return featureToggles[id]!;
           // Hide domain-inappropriate menus for this variant
           if (NusaConfig.hiddenMenus.contains(id)) return false;
+          // Hide cloud-dependent menus in Lite (offline-only) builds
+          if (_cloudMenus.contains(id) && !NusaConfig.cloudEnabled) return false;
           // Hide menus the employee's role cannot access (no lock gimmick)
           if (isOwnerOnly(id) && role != 'Owner' && role != 'Manager')
             return false;
@@ -2291,48 +2297,50 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                     ref,
                                     expectedEmployeeId: owner.id,
                                   ),
-                                  // v2.2.50 (A5): "Lupa PIN?"
-                                  onForgotPin: () async {
-                                    Navigator.of(context).pop();
-                                    if (!mounted) return;
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                        title: const Text('Lupa PIN?'),
-                                        content: const Text(
-                                          'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
-                                          style: TextStyle(fontSize: 14, height: 1.5),
-                                        ),
-                                        actions: [
-                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-                                          FilledButton(
-                                            style: FilledButton.styleFrom(backgroundColor: NusaConfig.activePrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                                            onPressed: () => Navigator.pop(ctx, true),
-                                            child: const Text('Lanjut'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm != true || !mounted) return;
-                                    final currentUid = await GoogleAuthService.getStoredUserId();
-                                    final newUid = await GoogleAuthService().signIn();
-                                    if (!mounted || newUid == null) return;
-                                    if (currentUid != null && newUid != currentUid) {
-                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akun Google berbeda.')));
-                                      return;
-                                    }
-                                    await GoogleAuthService.ensureStored(newUid);
-                                    final db = ref.read(databaseProvider);
-                                    final repo = AttendanceRepository(db);
-                                    final emps = await repo.getEmployees();
-                                    final o = emps.cast<Employee?>().firstWhere((Employee? e) => e!.role == 'Owner' || e.role == 'Manager', orElse: () => null);
-                                    if (o == null) return;
-                                    final newPin = await _promptNewPinDialog();
-                                    if (!mounted || newPin == null) return;
-                                    await repo.updateEmployee(id: o.id, name: o.name, pin: newPin, role: o.role, status: o.status);
-                                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
-                                  },
+                                  // v2.2.50 (A5): "Lupa PIN?" — cloud-only (needs Google re-auth)
+                                  onForgotPin: NusaConfig.cloudEnabled
+                                      ? () async {
+                                          Navigator.of(context).pop();
+                                          if (!mounted) return;
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                              title: const Text('Lupa PIN?'),
+                                              content: const Text(
+                                                'Login ulang dengan akun Google pemilik toko untuk mengatur PIN baru. Lanjutkan?',
+                                                style: TextStyle(fontSize: 14, height: 1.5),
+                                              ),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+                                                FilledButton(
+                                                  style: FilledButton.styleFrom(backgroundColor: NusaConfig.activePrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                                                  onPressed: () => Navigator.pop(ctx, true),
+                                                  child: const Text('Lanjut'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm != true || !mounted) return;
+                                          final currentUid = await GoogleAuthService.getStoredUserId();
+                                          final newUid = await GoogleAuthService().signIn();
+                                          if (!mounted || newUid == null) return;
+                                          if (currentUid != null && newUid != currentUid) {
+                                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Akun Google berbeda.')));
+                                            return;
+                                          }
+                                          await GoogleAuthService.ensureStored(newUid);
+                                          final db = ref.read(databaseProvider);
+                                          final repo = AttendanceRepository(db);
+                                          final emps = await repo.getEmployees();
+                                          final o = emps.cast<Employee?>().firstWhere((Employee? e) => e!.role == 'Owner' || e.role == 'Manager', orElse: () => null);
+                                          if (o == null) return;
+                                          final newPin = await _promptNewPinDialog();
+                                          if (!mounted || newPin == null) return;
+                                          await repo.updateEmployee(id: o.id, name: o.name, pin: newPin, role: o.role, status: o.status);
+                                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN berhasil diubah')));
+                                        }
+                                      : null,
                                 );
                                 return result?.success ?? false;
                               }

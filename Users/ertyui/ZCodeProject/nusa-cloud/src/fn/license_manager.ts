@@ -636,6 +636,59 @@ function adminWrap(h: H): H {
   };
 }
 
+// ─── Auto-claim: user login Google → lisensi auto-bind tanpa input key ─
+// User-facing (tidak butuh admin key). Flow:
+//   1. App Google Sign-in → kirim {email, googleUserId, product}
+//   2. Cari lisensi Generated yang email-nya cocok
+//   3. Bind googleUserId + set Active + insert activation
+//   4. Return {ok, license_key, message}
+export async function handleAutoClaim(ctx: FnContext, params: Params): Promise<Response> {
+  const email = String(params.email ?? '').trim().toLowerCase();
+  const googleUserId = String(params.googleUserId ?? '').trim();
+  const product = String(params.product ?? 'nusa-kasir').trim();
+  if (!email) return errorJson('email required', 400);
+  if (!googleUserId) return errorJson('googleUserId required', 400);
+
+  // Cari lisensi Generated yang email-nya cocok
+  const lic = await ctx.env.DB.prepare(
+    "SELECT id, status, google_user_id, product FROM licenses WHERE LOWER(owner_email) = ? AND status = 'Generated' ORDER BY created_at ASC LIMIT 1"
+  ).bind(email).first<Row>();
+
+  if (!lic) return errorJson('no_license', 404);
+
+  // Bind googleUserId + set Active
+  const updates: string[] = ["status = 'Active'"];
+  const binds: unknown[] = [];
+  if (!lic.google_user_id) {
+    updates.push('google_user_id = ?');
+    binds.push(googleUserId);
+  }
+  if (lic.product !== product) {
+    updates.push('product = ?');
+    binds.push(product);
+  }
+  try {
+    await ctx.env.DB.prepare(`UPDATE licenses SET ${updates.join(', ')} WHERE id = ?`)
+      .bind(...binds, lic.id).run();
+  } catch (e: any) {
+    return errorJson(e?.message ?? String(e), 500);
+  }
+
+  // Insert activation
+  try {
+    await ctx.env.DB.prepare(
+      'INSERT INTO activations (id, license_id, google_user_id, device_id) VALUES (?, ?, ?, ?)'
+    ).bind(uid(), lic.id, googleUserId, 'android-' + googleUserId.slice(0, 12)).run();
+  } catch (e: any) {
+    if (!String(e?.message ?? '').includes('UNIQUE')) {
+      // UNIQUE violation = sudah pernah aktivasi, OK
+      return errorJson(e?.message ?? String(e), 500);
+    }
+  }
+
+  return json({ ok: true, license_key: lic.key, product, status: 'Active' });
+}
+
 Router.registerAll('license-manager', {
   generate: adminWrap(handleGenerate),
   add: adminWrap(handleAdd),
@@ -647,4 +700,5 @@ Router.registerAll('license-manager', {
   stats: adminWrap(handleStats),
   get_min_versions: adminWrap(handleGetMinVersions),
   set_min_version: adminWrap(handleSetMinVersion),
+  auto_claim: handleAutoClaim,
 });

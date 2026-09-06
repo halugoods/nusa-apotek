@@ -1226,76 +1226,79 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                           fontSize: 14, fontWeight: FontWeight.w600)),
                 ),
 
-                const SizedBox(height: 14),
+                // ── Google Sign-In — cloud-only (hidden in NUSA Lite) ──
+                if (NusaConfig.cloudEnabled) ...[
+                  const SizedBox(height: 14),
 
-                // ── Divider "atau" ──
-                Row(children: [
-                  Expanded(
-                      child: Divider(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('atau',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary)),
-                  ),
-                  Expanded(
-                      child: Divider(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
-                ]),
-
-                const SizedBox(height: 14),
-
-                // ── Card: masuk dengan Google ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: OutlinedButton.icon(
-                      onPressed: _startGoogleSignIn,
-                      icon: Image.asset(
-                        'assets/icons/google_logo.png',
-                        width: 20,
-                        height: 20,
-                        errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
-                            size: 24, color: Color(0xFF4285F4)),
-                      ),
-                      label: const Text('Masuk dengan Google',
+                  // ── Divider "atau" ──
+                  Row(children: [
+                    Expanded(
+                        child: Divider(
+                            color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('atau',
                           style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                        backgroundColor: isDark
-                            ? NusaConfig.darkSurface
-                            : Colors.white,
-                        elevation: 3,
-                        shadowColor: Colors.black.withValues(alpha: 0.20),
-                        side: BorderSide(
-                            color: isDark
-                                ? NusaConfig.darkBorder
-                                : Color(0xFFDADCE0)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                              fontSize: 12,
+                              color: isDark
+                                  ? NusaConfig.darkTextTertiary
+                                  : NusaConfig.textTertiary)),
+                    ),
+                    Expanded(
+                        child: Divider(
+                            color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                  ]),
+
+                  const SizedBox(height: 14),
+
+                  // ── Card: masuk dengan Google ──
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: OutlinedButton.icon(
+                        onPressed: _startGoogleSignIn,
+                        icon: Image.asset(
+                          'assets/icons/google_logo.png',
+                          width: 20,
+                          height: 20,
+                          errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
+                              size: 24, color: Color(0xFF4285F4)),
+                        ),
+                        label: const Text('Masuk dengan Google',
+                            style: TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                          backgroundColor: isDark
+                              ? NusaConfig.darkSurface
+                              : Colors.white,
+                          elevation: 3,
+                          shadowColor: Colors.black.withValues(alpha: 0.20),
+                          side: BorderSide(
+                              color: isDark
+                                  ? NusaConfig.darkBorder
+                                  : Color(0xFFDADCE0)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 32),
+                  const SizedBox(height: 32),
+                ],
                 Text(
                     'v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
                     style: TextStyle(
@@ -1478,76 +1481,79 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 14),
+                // ── Google Sign-Up — cloud-only (hidden in NUSA Lite) ──
+                if (NusaConfig.cloudEnabled) ...[
+                  const SizedBox(height: 14),
 
-                // ── Divider "atau" ──
-                Row(children: [
-                  Expanded(
-                      child: Divider(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('atau',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary)),
-                  ),
-                  Expanded(
-                      child: Divider(
-                          color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
-                ]),
-
-                const SizedBox(height: 14),
-
-                // ── Card: daftar dengan Google ──
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: OutlinedButton.icon(
-                      onPressed: _startGoogleSignIn,
-                      icon: Image.asset(
-                        'assets/icons/google_logo.png',
-                        width: 20,
-                        height: 20,
-                        errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
-                            size: 24, color: Color(0xFF4285F4)),
-                      ),
-                      label: const Text('Daftar dengan Google',
+                  // ── Divider "atau" ──
+                  Row(children: [
+                    Expanded(
+                        child: Divider(
+                            color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('atau',
                           style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
-                        backgroundColor: isDark
-                            ? NusaConfig.darkSurface
-                            : Colors.white,
-                        elevation: 3,
-                        shadowColor: Colors.black.withValues(alpha: 0.20),
-                        side: BorderSide(
-                            color: isDark
-                                ? NusaConfig.darkBorder
-                                : Color(0xFFDADCE0)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                              fontSize: 12,
+                              color: isDark
+                                  ? NusaConfig.darkTextTertiary
+                                  : NusaConfig.textTertiary)),
+                    ),
+                    Expanded(
+                        child: Divider(
+                            color: isDark ? NusaConfig.darkBorder : Color(0xFFE5E7EB))),
+                  ]),
+
+                  const SizedBox(height: 14),
+
+                  // ── Card: daftar dengan Google ──
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: OutlinedButton.icon(
+                        onPressed: _startGoogleSignIn,
+                        icon: Image.asset(
+                          'assets/icons/google_logo.png',
+                          width: 20,
+                          height: 20,
+                          errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata,
+                              size: 24, color: Color(0xFF4285F4)),
+                        ),
+                        label: const Text('Daftar dengan Google',
+                            style: TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717),
+                          backgroundColor: isDark
+                              ? NusaConfig.darkSurface
+                              : Colors.white,
+                          elevation: 3,
+                          shadowColor: Colors.black.withValues(alpha: 0.20),
+                          side: BorderSide(
+                              color: isDark
+                                  ? NusaConfig.darkBorder
+                                  : Color(0xFFDADCE0)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
                 TextButton(
                   onPressed: () => setState(() {
                     _screen = 'auth';
@@ -1828,20 +1834,23 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                           ),
                         ),
                       ),
-                      SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _switchGoogleAccount,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                            side: BorderSide(color: Color(0xFFEDEDEF)),
-                            padding: EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      // Ganti Akun Google — cloud-only (hidden in NUSA Lite)
+                      if (NusaConfig.cloudEnabled) ...[
+                        SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _switchGoogleAccount,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                              side: BorderSide(color: Color(0xFFEDEDEF)),
+                              padding: EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: Text('Ganti Akun Google'),
                           ),
-                          child: Text('Ganti Akun Google'),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -2066,16 +2075,18 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                 ),
 
-                SizedBox(height: 16),
-                TextButton(
-                  onPressed: _startGoogleSignIn,
-                  child: Text('Ganti akun Google',
-                      style: TextStyle(
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                          fontSize: 13)),
-                ),
+                if (NusaConfig.cloudEnabled) ...[
+                  SizedBox(height: 16),
+                  TextButton(
+                    onPressed: _startGoogleSignIn,
+                    child: Text('Ganti akun Google',
+                        style: TextStyle(
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                            fontSize: 13)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2359,11 +2370,14 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                 ),
               ),
-              SizedBox(height: 8),
-              TextButton(
-                onPressed: _startGoogleSignIn,
-                child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
-              ),
+              // Ganti akun Google — cloud-only (hidden in NUSA Lite)
+              if (NusaConfig.cloudEnabled) ...[
+                SizedBox(height: 8),
+                TextButton(
+                  onPressed: _startGoogleSignIn,
+                  child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
+                ),
+              ],
               if (NusaConfig.isDevBuild)
                 TextButton.icon(
                   onPressed: () => context.go('/variant-picker'),
@@ -2598,10 +2612,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 child: Text('Belum punya key aktivasi?',
                   style: TextStyle(fontSize: 13, color: Color(0xFF2D79F3), fontWeight: FontWeight.w500)),
               ),
-              TextButton(
-                onPressed: _startGoogleSignIn,
-                child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
-              ),
+              // Ganti akun Google — cloud-only (hidden in NUSA Lite)
+              if (NusaConfig.cloudEnabled)
+                TextButton(
+                  onPressed: _startGoogleSignIn,
+                  child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
+                ),
             ],
           ),
         ),

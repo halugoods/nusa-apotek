@@ -422,27 +422,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                       ),
 
-                      // ── Lupa PIN? (v2.2.43) ──
-                      // User yang data cloud-nya ter-restore dengan PIN beda
-                      // (atau lupa PIN) TIDAK boleh stuck selamanya. Verifikasi
-                      // Google re-auth → pemilik akun → set PIN baru.
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: TextButton(
-                          onPressed: _forgotPin,
-                          style: TextButton.styleFrom(
-                            foregroundColor: NusaConfig.activePrimary,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          child: const Text(
-                            'Lupa PIN?',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                      // ── Lupa PIN? (v2.2.43) — cloud-only (needs Google re-auth)
+                      if (NusaConfig.cloudEnabled)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: TextButton(
+                            onPressed: _forgotPin,
+                            style: TextButton.styleFrom(
+                              foregroundColor: NusaConfig.activePrimary,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            child: const Text(
+                              'Lupa PIN?',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
-                      ),
 
                       // ── Remember checkbox (rounded) ──
                       Padding(

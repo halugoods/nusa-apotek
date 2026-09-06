@@ -1,7 +1,7 @@
-# NUSA Cloud — schema D1 (SQLite). Jalankan via:
-#   wrangler d1 execute nusa-db --file=schema.sql --remote
-# Port dari supabase/migrations (nusa_kasir + nusa-online), TANPA RLS —
-# otorisasi di layer worker. Timestamp = TEXT ISO-8601 (SQLite idiom).
+-- NUSA Cloud — schema D1 (SQLite). Jalankan via:
+--   wrangler d1 execute nusa-db --file=schema.sql --remote
+-- Port dari supabase/migrations (nusa_kasir + nusa-online), TANPA RLS —
+-- otorisasi di layer worker. Timestamp = TEXT ISO-8601 (SQLite idiom).
 
 -- ── licenses ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS licenses (
