@@ -42,10 +42,15 @@ class PinKeypad extends StatefulWidget {
   final Future<String?> Function()? onNfc;
   final Future<String?> Function(String code)? onBarcode;
 
+  final String? title;
+  final String? subtitle;
+
   PinKeypad({
     super.key,
     this.length = 6,
     this.error,
+    this.title,
+    this.subtitle,
     this.showFingerprint = false,
     this.showNfc = false,
     this.showBarcode = false,
@@ -169,13 +174,7 @@ class PinKeypadState extends State<PinKeypad>
   void _onDigit(String d) {
     if (_digits.length >= widget.length) return;
     setState(() => _digits += d);
-    // Defer parent notification to AFTER the tap gesture completes.
-    // Calling the parent's setState (e.g. login error clear) synchronously
-    // here rebuilds the whole screen mid-tap, which can swallow the InkWell
-    // tap on slow devices — the reported "kadang ketekan kadang engga".
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onChanged?.call(_digits);
-    });
+    widget.onChanged?.call(_digits);
     if (_digits.length == widget.length) {
       widget.onComplete?.call(_digits);
     }
@@ -184,9 +183,7 @@ class PinKeypadState extends State<PinKeypad>
   void _onDelete() {
     if (_digits.isEmpty) return;
     setState(() => _digits = _digits.substring(0, _digits.length - 1));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onChanged?.call(_digits);
-    });
+    widget.onChanged?.call(_digits);
   }
 
   void _triggerShake() {
@@ -306,6 +303,31 @@ class PinKeypadState extends State<PinKeypad>
         child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (widget.title != null) ...[
+            Text(
+              widget.title!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          if (widget.subtitle != null) ...[
+            Text(
+              widget.subtitle!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
           // ── Dot indicators + error (shake only this block) ──
           // The keypad grid stays OUTSIDE the animation: on slow devices the
           // rebuild-per-frame of an animated parent made the buttons swallow
@@ -520,11 +542,11 @@ class _SpringKeyButtonState extends State<_SpringKeyButton> {
         onTapCancel: () => setState(() => _pressed = false),
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _pressed ? 0.91 : 1.0,
-          duration: const Duration(milliseconds: 100),
+          scale: _pressed ? 0.94 : 1.0,
+          duration: const Duration(milliseconds: 50),
           curve: Curves.easeOutCubic,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
+            duration: const Duration(milliseconds: 60),
             height: 62,
             alignment: Alignment.center,
             decoration: BoxDecoration(

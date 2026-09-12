@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -91,16 +92,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return false;
   }
 
+  StreamSubscription? _deltaSub;
+
   @override
   void initState() {
     super.initState();
     _loadEmployees();
-    // v2.2.57+136: refresh saat delta sync mengubah DB — dulu layar ini
-    // load-once via FutureBuilder, transaksi dari device lain tak pernah
-    // muncul sampai user buka-tutup layar manual.
+    // v2.2.57+141: refresh saat delta sync mengubah DB — bump _refreshKey
+    // supaya FutureBuilder transactionRepoProvider mengeksekusi fetch ulang.
     try {
-      DeltaSyncService.I.stream.listen((_) {
-        if (mounted) setState(() {});
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (mounted) setState(() => _refreshKey++);
       });
     } catch (_) {}
   }
@@ -117,6 +119,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   @override
   void dispose() {
+    _deltaSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }

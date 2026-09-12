@@ -2467,27 +2467,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                   child: Column(
                     children: [
-                      Text(
-                        'Masukkan PIN',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
                       PinKeypad(
                         key: _keypadKey,
+                        title: 'Masukkan PIN',
+                        subtitle: 'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
                         length: _pinLength,
                         error: _pinError,
                         showFingerprint: true,

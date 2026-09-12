@@ -2099,6 +2099,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 20),
             _idCardHubTile(
+              icon: Icons.palette_outlined,
+              title: 'Buka Studio Kartu ID (CR80)',
+              subtitle: 'Desain kustom landscape, pilih template, ekspor PDF/PNG',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                context.push('/id_card_studio');
+              },
+            ),
+            const SizedBox(height: 10),
+            _idCardHubTile(
               icon: Icons.badge_rounded,
               title: 'Cetak Batch Kartu Karyawan',
               subtitle: 'Generate PDF A4 siap print untuk semua staf aktif',
@@ -3852,9 +3863,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _menuTile(
                   icon: Icons.badge_outlined,
                   title: 'Kartu ID',
-                  subtitle: 'Cetak kartu member & karyawan siap print',
+                  subtitle: 'Studio desain & cetak kartu member/karyawan',
                   isDark: isDark,
-                  onTap: () => _showIdCardHub(context),
+                  onTap: () => context.push('/id_card_studio'),
                 ),
                 _menuTile(
                   icon: Icons.payment,

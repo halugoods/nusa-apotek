@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart' hide Barcode;
 import 'package:url_launcher/url_launcher.dart';
@@ -698,6 +699,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               _actionChip(Icons.message_rounded, 'Template WA', _showWaTemplates, isDark),
               SizedBox(width: 8),
               _actionChip(Icons.stars_rounded, 'Pengaturan Poin', _showPointSettings, isDark),
+              SizedBox(width: 8),
+              _actionChip(Icons.badge_outlined, 'Kartu Member', () => context.push('/id_card_studio?type=customer'), isDark),
             ]),
           ),
           SizedBox(height: 8),

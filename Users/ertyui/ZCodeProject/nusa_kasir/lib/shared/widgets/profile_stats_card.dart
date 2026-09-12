@@ -484,7 +484,7 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
           if ((data?.selisihLaci ?? 0) != 0) ...[
             SizedBox(height: 10),
             _backMiniStat('Selisih Laci', formatRupiah(data!.selisihLaci.abs()),
-                valueColor: isRed ? NusaConfig.accentGold : Color(0xFF4ADE80),
+                valueColor: Colors.white,
                 suffix: isRed ? ' (kurang)' : ' (lebih)'),
           ],
 

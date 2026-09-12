@@ -335,35 +335,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         const Spacer(flex: 2),
 
-                        // ── Minimalist Clean Header (No repetitive icons/labels) ──
-                        Text(
-                          'Masukkan PIN Kasir',
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : const Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-
-                        const Spacer(flex: 3),
+                        const Spacer(flex: 1),
 
                         // ── Ergonomic Bottom Zone Keypad ──
                         PinKeypad(
                           key: _keypadKey,
+                          title: 'Masukkan PIN Kasir',
+                          subtitle: 'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
                           length: _pinLength,
                           error: _error,
                           showFingerprint: true,

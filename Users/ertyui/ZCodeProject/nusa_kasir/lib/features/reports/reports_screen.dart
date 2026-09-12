@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/delta_sync_service.dart';
+import 'package:nusa_kasir/core/services/realtime_sync_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/core/utils/report_export.dart';
 import 'package:nusa_kasir/core/utils/report_pdf.dart';
@@ -59,6 +60,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   StreamSubscription? _deltaSub;
+  StreamSubscription? _realtimeSub;
 
   @override
   void initState() {
@@ -68,12 +70,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       _deltaSub = DeltaSyncService.I.stream.listen((_) {
         if (mounted) setState(() => _refreshKey++);
       });
+      _realtimeSub = RealtimeSyncService.I.stream.listen((_) {
+        if (mounted) setState(() => _refreshKey++);
+      });
     } catch (_) {}
   }
 
   @override
   void dispose() {
     _deltaSub?.cancel();
+    _realtimeSub?.cancel();
     super.dispose();
   }
 

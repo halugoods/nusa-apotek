@@ -220,144 +220,147 @@ class _PinDialogContentState extends State<_PinDialogContent> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final roleSub = widget.employeeRole != null ? ' (${widget.employeeRole})' : '';
+    final fullTitle = 'Masukkan PIN $_displayTitle$roleSub';
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Modern Card without redundant big lock icon
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              decoration: BoxDecoration(
-                color: isDark ? NusaConfig.darkSurface : Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor.withValues(alpha: 0.5),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
-                    blurRadius: 28,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Title
-                  Text(
-                    _displayTitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _displaySubtitle ?? 'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                    ),
-                  ),
-                  if (widget.employeeRole != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.employeeRole!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: NusaConfig.activePrimary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-
-                  // Keypad
-                  _PinDialogKeypad(
-                    key: _keypadKey,
-                    pinLength: widget.pinLength,
-                    error: _error,
-                    showFingerprint: widget.showFingerprint,
-                    showNfc: widget.showNfc,
-                    showBarcode: widget.showBarcode,
-                    onFingerprint: widget.onFingerprint,
-                    onNfc: widget.onNfc,
-                    onNfcSuccess: (id) {
-                      Navigator.of(context).pop(PinResult(
-                          success: true, remember: _remember, nfcEmployeeId: int.tryParse(id)));
-                    },
-                    onBarcode: widget.onBarcode,
-                    onBarcodeSuccess: (id) {
-                      Navigator.of(context).pop(PinResult(
-                          success: true, remember: _remember, nfcEmployeeId: id));
-                    },
-                    onComplete: _verify,
-                  ),
-
-                  // Remember checkbox
-                  if (widget.showRemember) ...[
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => setState(() => _remember = !_remember),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: Checkbox(
-                              value: _remember,
-                              onChanged: (v) => setState(() => _remember = v ?? false),
-                              activeColor: NusaConfig.activePrimary,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Scaffold(
+      backgroundColor: isDark ? NusaConfig.darkBackground : const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    child: Column(
+                      children: [
+                        // Top Header Bar with Close (X) button
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                size: 28,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(null),
+                              tooltip: 'Tutup',
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Ingat PIN selama 8 jam',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                          ],
+                        ),
+
+                        const Spacer(flex: 2),
+
+                        // Keypad (Teks terintegrasi tepat di atas 6-dot PIN di zona bawah layar)
+                        PinKeypad(
+                          key: ValueKey('fullscreen_dialog_pad_$_resetCount'),
+                          title: fullTitle,
+                          subtitle: _displaySubtitle ?? 'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
+                          length: widget.pinLength,
+                          error: _error,
+                          showFingerprint: widget.showFingerprint,
+                          showNfc: widget.showNfc,
+                          showBarcode: widget.showBarcode,
+                          showCancel: false,
+                          onFingerprint: widget.onFingerprint,
+                          onFingerprintSuccess: () => Navigator.of(context)
+                              .pop(PinResult(success: true, remember: _remember)),
+                          onNfc: _onNfcHandler,
+                          onBarcode: _onBarcodeHandler,
+                          onComplete: _verify,
+                          onCancel: () => Navigator.of(context).pop(null),
+                          onChanged: (_) {
+                            if (_error != null) setState(() => _error = null);
+                          },
+                        ),
+
+                        // Remember checkbox
+                        if (widget.showRemember) ...[
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: () => setState(() => _remember = !_remember),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: Checkbox(
+                                    value: _remember,
+                                    onChanged: (v) => setState(() => _remember = v ?? false),
+                                    activeColor: NusaConfig.activePrimary,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Ingat PIN selama 8 jam',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ],
 
-                  // v2.2.50 (A5): "Lupa PIN?" — muncul di bawah keypad
-                  if (widget.onForgotPin != null) ...[
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      onTap: widget.onForgotPin,
-                      child: Text(
-                        'Lupa PIN?',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: NusaConfig.activePrimary,
-                        ),
-                      ),
+                        // Lupa PIN?
+                        if (widget.onForgotPin != null) ...[
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: widget.onForgotPin,
+                            child: Text(
+                              'Lupa PIN?',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: NusaConfig.activePrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                  ],
-                ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
+  }
+
+  int _resetCount = 0;
+
+  Future<String?> _onNfcHandler() async {
+    if (widget.onNfc != null) {
+      final result = await widget.onNfc!();
+      if (result != null && mounted) {
+        Navigator.of(context).pop(PinResult(
+            success: true, remember: _remember, nfcEmployeeId: int.tryParse(result)));
+      }
+      return result;
+    }
+    return null;
+  }
+
+  Future<String?> _onBarcodeHandler(String code) async {
+    if (widget.onBarcode != null) {
+      final result = await widget.onBarcode!(code);
+      if (result != null && mounted) {
+        Navigator.of(context).pop(PinResult(
+            success: true, remember: _remember, nfcEmployeeId: int.tryParse(result) ?? -1));
+      }
+      return result;
+    }
+    return null;
   }
 }
 

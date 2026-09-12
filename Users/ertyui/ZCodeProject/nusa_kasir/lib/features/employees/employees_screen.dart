@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -1789,56 +1790,95 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
   Widget _buildRoleRow(bool isDark) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16),
-      child: InkWell(
-        onTap: () => _showManageRoles(),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => _showManageRoles(),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: NusaConfig.accentPurple.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.admin_panel_settings,
-                  size: 18,
-                  color: NusaConfig.accentPurple,
-                ),
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Role & Jabatan',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? NusaConfig.darkTextPrimary
-                        : NusaConfig.textPrimary,
+                  color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
                   ),
                 ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.admin_panel_settings,
+                        size: 18,
+                        color: NusaConfig.accentPurple,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Role & Jabatan',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: isDark
+                          ? NusaConfig.darkTextSecondary
+                          : NusaConfig.textSecondary,
+                    ),
+                  ],
+                ),
               ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: isDark
-                    ? NusaConfig.darkTextSecondary
-                    : NusaConfig.textSecondary,
-              ),
-            ],
+            ),
           ),
-        ),
+          SizedBox(width: 10),
+          InkWell(
+            onTap: () => context.push('/id_card_studio?type=employee'),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.badge_outlined,
+                    size: 18,
+                    color: NusaConfig.activePrimary,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Studio ID Card',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

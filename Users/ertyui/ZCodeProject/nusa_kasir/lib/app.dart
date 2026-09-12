@@ -51,6 +51,7 @@ import 'package:nusa_kasir/features/domain/print_order_screen.dart';
 import 'package:nusa_kasir/features/reports/stylist_reports_screen.dart';
 import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
 import 'package:nusa_kasir/features/settings/store_data_screen.dart';
+import 'package:nusa_kasir/features/id_card/id_card_studio_screen.dart';
 
 const _publicRoutes = {
   '/splash',
@@ -283,6 +284,14 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
     GoRoute(
       path: '/data_toko',
       pageBuilder: (_, __) => _slidePage(StoreDataScreen()),
+    ),
+    GoRoute(
+      path: '/id_card_studio',
+      pageBuilder: (_, state) {
+        final typeStr = state.uri.queryParameters['type'];
+        final initialType = typeStr == 'customer' ? IdCardType.customer : IdCardType.employee;
+        return _slidePage(IdCardStudioScreen(initialType: initialType));
+      },
     ),
     // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Servis) ──
     GoRoute(path: '/meja', pageBuilder: (_, __) => _slidePage(MejaScreen())),
