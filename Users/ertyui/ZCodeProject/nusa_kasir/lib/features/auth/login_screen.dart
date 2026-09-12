@@ -335,56 +335,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         const Spacer(flex: 2),
 
-                        // ── Minimalist Store Profile & Welcome (No heavy lock plate) ──
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                Icons.storefront_rounded,
-                                color: NusaConfig.activePrimary,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'NUSA POS',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.5,
-                                color: isDark
-                                    ? NusaConfig.darkTextPrimary
-                                    : NusaConfig.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
+                        // ── Minimalist Clean Header (No repetitive icons/labels) ──
                         Text(
                           'Masukkan PIN Kasir',
                           style: TextStyle(
                             fontFamily: 'Poppins',
-                            fontSize: 22,
+                            fontSize: 24,
                             fontWeight: FontWeight.w700,
                             color: isDark
                                 ? NusaConfig.darkTextPrimary
                                 : const Color(0xFF0F172A),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
                           'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 13.5,
                             color: isDark
                                 ? NusaConfig.darkTextSecondary
                                 : NusaConfig.textSecondary,
