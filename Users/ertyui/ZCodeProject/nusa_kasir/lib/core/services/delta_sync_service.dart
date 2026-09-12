@@ -60,14 +60,13 @@ class DeltaSyncService {
   DeltaSyncService._();
   static final DeltaSyncService I = DeltaSyncService._();
 
-  // v2.2.57+137: debounce 500ms — dulu 2 dtk bikin push "terasa kaku";
-  // outbox tetap coalesce (perubahan beruntun = 1 push), hanya lebih cepat.
-  static const _pushDebounce = Duration(milliseconds: 500);
-  // v2.2.57+137: fallback poll 20 dtk (dulu 30) — angka miskin hanya dipakai
-  // saat WS mati/putus; dengan heartbeat WS jalur ini nyaris tak pernah jalan.
-  static const _pullInterval = Duration(seconds: 20);
+  // v2.2.57+141: debounce ultra-rendah 100ms — push data instan meluncur
+  // begitu transaksi / stok / produk disimpan di device pengirim.
+  static const _pushDebounce = Duration(milliseconds: 100);
+  // v2.2.57+141: fallback poll 15 dtk (jalur cadangan saat WS offline).
+  static const _pullInterval = Duration(seconds: 15);
   // v2.2.57+135: interval flush safety-net (outbox dibaca trigger SQLite).
-  static const _flushInterval = Duration(seconds: 5);
+  static const _flushInterval = Duration(seconds: 3);
   static const _maxBatchSize = 50;
 
   final _controller = StreamController<DeltaEvent>.broadcast();

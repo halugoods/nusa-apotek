@@ -117,7 +117,7 @@ class _SplashScreenState extends State<SplashScreen>
               },
             ),
 
-            // Centered kinetic logo + branding
+            // Centered kinetic logo + branding (pure floating logo without circle plate)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
@@ -126,27 +126,11 @@ class _SplashScreenState extends State<SplashScreen>
                   children: [
                     ScaleTransition(
                       scale: _scaleAnim,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? NusaConfig.darkSurface
-                              : Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: primary.withValues(alpha: 0.2),
-                              blurRadius: 28,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          logoAsset,
-                          width: 88,
-                          height: 88,
-                          fit: BoxFit.contain,
-                        ),
+                      child: Image.asset(
+                        logoAsset,
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.contain,
                       ),
                     ),
                     const SizedBox(height: 24),

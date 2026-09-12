@@ -44,19 +44,23 @@ export class RoomDO {
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
-  /** DO message handler via stub: broadcast JSON ke semua klien. */
+  /** DO message handler via stub: broadcast JSON ke semua klien di room ini. */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    // Klien tidak mengirim data untuk broadcast; abaikan kecuali {"broadcast": ...}
     if (typeof message === 'string') {
       try {
+        if (message === 'ping') return; // auto response handled
         const data = JSON.parse(message);
-        if (data && data.broadcast) {
+        if (data) {
+          // Terima payload broadcast terbungkus maupun raw event
+          const payloadToSend = data.broadcast ? JSON.stringify(data.broadcast) : message;
           for (const client of this.state.getWebSockets()) {
-            if (client !== ws) client.send(JSON.stringify(data.broadcast));
+            if (client !== ws) {
+              try { client.send(payloadToSend); } catch (_) {}
+            }
           }
         }
       } catch {
-        // abaikan payload tak-valid
+        // abaikan payload non-json
       }
     }
   }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/agent/agent_action_controller.dart';
+import 'package:nusa_kasir/core/agent/agent_harness.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
 import 'package:nusa_kasir/data/repositories/customer_repository.dart';
@@ -155,7 +156,19 @@ class AgentToolRegistry {
       execute: _getSuppliers,
     ),
 
-    // ── AI AGENT MUTATION & ACTION TOOLS (App Use) ──
+    // ── AI AGENT MUTATION & ACTION TOOLS (App Use & Web) ──
+    AgentTool(
+      name: 'web_search_product',
+      description: 'Cari informasi harga pasaran, barcode, dan detail spesifikasi produk di web.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'query': {'type': 'string', 'description': 'Kata kunci pencarian produk / barcode'},
+        },
+        'required': ['query']
+      },
+      execute: _webSearchProduct,
+    ),
     AgentTool(
       name: 'create_product',
       description: 'Tambah master produk baru secara langsung ke database kasir.',
@@ -169,6 +182,7 @@ class AgentToolRegistry {
           'stock': {'type': 'number', 'description': 'Jumlah stok awal (default 0)'},
           'category': {'type': 'string', 'description': 'Kategori produk'},
           'barcode': {'type': 'string', 'description': 'Barcode / SKU (opsional)'},
+          'image_url': {'type': 'string', 'description': 'URL foto produk dari web (opsional, akan diunduh otomatis)'},
         },
         'required': ['name', 'sell_price']
       },
@@ -577,7 +591,16 @@ class AgentToolRegistry {
     return jsonEncode({'total': orders.length, 'orders': list});
   }
 
-  // ── Mutating Tool Implementations (Live Action Simulation) ──
+  // ── Mutating Tool Implementations (Live Action Simulation & Harness) ──
+
+  static Future<String> _webSearchProduct(AppDatabase db, Map<String, dynamic> args) async {
+    final query = (args['query'] as String?)?.trim() ?? '';
+    if (query.isEmpty) {
+      return jsonEncode({'status': 'error', 'message': 'Query pencarian kosong'});
+    }
+    final result = await AgentHarness.searchWebProduct(query);
+    return jsonEncode(result);
+  }
 
   static Future<String> _createProduct(AppDatabase db, Map<String, dynamic> args) async {
     final name = (args['name'] as String?)?.trim() ?? '';
@@ -586,9 +609,28 @@ class AgentToolRegistry {
     final stock = (args['stock'] as num?)?.toInt() ?? 0;
     final category = (args['category'] as String?)?.trim() ?? 'Umum';
     final barcode = args['barcode'] as String?;
+    final imageUrl = args['image_url'] as String?;
 
     if (name.isEmpty || sellPrice <= 0) {
       return jsonEncode({'status': 'error', 'message': 'Nama dan harga jual wajib diisi'});
+    }
+
+    // Guard approval jika mode Ask Before Action
+    if (AgentHarness.I.mode == AgentOperatingMode.askBeforeAction) {
+      final allowed = await AgentHarness.I.requestApproval(
+        toolName: 'create_product',
+        title: 'Tambah Produk Baru: $name',
+        arguments: args,
+        previewImage: imageUrl,
+      );
+      if (!allowed) {
+        return jsonEncode({'status': 'cancelled', 'message': 'Aksi dibatalkan oleh pengguna.'});
+      }
+    }
+
+    String? localPhotoPath;
+    if (imageUrl != null && imageUrl.isNotEmpty && imageUrl.startsWith('http')) {
+      localPhotoPath = await AgentHarness.downloadAndSaveProductImage(imageUrl, name);
     }
 
     // Visual typing simulation
@@ -604,12 +646,14 @@ class AgentToolRegistry {
       stock: stock,
       minStock: 5,
       barcode: barcode,
+      imagePath: localPhotoPath,
     );
 
     AgentActionController.I.finishAction('Produk "$name" berhasil ditambahkan');
     return jsonEncode({
       'status': 'success',
       'id': id,
+      'photo_path': localPhotoPath,
       'message': 'Produk $name (Rp $sellPrice) berhasil ditambahkan dengan stok $stock'
     });
   }

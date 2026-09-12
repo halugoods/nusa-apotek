@@ -58,7 +58,6 @@ class CallService {
   /// sesi karyawan aktif (dashboard) dan saat logout di-stop.
   Future<void> start() async {
     if (_channel != null) return;
-    if (!await SecureStore.getCallFeatureEnabled()) return;
     final name = await _channelName();
     if (name == null) return;
     try {
@@ -73,7 +72,8 @@ class CallService {
               ? jsonDecode(message)
               : message;
           if (decoded is! Map) return;
-          if ('${decoded['event'] ?? ''}' != 'ring') return;
+          final event = '${decoded['event'] ?? ''}';
+          if (event != 'ring') return;
           _controller.add(CallEvent.fromPayload(decoded['payload']));
         } catch (_) {}
       }, onError: (_) {}, cancelOnError: false);

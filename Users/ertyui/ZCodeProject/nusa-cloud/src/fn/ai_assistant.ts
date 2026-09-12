@@ -350,12 +350,13 @@ async function handleTest(ctx: FnContext, params: Params): Promise<Response> {
   const started = Date.now();
   try {
     const isReasoningModel = /(gpt-oss|o1\b|o3|o4|deepseek-r1|kimi-k2|reasoner)/i.test(model);
-    const providerRes = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    const cleanBase = baseUrl.replace(/\/+$/, '');
+    const providerRes = await fetch(`${cleanBase}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
-        ...(baseUrl.includes('openrouter')
+        ...(cleanBase.includes('openrouter')
           ? { 'HTTP-Referer': 'https://nusa-online.vercel.app', 'X-Title': 'NUSA Kasir' }
           : {}),
       },
@@ -372,9 +373,32 @@ async function handleTest(ctx: FnContext, params: Params): Promise<Response> {
     }
     const data = (await providerRes.json()) as any;
     const reply = data.choices?.[0]?.message?.content ?? '';
+
+    // Coba fetch models sekalian saat test berhasil
+    let models: string[] = [];
+    try {
+      const modelsRes = await fetch(`${cleanBase}/models`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...(cleanBase.includes('openrouter')
+            ? { 'HTTP-Referer': 'https://nusa-online.vercel.app', 'X-Title': 'NUSA Kasir' }
+            : {}),
+        },
+      });
+      if (modelsRes.ok) {
+        const mData = (await modelsRes.json()) as any;
+        const list = Array.isArray(mData?.data) ? mData.data : (Array.isArray(mData) ? mData : []);
+        models = list
+          .map((m: any) => (typeof m === 'string' ? m : m?.id))
+          .filter((id: any) => typeof id === 'string' && id.length > 0);
+      }
+    } catch (_) {}
+
     return json({
       ok: true,
       model,
+      models,
       message: 'Koneksi berhasil',
       latency_ms: latencyMs,
       reply: typeof reply === 'string' ? reply.slice(0, 120) : String(reply),
@@ -385,6 +409,47 @@ async function handleTest(ctx: FnContext, params: Params): Promise<Response> {
       message: `Gagal terhubung: ${(err as Error).message}`,
       latency_ms: Date.now() - started,
     });
+  }
+}
+
+// ─── POST models — ambil daftar model dari provider ─────────────────
+
+async function handleFetchModels(ctx: FnContext, params: Params): Promise<Response> {
+  const authErr = requireAuth(ctx);
+  if (authErr) return authErr;
+  const baseUrl = String(params.base_url ?? '').trim() || DEFAULT_AI_BASE;
+  const apiKey = String(params.api_key ?? '').trim() || ctx.env.OPENROUTER_API_KEY || '';
+
+  if (!apiKey) {
+    return json({ ok: false, message: 'API key kosong' }, 400);
+  }
+
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  try {
+    const res = await fetch(`${cleanBase}/models`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        ...(cleanBase.includes('openrouter')
+          ? { 'HTTP-Referer': 'https://nusa-online.vercel.app', 'X-Title': 'NUSA Kasir' }
+          : {}),
+      },
+    });
+
+    if (!res.ok) {
+      const err = (await res.text()).slice(0, 200);
+      return json({ ok: false, message: `Provider error ${res.status}: ${err}` }, 502);
+    }
+
+    const data = (await res.json()) as any;
+    const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+    const models = list
+      .map((m: any) => (typeof m === 'string' ? m : m?.id))
+      .filter((id: any) => typeof id === 'string' && id.length > 0);
+
+    return json({ ok: true, models });
+  } catch (err) {
+    return json({ ok: false, message: `Gagal fetch model: ${(err as Error).message}` }, 500);
   }
 }
 
@@ -470,6 +535,7 @@ Router.registerAll('ai-assistant', {
   settings: handleGetSettings,
   save_settings: handleSaveSettings,
   test: handleTest,
+  models: handleFetchModels,
   history: handleGetHistory,
   history_messages: handleGetHistoryMessages,
   history_delete: handleDeleteHistory,

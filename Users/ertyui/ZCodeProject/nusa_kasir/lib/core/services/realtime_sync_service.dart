@@ -25,12 +25,9 @@ class RealtimeBackupNotifier {
   Timer? _reconnectTimer;
   Timer? _pingTimer;
 
-  // v2.2.57+137: heartbeat ping tiap 60 dtk. DO menjawab 'pong' via
-  // setWebSocketAutoResponse TANPA membangunkan DO (gratis). Tanpa ini,
-  // koneksi TCP diam >100 dtk dibunuh NAT/proxy tengah jalan → device
-  // "sudah WS" tapi sebenarnya MATI (half-open) → event realtime tak pernah
-  // sampai, device hanya dapat data lewat poll 30 dtk.
-  static const _pingInterval = Duration(seconds: 60);
+  // v2.2.57+141: heartbeat ping 20 dtk (dulu 60s) menjaga socket selalu hangat
+  // dari timeout agresif operator seluler & WiFi gateway.
+  static const _pingInterval = Duration(seconds: 20);
 
   // v2.2.57+130 (A3): exponential backoff untuk reconnect — hindari hammer
   // server saat worker restart / network flap. Delay tumbuh 1s → 2s → 4s → …

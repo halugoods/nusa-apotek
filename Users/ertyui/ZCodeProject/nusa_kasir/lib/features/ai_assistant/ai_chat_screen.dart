@@ -6,11 +6,12 @@ import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/ai_service.dart';
 import 'package:nusa_kasir/core/agent/agent_tools.dart';
+import 'package:nusa_kasir/core/agent/agent_harness.dart';
 import 'package:nusa_kasir/core/agent/agent_action_controller.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/data/database/app_database.dart';
 
-int _maxContextChars = 4000; // ~1K tokens — keep dbContext lean
+int _maxContextChars = 4000;
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -33,38 +34,52 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   late AnimationController _drawerCtrl;
   late Animation<double> _drawerAnim;
 
-  // Agent thinking state
+  // Agent thinking & execution tracking
   String _thinkingLabel = '';
+  List<AgentExecutionStep> _executionSteps = [];
+  AgentActionProposal? _currentProposal;
 
   final List<String> _hints = [
     "Produk hampir habis",
     "Analisis penjualan bulan ini",
     "Top produk terlaris",
+    "Cari harga indomie di web",
     "Ringkasan keuangan hari ini",
     "Siapa pelanggan saya?",
     "Promo yang aktif",
-    "Karyawan siapa aja?",
   ];
 
-  // Agent Mode State
-  bool _agentMode = false;
+  // Agent Operating Mode (Full Access vs Ask Before Action)
+  AgentOperatingMode _operatingMode = AgentOperatingMode.askBeforeAction;
   AgentActionEvent? _currentAgentAction;
   StreamSubscription<AgentActionEvent>? _agentSub;
+  StreamSubscription<List<AgentExecutionStep>>? _stepSub;
+  StreamSubscription<AgentActionProposal?>? _proposalSub;
 
   @override
   void initState() {
     super.initState();
-    _agentMode = AgentActionController.I.isAgentModeEnabled;
+    _operatingMode = AgentHarness.I.mode;
+
     _agentSub = AgentActionController.I.stream.listen((ev) {
       if (!mounted) return;
       setState(() {
-        if (ev.isFinished) {
-          _currentAgentAction = null;
-        } else {
-          _currentAgentAction = ev;
-        }
+        _currentAgentAction = ev.isFinished ? null : ev;
       });
     });
+
+    _stepSub = AgentHarness.I.stepStream.listen((steps) {
+      if (!mounted) return;
+      setState(() => _executionSteps = steps);
+      _scrollToBottom();
+    });
+
+    _proposalSub = AgentHarness.I.proposalStream.listen((prop) {
+      if (!mounted) return;
+      setState(() => _currentProposal = prop);
+      _scrollToBottom();
+    });
+
     _drawerCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
@@ -74,169 +89,113 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     _loadSessions();
     _messages.add(ChatMessage(
       role: 'assistant',
-      content: 'Halo! Saya Nusa, AI Assistant & Agent NUSA Kasir 👋 Saya bisa bantu analisis keuangan, cari data, hingga bantu operasional langsung (App Use). Ada yang bisa dibantu?',
+      content: 'Halo! Saya Nusa AI Agent POS ⚡ Saya bisa membantu analisis bisnis, scrape info produk dari web, mengunduh foto otomatis, hingga eksekusi perubahan data langsung.',
     ));
   }
 
   @override
   void dispose() {
     _agentSub?.cancel();
+    _stepSub?.cancel();
+    _proposalSub?.cancel();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     _drawerCtrl.dispose();
     super.dispose();
   }
 
-  void _toggleAgentMode(bool val) {
-    if (val) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text('Aktifkan AI Agent?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-          content: const Text(
-            'Mode AI Agent memungkinkan AI melakukan aksi langsung di aplikasi (seperti menambah produk, menyesuaikan stok, dan mendaftarkan pelanggan).\n\nPastikan instruksi yang Anda berikan jelas untuk menghindari perubahan data yang tidak diinginkan.',
-            style: TextStyle(fontSize: 13, height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                setState(() {
-                  _agentMode = true;
-                  AgentActionController.I.setAgentMode(true);
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: NusaConfig.activePrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Aktifkan'),
-            ),
-          ],
-        ),
-      );
-    } else {
-      setState(() {
-        _agentMode = false;
-        AgentActionController.I.setAgentMode(false);
-      });
-    }
+  void _switchOperatingMode(AgentOperatingMode mode) {
+    setState(() {
+      _operatingMode = mode;
+      AgentHarness.I.setMode(mode);
+    });
   }
-
-  int get _totalChars => _visibleMessages.fold<int>(0, (s, m) => s + m.content.length);
-  double get _contextUsage => (_totalChars / _maxContextChars).clamp(0.0, 1.0);
-  List<ChatMessage> get _visibleMessages => _messages.where((m) => !m.isInternal).toList();
 
   void _toggleDrawer() {
+    setState(() => _showSessions = !_showSessions);
     if (_showSessions) {
-      _drawerCtrl.reverse().then((_) {
-        if (mounted) setState(() => _showSessions = false);
-      });
-    } else {
-      setState(() => _showSessions = true);
       _drawerCtrl.forward();
+    } else {
+      _drawerCtrl.reverse();
     }
   }
 
-  // ── Session management ──────────────────────────────────────────────
-
-  /// Muat riwayat sesi: lokal (SQLite `chat_sessions`) saja.
-  /// v2.2.57+119: riwayat chat TIDAK lagi dibedakan cloud vs local —
-  /// cukup local (perangkat ini).
   Future<void> _loadSessions() async {
-    try {
-      final db = ref.read(databaseProvider);
-      final rows = await (db.select(db.chatSessions)
-        ..orderBy([(t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)]))
+    final db = ref.read(databaseProvider);
+    final list = await (db.select(db.chatSessions)
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
         .get();
-      if (mounted) setState(() => _sessions = rows);
-    } catch (_) {}
+    if (mounted) setState(() => _sessions = list);
   }
 
-  Future<void> _saveSession() async {
+  Future<void> _saveCurrentSession() async {
     if (_visibleMessages.length <= 1) return;
-    try {
-      final db = ref.read(databaseProvider);
-      final title = _autoTitle();
-      final json = jsonEncode(_visibleMessages.map((m) => m.toJson()).toList());
-      if (_activeSessionId != null) {
-        await (db.update(db.chatSessions)..where((t) => t.id.equals(_activeSessionId!)))
-            .write(ChatSessionsCompanion(
-              title: Value(title),
-              messagesJson: Value(json),
-              updatedAt: Value(DateTime.now()),
-            ));
-      } else {
-        _activeSessionId = await db.into(db.chatSessions).insert(ChatSessionsCompanion.insert(
-              title: title,
-              messagesJson: json,
-            ));
-      }
-      _loadSessions();
-    } catch (_) {}
-  }
+    final db = ref.read(databaseProvider);
+    final title = _autoTitle();
+    final jsonStr = jsonEncode(_visibleMessages.map((m) => m.toJson()).toList());
 
-  Future<void> _loadSession(ChatSession session) async {
-    try {
-      final msgs = (jsonDecode(session.messagesJson) as List)
-          .map((j) => ChatMessage.fromJson(j as Map<String, dynamic>))
-          .toList();
-      setState(() {
-        _messages.clear();
-        _messages.addAll(msgs);
-        _activeSessionId = session.id;
-      });
-      _toggleDrawer();
-      _scrollToBottom();
-    } catch (_) {}
+    if (_activeSessionId == null) {
+      final id = await db.into(db.chatSessions).insert(ChatSessionsCompanion.insert(
+            title: title,
+            messagesJson: jsonStr,
+          ));
+      _activeSessionId = id;
+    } else {
+      await (db.update(db.chatSessions)..where((t) => t.id.equals(_activeSessionId!)))
+          .write(ChatSessionsCompanion(
+        title: Value(title),
+        messagesJson: Value(jsonStr),
+        updatedAt: Value(DateTime.now()),
+      ));
+    }
+    _loadSessions();
   }
-
-  Future<void> _deleteSession(ChatSession session) async {
-    try {
-      final db = ref.read(databaseProvider);
-      await (db.delete(db.chatSessions)..where((t) => t.id.equals(session.id))).go();
-      if (_activeSessionId == session.id) {
-        setState(() => _activeSessionId = null);
-      }
-      _loadSessions();
-    } catch (_) {}
-  }
-
-  // v2.2.57+119: riwayat chat DIHAPUS dari cloud — cukup local saja.
-  // (Blok kode cloud dihapus total; lihat _loadSessions/_newChat.)
 
   void _newChat() {
-    _saveSession();
+    _saveCurrentSession();
     setState(() {
       _messages.clear();
       _activeSessionId = null;
-      _showSessions = false;
+      _executionSteps.clear();
+      AgentHarness.I.clearSteps();
       _messages.add(ChatMessage(
         role: 'assistant',
-        content: 'Halo! Ada yang bisa saya bantu hari ini?',
+        content: 'Sesi baru dimulai. Ada yang bisa dibantu hari ini?',
       ));
     });
+    if (_showSessions) _toggleDrawer();
+  }
+
+  void _loadSession(ChatSession s) {
+    try {
+      final list = (jsonDecode(s.messagesJson) as List)
+          .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
+          .toList();
+      setState(() {
+        _activeSessionId = s.id;
+        _messages.clear();
+        _messages.addAll(list);
+        _executionSteps.clear();
+        AgentHarness.I.clearSteps();
+      });
+      _scrollToBottom();
+    } catch (_) {}
+    if (_showSessions) _toggleDrawer();
+  }
+
+  Future<void> _deleteSession(ChatSession s) async {
+    final db = ref.read(databaseProvider);
+    await (db.delete(db.chatSessions)..where((t) => t.id.equals(s.id))).go();
+    if (_activeSessionId == s.id) _newChat();
+    _loadSessions();
+  }
+
+  List<ChatMessage> get _visibleMessages =>
+      _messages.where((m) => m.role != 'tool').toList();
+
+  double get _contextUsage {
+    final total = _visibleMessages.fold<int>(0, (sum, m) => sum + m.content.length);
+    return (total / _maxContextChars).clamp(0.0, 1.0);
   }
 
   String _autoTitle() {
@@ -251,12 +210,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     if (mounted && name.isNotEmpty) setState(() => _storeName = name);
   }
 
-  // ── Send message (streaming cloud + agent tool calling loop) ──
-  //
-  // Area H (v2.2.57+115): chat TIDAK lagi ke server lokal Nusa CS — penuh
-  // ke cloud Supabase edge function `ai-assistant` (streaming SSE + tools +
-  // provider configurable). Riwayat chat lokal (v2.2.57+119).
-
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _loading) return;
@@ -266,40 +219,32 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     final tools = AgentToolRegistry.forVariant();
     final toolDefs = tools.map((t) => t.toOpenAiTool()).toList();
 
+    AgentHarness.I.clearSteps();
     setState(() {
       _messages.add(ChatMessage(role: 'user', content: text));
       _loading = true;
-      _thinkingLabel = 'Menganalisa...';
+      _thinkingLabel = 'Memulai proses harness...';
     });
     _inputCtrl.clear();
     _scrollToBottom();
 
-    // Sliding window: kirim hanya 6 pesan terakhir agar hemat token.
     final visible = _visibleMessages;
     final recent = visible.length > 6
         ? visible.sublist(visible.length - 6)
         : List<ChatMessage>.from(visible);
 
-    // Stream status bar: provider aktif.
     final settings = await AiService.getSettings(owner);
     if (mounted) {
       setState(() {
         _thinkingLabel = settings?.isCustom == true
-            ? 'AI: ${settings?.model ?? 'default'} (custom)'
-            : 'AI: ${settings?.model ?? 'default'}...';
+            ? 'Model: ${settings?.model ?? 'default'} (custom)'
+            : 'Model: ${settings?.model ?? 'default'}';
       });
     }
 
     try {
-      for (int round = 0; round < 2; round++) {
-        // Buffer teks terpisah — ChatMessage.content final, jadi bubble di-replace
-        // tiap token (remove/add) supaya SelectableText ikut ter-update.
+      for (int round = 0; round < 3; round++) {
         final buffer = StringBuffer();
-
-        // v2.2.57+119: indexOf(streamMsg) memakai identitas (==) — setelah
-        // bubble pertama diganti instance baru, indexOf selalu -1 → bubble
-        // beku di token pertama. Iterasi manual dengan identitas field lebih
-        // aman & tidak bergantung urutan List.
         final streamMsg = ChatMessage(role: 'assistant', content: '');
         if (mounted) setState(() => _messages.add(streamMsg));
         _scrollToBottom();
@@ -328,26 +273,31 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
         if (!mounted) return;
 
-        // Tool calls? jalankan lokal, lalu lanjut round berikutnya.
         if (toolCalls != null && toolCalls.isNotEmpty) {
-          // v2.2.57+119: hanya tool call TERAKHIR yang dieksekusi — kalau
-          // model minta banyak tool sekaligus, menjalankan semuanya bikin
-          // jawaban berantakan & tidak nyambung. Model bisa memanggil lagi
-          // di round berikutnya.
           final tc = toolCalls.last;
           final tool = tools.where((t) => t.name == tc.name).firstOrNull;
           if (tool != null) {
+            final stepId = 'step_${DateTime.now().millisecondsSinceEpoch}';
+            AgentHarness.I.addStep(AgentExecutionStep(
+              id: stepId,
+              title: _getToolFriendlyName(tc.name),
+              detail: tc.arguments.toString(),
+              status: AgentStepStatus.running,
+              toolName: tc.name,
+              toolArgs: tc.arguments,
+            ));
+
             setState(() => _thinkingLabel = 'Menjalankan: ${tc.name}...');
             _scrollToBottom();
+
             try {
               final rawResult = await tool.execute(db, tc.arguments);
-              // v2.2.57+119: truncation diperlonggar (350 → 2000 char) + ada
-              // penanda "...(dipotong)" supaya model tahu datanya tidak utuh
-              // dan TIDAK mengarang angka yang tidak ada di potongan.
               final truncated = rawResult.length > 2000;
               final result = truncated
-                  ? '${rawResult.substring(0, 2000)}\n...(hasil dipotong, ${rawResult.length} karakter total)'
+                  ? '${rawResult.substring(0, 2000)}\n...(hasil dipotong, ${rawResult.length} karakter)'
                   : rawResult;
+
+              AgentHarness.I.updateStep(stepId, status: AgentStepStatus.success, output: result);
 
               _messages.add(ChatMessage(
                 role: 'assistant',
@@ -372,13 +322,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
               ));
               recent.add(toolMsg);
             } catch (e) {
+              AgentHarness.I.updateStep(stepId, status: AgentStepStatus.failed, output: e.toString());
               _messages.add(ChatMessage(
-                role: 'tool',
-                content: '{"error": "$e"}',
-                toolCallId: tc.id,
-                toolName: tc.name,
-              ));
-              recent.add(ChatMessage(
                 role: 'tool',
                 content: '{"error": "$e"}',
                 toolCallId: tc.id,
@@ -389,24 +334,23 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           }
         }
 
-        // Teks selesai
-        if (mounted) {
-          setState(() {
-            _loading = false;
-            _thinkingLabel = '';
-          });
-          _scrollToBottom();
-          _saveSession();
+        if (buffer.isNotEmpty) {
+          _saveCurrentSession();
+          if (mounted) {
+            setState(() {
+              _loading = false;
+              _thinkingLabel = '';
+            });
+          }
+          return;
         }
-        return;
       }
 
-      // Rounds habis tanpa jawaban teks
       if (mounted) {
         setState(() {
           _messages.add(ChatMessage(
             role: 'assistant',
-            content: 'Saya sudah mencari datanya tapi belum menemukan jawaban yang tepat. Coba tanyakan dengan kata kunci yang lebih spesifik ya.',
+            content: 'Proses selesai dijalankan.',
           ));
           _loading = false;
           _thinkingLabel = '';
@@ -423,8 +367,27 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     }
   }
 
-  /// Cari index pesan dengan identitas objek — aman walau instance di dalam
-  /// list sudah diganti (bubble streaming di-replace tiap token).
+  String _getToolFriendlyName(String toolName) {
+    switch (toolName) {
+      case 'web_search_product':
+        return '🔍 Mencari Info & Harga di Web';
+      case 'create_product':
+        return '📦 Menambah Produk ke Database';
+      case 'update_stock':
+        return '📊 Menyesuaikan Stok Barang';
+      case 'create_customer':
+        return '👤 Mendaftarkan Pelanggan Baru';
+      case 'get_products':
+        return '📋 Mengambil Data Produk';
+      case 'get_low_stock':
+        return '⚠️ Memeriksa Stok Menipis';
+      case 'get_summary':
+        return '📈 Menghitung Ringkasan Penjualan';
+      default:
+        return '⚡ Menjalankan $toolName';
+    }
+  }
+
   int _indexOfMessage(ChatMessage needle) {
     for (int i = 0; i < _messages.length; i++) {
       if (identical(_messages[i], needle)) return i;
@@ -444,26 +407,48 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     });
   }
 
-  // ── Build ───────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
+        elevation: 0,
+        titleSpacing: 0,
         title: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 28, height: 28,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: NusaConfig.activePrimary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(7),
+                gradient: LinearGradient(
+                  colors: [NusaConfig.activePrimary, NusaConfig.activePrimary.withValues(alpha: 0.8)],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(Icons.auto_awesome_rounded, size: 16, color: NusaConfig.activePrimary),
+              child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Colors.white),
             ),
-            const SizedBox(width: 8),
-            const Text('Nusa', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Nusa AI Agent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                Text(
+                  _operatingMode == AgentOperatingMode.fullAccess ? '⚡ Full Access' : '🛡️ Ask Before Action',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: _operatingMode == AgentOperatingMode.fullAccess ? Colors.orange : NusaConfig.accentGreen,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         leading: IconButton(
@@ -471,23 +456,33 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           onPressed: _toggleDrawer,
         ),
         actions: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Agent',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: _agentMode ? NusaConfig.activePrimary : (isDark ? Colors.white54 : Colors.black54),
+          // Mode Switcher Dropdown / Toggle
+          PopupMenuButton<AgentOperatingMode>(
+            icon: Icon(
+              _operatingMode == AgentOperatingMode.fullAccess ? Icons.bolt_rounded : Icons.shield_rounded,
+              color: _operatingMode == AgentOperatingMode.fullAccess ? Colors.orange : NusaConfig.activePrimary,
+            ),
+            tooltip: 'Ganti Mode Agent',
+            onSelected: _switchOperatingMode,
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: AgentOperatingMode.askBeforeAction,
+                child: Row(
+                  children: [
+                    Icon(Icons.shield_outlined, color: NusaConfig.accentGreen, size: 20),
+                    const SizedBox(width: 10),
+                    const Text('Ask Before Action (Aman)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ),
-              Transform.scale(
-                scale: 0.75,
-                child: Switch(
-                  value: _agentMode,
-                  activeColor: NusaConfig.activePrimary,
-                  onChanged: _toggleAgentMode,
+              PopupMenuItem(
+                value: AgentOperatingMode.fullAccess,
+                child: Row(
+                  children: const [
+                    Icon(Icons.bolt_rounded, color: Colors.orange, size: 20),
+                    SizedBox(width: 10),
+                    Text('Full Access (Autonomous)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ),
             ],
@@ -501,10 +496,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
       ),
       body: Stack(
         children: [
-          // ── Chat area (always full-width behind drawer) ──
           _buildChatArea(isDark),
 
-          // ── Live Ghost Action & Virtual Typing Overlay ──
+          // Live Ghost Virtual Typing Pointer Overlay
           if (_currentAgentAction != null)
             Positioned(
               top: 12,
@@ -590,9 +584,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
               ),
             ),
 
-          // ── Session drawer overlay ──
+          // Drawer
           if (_showSessions) ...[
-            // Backdrop
             FadeTransition(
               opacity: _drawerAnim,
               child: GestureDetector(
@@ -600,7 +593,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 child: Container(color: Colors.black.withValues(alpha: 0.35)),
               ),
             ),
-            // Drawer sliding from left
             AnimatedBuilder(
               animation: _drawerAnim,
               builder: (_, child) {
@@ -627,13 +619,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         border: Border(
           right: BorderSide(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 16,
-            offset: const Offset(4, 0),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -642,7 +627,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text('Riwayat Chat',
+              child: Text('Riwayat Sesi Agent',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
                       color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary)),
             ),
@@ -653,41 +638,35 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Text('Belum ada riwayat chat',
+                      child: Text('Belum ada riwayat',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 13,
                               color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
                     ),
                   )
                 : ListView(
-                    children: [
-                      // ── Riwayat lokal (perangkat ini) — v2.2.57+119:
-                      // riwayat chat cukup local saja (tidak dibedakan cloud).
-                      if (_sessions.isNotEmpty) ...[
-                        ..._sessions.map((s) {
-                          final active = s.id == _activeSessionId;
-                          return ListTile(
-                            dense: true,
-                            selected: active,
-                            selectedTileColor: NusaConfig.activePrimary.withValues(alpha: 0.08),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            title: Text(s.title,
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                            subtitle: Text(
-                              _formatDate(s.updatedAt),
-                              style: TextStyle(fontSize: 11,
-                                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 16),
-                              onPressed: () => _deleteSession(s),
-                            ),
-                            onTap: () => _loadSession(s),
-                          );
-                        }),
-                      ],
-                    ],
+                    children: _sessions.map((s) {
+                      final active = s.id == _activeSessionId;
+                      return ListTile(
+                        dense: true,
+                        selected: active,
+                        selectedTileColor: NusaConfig.activePrimary.withValues(alpha: 0.08),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        title: Text(s.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        subtitle: Text(
+                          _formatDate(s.updatedAt),
+                          style: TextStyle(fontSize: 11,
+                              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          onPressed: () => _deleteSession(s),
+                        ),
+                        onTap: () => _loadSession(s),
+                      );
+                    }).toList(),
                   ),
           ),
         ],
@@ -698,79 +677,63 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   Widget _buildChatArea(bool isDark) {
     return Column(
       children: [
-        // Status bar
+        // Status Top Sub-bar
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          color: NusaConfig.activePrimary.withValues(alpha: 0.06),
+          color: NusaConfig.activePrimary.withValues(alpha: 0.05),
           child: Row(
             children: [
-              Icon(Icons.circle, size: 6, color: NusaConfig.accentGreen),
+              Icon(Icons.circle, size: 7, color: _operatingMode == AgentOperatingMode.fullAccess ? Colors.orange : NusaConfig.accentGreen),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  _storeName != null ? 'Aktif — $_storeName' : 'Aktif',
+                  _storeName != null ? 'Toko: $_storeName' : 'Toko Aktif',
                   style: TextStyle(
                       fontSize: 11,
                       color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                      fontWeight: FontWeight.w500),
+                      fontWeight: FontWeight.w600),
                 ),
               ),
-              // Context usage
               if (_visibleMessages.length > 2) ...[
-                Container(
-                  width: 48, height: 3,
-                  decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkBorder : NusaConfig.dividerColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: _contextUsage,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _contextUsage > 0.8
-                            ? NusaConfig.activePrimary
-                            : _contextUsage > 0.5
-                                ? Colors.orange
-                                : NusaConfig.accentGreen,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text('${(_contextUsage * 100).toInt()}%',
-                    style: TextStyle(fontSize: 9, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                Text('Context: ${(_contextUsage * 100).toInt()}%',
+                    style: TextStyle(fontSize: 9.5, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                const SizedBox(width: 8),
               ],
-              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: NusaConfig.accentGreen.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text('GRATIS',
+                child: Text('CLOUD AI',
                     style: TextStyle(
                         fontSize: 9,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         color: NusaConfig.accentGreen)),
               ),
             ],
           ),
         ),
 
-        // Messages (filter out internal tool messages from UI)
+        // Chat Feed & Step Visualizer
         Expanded(
           child: ListView.builder(
             controller: _scrollCtrl,
             padding: const EdgeInsets.all(16),
-            itemCount: _visibleMessages.length + (_loading ? 1 : 0),
+            itemCount: _visibleMessages.length + (_executionSteps.isNotEmpty ? 1 : 0) + (_currentProposal != null ? 1 : 0) + (_loading ? 1 : 0),
             itemBuilder: (_, i) {
-              if (i >= _visibleMessages.length) {
-                return _thinkingBubble(isDark);
+              if (i < _visibleMessages.length) {
+                return _bubble(_visibleMessages[i], isDark);
               }
-              return _bubble(_visibleMessages[i], isDark);
+              int nextIndex = i - _visibleMessages.length;
+              if (_executionSteps.isNotEmpty && nextIndex == 0) {
+                return _buildStepperAccordion(isDark);
+              }
+              if (_currentProposal != null && (_executionSteps.isEmpty ? nextIndex == 0 : nextIndex == 1)) {
+                return _buildProposalCard(_currentProposal!, isDark);
+              }
+              return _thinkingBubble(isDark);
             },
           ),
         ),
@@ -809,7 +772,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
             ),
           ),
 
-        // Input
+        // Floating Input Island
         Container(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           decoration: BoxDecoration(
@@ -832,8 +795,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                       color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Tanya tentang bisnis kamu...',
-                      hintStyle: TextStyle(fontSize: 14,
+                      hintText: 'Perintahkan AI (tanya, tambah produk, cari web)...',
+                      hintStyle: TextStyle(fontSize: 13,
                           color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
                       filled: true,
                       fillColor: isDark
@@ -866,6 +829,149 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStepperAccordion(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? NusaConfig.darkBorder : const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.hub_outlined, size: 16, color: NusaConfig.accentGreen),
+              const SizedBox(width: 8),
+              const Text('Alur Eksekusi Harness (Codex Engine)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ..._executionSteps.map((s) {
+            final isRunning = s.status == AgentStepStatus.running;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  isRunning
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          s.status == AgentStepStatus.success
+                              ? Icons.check_circle_rounded
+                              : Icons.error_outline_rounded,
+                          size: 15,
+                          color: s.status == AgentStepStatus.success ? NusaConfig.accentGreen : Colors.red,
+                        ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s.title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        if (s.detail != null)
+                          Text(s.detail!,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.white54 : Colors.black54,
+                                  fontFamily: 'monospace')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProposalCard(AgentActionProposal prop, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withValues(alpha: 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.shield_outlined, color: Colors.orange, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Konfirmasi Aksi Data',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.orange)),
+                    Text(prop.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isDark ? NusaConfig.darkSurface2 : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              jsonEncode(prop.arguments),
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => prop.reject(),
+                child: const Text('Batalkan', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => prop.approve(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Izinkan & Eksekusi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1010,31 +1116,17 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   }
 
   Widget _dot({int delay = 0, required bool isDark}) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.3, end: 1.0),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-      builder: (_, val, __) => Opacity(
-        opacity: val,
-        child: Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-            shape: BoxShape.circle,
-          ),
-        ),
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+        shape: BoxShape.circle,
       ),
     );
   }
 
   String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Baru saja';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m yg lalu';
-    if (diff.inHours < 24) return '${diff.inHours}j yg lalu';
-    if (diff.inDays < 7) return '${diff.inDays}h yg lalu';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 

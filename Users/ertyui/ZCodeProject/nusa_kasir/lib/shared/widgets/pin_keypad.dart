@@ -581,39 +581,84 @@ class PinKeypadState extends State<PinKeypad>
     VoidCallback? onTap,
     bool isDark = false,
   }) {
+    return _SpringKeyButton(
+      text: text,
+      child: child,
+      onTap: onTap,
+      isDark: isDark,
+    );
+  }
+}
+
+class _SpringKeyButton extends StatefulWidget {
+  final String? text;
+  final Widget? child;
+  final VoidCallback? onTap;
+  final bool isDark;
+
+  const _SpringKeyButton({
+    this.text,
+    this.child,
+    this.onTap,
+    this.isDark = false,
+  });
+
+  @override
+  State<_SpringKeyButton> createState() => _SpringKeyButtonState();
+}
+
+class _SpringKeyButtonState extends State<_SpringKeyButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 5),
-      child: Material(
-        color: text != null
-            ? (isDark ? NusaConfig.darkSurface2 : Colors.white)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        elevation: text != null ? 2 : 0,
-        shadowColor: Colors.black12,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            // 60px — larger tap target than before (52px); keypad taps
-            // were being missed on low-end devices.
-            height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed ? 0.91 : 1.0,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            height: 62,
             alignment: Alignment.center,
-            decoration: isDark && text != null
-                ? BoxDecoration(
-                    border: Border.all(color: NusaConfig.darkBorder, width: 1),
-                    borderRadius: BorderRadius.circular(16),
-                  )
-                : null,
-            child:
-                child ??
+            decoration: BoxDecoration(
+              color: widget.text != null
+                  ? (widget.isDark
+                      ? (_pressed ? NusaConfig.darkSurface2 : NusaConfig.darkSurface)
+                      : (_pressed ? const Color(0xFFE2E8F0) : Colors.white))
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+              border: widget.isDark && widget.text != null
+                  ? Border.all(color: NusaConfig.darkBorder.withValues(alpha: 0.6), width: 1)
+                  : (widget.text != null
+                      ? Border.all(color: Colors.black.withValues(alpha: 0.05), width: 1)
+                      : null),
+              boxShadow: widget.text != null && !_pressed
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: widget.isDark ? 0.25 : 0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: widget.child ??
                 Text(
-                  text!,
+                  widget.text!,
                   style: TextStyle(
+                    fontFamily: 'Poppins',
                     fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
+                    fontWeight: FontWeight.w600,
+                    color: widget.isDark
                         ? NusaConfig.darkTextPrimary
-                        : Color(0xFF1A1A1A),
+                        : const Color(0xFF1E293B),
                   ),
                 ),
           ),

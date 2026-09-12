@@ -321,181 +321,193 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
+      backgroundColor: isDark ? NusaConfig.darkBackground : const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    child: Column(
+                      children: [
+                        const Spacer(flex: 2),
 
-                // ── Lock icon (gradient circle, depth) ──
-                Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [NusaConfig.activePrimary, NusaConfig.activeDark],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: NusaConfig.activePrimary.withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Icon(Icons.lock_rounded, color: Colors.white, size: 34),
-                ),
-                const SizedBox(height: 32),
-
-                // ── Card container (depth) ──
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkSurface : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                        blurRadius: 20,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Title
-                      Text('Masuk',
+                        // ── Minimalist Store Profile & Welcome (No heavy lock plate) ──
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.storefront_rounded,
+                                color: NusaConfig.activePrimary,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'NUSA POS',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.5,
+                                color: isDark
+                                    ? NusaConfig.darkTextPrimary
+                                    : NusaConfig.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Masukkan PIN Kasir',
                           style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w700,
+                            fontFamily: 'Poppins',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
                             color: isDark
                                 ? NusaConfig.darkTextPrimary
-                                : Color(0xFF151717),
-                          )),
-                      const SizedBox(height: 4),
-                      Text('Masukkan PIN, gunakan biometrik, atau tap NFC',
+                                : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13,
                             color: isDark
                                 ? NusaConfig.darkTextSecondary
                                 : NusaConfig.textSecondary,
-                          )),
-                      const SizedBox(height: 20),
-
-                      // ── Keypad ──
-                      PinKeypad(
-                        key: _keypadKey,
-                        length: _pinLength,
-                        error: _error,
-                        showFingerprint: true,
-                        showNfc: _nfcAvailable,
-                        showBarcode: true,
-                        showCancel: false,
-                        onFingerprint: () => BiometricService.authenticate(
-                          reason: 'Verifikasi biometrik untuk melanjutkan',
-                        ),
-                        onFingerprintSuccess: _fingerprintLogin,
-                        onNfc: () async {
-                          final id = await NfcTagService.readEmployeeTag();
-                          if (id == null || !mounted) return null;
-                          final db = ref.read(databaseProvider);
-                          final repo = AttendanceRepository(db);
-                          final emp = await repo.getEmployee(id);
-                          if (emp != null && mounted) {
-                            await _doLogin(emp, remember: _remember);
-                          }
-                          return null;
-                        },
-                        onBarcode: (code) async {
-                          await _barcodeLogin(code);
-                          return null;
-                        },
-                        onComplete: (pin) async {
-                          await _verifyPin(pin);
-                        },
-                        onChanged: (_) {
-                          if (_error != null) _clearError();
-                        },
-                      ),
-
-                      // ── Lupa PIN? (v2.2.43) — cloud-only (needs Google re-auth)
-                      if (NusaConfig.cloudEnabled)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: TextButton(
-                            onPressed: _forgotPin,
-                            style: TextButton.styleFrom(
-                              foregroundColor: NusaConfig.activePrimary,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                            child: const Text(
-                              'Lupa PIN?',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
                           ),
                         ),
 
-                      // ── Remember checkbox (rounded) ──
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: GestureDetector(
-                          onTap: () => setState(() => _remember = !_remember),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 20, height: 20,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
+                        const Spacer(flex: 3),
+
+                        // ── Ergonomic Bottom Zone Keypad ──
+                        PinKeypad(
+                          key: _keypadKey,
+                          length: _pinLength,
+                          error: _error,
+                          showFingerprint: true,
+                          showNfc: _nfcAvailable,
+                          showBarcode: true,
+                          showCancel: false,
+                          onFingerprint: () => BiometricService.authenticate(
+                            reason: 'Verifikasi biometrik untuk melanjutkan',
+                          ),
+                          onFingerprintSuccess: _fingerprintLogin,
+                          onNfc: () async {
+                            final id = await NfcTagService.readEmployeeTag();
+                            if (id == null || !mounted) return null;
+                            final db = ref.read(databaseProvider);
+                            final repo = AttendanceRepository(db);
+                            final emp = await repo.getEmployee(id);
+                            if (emp != null && mounted) {
+                              await _doLogin(emp, remember: _remember);
+                            }
+                            return null;
+                          },
+                          onBarcode: (code) async {
+                            await _barcodeLogin(code);
+                            return null;
+                          },
+                          onComplete: (pin) async {
+                            await _verifyPin(pin);
+                          },
+                          onChanged: (_) {
+                            if (_error != null) _clearError();
+                          },
+                        ),
+
+                        // ── Lupa PIN? (v2.2.43) — cloud-only (needs Google re-auth)
+                        if (NusaConfig.cloudEnabled)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 4),
+                            child: TextButton(
+                              onPressed: _forgotPin,
+                              style: TextButton.styleFrom(
+                                foregroundColor: NusaConfig.activePrimary,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              ),
+                              child: const Text(
+                                'Lupa PIN?',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        // ── Remember checkbox (rounded) ──
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _remember = !_remember),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 20, height: 20,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: _remember
+                                          ? NusaConfig.activePrimary
+                                          : (isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor),
+                                      width: 2,
+                                    ),
                                     color: _remember
                                         ? NusaConfig.activePrimary
-                                        : (isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor),
-                                    width: 2,
+                                        : Colors.transparent,
                                   ),
-                                  color: _remember
-                                      ? NusaConfig.activePrimary
-                                      : Colors.transparent,
+                                  child: _remember
+                                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                      : null,
                                 ),
-                                child: _remember
-                                    ? Icon(Icons.check, size: 14, color: Colors.white)
-                                    : null,
-                              ),
-                              const SizedBox(width: 8),
-                              Text('Ingat PIN selama 8 jam',
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Ingat PIN selama 8 jam',
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: isDark
                                         ? NusaConfig.darkTextSecondary
                                         : NusaConfig.textSecondary,
-                                  )),
-                            ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+
+                        const SizedBox(height: 12),
+                        // Version text
+                        Text(
+                          'v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-
-                const SizedBox(height: 12),
-                // Version text
-                Text('v${NusaConfig.appVersion}+${NusaConfig.appBuildNumber}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
-                    )),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 
 /// Event yang dipancarkan saat AI Agent melakukan aksi mandiri di aplikasi.
 class AgentActionEvent {
