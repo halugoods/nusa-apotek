@@ -583,6 +583,48 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 ],
               ),
             ),
+            // Top Card Button "+ New Chat"
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: InkWell(
+                onTap: () {
+                  _newChat();
+                  _toggleDrawer();
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.activePrimary,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: NusaConfig.activePrimary.withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'New Chat',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
             const Divider(height: 1),
             Expanded(
               child: _sessions.isEmpty
@@ -710,88 +752,90 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Top Control Ribbon (Agent Mode Toggle & Mode Chips)
+            // Top Control Ribbon (Agent Mode Switch Toggle & Sub-mode Dropdown)
             Row(
               children: [
-                // Agent Master Toggle
-                InkWell(
-                  onTap: () {
-                    setState(() => _isAgentActive = !_isAgentActive);
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _isAgentActive
-                          ? NusaConfig.activePrimary.withValues(alpha: 0.12)
-                          : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
+                // Agent Master Toggle Switch
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Transform.scale(
+                      scale: 0.75,
+                      child: Switch(
+                        value: _isAgentActive,
+                        activeColor: NusaConfig.activePrimary,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (val) {
+                          setState(() => _isAgentActive = val);
+                        },
+                      ),
+                    ),
+                    Text(
+                      'Agent Mode',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         color: _isAgentActive
                             ? NusaConfig.activePrimary
-                            : (isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1)),
+                            : (isDark ? Colors.white60 : Colors.black54),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 14,
-                          color: _isAgentActive ? NusaConfig.activePrimary : (isDark ? Colors.white54 : Colors.black54),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Agent Mode',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: _isAgentActive ? NusaConfig.activePrimary : (isDark ? Colors.white54 : Colors.black54),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
 
-                // Sub-mode pills (Active only when Agent Mode is ON)
+                // Sub-mode Dropdown Menu (Active only when Agent Mode is ON)
                 if (_isAgentActive) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () {
-                      final newMode = _operatingMode == AgentOperatingMode.askBeforeAction
-                          ? AgentOperatingMode.fullAccess
-                          : AgentOperatingMode.askBeforeAction;
-                      setState(() {
-                        _operatingMode = newMode;
-                        AgentHarness.I.setMode(newMode);
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(20),
+                  const SizedBox(width: 10),
+                  Container(
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                        width: 0.8,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _operatingMode == AgentOperatingMode.fullAccess ? Icons.bolt_rounded : Icons.shield_rounded,
-                            size: 14,
-                            color: _operatingMode == AgentOperatingMode.fullAccess ? Colors.orange : NusaConfig.accentGreen,
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<AgentOperatingMode>(
+                        value: _operatingMode,
+                        isDense: true,
+                        icon: const Icon(Icons.arrow_drop_down_rounded, size: 18),
+                        dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        items: [
+                          DropdownMenuItem(
+                            value: AgentOperatingMode.askBeforeAction,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.shield_rounded, size: 13, color: NusaConfig.accentGreen),
+                                const SizedBox(width: 5),
+                                const Text('Ask Before Action', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _operatingMode == AgentOperatingMode.fullAccess ? 'Full Access' : 'Ask Before Action',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : Colors.black87,
+                          const DropdownMenuItem(
+                            value: AgentOperatingMode.fullAccess,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.bolt_rounded, size: 13, color: Colors.orange),
+                                SizedBox(width: 5),
+                                Text('Full Access', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                              ],
                             ),
                           ),
                         ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _operatingMode = val;
+                              AgentHarness.I.setMode(val);
+                            });
+                          }
+                        },
                       ),
                     ),
                   ),

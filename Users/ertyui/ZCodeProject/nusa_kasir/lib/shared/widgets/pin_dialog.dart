@@ -250,56 +250,40 @@ class _PinDialogContentState extends State<_PinDialogContent> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Modern Icon badge inside card
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: NusaConfig.activePrimary.withValues(alpha: isDark ? 0.2 : 0.1),
-                    ),
-                    child: Icon(
-                      Icons.pin_outlined,
-                      color: NusaConfig.activePrimary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
                   // Title
                   Text(
                     _displayTitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 18,
+                      fontFamily: 'Poppins',
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF151717),
+                      color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF0F172A),
                     ),
                   ),
-                  if (_displaySubtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      _displaySubtitle!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                      ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _displaySubtitle ?? 'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
                     ),
-                  ],
+                  ),
                   if (widget.employeeRole != null) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       widget.employeeRole!,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: NusaConfig.activePrimary,
                       ),
                     ),
                   ],
                   const SizedBox(height: 20),
 
-                  // Keypad — dengan NFC + barcode hints stacked vertikal
+                  // Keypad
                   _PinDialogKeypad(
                     key: _keypadKey,
                     pinLength: widget.pinLength,

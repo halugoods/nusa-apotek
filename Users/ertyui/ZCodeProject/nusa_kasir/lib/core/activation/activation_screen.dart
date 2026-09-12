@@ -2467,22 +2467,33 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                   child: Column(
                     children: [
-                      Text('Masuk', style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700,
-                      color: isDark ? NusaConfig.darkTextPrimary : Color(0xFF151717))),
-                    SizedBox(height: 4),
-                    Text('Masukkan PIN untuk melanjutkan',
-                      style: TextStyle(fontSize: 13,
-                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    SizedBox(height: 16),
-                    PinKeypad(
-                      key: _keypadKey,
-                      length: _pinLength,
-                      error: _pinError,
-                      showFingerprint: true,
-                      showNfc: _nfcAvailable,
-                      showBarcode: true,
-                      showCancel: false,
+                      Text(
+                        'Masukkan PIN',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? NusaConfig.darkTextPrimary : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Gunakan PIN, biometrik, NFC, atau scan barcode kartu',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      PinKeypad(
+                        key: _keypadKey,
+                        length: _pinLength,
+                        error: _pinError,
+                        showFingerprint: true,
+                        showNfc: _nfcAvailable,
+                        showBarcode: true,
+                        showCancel: false,
                       onFingerprint: () async => await _authFingerprint(),
                       onFingerprintSuccess: () => _fingerprintLogin(),
                       onBarcode: (code) async {

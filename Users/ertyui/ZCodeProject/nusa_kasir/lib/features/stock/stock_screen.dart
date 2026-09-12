@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
@@ -8,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
+import 'package:nusa_kasir/core/services/delta_sync_service.dart';
 import 'package:nusa_kasir/core/utils/format_rupiah.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/product_repository.dart';
@@ -45,12 +47,28 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   /// Dipakai _onExternalBarcode untuk scan HID di tab Opname.
   StockOpnameScreenState? _opnameState;
 
+  StreamSubscription? _deltaSub;
+
   @override
   void initState() {
     super.initState();
     // Hanya ada 2 mode (Menipis/Habis) — default tampil produk menipis.
     _filter = 'low';
     _load();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' || e.table == 'products' || e.table == 'stock_movements') {
+          _load();
+        }
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _deltaSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

@@ -398,107 +398,9 @@ class PinKeypadState extends State<PinKeypad>
             ],
           ),
 
-          // ── Auth hint (below keypad) — VERTIKAL (stacked) ──
-          // v2.2.47: hint vertikal biar estetik, horizontal terlalu sempit.
-          if (widget.showNfc || widget.showBarcode) ...[
-            SizedBox(height: 10),
-            Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
-                ),
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // v2.2.47: hint barcode — full width
-                  if (widget.showBarcode) ...[
-                    AbsorbPointer(
-                      absorbing: _barcodeScanning,
-                      child: Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.symmetric(vertical: 9, horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: NusaConfig.accentPurple.withValues(
-                            alpha: 0.08,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.qr_code_2,
-                                size: 17, color: NusaConfig.accentPurple),
-                            SizedBox(width: 8),
-                            Text(
-                              'Scan Barcode ID',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? NusaConfig.darkTextSecondary
-                                    : NusaConfig.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (widget.showBarcode && widget.showNfc)
-                    SizedBox(height: 6),
-                  // NFC hint — full width, tappable
-                  if (widget.showNfc) ...[
-                    AbsorbPointer(
-                      absorbing: _nfcScanning,
-                      child: GestureDetector(
-                        onTap: _nfcScanning ? null : _onNfcTap,
-                        child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.symmetric(vertical: 9, horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: NusaConfig.accentPurple.withValues(
-                              alpha: 0.08,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.nfc,
-                                  size: 17, color: NusaConfig.accentPurple),
-                              SizedBox(width: 8),
-                              Text(
-                                'Dekatkan kartu NFC',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? NusaConfig.darkTextSecondary
-                                      : NusaConfig.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-
           // ── Cancel (card style) ──────────────────────
           if (widget.showCancel) ...[
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Card(
               elevation: 1,
               shadowColor: Colors.black12,
@@ -510,7 +412,7 @@ class PinKeypadState extends State<PinKeypad>
                 onTap: widget.onCancel,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   alignment: Alignment.center,
                   child: Text(
                     'Batal',
@@ -526,8 +428,6 @@ class PinKeypadState extends State<PinKeypad>
               ),
             ),
           ],
-          // Bottom padding so NFC / cancel card doesn't stick to edge
-          SizedBox(height: 8),
         ],
         ),
       ),
