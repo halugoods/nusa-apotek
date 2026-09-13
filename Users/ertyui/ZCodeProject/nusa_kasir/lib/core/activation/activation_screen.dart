@@ -2315,7 +2315,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         title: 'NUSA Pro',
                         badge: 'Rekomendasi',
                         badgeColor: NusaConfig.activePrimary,
-                        price: 'Rp49.000 / bln • Rp249.000 Lifetime',
+                        price: 'Rp99.000 / bln • Rp499.000 Lifetime',
                         features: const [
                           'Multi-device sinkronisasi realtime',
                           'Backup otomatis Google Cloud',
@@ -2332,7 +2332,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         title: 'NUSA Lite',
                         badge: 'Mandiri & Hemat',
                         badgeColor: isDark ? Colors.tealAccent.shade400 : Colors.teal.shade700,
-                        price: 'Rp29.000 / bln • Rp149.000 Lifetime',
+                        price: 'Rp49.000 / bln • Rp249.000 Lifetime',
                         features: const [
                           'Kasir mandiri 100% offline',
                           'Performa super cepat & hemat RAM',
@@ -2598,8 +2598,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         ),
                         Text(
                           _selectedPlan == 'pro'
-                              ? 'Rp49.000 / bln • Rp249.000 Lifetime'
-                              : 'Rp29.000 / bln • Rp149.000 Lifetime',
+                              ? 'Rp99.000 / bln • Rp499.000 Lifetime'
+                              : 'Rp49.000 / bln • Rp249.000 Lifetime',
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,

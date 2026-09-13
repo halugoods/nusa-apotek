@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:barcode_widget/barcode_widget.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,15 +15,39 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/config/nusa_config.dart';
 import '../../core/providers.dart';
 import '../../core/services/id_card_renderer.dart';
+import '../../core/utils/image_saver_util.dart';
 import '../../data/database/app_database.dart';
 import '../../data/repositories/attendance_repository.dart';
 import '../../data/repositories/customer_repository.dart';
-import '../../data/repositories/settings_repository.dart';
 import '../../shared/widgets/top_toast.dart';
 
 enum IdCardType { employee, customer }
 enum IdCardExportFormat { pdfSingle, pdfBatchA4, imagePng, imageJpg }
-enum SelectedElement { none, storeName, roleBadge, photo, personName, subInfo, barcode }
+enum SelectedElement { none, storeName, roleBadge, photo, personName, subInfo, barcode, customElement }
+
+class CustomIdCardElement {
+  final String id;
+  String text;
+  double size;
+  Color color;
+  Offset offset;
+  String? imagePath;
+  Uint8List? imageBytes;
+  bool isImage;
+  bool isBadge;
+
+  CustomIdCardElement({
+    required this.id,
+    this.text = 'Teks Baru',
+    this.size = 11.0,
+    this.color = Colors.white,
+    this.offset = const Offset(20, 20),
+    this.imagePath,
+    this.imageBytes,
+    this.isImage = false,
+    this.isBadge = false,
+  });
+}
 
 class IdCardStudioScreen extends ConsumerStatefulWidget {
   final IdCardType initialType;
@@ -34,6 +60,7 @@ class IdCardStudioScreen extends ConsumerStatefulWidget {
 class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   late IdCardType _cardType;
   bool _loading = false;
+  bool _isExporting = false;
 
   List<Employee> _employees = [];
   List<Customer> _customers = [];
@@ -50,6 +77,22 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   String _fontFamily = 'Poppins';
   Color _cardAccentColor = NusaConfig.activePrimary;
 
+  // Visibility toggles for elements (CRUD: hide/delete/show)
+  bool _showStoreName = true;
+  bool _showRoleBadge = true;
+  bool _showPhoto = true;
+  bool _showPersonName = true;
+  bool _showSubInfo = true;
+  bool _showBarcode = true;
+  bool _barcodeShowText = true;
+
+  // Custom elements CRUD
+  final List<CustomIdCardElement> _customElements = [];
+  int _selectedCustomIdx = -1;
+
+  // Custom photo overrides per card ID
+  final Map<int, Uint8List> _customPhotoOverrides = {};
+
   // Standalone element properties & offsets (Drag-to-Move relative dx, dy in dp)
   Offset _storeNameOffset = Offset.zero;
   double _storeNameFontSize = 11.0;
@@ -62,7 +105,6 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   Offset _photoOffset = Offset.zero;
   double _photoSize = 48.0;
   bool _photoCircular = false;
-  bool _showPhoto = true;
 
   Offset _personNameOffset = Offset.zero;
   double _personNameFontSize = 13.5;
@@ -74,13 +116,9 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
 
   Offset _barcodeOffset = Offset.zero;
   double _barcodeHeight = 32.0;
-  double _barcodeWidthScale = 1.0;
-  bool _showBarcode = true;
-  bool _barcodeShowText = true;
 
   // Accordion expansion states
   bool _expandTemplates = true;
-  bool _expandStyling = false;
   bool _expandTargets = true;
   bool _expandExport = true;
 
@@ -176,9 +214,182 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
       _barcodeOffset = Offset.zero;
       _photoSize = 48.0;
       _barcodeHeight = 32.0;
+      _storeNameFontSize = 11.0;
+      _roleBadgeFontSize = 9.0;
+      _personNameFontSize = 13.5;
+      _subInfoFontSize = 9.5;
+      _showStoreName = true;
+      _showRoleBadge = true;
+      _showPhoto = true;
+      _showPersonName = true;
+      _showSubInfo = true;
+      _showBarcode = true;
+      _customElements.clear();
+      _selectedCustomIdx = -1;
       _activeElement = SelectedElement.none;
     });
     TopToast.info(context, 'Posisi elemen kanvas di-reset ke default');
+  }
+
+  void _addCustomText() {
+    final controller = TextEditingController(text: 'Teks Tambahan');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tambah Teks Kustom'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Contoh: Masa Berlaku, Slogan, dll.',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              final t = controller.text.trim();
+              if (t.isEmpty) return;
+              setState(() {
+                _customElements.add(CustomIdCardElement(
+                  id: 'txt_${DateTime.now().millisecondsSinceEpoch}',
+                  text: t,
+                  size: 10.0,
+                  offset: const Offset(14, 14),
+                ));
+                _activeElement = SelectedElement.customElement;
+                _selectedCustomIdx = _customElements.length - 1;
+              });
+              TopToast.success(context, 'Teks kustom ditambahkan');
+            },
+            child: const Text('Tambah'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addCustomBadge() {
+    final controller = TextEditingController(text: 'VIP MEMBER');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tambah Badge Label'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Contoh: VIP, STAFF, VERIFIED',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              final t = controller.text.trim();
+              if (t.isEmpty) return;
+              setState(() {
+                _customElements.add(CustomIdCardElement(
+                  id: 'badge_${DateTime.now().millisecondsSinceEpoch}',
+                  text: t.toUpperCase(),
+                  size: 8.5,
+                  isBadge: true,
+                  color: _cardAccentColor,
+                  offset: const Offset(20, 20),
+                ));
+                _activeElement = SelectedElement.customElement;
+                _selectedCustomIdx = _customElements.length - 1;
+              });
+              TopToast.success(context, 'Badge kustom ditambahkan');
+            },
+            child: const Text('Tambah'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addCustomImage() async {
+    try {
+      final res = await FilePicker.pickFiles(type: FileType.image);
+      if (res != null && res.files.single.path != null) {
+        final path = res.files.single.path!;
+        final bytes = await File(path).readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          _customElements.add(CustomIdCardElement(
+            id: 'img_${DateTime.now().millisecondsSinceEpoch}',
+            isImage: true,
+            size: 32.0,
+            imagePath: path,
+            imageBytes: bytes,
+            offset: const Offset(15, 15),
+          ));
+          _activeElement = SelectedElement.customElement;
+          _selectedCustomIdx = _customElements.length - 1;
+        });
+        TopToast.success(context, 'Gambar/Logo ditambahkan');
+      }
+    } catch (e) {
+      if (mounted) TopToast.error(context, 'Gagal memilih gambar: $e');
+    }
+  }
+
+  Future<void> _pickCustomCardPhoto(int targetId) async {
+    try {
+      final res = await FilePicker.pickFiles(type: FileType.image);
+      if (res != null && res.files.single.path != null) {
+        final path = res.files.single.path!;
+        final bytes = await File(path).readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          _customPhotoOverrides[targetId] = bytes;
+        });
+        TopToast.success(context, 'Foto kartu berhasil diubah dari galeri');
+      }
+    } catch (e) {
+      if (mounted) TopToast.error(context, 'Gagal mengambil gambar: $e');
+    }
+  }
+
+  void _deleteActiveElement() {
+    if (_activeElement == SelectedElement.none) return;
+    setState(() {
+      switch (_activeElement) {
+        case SelectedElement.storeName:
+          _showStoreName = false;
+          break;
+        case SelectedElement.roleBadge:
+          _showRoleBadge = false;
+          break;
+        case SelectedElement.photo:
+          _showPhoto = false;
+          break;
+        case SelectedElement.personName:
+          _showPersonName = false;
+          break;
+        case SelectedElement.subInfo:
+          _showSubInfo = false;
+          break;
+        case SelectedElement.barcode:
+          _showBarcode = false;
+          break;
+        case SelectedElement.customElement:
+          if (_selectedCustomIdx >= 0 && _selectedCustomIdx < _customElements.length) {
+            _customElements.removeAt(_selectedCustomIdx);
+            _selectedCustomIdx = -1;
+          }
+          break;
+        case SelectedElement.none:
+          break;
+      }
+      _activeElement = SelectedElement.none;
+    });
+    TopToast.info(context, 'Elemen berhasil dihapus/disembunyikan');
   }
 
   @override
@@ -219,7 +430,23 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
     );
   }
 
+  int get _activeTargetId {
+    if (_cardType == IdCardType.employee && _employees.isNotEmpty) {
+      return _employees.firstWhere(
+        (e) => _selectedIds.contains(e.id),
+        orElse: () => _employees.first,
+      ).id;
+    } else if (_cardType == IdCardType.customer && _customers.isNotEmpty) {
+      return _customers.firstWhere(
+        (c) => _selectedIds.contains(c.id),
+        orElse: () => _customers.first,
+      ).id;
+    }
+    return 0;
+  }
+
   Widget _buildWideLayout(bool isDark) {
+    final targetId = _activeTargetId;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -232,8 +459,10 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildLiveInteractiveCanvas(isDark),
-                const SizedBox(height: 16),
-                _buildActiveElementToolbar(isDark),
+                const SizedBox(height: 12),
+                _buildElementCrudBar(isDark, targetId),
+                const SizedBox(height: 12),
+                _buildActiveElementToolbar(isDark, targetId),
                 const SizedBox(height: 16),
                 _buildCustomizerAccordion(isDark),
                 const SizedBox(height: 16),
@@ -254,6 +483,7 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   }
 
   Widget _buildMobileLayout(bool isDark) {
+    final targetId = _activeTargetId;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -263,7 +493,9 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
           const SizedBox(height: 16),
           _buildLiveInteractiveCanvas(isDark),
           const SizedBox(height: 12),
-          _buildActiveElementToolbar(isDark),
+          _buildElementCrudBar(isDark, targetId),
+          const SizedBox(height: 12),
+          _buildActiveElementToolbar(isDark, targetId),
           const SizedBox(height: 16),
           _buildTargetSelectorAccordion(isDark),
           const SizedBox(height: 16),
@@ -271,6 +503,81 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
           const SizedBox(height: 16),
           _buildExportAccordion(isDark),
         ],
+      ),
+    );
+  }
+
+  Widget _buildElementCrudBar(bool isDark, int activeTargetId) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? NusaConfig.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'ELEMEN:',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _quickCrudChip(
+            icon: Icons.text_fields_rounded,
+            label: '+ Teks',
+            onTap: _addCustomText,
+            color: Colors.blueAccent,
+          ),
+          const SizedBox(width: 6),
+          _quickCrudChip(
+            icon: Icons.verified_rounded,
+            label: '+ Badge',
+            onTap: _addCustomBadge,
+            color: Colors.purpleAccent,
+          ),
+          const SizedBox(width: 6),
+          _quickCrudChip(
+            icon: Icons.add_photo_alternate_rounded,
+            label: '+ Gambar/Logo',
+            onTap: _addCustomImage,
+            color: Colors.amber.shade700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickCrudChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -287,32 +594,46 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
     final cardIsDark = tpl['isDark'] as bool;
 
     // Active target item data
+    int activeTargetId = 0;
     String name = 'NAMA LENGKAP';
     String roleOrLevel = _cardType == IdCardType.employee ? 'KASIR' : 'GOLD MEMBER';
     String subInfo = _cardType == IdCardType.employee ? 'NIP: EMP-001' : 'Poin: 150 Poin';
     String barcode = 'NUSA-8829102';
     String? photoPath;
+    String? photoBase64;
 
     if (_cardType == IdCardType.employee && _employees.isNotEmpty) {
       final active = _employees.firstWhere(
         (e) => _selectedIds.contains(e.id),
         orElse: () => _employees.first,
       );
+      activeTargetId = active.id;
       name = active.name;
       roleOrLevel = active.role.toUpperCase();
       subInfo = 'NIP: EMP-${active.id} • ${active.phone ?? 'Aktif'}';
       barcode = active.barcode ?? 'EMP-${active.id}';
       photoPath = active.photoPath;
+      photoBase64 = active.photoBase64;
     } else if (_cardType == IdCardType.customer && _customers.isNotEmpty) {
       final active = _customers.firstWhere(
         (c) => _selectedIds.contains(c.id),
         orElse: () => _customers.first,
       );
+      activeTargetId = active.id;
       name = active.name;
       roleOrLevel = '${active.level} MEMBER'.toUpperCase();
       final phoneStr = active.phone;
       subInfo = 'Poin: ${active.points} • ${(phoneStr != null && phoneStr.isNotEmpty) ? phoneStr : 'Member Toko'}';
       barcode = active.barcode ?? 'CUST-${active.id}';
+    }
+
+    Uint8List? resolvedPhotoBytes;
+    if (_customPhotoOverrides.containsKey(activeTargetId)) {
+      resolvedPhotoBytes = _customPhotoOverrides[activeTargetId];
+    } else if (photoBase64 != null && photoBase64.isNotEmpty) {
+      try {
+        resolvedPhotoBytes = base64Decode(photoBase64);
+      } catch (_) {}
     }
 
     final defaultTextClr = tpl['textColor'] as Color;
@@ -400,53 +721,59 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _wrapInteractiveElement(
-                                  element: SelectedElement.storeName,
-                                  offset: _storeNameOffset,
-                                  onPanUpdate: (d) => setState(() => _storeNameOffset += d),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                                if (_showStoreName)
+                                  _wrapInteractiveElement(
+                                    element: SelectedElement.storeName,
+                                    offset: _storeNameOffset,
+                                    onPanUpdate: (d) => setState(() => _storeNameOffset += d),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          _storeName.toUpperCase(),
+                                          style: TextStyle(
+                                            fontFamily: _fontFamily,
+                                            fontSize: _storeNameFontSize,
+                                            fontWeight: FontWeight.w800,
+                                            color: cardIsDark ? _storeNameColor : defaultTextClr,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
+                                if (_showRoleBadge)
+                                  _wrapInteractiveElement(
+                                    element: SelectedElement.roleBadge,
+                                    offset: _roleBadgeOffset,
+                                    onPanUpdate: (d) => setState(() => _roleBadgeOffset += d),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: _roleBadgeColor,
+                                        borderRadius: BorderRadius.circular(5),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        _storeName.toUpperCase(),
+                                      child: Text(
+                                        roleOrLevel,
                                         style: TextStyle(
                                           fontFamily: _fontFamily,
-                                          fontSize: _storeNameFontSize,
+                                          fontSize: _roleBadgeFontSize,
                                           fontWeight: FontWeight.w800,
-                                          color: cardIsDark ? _storeNameColor : defaultTextClr,
-                                          letterSpacing: 0.5,
+                                          color: Colors.white,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                _wrapInteractiveElement(
-                                  element: SelectedElement.roleBadge,
-                                  offset: _roleBadgeOffset,
-                                  onPanUpdate: (d) => setState(() => _roleBadgeOffset += d),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: _roleBadgeColor,
-                                      borderRadius: BorderRadius.circular(5),
                                     ),
-                                    child: Text(
-                                      roleOrLevel,
-                                      style: TextStyle(
-                                        fontFamily: _fontFamily,
-                                        fontSize: _roleBadgeFontSize,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
                               ],
                             ),
 
@@ -474,19 +801,21 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                                       ),
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(_photoCircular ? 99 : 8.5),
-                                        child: photoPath != null && File(photoPath).existsSync()
-                                            ? Image.file(File(photoPath), fit: BoxFit.cover)
-                                            : Center(
-                                                child: Text(
-                                                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                                  style: TextStyle(
-                                                    fontFamily: _fontFamily,
-                                                    fontSize: _photoSize * 0.4,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: accent,
-                                                  ),
-                                                ),
-                                              ),
+                                        child: resolvedPhotoBytes != null
+                                            ? Image.memory(resolvedPhotoBytes, fit: BoxFit.cover)
+                                            : (photoPath != null && File(photoPath).existsSync()
+                                                ? Image.file(File(photoPath), fit: BoxFit.cover)
+                                                : Center(
+                                                    child: Text(
+                                                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                                      style: TextStyle(
+                                                        fontFamily: _fontFamily,
+                                                        fontSize: _photoSize * 0.4,
+                                                        fontWeight: FontWeight.w800,
+                                                        color: accent,
+                                                      ),
+                                                    ),
+                                                  )),
                                       ),
                                     ),
                                   ),
@@ -496,39 +825,41 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      _wrapInteractiveElement(
-                                        element: SelectedElement.personName,
-                                        offset: _personNameOffset,
-                                        onPanUpdate: (d) => setState(() => _personNameOffset += d),
-                                        child: Text(
-                                          name,
-                                          style: TextStyle(
-                                            fontFamily: _fontFamily,
-                                            fontSize: _personNameFontSize,
-                                            fontWeight: FontWeight.w800,
-                                            color: cardIsDark ? _personNameColor : defaultTextClr,
+                                      if (_showPersonName)
+                                        _wrapInteractiveElement(
+                                          element: SelectedElement.personName,
+                                          offset: _personNameOffset,
+                                          onPanUpdate: (d) => setState(() => _personNameOffset += d),
+                                          child: Text(
+                                            name,
+                                            style: TextStyle(
+                                              fontFamily: _fontFamily,
+                                              fontSize: _personNameFontSize,
+                                              fontWeight: FontWeight.w800,
+                                              color: cardIsDark ? _personNameColor : defaultTextClr,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
                                       const SizedBox(height: 3),
-                                      _wrapInteractiveElement(
-                                        element: SelectedElement.subInfo,
-                                        offset: _subInfoOffset,
-                                        onPanUpdate: (d) => setState(() => _subInfoOffset += d),
-                                        child: Text(
-                                          subInfo,
-                                          style: TextStyle(
-                                            fontFamily: _fontFamily,
-                                            fontSize: _subInfoFontSize,
-                                            color: cardIsDark ? _subInfoColor : defaultTextClr.withValues(alpha: 0.75),
-                                            fontWeight: FontWeight.w500,
+                                      if (_showSubInfo)
+                                        _wrapInteractiveElement(
+                                          element: SelectedElement.subInfo,
+                                          offset: _subInfoOffset,
+                                          onPanUpdate: (d) => setState(() => _subInfoOffset += d),
+                                          child: Text(
+                                            subInfo,
+                                            style: TextStyle(
+                                              fontFamily: _fontFamily,
+                                              fontSize: _subInfoFontSize,
+                                              color: cardIsDark ? _subInfoColor : defaultTextClr.withValues(alpha: 0.75),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
                                     ],
                                   ),
                                 ),
@@ -556,9 +887,9 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                                     barcode: Barcode.code128(),
                                     data: barcode,
                                     drawText: _barcodeShowText,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 8,
-                                      color: const Color(0xFF0F172A),
+                                      color: Color(0xFF0F172A),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -567,6 +898,11 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                           ],
                         ),
                       ),
+
+                      // Draggable Custom Elements (CRUD)
+                      for (int i = 0; i < _customElements.length; i++) ...[
+                        _buildDraggableCustomElement(i),
+                      ],
                     ],
                   ),
                 ),
@@ -578,13 +914,71 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
     );
   }
 
+  Widget _buildDraggableCustomElement(int idx) {
+    if (idx >= _customElements.length) return const SizedBox.shrink();
+    final elem = _customElements[idx];
+    final isSelected = !_isExporting && (_activeElement == SelectedElement.customElement && _selectedCustomIdx == idx);
+
+    return Positioned(
+      left: 14 + elem.offset.dx,
+      top: 14 + elem.offset.dy,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _activeElement = SelectedElement.customElement;
+          _selectedCustomIdx = idx;
+        }),
+        onPanUpdate: (d) => setState(() => elem.offset += d.delta),
+        child: Container(
+          decoration: isSelected
+              ? BoxDecoration(
+                  border: Border.all(color: Colors.blueAccent, width: 1.5),
+                  borderRadius: BorderRadius.circular(6),
+                  color: Colors.blueAccent.withValues(alpha: 0.12),
+                )
+              : null,
+          padding: isSelected ? const EdgeInsets.all(2) : EdgeInsets.zero,
+          child: elem.isImage
+              ? (elem.imageBytes != null
+                  ? Image.memory(elem.imageBytes!, width: elem.size, height: elem.size, fit: BoxFit.contain)
+                  : const Icon(Icons.image, size: 24))
+              : (elem.isBadge
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: elem.color,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        elem.text,
+                        style: TextStyle(
+                          fontFamily: _fontFamily,
+                          fontSize: elem.size,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      elem.text,
+                      style: TextStyle(
+                        fontFamily: _fontFamily,
+                        fontSize: elem.size,
+                        fontWeight: FontWeight.w600,
+                        color: elem.color,
+                      ),
+                    )),
+        ),
+      ),
+    );
+  }
+
   Widget _wrapInteractiveElement({
     required SelectedElement element,
     required Offset offset,
     required ValueChanged<Offset> onPanUpdate,
     required Widget child,
   }) {
-    final isSelected = _activeElement == element;
+    final isSelected = !_isExporting && (_activeElement == element);
 
     return Transform.translate(
       offset: offset,
@@ -610,7 +1004,7 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   // STANDALONE ACTIVE ELEMENT TOOLBAR
   // ─────────────────────────────────────────────────
 
-  Widget _buildActiveElementToolbar(bool isDark) {
+  Widget _buildActiveElementToolbar(bool isDark, int activeTargetId) {
     if (_activeElement == SelectedElement.none) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -625,7 +1019,7 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Sentuh elemen kartu di atas untuk membuka editor mandiri & kontrol ukuran.',
+                'Sentuh elemen kartu di atas untuk membuka kontrol ukuran, foto galeri, & opsi hapus.',
                 style: TextStyle(fontSize: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
               ),
             ),
@@ -656,21 +1050,36 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Editor Elemen: ${_elementTitle(_activeElement)}',
+                    'Editor: ${_elementTitle(_activeElement)}',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.blueAccent),
                   ),
                 ],
               ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                onPressed: () => setState(() => _activeElement = SelectedElement.none),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+              Row(
+                children: [
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                    ),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    label: const Text('Hapus', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    onPressed: _deleteActiveElement,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => setState(() => _activeElement = SelectedElement.none),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
             ],
           ),
           const Divider(height: 16),
-          _buildElementControls(isDark),
+          _buildElementControls(isDark, activeTargetId),
         ],
       ),
     );
@@ -684,11 +1093,17 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
       case SelectedElement.personName: return 'Nama Lengkap';
       case SelectedElement.subInfo: return 'NIP / Poin / Sub-Info';
       case SelectedElement.barcode: return 'Barcode Code128';
+      case SelectedElement.customElement:
+        if (_selectedCustomIdx >= 0 && _selectedCustomIdx < _customElements.length) {
+          final elem = _customElements[_selectedCustomIdx];
+          return elem.isImage ? 'Gambar Kustom' : (elem.isBadge ? 'Badge Kustom' : 'Teks Kustom');
+        }
+        return 'Elemen Kustom';
       case SelectedElement.none: return '';
     }
   }
 
-  Widget _buildElementControls(bool isDark) {
+  Widget _buildElementControls(bool isDark, int activeTargetId) {
     switch (_activeElement) {
       case SelectedElement.storeName:
         return Column(
@@ -747,7 +1162,7 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                   child: Slider(
                     value: _photoSize,
                     min: 32.0,
-                    max: 72.0,
+                    max: 76.0,
                     activeColor: Colors.blueAccent,
                     onChanged: (v) => setState(() => _photoSize = v),
                   ),
@@ -763,6 +1178,26 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                   activeColor: Colors.blueAccent,
                   onChanged: (v) => setState(() => _photoCircular = v),
                 ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.photo_library_outlined, size: 16),
+                    label: const Text('Pilih Foto dari Galeri', style: TextStyle(fontSize: 12)),
+                    onPressed: () => _pickCustomCardPhoto(activeTargetId),
+                  ),
+                ),
+                if (_customPhotoOverrides.containsKey(activeTargetId)) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Kembalikan Foto Asli',
+                    icon: const Icon(Icons.undo_rounded, color: Colors.orange),
+                    onPressed: () => setState(() => _customPhotoOverrides.remove(activeTargetId)),
+                  ),
+                ],
               ],
             ),
           ],
@@ -834,6 +1269,52 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
                 ),
               ],
             ),
+          ],
+        );
+      case SelectedElement.customElement:
+        if (_selectedCustomIdx < 0 || _selectedCustomIdx >= _customElements.length) {
+          return const SizedBox.shrink();
+        }
+        final elem = _customElements[_selectedCustomIdx];
+        return Column(
+          children: [
+            if (!elem.isImage) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Ukuran: ${elem.size.toStringAsFixed(1)}pt', style: const TextStyle(fontSize: 12)),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Slider(
+                      value: elem.size,
+                      min: 7.0,
+                      max: 20.0,
+                      activeColor: Colors.blueAccent,
+                      onChanged: (v) => setState(() => elem.size = v),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Ukuran: ${elem.size.toInt()}px', style: const TextStyle(fontSize: 12)),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Slider(
+                      value: elem.size,
+                      min: 16.0,
+                      max: 80.0,
+                      activeColor: Colors.blueAccent,
+                      onChanged: (v) => setState(() => elem.size = v),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         );
       case SelectedElement.none:
@@ -1302,8 +1783,14 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
         final targets = _employees.where((e) => _selectedIds.contains(e.id)).toList();
         for (final emp in targets) {
           pw.MemoryImage? photo;
-          if (emp.photoPath != null && File(emp.photoPath!).existsSync()) {
-            photo = photoToImage(emp.photoPath);
+          if (_customPhotoOverrides.containsKey(emp.id)) {
+            photo = pw.MemoryImage(_customPhotoOverrides[emp.id]!);
+          } else if (emp.photoPath != null && File(emp.photoPath!).existsSync()) {
+            photo = photoToImage(emp.photoPath, base64: emp.photoBase64);
+          } else if (emp.photoBase64 != null && emp.photoBase64!.isNotEmpty) {
+            try {
+              photo = pw.MemoryImage(base64Decode(emp.photoBase64!));
+            } catch (_) {}
           }
           cards.add(IdCardRenderer.employeeCard(
             storeName: _storeName,
@@ -1359,8 +1846,14 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
         final active = _employees.firstWhere((e) => _selectedIds.contains(e.id), orElse: () => _employees.first);
         fileName = 'Kartu_CR80_${active.name.replaceAll(' ', '_')}';
         pw.MemoryImage? photo;
-        if (active.photoPath != null && File(active.photoPath!).existsSync()) {
-          photo = photoToImage(active.photoPath);
+        if (_customPhotoOverrides.containsKey(active.id)) {
+          photo = pw.MemoryImage(_customPhotoOverrides[active.id]!);
+        } else if (active.photoPath != null && File(active.photoPath!).existsSync()) {
+          photo = photoToImage(active.photoPath, base64: active.photoBase64);
+        } else if (active.photoBase64 != null && active.photoBase64!.isNotEmpty) {
+          try {
+            photo = pw.MemoryImage(base64Decode(active.photoBase64!));
+          } catch (_) {}
         }
         card = IdCardRenderer.employeeCard(
           storeName: _storeName,
@@ -1402,28 +1895,47 @@ class _IdCardStudioScreenState extends ConsumerState<IdCardStudioScreen> {
   }
 
   Future<void> _exportImage(bool isDark, {required bool isJpg}) async {
+    setState(() {
+      _isExporting = true;
+      _activeElement = SelectedElement.none;
+    });
+    // Wait for repaint boundary to render without selection border
+    await WidgetsBinding.instance.endOfFrame;
     try {
       final boundary = _previewRepaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
       final image = await boundary.toImage(pixelRatio: 4.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
 
-      final dir = await getTemporaryDirectory();
-      final ext = isJpg ? 'jpg' : 'png';
-      final file = File('${dir.path}/Kartu_ID_${DateTime.now().millisecondsSinceEpoch}.$ext');
-      await file.writeAsBytes(byteData.buffer.asUint8List());
+      if (!isJpg) {
+        // Simpan langsung ke Galeri publik Android (Pictures/Nusa)
+        final savedPath = await ImageSaverUtil.saveImageToGallery(
+          bytes,
+          filename: 'Kartu_ID_${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        if (mounted) TopToast.success(context, 'Kartu ID berhasil disimpan di Galeri: $savedPath');
+      } else {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/Kartu_ID_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await file.writeAsBytes(bytes);
 
-      if (!mounted) return;
-      SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path)],
-          subject: 'Kartu ID CR80 - $_storeName',
-        ),
-      );
-      TopToast.success(context, 'Gambar $ext berhasil dibuat');
+        if (!mounted) return;
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path)],
+            subject: 'Kartu ID CR80 - $_storeName',
+          ),
+        );
+        if (mounted) TopToast.success(context, 'Membuka menu bagikan gambar');
+      }
     } catch (e) {
       if (mounted) TopToast.error(context, 'Gagal membuat gambar: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
     }
   }
 

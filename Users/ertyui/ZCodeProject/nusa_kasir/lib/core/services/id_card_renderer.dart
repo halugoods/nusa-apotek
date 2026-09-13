@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:barcode/barcode.dart' as bc;
 import 'package:pdf/pdf.dart';
@@ -5,7 +6,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 
 /// Helper: baca file foto lokal → MemoryImage untuk PDF (null kalau gagal).
-pw.MemoryImage? photoToImage(String? path) {
+pw.MemoryImage? photoToImage(String? path, {String? base64}) {
+  if (base64 != null && base64.isNotEmpty) {
+    try {
+      return pw.MemoryImage(base64Decode(base64));
+    } catch (_) {}
+  }
   if (path == null || path.isEmpty) return null;
   try {
     final f = File(path);

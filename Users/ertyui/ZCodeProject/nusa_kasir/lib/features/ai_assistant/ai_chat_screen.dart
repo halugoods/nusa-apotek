@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:nusa_kasir/core/providers.dart';
@@ -10,6 +11,7 @@ import 'package:nusa_kasir/core/agent/agent_tools.dart';
 import 'package:nusa_kasir/core/agent/agent_harness.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:nusa_kasir/data/database/app_database.dart';
+import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -265,6 +267,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     } catch (_) {}
   }
 
+  void _sendPrompt(String promptText) {
+    if (_loading) return;
+    _inputCtrl.text = promptText;
+    _send();
+  }
+
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _loading) return;
@@ -463,12 +471,47 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'AI Assistant',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+            Row(
+              children: [
+                const Text(
+                  'AI Assistant',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: NusaConfig.accentGreen.withValues(alpha: 0.3), width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: NusaConfig.accentGreen,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Online',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: NusaConfig.accentGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             Text(
-              _storeName != null ? 'Toko $_storeName' : 'Asisten Operasional',
+              _storeName != null ? 'Toko $_storeName' : 'Asisten Operasional Toko',
               style: TextStyle(
                 fontSize: 11,
                 color: isDark ? Colors.white54 : Colors.black54,
@@ -494,15 +537,21 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 child: ListView.builder(
                   controller: _scrollCtrl,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  itemCount: _visibleMessages.length +
+                  itemCount: (_visibleMessages.length <= 1 ? 1 : 0) +
+                      _visibleMessages.length +
                       (_executionSteps.isNotEmpty ? 1 : 0) +
                       (_currentProposal != null ? 1 : 0) +
                       (_loading ? 1 : 0),
                   itemBuilder: (_, i) {
-                    if (i < _visibleMessages.length) {
-                      return _buildMessageItem(_visibleMessages[i], isDark);
+                    final showHero = _visibleMessages.length <= 1;
+                    if (showHero && i == 0) {
+                      return _buildHeroGreeting(isDark);
                     }
-                    int nextIdx = i - _visibleMessages.length;
+                    final msgIdx = showHero ? i - 1 : i;
+                    if (msgIdx < _visibleMessages.length) {
+                      return _buildMessageItem(_visibleMessages[msgIdx], isDark);
+                    }
+                    int nextIdx = msgIdx - _visibleMessages.length;
                     if (_executionSteps.isNotEmpty && nextIdx == 0) {
                       return _buildExecutionAccordion(isDark);
                     }
@@ -514,9 +563,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                 ),
               ),
 
-              // ── Autocomplete Overlay Box (@ & /) ──
+              // ── Autocomplete Overlay Box (@ & /) OR Quick Chips ──
               if (_popupTrigger != null && _filteredSuggestions.isNotEmpty)
-                _buildAutocompleteBox(isDark),
+                _buildAutocompleteBox(isDark)
+              else
+                _buildQuickChips(isDark),
 
               // ── Modern Floating Antigravity Prompt Console ──
               _buildConsoleBar(isDark),
@@ -740,6 +791,278 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
     );
   }
 
+  // ── Hero Greeting Card (ChatGPT / Perplexity Style) ──
+  Widget _buildHeroGreeting(bool isDark) {
+    final starterCards = [
+      {
+        'title': 'Ringkasan Penjualan',
+        'subtitle': 'Omzet, laba kotor & transaksi kasir hari ini',
+        'icon': Icons.insights_rounded,
+        'color': const Color(0xFF2563EB),
+        'prompt': 'Berapa total omzet, laba kotor, dan jumlah transaksi kasir hari ini?',
+      },
+      {
+        'title': 'Cek Stok Menipis',
+        'subtitle': 'Daftar produk kritis yang perlu segera restock',
+        'icon': Icons.inventory_2_outlined,
+        'color': const Color(0xFFD97706),
+        'prompt': 'Periksa produk apa saja yang stoknya hampir habis atau di bawah batas minimum?',
+      },
+      {
+        'title': 'Analisis Keuntungan',
+        'subtitle': 'Evaluasi margin laba & performa penjualan toko',
+        'icon': Icons.trending_up_rounded,
+        'color': const Color(0xFF059669),
+        'prompt': 'Berikan analisis performa laba dan produk dengan margin terbaik bulan ini.',
+      },
+      {
+        'title': 'Ide Promo & Diskon',
+        'subtitle': 'Strategi promo terarah untuk dongkrak omzet',
+        'icon': Icons.local_offer_outlined,
+        'color': const Color(0xFF7C3AED),
+        'prompt': 'Rekomendasikan strategi promo atau paket diskon yang cocok untuk meningkatkan omzet minggu ini.',
+      },
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 10),
+          // Hero Avatar with Gradient Ring
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [NusaConfig.activePrimary, const Color(0xFF6366F1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: NusaConfig.activePrimary.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Halo! Ada yang bisa dibantu hari ini?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              _storeName != null
+                  ? 'Asisten cerdas operasional untuk Toko $_storeName'
+                  : 'Tanyakan analitik, cek inventori, atau instruksikan AI',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Starter Cards Grid
+          LayoutBuilder(
+            builder: (ctx, constraints) {
+              final isWide = constraints.maxWidth > 420;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isWide ? 2 : 1,
+                  mainAxisExtent: isWide ? 88 : 74,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemCount: starterCards.length,
+                itemBuilder: (ctx, idx) {
+                  final card = starterCards[idx];
+                  final cardColor = card['color'] as Color;
+                  return InkWell(
+                    onTap: () => _sendPrompt(card['prompt'] as String),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: cardColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(card['icon'] as IconData, color: cardColor, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  card['title'] as String,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  card['subtitle'] as String,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: isDark ? Colors.white54 : Colors.black54,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 11, color: isDark ? Colors.white30 : Colors.black26),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Quick Action Horizontal Chips Carousel ──
+  Widget _buildQuickChips(bool isDark) {
+    final chips = [
+      {
+        'label': 'Ringkasan Hari Ini',
+        'icon': Icons.insights_rounded,
+        'prompt': 'Berapa total omzet, laba kotor, dan jumlah transaksi kasir hari ini?',
+      },
+      {
+        'label': 'Cek Stok Menipis',
+        'icon': Icons.inventory_2_outlined,
+        'prompt': 'Periksa stok produk mana saja yang sudah menipis atau kritis?',
+      },
+      {
+        'label': 'Analisis Laba',
+        'icon': Icons.trending_up_rounded,
+        'prompt': 'Berikan analisis laba bersih dan performa penjualan toko bulan ini.',
+      },
+      {
+        'label': 'Ide Promo',
+        'icon': Icons.local_offer_outlined,
+        'prompt': 'Buatkan rekomendasi ide promo atau diskon menarik untuk mendongkrak penjualan.',
+      },
+      {
+        'label': 'Cari di Web',
+        'icon': Icons.search_rounded,
+        'prompt': '/cari_produk ',
+      },
+    ];
+
+    return Container(
+      height: 38,
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (ctx, idx) {
+          final c = chips[idx];
+          return InkWell(
+            onTap: () {
+              final prompt = c['prompt'] as String;
+              if (prompt.startsWith('/')) {
+                _inputCtrl.text = prompt;
+                _focusNode.requestFocus();
+              } else {
+                _sendPrompt(prompt);
+              }
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  width: 0.9,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(c['icon'] as IconData, size: 14, color: NusaConfig.activePrimary),
+                  const SizedBox(width: 6),
+                  Text(
+                    c['label'] as String,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : const Color(0xFF334155),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   // ── Antigravity / Codex Console & Bottom Bar ──
   Widget _buildConsoleBar(bool isDark) {
     return Container(
@@ -763,7 +1086,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                       scale: 0.75,
                       child: Switch(
                         value: _isAgentActive,
-                        activeColor: NusaConfig.activePrimary,
+                        activeThumbColor: NusaConfig.activePrimary,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         onChanged: (val) {
                           setState(() => _isAgentActive = val);
@@ -943,35 +1266,71 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   Widget _buildMessageItem(ChatMessage msg, bool isDark) {
     final isUser = msg.role == 'user';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
             Container(
-              width: 28,
-              height: 28,
+              width: 32,
+              height: 32,
+              margin: const EdgeInsets.only(top: 2),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                gradient: LinearGradient(
+                  colors: [NusaConfig.activePrimary, const Color(0xFF6366F1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(Icons.auto_awesome_rounded, size: 15, color: NusaConfig.activePrimary),
+              child: const Center(
+                child: Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
           ],
           Flexible(
             child: Container(
-              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
+                gradient: isUser
+                    ? LinearGradient(
+                        colors: [NusaConfig.activePrimary, NusaConfig.activePrimary.withValues(alpha: 0.9)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
                 color: isUser
-                    ? NusaConfig.activePrimary
+                    ? null
                     : (isDark ? const Color(0xFF1E293B) : Colors.white),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(isUser ? 18 : 4),
+                  topRight: Radius.circular(isUser ? 4 : 18),
+                  bottomLeft: const Radius.circular(18),
+                  bottomRight: const Radius.circular(18),
+                ),
                 border: isUser
                     ? null
-                    : Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                    : Border.all(
+                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        width: 1,
+                      ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -980,17 +1339,41 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
                     msg.content,
                     style: TextStyle(
                       fontSize: 13.5,
-                      height: 1.4,
+                      height: 1.45,
                       color: isUser ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      color: isUser ? Colors.white60 : (isDark ? Colors.white38 : Colors.black38),
-                    ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isUser ? Colors.white70 : (isDark ? Colors.white38 : Colors.black38),
+                        ),
+                      ),
+                      if (!isUser) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: msg.content));
+                            TopToast.success(context, 'Teks disalin ke papan klip');
+                          },
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Icon(
+                              Icons.copy_rounded,
+                              size: 13,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1139,32 +1522,68 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   // ── Thinking State ──
   Widget _buildThinkingState(bool isDark) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              gradient: LinearGradient(
+                colors: [NusaConfig.activePrimary, const Color(0xFF6366F1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.auto_awesome_rounded, size: 15, color: NusaConfig.activePrimary),
+            child: const Center(
+              child: Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+            ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+              ),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
-                const SizedBox(width: 8),
-                const Text('Memproses...', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(NusaConfig.activePrimary),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'AI sedang menganalisis...',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    fontStyle: FontStyle.italic,
+                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                  ),
+                ),
               ],
             ),
           ),

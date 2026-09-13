@@ -744,6 +744,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ScreenScaffold(
       'Pelanggan',
+      actions: [
+        IconButton(
+          tooltip: 'Kartu Member',
+          icon: Icon(Icons.badge_outlined, color: NusaConfig.activePrimary),
+          onPressed: () => context.push('/id_card_studio?type=customer'),
+        ),
+      ],
       onBarcode: (code) {
         final norm = _normBarcode(code);
         if (norm.isEmpty) return;
@@ -760,8 +767,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               _actionChip(Icons.message_rounded, 'Template WA', _showWaTemplates, isDark),
               SizedBox(width: 8),
               _actionChip(Icons.stars_rounded, 'Pengaturan Poin', _showPointSettings, isDark),
-              SizedBox(width: 8),
-              _actionChip(Icons.badge_outlined, 'Kartu Member', () => context.push('/id_card_studio?type=customer'), isDark),
             ]),
           ),
           SizedBox(height: 8),

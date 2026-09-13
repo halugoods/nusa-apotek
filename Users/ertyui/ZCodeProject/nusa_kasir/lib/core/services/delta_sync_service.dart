@@ -574,19 +574,58 @@ class DeltaSyncService {
           }
           break;
         case 'transactions':
-          // v2.2.57+136 FIX UTAMA "trx tidak pernah muncul di owner":
-          // _mapToTransaction lama expect data['date'] int MILLISECOND,
-          // padahal push mengirim ISO string (dan int detik dari SQLite) →
-          // TypeError SETIAP kali → catch di _upsertRecord menelan →
-          // transaksi tak pernah masuk DB penerima. Mapper baru absent-aware
-          // + menerima int-detik / int-ms / ISO + jangan pernah gagal karena
-          // format tanggal.
-          await _db!.customUpdate(
-            _upsertSql('transactions', _txCols,
-                pkColumn: 'id', data: data),
-            variables: _upsertVars(_txCols, data, id: recordId),
-            updates: {_db!.transactions},
-          );
+          // v2.2.57+144: Lookup by invoice unik untuk mencegah collision autoincrement ID
+          // antar device berbeda yang menimpa transaksi lokal eksis.
+          final txInvoice = data['invoice'] as String?;
+          final existingTx = txInvoice != null && txInvoice.isNotEmpty
+              ? await (_db!.select(_db!.transactions)
+                    ..where((t) => t.invoice.equals(txInvoice)))
+                  .getSingleOrNull()
+              : null;
+
+          if (existingTx != null) {
+            // Sudah ada transaksi dengan invoice ini — update baris eksis
+            await _partialUpdate(
+                'transactions', existingTx.id.toString(), data, _txCols);
+          } else {
+            // Belum ada transaksi dengan invoice ini — insert baris baru.
+            // Cek apakah target id dari remote sudah dipakai transaksi lain secara lokal
+            final targetId = int.tryParse(recordId);
+            final idOccupied = targetId != null &&
+                (await (_db!.select(_db!.transactions)
+                      ..where((t) => t.id.equals(targetId)))
+                    .getSingleOrNull()) != null;
+
+            if (idOccupied) {
+              // ID lokal bentrok dengan transaksi berbeda! Insert tanpa ID (autoincrement baru)
+              final insertCols = _txCols.values.where((c) => c != 'id').toList();
+              final placeholders =
+                  List.filled(insertCols.length, '?').join(', ');
+              final sql =
+                  'INSERT INTO transactions (${insertCols.join(', ')}) VALUES ($placeholders)';
+              final vars = insertCols.map((sqlCol) {
+                final jsonKey = _txCols.keys.firstWhere(
+                  (k) => _txCols[k] == sqlCol,
+                  orElse: () => sqlCol,
+                );
+                final v = data.containsKey(jsonKey)
+                    ? data[jsonKey]
+                    : (data.containsKey(_snake(jsonKey))
+                        ? data[_snake(jsonKey)]
+                        : null);
+                return Variable(_coerceValue(sqlCol, v));
+              }).toList();
+              await _db!.customInsert(sql,
+                  variables: vars, updates: {_db!.transactions});
+            } else {
+              // ID belum terpakai — insert dengan ID remote
+              await _db!.customUpdate(
+                _upsertSql('transactions', _txCols, pkColumn: 'id', data: data),
+                variables: _upsertVars(_txCols, data, id: recordId),
+                updates: {_db!.transactions},
+              );
+            }
+          }
           break;
         case 'categories':
           await _upsertCategory(data);
@@ -1724,7 +1763,7 @@ class DeltaSyncService {
       return null;
     }
     final svc = ImageStorageService(uid);
-    final filename = localPath.split('/').last;
+    final filename = localPath.split(RegExp(r'[/\\]')).last;
     if (filename.isEmpty) {
       _activeHydratingProductIds.remove(productId);
       return null;

@@ -118,6 +118,8 @@ class RealtimeBackupNotifier {
                 debugPrint(
                     '[RealtimeSync] direct delta_broadcast (${deltas.length} deltas) from $deviceId');
                 RealtimeSyncService.I.onRemoteDeltas(deltas);
+                // Trigger juga onRemoteBackupUpdated sbg redundansi UI refresh
+                RealtimeSyncService.I.onRemoteBackupUpdated();
                 return;
               }
             }
@@ -248,7 +250,11 @@ class RealtimeBackupNotifier {
   /// v2.2.57+143: Pure Realtime 1-Jalur WS Delta Broadcast.
   /// Kirim payload delta langsung ke semua peer aktif di channel backup_updated:{uid}.
   Future<void> broadcastDeltas(List<Map<String, dynamic>> deltas) async {
-    if (_channel == null || deltas.isEmpty) return;
+    if (deltas.isEmpty) return;
+    if (_channel == null) {
+      await _connect();
+    }
+    if (_channel == null) return;
     try {
       _channel!.sink.add(jsonEncode({
         'event': 'delta_broadcast',

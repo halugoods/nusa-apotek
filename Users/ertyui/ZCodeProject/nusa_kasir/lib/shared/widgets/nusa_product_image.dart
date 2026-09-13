@@ -80,15 +80,19 @@ class _NusaProductImageState extends State<NusaProductImage>
   void _checkAndTriggerDownload() {
     final pid = widget.productId;
     final path = widget.imagePath;
-    if (pid == null || path == null || path.isEmpty) return;
+    if (pid == null) return;
+
+    final isNetwork = path != null &&
+        (path.startsWith('http://') || path.startsWith('https://'));
+    if (isNetwork) return;
 
     // Cek apakah file lokal benar-benar ada
-    final exists = File(path).existsSync();
+    final exists = path != null && path.isNotEmpty && File(path).existsSync();
     final hasB64 = widget.imageBase64 != null && widget.imageBase64!.isNotEmpty;
 
     // Jika file tidak ada & base64 kosong -> picu download otomatis on-demand
     if (!exists && !hasB64) {
-      DeltaSyncService.I.hydrateSingleProduct(pid, path);
+      DeltaSyncService.I.hydrateSingleProduct(pid, path ?? 'product_$pid.jpg');
     }
   }
 
@@ -133,13 +137,19 @@ class _NusaProductImageState extends State<NusaProductImage>
         File(_resolvedLocalPath!).existsSync()) {
       return FileImage(File(_resolvedLocalPath!));
     }
-    // 2. File lokal awal jika ada
+    // 2. URL network (http/https)
+    if (widget.imagePath != null &&
+        (widget.imagePath!.startsWith('http://') ||
+            widget.imagePath!.startsWith('https://'))) {
+      return NetworkImage(widget.imagePath!);
+    }
+    // 3. File lokal awal jika ada
     if (widget.imagePath != null &&
         widget.imagePath!.isNotEmpty &&
         File(widget.imagePath!).existsSync()) {
       return FileImage(File(widget.imagePath!));
     }
-    // 3. Fallback base64 dari DB
+    // 4. Fallback base64 dari DB
     if (widget.imageBase64 != null && widget.imageBase64!.isNotEmpty) {
       try {
         return MemoryImage(base64Decode(widget.imageBase64!));
