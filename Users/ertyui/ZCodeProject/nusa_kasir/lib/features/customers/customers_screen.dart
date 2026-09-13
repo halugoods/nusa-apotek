@@ -26,6 +26,8 @@ import 'package:nusa_kasir/shared/widgets/top_toast.dart';
 import 'package:nusa_kasir/core/utils/wa_phone.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:nusa_kasir/core/services/id_card_renderer.dart';
+import 'dart:async';
+import 'package:nusa_kasir/core/services/delta_sync_service.dart';
 
 /// 6 random avatar colors picked from hash of customer name.
 const _avatarColors = [
@@ -54,6 +56,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   Map<int, int> _outstanding = {}; // customerId -> outstanding debt amount
   bool _loading = true;
   String _levelFilter = 'Semua';
+  StreamSubscription? _deltaSub;
 
   // Level member SAMA dengan web toko online: Silver/Gold/Platinum.
   // (Sebelumnya app tampil 'Regular' untuk Silver — beda nama, membingungkan.)
@@ -64,10 +67,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.initState();
     _search.addListener(_load);
     _load();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' || e.table == 'customers' || e.table == 'customer_debts') {
+          _load();
+        }
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _deltaSub?.cancel();
     _search.removeListener(_load);
     _search.dispose();
     super.dispose();

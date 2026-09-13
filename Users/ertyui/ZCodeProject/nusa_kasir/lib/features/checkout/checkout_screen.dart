@@ -1298,30 +1298,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         );
         bookingTxId = savedTxId;
 
-        // v2.2.57+131: announce transaction immediately so owner's device
-        // knows to pull within ~1s instead of waiting for the 5-min
-        // debounce upload cycle. Upload itself stays debounced (egress),
-        // but the lightweight WS broadcast is near-zero cost.
-        // v2.2.57+137: urutan PENTING — trigger SQLite sudah menulis outbox
-        // saat saveTransaction; flush SEKARANG (bypass debounce 500ms)
-        // supaya delta benar-benar SUDAH di server saat broadcast sampai ke
-        // owner. Dulu broadcast jalan duluan → owner pull → delta belum ada →
-        // dapat datanya belakangan lewat tick 20/30 dtk (kesan "tidak realtime").
-        unawaited(_pushAndAnnounce());
-
-        // v2.2.57+131: announce transaction via delta sync so other devices
-        // can apply the row-level change without a full backup pull.
-        // v2.2.57+137: shim pushDelta tidak lagi mengirim payload manual —
-        // trigger SQLite sudah menulis baris lengkap (snapshot DB saat flush)
-        // ke outbox; cukup minta flush sekarang (lihat _pushAndAnnounce).
-        try {
-          DeltaSyncService.I.pushDelta(
-            table: 'transactions',
-            recordId: savedTxId.toString(),
-            operation: 'INSERT',
-          );
-        } catch (_) {}
-
         // ── HUTANG / DP: catat sisa sebagai hutang pelanggan (menu Piutang) ──
         // Total transaksi tetap utuh (laporan omzet benar); uang muka tercatat
         // di transaksi (cashGiven = dp), sisa tercatat di Piutang (menu Utang)
@@ -1388,6 +1364,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
         }
       });
+
+      // v2.2.57+141: urutan KRITIS — panggil _pushAndAnnounce SETELAH
+      // db.transaction selesai (commit sukses) agar outbox berisi seluruh
+      // perubahan transaksi, stok, dan poin secara lengkap, serta koneksi
+      // SQLite tidak terkunci (database locked) saat flush outbox.
+      unawaited(_pushAndAnnounce());
 
       // Clear cart
       // Capture total & discount before clearing — getters depend on cartProvider

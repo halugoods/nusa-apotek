@@ -22,6 +22,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'dart:async';
+import 'package:nusa_kasir/core/services/delta_sync_service.dart';
 
 const _expenseCategories = [
   'Operasional',
@@ -71,11 +73,32 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   String _timeFilter = 'Hari ini';
   DateTimeRange? _dateRange;
   int? _branchFilter;
+  StreamSubscription? _deltaSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' ||
+            e.table == 'expenses' ||
+            e.table == 'expense_categories' ||
+            e.table == 'recurring_expenses' ||
+            e.table == 'liquidity' ||
+            e.table == 'waste' ||
+            e.table == 'payroll') {
+          _load();
+        }
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _deltaSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

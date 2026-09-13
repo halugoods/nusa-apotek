@@ -14,6 +14,8 @@ import 'package:nusa_kasir/shared/widgets/nusa_button.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
+import 'dart:async';
+import 'package:nusa_kasir/core/services/delta_sync_service.dart';
 
 class DebtScreen extends ConsumerStatefulWidget {
   DebtScreen({super.key});
@@ -30,6 +32,7 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
   int _totalReceivables = 0;
   int _overdueCount = 0;
   bool _loading = true;
+  StreamSubscription? _deltaSub;
 
   @override
   void initState() {
@@ -39,10 +42,22 @@ class _DebtScreenState extends ConsumerState<DebtScreen>
       if (!_tabCtrl.indexIsChanging) _load();
     });
     _load();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' ||
+            e.table == 'customer_debts' ||
+            e.table == 'debt_payments' ||
+            e.table == 'transactions') {
+          _load();
+        }
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _deltaSub?.cancel();
     _tabCtrl.dispose();
     super.dispose();
   }

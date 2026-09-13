@@ -1,5 +1,6 @@
 
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,6 +111,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   final _imagePicker = ImagePicker();
+  StreamSubscription? _deltaSub;
 
   @override
   void initState() {
@@ -119,6 +121,15 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
     );
     _load();
     _loadRoles();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' || e.table == 'employees' || e.table == 'roles') {
+          _load();
+          _loadRoles();
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadRoles() async {
@@ -131,6 +142,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
   @override
   void dispose() {
+    _deltaSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }

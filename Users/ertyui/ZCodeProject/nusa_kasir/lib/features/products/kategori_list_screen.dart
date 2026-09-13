@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:drift/drift.dart' hide Column;
+import 'dart:async';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/delta_sync_service.dart';
@@ -24,11 +25,26 @@ class _KategoriListScreenState extends ConsumerState<KategoriListScreen> {
   Map<String, int> _counts = {};
   bool _loading = true;
   bool _sortByCount = false;
+  StreamSubscription? _deltaSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    try {
+      _deltaSub = DeltaSyncService.I.stream.listen((e) {
+        if (!mounted) return;
+        if (e.table == '*' || e.table == 'categories' || e.table == 'products') {
+          _load();
+        }
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _deltaSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
