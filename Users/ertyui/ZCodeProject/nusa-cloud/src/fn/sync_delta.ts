@@ -182,7 +182,7 @@ export async function handlePull(ctx: FnContext, params: Params): Promise<Respon
 
 export async function handleAck(ctx: FnContext, params: Params): Promise<Response> {
   const env = ctx.env;
-  const uid = getUid(ctx, params);
+  const uid = params.uid || params.google_user_id || getUid(ctx, params);
   if (!uid) return errorJson('Unauthorized — no uid', 401);
 
   const deltaIds = (params.delta_ids as string[]) ?? [];
@@ -206,7 +206,7 @@ export async function handleAck(ctx: FnContext, params: Params): Promise<Respons
 
 export async function handleStatus(ctx: FnContext, params: Params): Promise<Response> {
   const env = ctx.env;
-  const uid = getUid(ctx, params);
+  const uid = params.uid || params.google_user_id || getUid(ctx, params);
   if (!uid) return errorJson('Unauthorized — no uid', 401);
 
   // Get sync_state

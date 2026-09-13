@@ -101,6 +101,11 @@ Future<void> installDeltaSyncTriggers(AppDatabase db) async {
   await db.customStatement(
     'INSERT OR IGNORE INTO sync_muted (m) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM sync_muted)',
   );
+  // v2.2.57+141 FIX KRITIS: Jika proses app sebelumnya mati atau force-close
+  // saat setSyncMuted(db, true) sedang aktif, nilai m=1 akan tersimpan permanen
+  // di main DB! Reset m=0 setiap kali koneksi baru dibuka supaya trigger
+  // tidak mati permanen dan transaksi di device kasir selalu masuk ke sync_outbox.
+  await db.customStatement('UPDATE sync_muted SET m = 0');
 
   // ── Trigger per tabel ──
   // v2.2.57+135: DROP dulu trigger lama dari build +134 — di DB yang pernah

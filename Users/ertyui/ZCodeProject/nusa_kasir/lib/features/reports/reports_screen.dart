@@ -60,17 +60,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   StreamSubscription? _deltaSub;
-  StreamSubscription? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     _loadEmployees();
     try {
+      // v2.2.57+141: Dengarkan DeltaSyncService agar refresh HANYA terjadi
+      // SETELAH batch transaksi remote selesai di-insert ke database SQLite lokal.
       _deltaSub = DeltaSyncService.I.stream.listen((_) {
-        if (mounted) setState(() => _refreshKey++);
-      });
-      _realtimeSub = RealtimeSyncService.I.stream.listen((_) {
         if (mounted) setState(() => _refreshKey++);
       });
     } catch (_) {}
@@ -79,7 +77,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   void dispose() {
     _deltaSub?.cancel();
-    _realtimeSub?.cancel();
     super.dispose();
   }
 

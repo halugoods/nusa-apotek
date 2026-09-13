@@ -59,7 +59,12 @@ class RealtimeBackupNotifier {
   Future<void> _connect() async {
     if (!_shouldRun) return;
     final name = await _channelName();
-    if (name == null) return;
+    if (name == null) {
+      // v2.2.57+141: Jangan return diam-diam saat UID belum siap — jadwalkan
+      // reconnect agar WebSocket tersambung begitu user login / UID terbaca.
+      _scheduleReconnect();
+      return;
+    }
     try {
       final ws = CloudGateway.shared.wsChannel(name);
       if (ws == null) {
@@ -81,7 +86,7 @@ class RealtimeBackupNotifier {
               : message;
           if (decoded is! Map) return;
           final event = '${decoded['event'] ?? ''}';
-          if (event != 'backup_updated') return;
+          if (event != 'backup_updated' && event != 'sync') return;
           final payload = decoded['payload'];
           final p = payload is Map
               ? Map<String, dynamic>.from(payload)

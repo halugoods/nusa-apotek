@@ -88,6 +88,18 @@ class DeltaSyncService {
   String? _deviceId;
   String? _uid;
 
+  Future<String?> _getUid() async {
+    if (_uid != null && _uid!.isNotEmpty) return _uid;
+    _uid = await SecureStore.resolveCanonicalUid();
+    return _uid;
+  }
+
+  Future<String?> _getDeviceId() async {
+    if (_deviceId != null && _deviceId!.isNotEmpty) return _deviceId;
+    _deviceId = await SecureStore.getDeviceId();
+    return _deviceId;
+  }
+
   /// v2.2.57+137: pull segera (dipanggil WS event / resume) dengan guard
   /// anti tumpang-tindih — pull yang belum selesai tidak diulang, dan event
   /// beruntun dalam 1 detik di-coalesce (stream broadcast bisa 2 event per
@@ -106,6 +118,10 @@ class DeltaSyncService {
     if (_started) return;
     _started = true;
     _db = db;
+    // v2.2.57+141: reset mute flag saat service start (cegah outbox mati)
+    try {
+      await setSyncMuted(db, false);
+    } catch (_) {}
     _deviceId = await SecureStore.getDeviceId();
     _uid = await SecureStore.resolveCanonicalUid();
 
@@ -135,14 +151,16 @@ class DeltaSyncService {
   }
 
   Future<void> _registerDevice() async {
-    if (_uid == null || _deviceId == null) return;
+    final uid = await _getUid();
+    final deviceId = await _getDeviceId();
+    if (uid == null || deviceId == null) return;
     try {
       await CloudGateway.shared.invoke('sync-delta', body: {
         'action': 'register-device',
-        'device_id': _deviceId,
+        'device_id': deviceId,
         'device_name': 'Flutter Device',
-        'uid': _uid!,
-        'google_user_id': _uid!,
+        'uid': uid,
+        'google_user_id': uid,
       });
     } catch (_) {}
   }
@@ -175,7 +193,10 @@ class DeltaSyncService {
   /// (table, pk), baca snapshot datanya langsung dari DB, kirim ke cloud.
   /// Beberapa UPDATE ke baris sama otomatis kolaps; DELETE tanpa payload.
   Future<void> _flushOutbox() async {
-    if (_db == null || _uid == null || _deviceId == null) return;
+    if (_db == null) return;
+    final uid = await _getUid();
+    final deviceId = await _getDeviceId();
+    if (uid == null || deviceId == null) return;
 
     try {
       // 1. Kandidat = baris terakhir per (table_name, record_pk), FIFO.
@@ -217,7 +238,7 @@ class DeltaSyncService {
               'record_id': pk,
               'operation': 'DELETE',
               'data': null,
-              'device_id': _deviceId,
+              'device_id': deviceId,
             });
             continue;
           }
@@ -229,7 +250,7 @@ class DeltaSyncService {
           'record_id': pk,
           'operation': op,
           'data': data != null ? jsonEncode(data) : null,
-          'device_id': _deviceId,
+          'device_id': deviceId,
         });
         // v2.2.57+136: created_at device TIDAK dikirim. Dulu timestamp device
         // (jam HP) bisa di belakang timestamp server → worker pull dengan
@@ -249,9 +270,9 @@ class DeltaSyncService {
       final result = await CloudGateway.shared.invoke('sync-delta', body: {
         'action': 'push',
         'deltas': deltas,
-        'uid': _uid!,
-        'google_user_id': _uid!,
-        'device_id': _deviceId!,
+        'uid': uid,
+        'google_user_id': uid,
+        'device_id': deviceId,
       });
 
       if (result.ok) {
@@ -259,6 +280,10 @@ class DeltaSyncService {
           'DELETE FROM sync_outbox WHERE id <= ?',
           [maxIdInBatch],
         );
+        // v2.2.57+141: broadcast segera setelah push sukses agar device lain langsung pull
+        try {
+          await RealtimeBackupNotifier.I.broadcastUpdated();
+        } catch (_) {}
       } else {
         debugPrint('[DeltaSync] push failed (${result.status}): ${result.error ?? result.data}');
         _scheduleFlushRetry();
@@ -326,33 +351,39 @@ class DeltaSyncService {
   }
 
   Future<void> _pull() async {
-    if (_db == null || _uid == null) return;
+    if (_db == null) return;
+    final uid = await _getUid();
+    final deviceId = await _getDeviceId();
+    if (uid == null) return;
 
     try {
       // v2.2.57+136: since pakai server_time dari pull sebelumnya — JAM
       // SERVER, bukan jam device (device clock bisa meleset → delta di-skip).
-      // Pull lama tanpa server_time tersimpan → fallback DateTime sekarang
-      // hanya untuk device yang belum pernah dapat server_time.
+      // v2.2.57+141: fallback 30 hari (bukan 5 menit) jika belum pernah pull
+      // agar tidak kehilangan transaksi saat device baru login / install ulang.
       var since = await SecureStore.getLastDeltaPull();
-      since ??= DateTime.now().toUtc().subtract(const Duration(minutes: 5));
-      final sinceBase = since;
+      since ??= DateTime.now().toUtc().subtract(const Duration(days: 30));
+      // v2.2.57+141: toleransi clock skew 15 dtk agar delta yang baru di-insert
+      // tidak terlewat akibat selisih milidetik jam server/edge D1.
+      final sinceBase = since.subtract(const Duration(seconds: 15));
 
       String? serverTime;
       var guard = 0;
-      // v2.2.57+136: has_more diikuti sampai habis — dulu cuma batch 100
-      // pertama per pull → saat sync pertama / offline lama, sisa delta
-      // nunggu tick 30 detik berikutnya (n batch = n×30 detik).
+      int currentOffset = 0;
+      // v2.2.57+136/141: has_more & offset diikuti sampai habis — paging
+      // offset dinamis agar semua delta di D1 terambil utuh.
       do {
         final result = await CloudGateway.shared.invoke('sync-delta', body: {
           'action': 'pull',
           'since': sinceBase.toIso8601String(),
           'limit': 200,
-          'uid': _uid!,
-          'google_user_id': _uid!,
+          'offset': currentOffset,
+          'uid': uid,
+          'google_user_id': uid,
           // v2.2.57+134: WAJIB — sebelumnya tidak dikirim → worker deviceWrap
           // menolak 401 (device_id tidak ada) DAN filter device_id != 'unknown'
           // salah sehingga device bisa menarik delta-nya sendiri.
-          if (_deviceId != null) 'device_id': _deviceId!,
+          if (deviceId != null) 'device_id': deviceId,
         });
 
         if (!result.ok) return;
@@ -362,6 +393,9 @@ class DeltaSyncService {
 
         final deltas = (data['deltas'] as List?) ?? [];
         serverTime = data['server_time'] as String? ?? serverTime;
+        final hasMore = data['has_more'] == true;
+        final nextOffset = data['next_offset'] as int?;
+        currentOffset = nextOffset ?? (currentOffset + deltas.length);
 
         if (deltas.isEmpty) break;
 
@@ -397,9 +431,9 @@ class DeltaSyncService {
             await CloudGateway.shared.invoke('sync-delta', body: {
               'action': 'ack',
               'delta_ids': appliedIds,
-              'uid': _uid!,
-              'google_user_id': _uid!,
-              if (_deviceId != null) 'device_id': _deviceId!,
+              'uid': uid,
+              'google_user_id': uid,
+              if (deviceId != null) 'device_id': deviceId,
             });
           } catch (_) {}
         }
@@ -412,15 +446,8 @@ class DeltaSyncService {
           operation: 'BATCH',
         ));
 
-        since = serverTime != null
-            ? (DateTime.tryParse(serverTime)?.toUtc() ?? since)
-            : since;
-        if (!changed) {
-          // Semua delta gagal apply — jangan ulang loop tanpa akhir; keluar
-          // dan andalkan retry tick berikutnya.
-          break;
-        }
-      } while (serverTime != null && ++guard < 10);
+        if (!hasMore || ++guard >= 20) break;
+      } while (true);
 
       if (serverTime != null) {
         await SecureStore.setLastDeltaPull(
@@ -987,16 +1014,20 @@ class DeltaSyncService {
     Map<String, dynamic> data, {
     required String id,
   }) {
-    return [Variable(_coerceValue('id', int.tryParse(id) ?? id)), ...cols.values.map((sqlCol) {
-      final jsonKey = cols.keys.firstWhere(
-        (k) => cols[k] == sqlCol,
-        orElse: () => sqlCol,
-      );
-      final v = data.containsKey(jsonKey)
-          ? data[jsonKey]
-          : (data.containsKey(_snake(jsonKey)) ? data[_snake(jsonKey)] : null);
-      return Variable(_coerceValue(sqlCol, v));
-    })];
+    final valueCols = cols.values.where((c) => c != 'id');
+    return [
+      Variable(_coerceValue('id', int.tryParse(id) ?? id)),
+      ...valueCols.map((sqlCol) {
+        final jsonKey = cols.keys.firstWhere(
+          (k) => cols[k] == sqlCol,
+          orElse: () => sqlCol,
+        );
+        final v = data.containsKey(jsonKey)
+            ? data[jsonKey]
+            : (data.containsKey(_snake(jsonKey)) ? data[_snake(jsonKey)] : null);
+        return Variable(_coerceValue(sqlCol, v));
+      }),
+    ];
   }
   static const _txCols = <String, String>{
     'invoice': 'invoice',
