@@ -1900,6 +1900,137 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  Future<int?> _promptCashAmountDialog(Employee emp, {required bool isCheckIn}) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ctrl = TextEditingController();
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? NusaConfig.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isCheckIn ? 'Kas Awal (Modal Laci)' : 'Kas Akhir (Hitung Fisik)',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Masukkan nominal uang kas ${emp.name} saat ini:',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                prefixText: 'Rp ',
+                hintText: '0',
+                filled: true,
+                fillColor: isDark ? NusaConfig.darkInputFill : const Color(0xFFF1F5F9),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Batal')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: NusaConfig.activePrimary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              final val = int.tryParse(ctrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+              Navigator.pop(ctx, val);
+            },
+            child: const Text('Lanjut ke PIN'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleQuickAttendance({required bool isCheckIn}) async {
+    final session = ref.read(employeeSessionProvider);
+    final attRepo = AttendanceRepository(ref.read(databaseProvider));
+    final empId = _cardEmployeeId ?? session?.employeeId;
+
+    Employee? emp;
+    if (empId != null) {
+      emp = await attRepo.getEmployee(empId);
+    }
+    if (emp == null && session?.name != null) {
+      final emps = await attRepo.getEmployees();
+      emp = emps.cast<Employee?>().firstWhere(
+        (e) => e!.name == session!.name,
+        orElse: () => null,
+      );
+    }
+
+    if (emp == null) {
+      // Fallback if employee cannot be determined
+      _handlePresensiTap();
+      return;
+    }
+
+    final isCashier = emp.role == 'Kasir' || emp.requiresCashOpen || emp.requiresCashClose;
+    int cash = 0;
+    if (isCashier) {
+      final entered = await _promptCashAmountDialog(emp, isCheckIn: isCheckIn);
+      if (entered == null) return;
+      cash = entered;
+    }
+    if (!mounted) return;
+
+    final title = isCheckIn ? 'Absen Masuk' : 'Absen Pulang';
+    final result = await PinDialog.show(
+      context: context,
+      title: title,
+      employeeName: emp.name,
+      employeeRole: emp.role,
+      correctPin: emp.pin,
+      showFingerprint: true,
+      showNfc: true,
+      showBarcode: true,
+      onFingerprint: () async => await _authFingerprint(),
+      onNfc: () async {
+        final id = await NfcTagService.readEmployeeTag();
+        return id?.toString();
+      },
+      onBarcode: AuthMethods.barcode(
+        ref,
+        expectedEmployeeId: emp.id,
+      ),
+    );
+
+    if (result != null && result.success) {
+      if (isCheckIn) {
+        if (isCashier && cash > 0) {
+          await attRepo.checkInWithCash(emp.id, cash);
+        } else {
+          await attRepo.checkIn(emp.id);
+        }
+      } else {
+        if (isCashier && cash > 0) {
+          await attRepo.checkOutWithCash(emp.id, cash);
+        } else {
+          await attRepo.checkOut(emp.id);
+        }
+      }
+      SoundService.I.play(NusaSound.success);
+      if (mounted) {
+        TopToast.success(context, '$title berhasil!');
+        await _load();
+      }
+    }
+  }
+
   /// Show employee list with WhatsApp chat buttons (Owner quick access).
   /// v2.2.54: sheet "Hubungi Karyawan" diperbaiki total:
   ///  - SEMUA karyawan tampil (dulu cuma yang punya nomor WA → kosong).
@@ -2576,10 +2707,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               }
                             : null,
                         onAbsenMasuk: () {
-                          _handlePresensiTap();
+                          _handleQuickAttendance(isCheckIn: true);
                         },
                         onAbsenKeluar: () {
-                          _handlePresensiTap();
+                          _handleQuickAttendance(isCheckIn: false);
                         },
                         onKontakWa: () {
                           // Show employee WA list for Owner

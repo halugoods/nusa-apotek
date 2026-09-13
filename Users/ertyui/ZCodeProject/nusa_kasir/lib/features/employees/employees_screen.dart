@@ -2238,6 +2238,13 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
 
     return ScreenScaffold(
       'Karyawan',
+      actions: [
+        IconButton(
+          tooltip: 'Studio Kartu ID',
+          icon: Icon(Icons.badge_outlined, color: NusaConfig.activePrimary),
+          onPressed: () => context.push('/id_card_studio?type=employee'),
+        ),
+      ],
       onBarcode: (code) {
         final norm = ProductRepository.normalizeBarcode(code);
         if (norm.isEmpty) return;
@@ -2256,9 +2263,6 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
               onScan: () => _scanBarcodeToSearch(context),
             ),
           ),
-          // ── Role manager row (Owner only) ──
-          if (ref.read(employeeSessionProvider)?.role == 'Owner')
-            _buildRoleRow(isDark),
           Expanded(
             child: _loading
                 ? Center(child: CircularProgressIndicator())
@@ -2270,7 +2274,7 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView.separated(
-                      padding: EdgeInsets.all(16),
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 96),
                       itemCount: employees.length,
                       separatorBuilder: (_, _) => SizedBox(height: 12),
                       itemBuilder: (_, i) {
@@ -2387,28 +2391,29 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
                                           ? NusaConfig.darkSurface
                                           : null,
                                       onSelected: (v) {
-                                        if (v == 'card') _shareEmployeeCard(e);
                                         if (v == 'edit') _showForm(employee: e);
                                         if (v == 'delete') _delete(e);
                                       },
                                       itemBuilder: (_) => [
                                         PopupMenuItem(
-                                          value: 'card',
+                                          value: 'edit',
                                           child: Row(
                                             children: [
-                                              Icon(Icons.badge_outlined, size: 16, color: NusaConfig.activePrimary),
+                                              Icon(Icons.edit_outlined, size: 16, color: NusaConfig.activePrimary),
                                               const SizedBox(width: 8),
-                                              const Text('Cetak Kartu ID'),
+                                              const Text('Edit'),
                                             ],
                                           ),
                                         ),
                                         PopupMenuItem(
-                                          value: 'edit',
-                                          child: Text('Edit'),
-                                        ),
-                                        PopupMenuItem(
                                           value: 'delete',
-                                          child: Text('Hapus'),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                                              const SizedBox(width: 8),
+                                              const Text('Hapus', style: TextStyle(color: Colors.red)),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -2485,16 +2490,41 @@ class _EmployeesScreenState extends ConsumerState<EmployeesScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: NusaConfig.activePrimary,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        icon: Icon(Icons.add),
-        label: Text(
-          'Tambah Karyawan',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        onPressed: () => _showForm(),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (ref.read(employeeSessionProvider)?.role == 'Owner') ...[
+            FloatingActionButton.extended(
+              heroTag: 'fabRole',
+              backgroundColor: isDark ? NusaConfig.darkSurface2 : Colors.white,
+              foregroundColor: NusaConfig.accentPurple,
+              elevation: 4,
+              icon: Icon(Icons.admin_panel_settings, size: 20, color: NusaConfig.accentPurple),
+              label: Text(
+                'Role & Jabatan',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                ),
+              ),
+              onPressed: () => _showManageRoles(),
+            ),
+            const SizedBox(height: 12),
+          ],
+          FloatingActionButton.extended(
+            heroTag: 'fabAddEmployee',
+            backgroundColor: NusaConfig.activePrimary,
+            foregroundColor: Colors.white,
+            elevation: 4,
+            icon: Icon(Icons.add),
+            label: Text(
+              'Tambah Karyawan',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            onPressed: () => _showForm(),
+          ),
+        ],
       ),
     );
   }

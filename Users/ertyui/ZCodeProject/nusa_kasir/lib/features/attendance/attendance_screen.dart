@@ -149,293 +149,142 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   //  UNIFIED BOTTOM SHEET: ABSENSI, CASH & PIN DI DALAM 1 FLOW
   // ═══════════════════════════════════════════════════════════════════
 
-  Future<void> _openAbsenFlow(Employee e, {required bool isCheckIn}) async {
+  Future<int?> _promptCashAmount(Employee e, {required bool isCheckIn}) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final att = _today[e.id];
-    final isCashier = e.role == 'Kasir' || e.requiresCashOpen || e.requiresCashClose;
-    final cashCtrl = TextEditingController();
-    final pinCtrl = TextEditingController();
-    bool obscurePin = true;
-    String? errorText;
-
-    final title = isCheckIn ? 'Absen Masuk' : 'Absen Pulang';
-    final actionLabel = isCheckIn ? 'Konfirmasi Masuk' : 'Konfirmasi Pulang';
-    final cashLabel = isCheckIn ? 'Kas Awal (Modal Laci)' : 'Kas Akhir (Hitung Fisik)';
-
-    await showModalBottomSheet<bool>(
+    final ctrl = TextEditingController();
+    final title = isCheckIn ? 'Kas Awal (Modal Laci)' : 'Kas Akhir (Hitung Fisik)';
+    return showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetCtx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          return Container(
-            decoration: BoxDecoration(
-              color: isDark ? NusaConfig.darkSurface : Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 14,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white24 : Colors.black12,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Header Staf Info
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: _avatarCol(e.name).withValues(alpha: 0.15),
-                          image: e.photoPath != null && e.photoPath!.isNotEmpty
-                              ? DecorationImage(
-                                  image: FileImage(File(e.photoPath!)),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: (e.photoPath == null || e.photoPath!.isEmpty)
-                            ? Text(
-                                e.name.isNotEmpty ? e.name[0].toUpperCase() : '?',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: _avatarCol(e.name),
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              e.name,
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${e.role} • ${e.workStart ?? "08:00"} - ${e.workEnd ?? "17:00"}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: (isCheckIn ? NusaConfig.accentGreen : const Color(0xFFEF4444)).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: isCheckIn ? NusaConfig.accentGreen : const Color(0xFFEF4444),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Cash input for Cashier
-                  if (isCashier) ...[
-                    Text(
-                      cashLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: cashCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Contoh: 100000',
-                        prefixText: 'Rp ',
-                        prefixStyle: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                        ),
-                        filled: true,
-                        fillColor: isDark ? NusaConfig.darkInputFill : const Color(0xFFF1F5F9),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Integrated PIN Input
-                  Text(
-                    'PIN Karyawan (${e.name})',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: pinCtrl,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    obscureText: obscurePin,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 4,
-                      color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '••••',
-                      counterText: '',
-                      filled: true,
-                      fillColor: isDark ? NusaConfig.darkInputFill : const Color(0xFFF1F5F9),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscurePin ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                          color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
-                        ),
-                        onPressed: () => setSheetState(() => obscurePin = !obscurePin),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  if (errorText != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      errorText!,
-                      style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  // Actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(sheetCtx, false),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            side: BorderSide(
-                              color: isDark ? NusaConfig.darkInputBorder : NusaConfig.inputBorder,
-                            ),
-                          ),
-                          child: Text(
-                            'Batal',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            final pin = pinCtrl.text.trim();
-                            if (pin != e.pin) {
-                              setSheetState(() => errorText = 'PIN yang dimasukkan salah');
-                              HapticFeedback.heavyImpact();
-                              return;
-                            }
-
-                            final cash = int.tryParse(cashCtrl.text.trim()) ?? 0;
-                            final repo = AttendanceRepository(ref.read(databaseProvider));
-
-                            if (isCheckIn) {
-                              if (isCashier && cash > 0) {
-                                await repo.checkInWithCash(e.id, cash);
-                              } else {
-                                await repo.checkIn(e.id);
-                              }
-                            } else {
-                              if (isCashier && cash > 0) {
-                                await repo.checkOutWithCash(e.id, cash);
-                              } else {
-                                await repo.checkOut(e.id);
-                              }
-                            }
-
-                            HapticFeedback.mediumImpact();
-                            SoundService.I.play(NusaSound.success);
-                            if (mounted) {
-                              Navigator.pop(sheetCtx, true);
-                              TopToast.success(context, '$actionLabel berhasil!');
-                              _load();
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isCheckIn ? NusaConfig.accentGreen : const Color(0xFFEF4444),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          child: Text(
-                            actionLabel,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? NusaConfig.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          );
-        },
+            const SizedBox(height: 16),
+            Text(
+              '$title — ${e.name}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Masukkan nominal uang kas saat ini:',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                prefixText: 'Rp ',
+                hintText: '0',
+                filled: true,
+                fillColor: isDark ? NusaConfig.darkInputFill : const Color(0xFFF1F5F9),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  final val = int.tryParse(ctrl.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+                  Navigator.pop(ctx, val);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NusaConfig.activePrimary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Lanjut ke PIN', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _openAbsenFlow(Employee e, {required bool isCheckIn}) async {
+    final isCashier = e.role == 'Kasir' || e.requiresCashOpen || e.requiresCashClose;
+    int cash = 0;
+    if (isCashier) {
+      final entered = await _promptCashAmount(e, isCheckIn: isCheckIn);
+      if (entered == null) return;
+      cash = entered;
+    }
+    if (!mounted) return;
+
+    final title = isCheckIn ? 'Absen Masuk' : 'Absen Pulang';
+    final result = await PinDialog.show(
+      context: context,
+      title: title,
+      employeeName: e.name,
+      employeeRole: e.role,
+      correctPin: e.pin,
+      showFingerprint: true,
+      showNfc: true,
+      showBarcode: true,
+      onFingerprint: () async => await BiometricService.authenticate(),
+      onNfc: () async {
+        final id = await NfcTagService.readEmployeeTag();
+        return id?.toString();
+      },
+      onBarcode: AuthMethods.barcode(
+        ref,
+        expectedEmployeeId: e.id,
+      ),
+    );
+
+    if (result != null && result.success) {
+      final repo = AttendanceRepository(ref.read(databaseProvider));
+      if (isCheckIn) {
+        if (isCashier && cash > 0) {
+          await repo.checkInWithCash(e.id, cash);
+        } else {
+          await repo.checkIn(e.id);
+        }
+      } else {
+        if (isCashier && cash > 0) {
+          await repo.checkOutWithCash(e.id, cash);
+        } else {
+          await repo.checkOut(e.id);
+        }
+      }
+
+      SoundService.I.play(NusaSound.success);
+      HapticFeedback.mediumImpact();
+      if (mounted) {
+        TopToast.success(context, '$title berhasil!');
+        _load();
+      }
+    }
   }
 
   void _showIzinDialog(Employee e) {
@@ -457,7 +306,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             left: 20,
             right: 20,
             top: 16,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + MediaQuery.of(sheetCtx).padding.bottom + 24,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -705,7 +554,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 : _filtered.isEmpty
                     ? const EmptyState(icon: Icons.person_off_outlined, message: 'Tidak ada staf')
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        padding: EdgeInsets.fromLTRB(16, 4, 16, MediaQuery.of(context).padding.bottom + 84),
                         itemCount: _filtered.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (_, i) => _buildStaffHeroCard(_filtered[i], isDark, isOwner),
@@ -990,7 +839,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       onRefresh: _loadHistory,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 48),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

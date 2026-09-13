@@ -114,13 +114,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     }
   }
 
-  void _showAddSheet() {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final addressCtrl = TextEditingController();
-    final barcodeCtrl = TextEditingController();
+  void _showAddSheet() => _showCustomerForm();
+
+  void _showCustomerForm({Customer? customer}) {
+    final nameCtrl = TextEditingController(text: customer?.name ?? '');
+    final phoneCtrl = TextEditingController(text: customer?.phone ?? '');
+    final addressCtrl = TextEditingController(text: customer?.address ?? '');
+    final barcodeCtrl = TextEditingController(text: customer?.barcode ?? '');
     // v2.2.45 (B11): barcode member jadi toggle + generate/scan HID/kamera.
-    bool barcodeOn = false;
+    bool barcodeOn = customer?.barcode != null && customer!.barcode!.isNotEmpty;
     bool saving = false;
 
     showModalBottomSheet(
@@ -173,12 +175,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         color: NusaConfig.activePrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(Icons.person_add_rounded,
-                          color: NusaConfig.activePrimary, size: 20),
+                      child: Icon(
+                        customer != null ? Icons.edit_note_rounded : Icons.person_add_rounded,
+                        color: NusaConfig.activePrimary,
+                        size: 20,
+                      ),
                     ),
                     SizedBox(width: 12),
                     Text(
-                      'Tambah Pelanggan',
+                      customer != null ? 'Edit Pelanggan' : 'Tambah Pelanggan',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
@@ -421,21 +426,41 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             setSt(() => saving = true);
                             final repo = CustomerRepository(
                                 ref.read(databaseProvider));
-                            await repo.addCustomer(
-                              name: name,
-                              phone: phoneCtrl.text.trim(),
-                              address: addressCtrl.text.trim(),
-                              barcode: barcodeOn
-                                  ? (barcodeCtrl.text.trim().isEmpty
-                                        ? null
-                                        : _normBarcode(
-                                            barcodeCtrl.text.trim()))
-                                  : null,
-                            );
-                            if (mounted) Navigator.pop(ctx);
-                                            _load();
-                                          },
-                                  ),
+                            final barcodeVal = barcodeOn
+                                ? (barcodeCtrl.text.trim().isEmpty
+                                      ? null
+                                      : _normBarcode(
+                                          barcodeCtrl.text.trim()))
+                                : null;
+                            if (customer == null) {
+                              await repo.addCustomer(
+                                name: name,
+                                phone: phoneCtrl.text.trim(),
+                                address: addressCtrl.text.trim(),
+                                barcode: barcodeVal,
+                              );
+                            } else {
+                              await repo.updateCustomer(
+                                customer.id,
+                                name: name,
+                                phone: phoneCtrl.text.trim(),
+                                address: addressCtrl.text.trim(),
+                                barcode: barcodeVal,
+                                clearBarcode: !barcodeOn,
+                              );
+                            }
+                            if (mounted) {
+                              Navigator.pop(ctx);
+                              TopToast.success(
+                                context,
+                                customer != null
+                                    ? 'Data pelanggan berhasil diperbarui'
+                                    : 'Pelanggan berhasil ditambahkan',
+                              );
+                            }
+                            _load();
+                          },
+                  ),
                                   SizedBox(height: 4),
                                 ],
                               ),
@@ -594,9 +619,33 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           customer: c,
           phone: phone,
           db: db,
+          onEdit: () => _showCustomerForm(customer: c),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteCustomer(Customer c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Pelanggan'),
+        content: Text('Hapus "${c.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _deleteCustomer(c);
+    }
   }
 
   Future<void> _deleteCustomer(Customer c) async {
@@ -800,6 +849,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               child: _CustomerTile(
                                 customer: c,
                                 onTap: () => _showDetail(c),
+                                onEdit: () => _showCustomerForm(customer: c),
+                                onDelete: () => _confirmDeleteCustomer(c),
                                 outstandingDebt: _outstanding[c.id] ?? 0,
                               ),
                             );
@@ -904,8 +955,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 class _CustomerTile extends StatelessWidget {
   final Customer customer;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final int outstandingDebt;
-  _CustomerTile({required this.customer, required this.onTap, this.outstandingDebt = 0});
+  _CustomerTile({
+    required this.customer,
+    required this.onTap,
+    this.onEdit,
+    this.onDelete,
+    this.outstandingDebt = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1019,8 +1078,41 @@ class _CustomerTile extends StatelessWidget {
               ),
             ),
             SizedBox(width: 4),
-            Icon(Icons.chevron_right_rounded,
-                size: 18, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+            PopupMenuButton<String>(
+              color: isDark ? NusaConfig.darkSurface : null,
+              icon: Icon(
+                Icons.more_vert,
+                size: 20,
+                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+              ),
+              padding: EdgeInsets.zero,
+              onSelected: (val) {
+                if (val == 'edit') onEdit?.call();
+                if (val == 'delete') onDelete?.call();
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_outlined, size: 18, color: NusaConfig.activePrimary),
+                      const SizedBox(width: 8),
+                      const Text('Edit / Barcode'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Hapus', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ]),
         ),
       ),
@@ -1036,11 +1128,13 @@ class _CustomerDetailSheet extends StatelessWidget {
   final Customer customer;
   final String phone;
   final AppDatabase db;
+  final VoidCallback? onEdit;
 
   _CustomerDetailSheet({
     required this.customer,
     required this.phone,
     required this.db,
+    this.onEdit,
   });
 
   @override
@@ -1234,14 +1328,17 @@ class _CustomerDetailSheet extends StatelessWidget {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _shareMemberCard(context, c),
-                  icon: Icon(Icons.badge_outlined, size: 18),
-                  label: Text('Cetak Kartu'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    onEdit?.call();
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit Pelanggan'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: NusaConfig.activePrimary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     elevation: 0,
                   ),
                 ),

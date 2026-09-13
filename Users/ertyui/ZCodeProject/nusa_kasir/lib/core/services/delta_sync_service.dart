@@ -355,32 +355,21 @@ class DeltaSyncService {
     if (uid == null) return;
 
     try {
-      // v2.2.57+136: since pakai server_time dari pull sebelumnya — JAM
+      // v2.2.57+137 stabil: since pakai server_time dari pull sebelumnya — JAM
       // SERVER, bukan jam device (device clock bisa meleset → delta di-skip).
-      // v2.2.57+141: fallback 30 hari (bukan 5 menit) jika belum pernah pull
-      // agar tidak kehilangan transaksi saat device baru login / install ulang.
       var since = await SecureStore.getLastDeltaPull();
-      since ??= DateTime.now().toUtc().subtract(const Duration(days: 30));
-      // v2.2.57+141: toleransi clock skew 15 dtk agar delta yang baru di-insert
-      // tidak terlewat akibat selisih milidetik jam server/edge D1.
-      final sinceBase = since.subtract(const Duration(seconds: 15));
+      since ??= DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final sinceBase = since;
 
       String? serverTime;
       var guard = 0;
-      int currentOffset = 0;
-      // v2.2.57+136/141: has_more & offset diikuti sampai habis — paging
-      // offset dinamis agar semua delta di D1 terambil utuh.
       do {
         final result = await CloudGateway.shared.invoke('sync-delta', body: {
           'action': 'pull',
           'since': sinceBase.toIso8601String(),
-          'limit': 200,
-          'offset': currentOffset,
+          'limit': 100,
           'uid': uid,
           'google_user_id': uid,
-          // v2.2.57+134: WAJIB — sebelumnya tidak dikirim → worker deviceWrap
-          // menolak 401 (device_id tidak ada) DAN filter device_id != 'unknown'
-          // salah sehingga device bisa menarik delta-nya sendiri.
           if (deviceId != null) 'device_id': deviceId,
         });
 
@@ -391,9 +380,6 @@ class DeltaSyncService {
 
         final deltas = (data['deltas'] as List?) ?? [];
         serverTime = data['server_time'] as String? ?? serverTime;
-        final hasMore = data['has_more'] == true;
-        final nextOffset = data['next_offset'] as int?;
-        currentOffset = nextOffset ?? (currentOffset + deltas.length);
 
         if (deltas.isEmpty) break;
 
@@ -406,9 +392,6 @@ class DeltaSyncService {
           for (final d in deltas) {
             if (d is! Map) continue;
             final delta = Map<String, dynamic>.from(d);
-            // v2.2.57+136: apply SEKARANG mencekoki data (parse/validasi) dan
-            // HANYA delta yang sukses di-ack. Dulu semua id di-ack walau apply
-            // crash → delta gagal hilang PERMANEN dari server.
             try {
               await _applyDelta(delta);
               final id = delta['id'];
@@ -416,7 +399,7 @@ class DeltaSyncService {
               changed = true;
             } catch (e) {
               debugPrint(
-                  '[DeltaSync] apply failed (NOT acked) ${delta['table']}/${delta['record_id']}: $e');
+                  '[DeltaSync] apply failed (NOT acked) ${delta['table'] ?? delta['table_name']}/${delta['record_id']}: $e');
             }
           }
         } finally {
@@ -437,15 +420,20 @@ class DeltaSyncService {
         }
 
         // v2.2.57+136: beri tahu UI bahwa DB berubah (refresh layar yang
-        // load-once: dashboard, transaksi, produk, POS).
-        if (changed) _controller.add(DeltaEvent(
-          table: '*',
-          recordId: '',
-          operation: 'BATCH',
-        ));
+        // load-once: dashboard, transaksi, laporan, produk, POS).
+        if (changed) {
+          _controller.add(DeltaEvent(
+            table: '*',
+            recordId: '',
+            operation: 'BATCH',
+          ));
+        }
 
-        if (!hasMore || ++guard >= 20) break;
-      } while (true);
+        since = serverTime != null
+            ? (DateTime.tryParse(serverTime)?.toUtc() ?? since)
+            : since;
+        if (!changed) break;
+      } while (serverTime != null && ++guard < 10);
 
       if (serverTime != null) {
         await SecureStore.setLastDeltaPull(
