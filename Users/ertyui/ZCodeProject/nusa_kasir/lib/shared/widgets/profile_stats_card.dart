@@ -502,7 +502,7 @@ class _ProfileStatsCardState extends State<ProfileStatsCard>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.notifications_active,
-                      size: 15, color: NusaConfig.accentGold),
+                      size: 15, color: Colors.white),
                   SizedBox(width: 6),
                   Text('${data!.pendingItems} pesanan perlu diproses',
                       style: TextStyle(

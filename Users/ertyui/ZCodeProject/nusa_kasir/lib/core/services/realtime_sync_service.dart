@@ -24,10 +24,11 @@ class RealtimeBackupNotifier {
   bool _shouldRun = false;
   Timer? _reconnectTimer;
   Timer? _pingTimer;
+  Timer? _pongTimer;
 
-  // v2.2.57+141: heartbeat ping 20 dtk (dulu 60s) menjaga socket selalu hangat
+  // v2.2.57+142: heartbeat ping 10 dtk (dulu 20s) menjaga socket selalu hangat
   // dari timeout agresif operator seluler & WiFi gateway.
-  static const _pingInterval = Duration(seconds: 20);
+  static const _pingInterval = Duration(seconds: 10);
 
   // v2.2.57+130 (A3): exponential backoff untuk reconnect — hindari hammer
   // server saat worker restart / network flap. Delay tumbuh 1s → 2s → 4s → …
@@ -78,7 +79,15 @@ class RealtimeBackupNotifier {
       _attempt = 0;
       _channel = ws;
       _startPing();
+      // v2.2.57+142: segera trigger pull saat WS terhubung atau reconnect
+      RealtimeSyncService.I.onRemoteBackupUpdated();
       _sub = ws.stream.listen((message) {
+        // v2.2.57+142: server RoomDO auto-responds 'pong' to 'ping'. Watchdog reset!
+        if (message == 'pong') {
+          _pongTimer?.cancel();
+          _pongTimer = null;
+          return;
+        }
         try {
           // Pesan gateway: JSON string {"event": ..., "payload": {...}}.
           final dynamic decoded = message is String
@@ -112,16 +121,24 @@ class RealtimeBackupNotifier {
     }
   }
 
-  /// v2.2.57+137: kirim 'ping' periodik supaya NAT/proxy tidak memutus
-  /// koneksi diam. Kalau sink.add gagal (koneksi sudah mati), langsung
-  /// reconnect — jangan tunggu poll berikutnya.
+  /// v2.2.57+142: kirim 'ping' periodik + pong watchdog 4 detik.
+  /// Di Android/jaringan seluler, koneksi TCP sering mati diam-diam (half-open)
+  /// tanpa melempar onError/onDone dan sink.add('ping') tidak melempar error.
+  /// Pong watchdog memastikan socket mati langsung terdeteksi & di-reconnect!
   void _startPing() {
     _pingTimer?.cancel();
+    _pongTimer?.cancel();
+    _pongTimer = null;
     _pingTimer = Timer.periodic(_pingInterval, (_) {
       final ws = _channel;
       if (ws == null) return;
       try {
         ws.sink.add('ping');
+        _pongTimer?.cancel();
+        _pongTimer = Timer(const Duration(seconds: 4), () {
+          debugPrint('[RealtimeSync] pong timeout — connection dropped, reconnecting...');
+          forceReconnect();
+        });
       } catch (_) {
         _scheduleReconnect();
       }
@@ -160,6 +177,8 @@ class RealtimeBackupNotifier {
     _channel = null;
     _pingTimer?.cancel();
     _pingTimer = null;
+    _pongTimer?.cancel();
+    _pongTimer = null;
     _connect();
   }
 
@@ -169,6 +188,8 @@ class RealtimeBackupNotifier {
     _reconnectTimer = null;
     _pingTimer?.cancel();
     _pingTimer = null;
+    _pongTimer?.cancel();
+    _pongTimer = null;
     try {
       await _sub?.cancel();
     } catch (_) {}

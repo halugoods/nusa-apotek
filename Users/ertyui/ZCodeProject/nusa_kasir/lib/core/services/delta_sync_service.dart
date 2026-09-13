@@ -63,8 +63,8 @@ class DeltaSyncService {
   // v2.2.57+141: debounce ultra-rendah 100ms — push data instan meluncur
   // begitu transaksi / stok / produk disimpan di device pengirim.
   static const _pushDebounce = Duration(milliseconds: 100);
-  // v2.2.57+141: fallback poll 15 dtk (jalur cadangan saat WS offline).
-  static const _pullInterval = Duration(seconds: 15);
+  // v2.2.57+142: fallback poll 5 dtk (jalur cadangan cepat saat WS offline / flap).
+  static const _pullInterval = Duration(seconds: 5);
   // v2.2.57+135: interval flush safety-net (outbox dibaca trigger SQLite).
   static const _flushInterval = Duration(seconds: 3);
   static const _maxBatchSize = 50;
@@ -125,29 +125,27 @@ class DeltaSyncService {
     _deviceId = await SecureStore.getDeviceId();
     _uid = await SecureStore.resolveCanonicalUid();
 
-    // Register device with cloud
-    await _registerDevice();
-
     // Listen for remote sync events (from WS backup_updated channel) —
     // v2.2.57+137: pakai pullNow() ber-guard, bukan _pull() mentah.
     try {
       RealtimeSyncService.I.stream.listen((_) => pullNow());
     } catch (_) {}
 
-    // Fallback periodic pull (jalur cadangan — jalur utama = WS event).
+    // Fallback periodic pull (jalur cadangan — 5 detik).
     _periodicPull = Timer.periodic(_pullInterval, (_) => pullNow());
 
     // v2.2.57+135: safety-net periodic flush — trigger menulis outbox
-    // langsung dari SQLite TANPA tahu DeltaSyncService ada. Dulu flush cuma
-    // jalan via pushDelta shim (hanya dipanggil repo tertentu) / flush awal —
-    // perubahan yang ditulis jalur lain (mis. saveTransaction) menumpuk di
-    // outbox sampai perubahan berikutnya. Sekarang: coalesce — kalau outbox
-    // kosong, flush jadi no-op murah; kalau ada isi, keluar dalam 2 dtk.
+    // langsung dari SQLite TANPA tahu DeltaSyncService ada.
     _periodicFlush = Timer.periodic(_flushInterval, (_) => _flushOutbox());
 
-    // v2.2.57+134: flush sisa outbox dari sesi sebelumnya + outbox yg
-    // tertimbun saat offline (retry stranded flush).
+    // v2.2.57+134: flush sisa outbox dari sesi sebelumnya.
     _scheduleFlush();
+
+    // v2.2.57+142: segera pull saat app start agar data remote terbaru langsung masuk
+    pullNow();
+
+    // Register device with cloud secara background (jangan blok start)
+    unawaited(_registerDevice());
   }
 
   Future<void> _registerDevice() async {
