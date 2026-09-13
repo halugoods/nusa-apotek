@@ -90,8 +90,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   bool _liteLoading = false;
   String? _liteError;
 
-  // Screen state: 'auth' (login) | 'signup' | 'google_loading' | 'decision' | 'pin' | 'key' | 'trial_expired' | 'lite'
+  // Screen state: 'auth' (login) | 'signup' | 'google_loading' | 'decision' | 'active_license' | 'pin' | 'key' | 'trial_expired' | 'lite'
   String _screen = 'auth';
+  String _selectedPlan = 'pro';
+  String? _activeLicenseKey;
+  String? _activeLicenseTier;
 
   // v2.2.44 (L2/L3): expires_at lisensi yang habis — untuk countdown grace
   // 7 hari (H-7 diterima server; H+7 key di-revoke) di layar blokir.
@@ -190,6 +193,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   /// pemilih akun. Untuk beneran ganti: disconnect dulu, lalu sign in ulang.
   Future<void> _switchGoogleAccount() async {
     if (_googleLoading) return;
+    _googleId = null;
     try {
       await GoogleAuthService().signOut();
     } catch (_) {
@@ -1042,6 +1046,8 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         return _buildTrialExpiredScreen(isDark);
       case 'decision':
         return _buildDecisionScreen(isDark);
+      case 'active_license':
+        return _buildActiveLicenseScreen(isDark);
       case 'pin':
         return _buildPinScreen(isDark);
       case 'key':
@@ -2174,79 +2180,72 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     );
   }
 
-  // ── Decision Screen (no license — 2 options) ─────────────────────
-
-  // ── Decision Screen (no license / canceled — 2 options) ─────────────
+  // ── Decision Screen (no license / choose plan) ──────────────────────
 
   Widget _buildDecisionScreen(bool isDark) {
+    final textColor = isDark ? NusaConfig.darkTextPrimary : const Color(0xFF151717);
+    final subTextColor = isDark ? NusaConfig.darkTextSecondary : const Color(0xFF3F3F46);
+
     return Scaffold(
-      backgroundColor: isDark ? NusaConfig.darkBackground : Color(0xFFF5F5F5),
+      backgroundColor: isDark ? NusaConfig.darkBackground : const Color(0xFFF5F5F5),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             child: Column(
               children: [
-                SizedBox(height: 32),
-                // Logo konsisten — tanpa lingkaran, tanpa icon roket.
+                const SizedBox(height: 16),
                 Image.asset(
                   splashLogoPath(),
-                  width: 96,
-                  height: 96,
+                  width: 88,
+                  height: 88,
                   errorBuilder: (_, __, ___) => Text(
                     'NUSA',
                     style: TextStyle(
-                      fontSize: 40,
+                      fontSize: 36,
                       fontWeight: FontWeight.w800,
                       color: NusaConfig.activePrimary,
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
-                Text('NUSA',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: NusaConfig.activePrimary,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1,
-                    )),
-                SizedBox(height: 6),
-                Text(NusaConfig.appSubtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: isDark
-                          ? NusaConfig.darkTextSecondary
-                          : const Color(0xFF3F3F46),
-                    )),
+                const SizedBox(height: 16),
+                Text(
+                  'NUSA',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: NusaConfig.activePrimary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  NusaConfig.appSubtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: subTextColor,
+                  ),
+                ),
 
-                // Banner alasan (akun dibatalkan / suspended) bila ada.
                 if (_googleError != null) ...[
-                  SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
-                    padding: EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: NusaConfig.warning.withValues(alpha: isDark ? 0.12 : 0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: NusaConfig.warning.withValues(alpha: 0.4)),
+                      border: Border.all(color: NusaConfig.warning.withValues(alpha: 0.4)),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline,
-                            size: 18, color: NusaConfig.warning),
-                        SizedBox(width: 8),
+                        Icon(Icons.info_outline, size: 18, color: NusaConfig.warning),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _googleError!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.4,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : const Color(0xFF3F3F46),
-                            ),
+                            style: TextStyle(fontSize: 12, height: 1.4, color: subTextColor),
                           ),
                         ),
                       ],
@@ -2254,12 +2253,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                   ),
                 ],
 
-                SizedBox(height: 28),
+                const SizedBox(height: 24),
 
-                // ── Dua pilihan lisensi ──
+                // Card Utama Pilihan Paket
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: isDark ? NusaConfig.darkSurface : Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -2267,120 +2266,136 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       BoxShadow(
                         color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
                         blurRadius: 20,
-                        offset: Offset(0, 4),
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Aktivasi Lisensi',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : Color(0xFF151717),
-                          )),
-                      SizedBox(height: 4),
-                      Text('Pilih salah satu untuk melanjutkan',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : const Color(0xFF3F3F46),
-                          )),
-                      SizedBox(height: 20),
-
-                      // Option 1: Sudah punya key
-                      SizedBox(
-                        height: 56,
-                        child: OutlinedButton(
-                          onPressed: () => setState(() => _screen = 'key'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark
-                                ? NusaConfig.darkTextPrimary
-                                : Color(0xFF151717),
-                            side: BorderSide(
-                                color: isDark
-                                    ? NusaConfig.darkBorder
-                                    : Color(0xFFD1D5DB),
-                                width: 1.5),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Pilih Paket Lisensi',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: textColor,
+                            ),
                           ),
-                          child: Text('Sudah punya lisensi key',
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.activePrimary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _selectedPlan == 'pro' ? 'Pro' : 'Lite',
                               style: TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
-                        ),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: NusaConfig.activePrimary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
-                        'Aktivasi dengan key dari seller',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
-                        ),
+                        'Pilih edisi yang sesuai dengan kebutuhan kasir Anda',
+                        style: TextStyle(fontSize: 12, color: subTextColor),
                       ),
+                      const SizedBox(height: 16),
 
-                      SizedBox(height: 16),
+                      // Card NUSA Pro
+                      _buildPlanOption(
+                        isDark: isDark,
+                        id: 'pro',
+                        title: 'NUSA Pro',
+                        badge: 'Rekomendasi',
+                        badgeColor: NusaConfig.activePrimary,
+                        price: 'Rp49.000 / bln • Rp249.000 Lifetime',
+                        features: const [
+                          'Multi-device sinkronisasi realtime',
+                          'Backup otomatis Google Cloud',
+                          'Toko online web terintegrasi',
+                          'Asisten AI cerdas & multi-cabang',
+                        ],
+                      ),
+                      const SizedBox(height: 12),
 
-                      // Divider "atau"
-                      Row(children: [
-                        Expanded(
-                            child: Divider(
-                                color: isDark
-                                    ? NusaConfig.darkBorder
-                                    : Color(0xFFE5E7EB))),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('atau',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDark
-                                      ? NusaConfig.darkTextTertiary
-                                      : NusaConfig.textTertiary)),
-                        ),
-                        Expanded(
-                            child: Divider(
-                                color: isDark
-                                    ? NusaConfig.darkBorder
-                                    : Color(0xFFE5E7EB))),
-                      ]),
+                      // Card NUSA Lite
+                      _buildPlanOption(
+                        isDark: isDark,
+                        id: 'lite',
+                        title: 'NUSA Lite',
+                        badge: 'Mandiri & Hemat',
+                        badgeColor: isDark ? Colors.tealAccent.shade400 : Colors.teal.shade700,
+                        price: 'Rp29.000 / bln • Rp149.000 Lifetime',
+                        features: const [
+                          'Kasir mandiri 100% offline',
+                          'Performa super cepat & hemat RAM',
+                          'Single-device tanpa kuota cloud',
+                        ],
+                      ),
+                      const SizedBox(height: 20),
 
-                      SizedBox(height: 16),
-
-                      // Option 2: Belum punya lisensi
+                      // CTA Tombol Pilih Paket
                       SizedBox(
-                        height: 56,
+                        height: 50,
                         child: ElevatedButton(
-                          onPressed: () => _openPayment(),
+                          onPressed: _openPayment,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: NusaConfig.activePrimary,
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: const Text('Belum punya lisensi',
-                              style: TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                          child: Text(
+                            'Pilih Paket ${_selectedPlan == 'pro' ? 'Pro' : 'Lite'}',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
-                      SizedBox(height: 6),
-                      Text(
-                        'Beli langsung dalam aplikasi',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
+                      const SizedBox(height: 12),
+
+                      // Divider "atau"
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : const Color(0xFFE5E7EB))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'atau',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: isDark ? NusaConfig.darkBorder : const Color(0xFFE5E7EB))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // CTA Tombol Sudah Punya Key
+                      SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => _screen = 'key'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: textColor,
+                            side: BorderSide(
+                              color: isDark ? NusaConfig.darkBorder : const Color(0xFFD1D5DB),
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text(
+                            'Sudah punya lisensi key',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
                     ],
@@ -2388,15 +2403,509 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 ),
 
                 if (NusaConfig.cloudEnabled) ...[
-                  SizedBox(height: 16),
-                  TextButton(
-                    onPressed: _startGoogleSignIn,
-                    child: Text('Ganti akun Google',
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: _switchGoogleAccount,
+                    icon: Icon(
+                      Icons.switch_account_outlined,
+                      size: 16,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                    ),
+                    label: Text(
+                      'Ganti akun Google',
+                      style: TextStyle(
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+                if (NusaConfig.isDevBuild)
+                  TextButton.icon(
+                    onPressed: () => context.go('/variant-picker'),
+                    icon: const Icon(Icons.apps_rounded, size: 16),
+                    label: const Text('Pilih Varian Lain', style: TextStyle(fontSize: 13)),
+                    style: TextButton.styleFrom(foregroundColor: NusaConfig.activePrimary),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanOption({
+    required bool isDark,
+    required String id,
+    required String title,
+    required String badge,
+    required Color badgeColor,
+    required String price,
+    required List<String> features,
+  }) {
+    final isSelected = _selectedPlan == id;
+    final textColor = isDark ? NusaConfig.darkTextPrimary : const Color(0xFF151717);
+    final subTextColor = isDark ? NusaConfig.darkTextSecondary : const Color(0xFF4B5563);
+
+    return InkWell(
+      onTap: () => setState(() => _selectedPlan = id),
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? NusaConfig.activePrimary.withValues(alpha: isDark ? 0.12 : 0.05)
+              : (isDark ? NusaConfig.darkBackground : const Color(0xFFF9FAFB)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected
+                ? NusaConfig.activePrimary
+                : (isDark ? NusaConfig.darkBorder : const Color(0xFFE5E7EB)),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(
+                        title,
                         style: TextStyle(
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                            fontSize: 13)),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: badgeColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: isSelected ? NusaConfig.activePrimary : (isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              price,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: NusaConfig.activePrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...features.map(
+              (f) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 14,
+                      color: isSelected ? NusaConfig.activePrimary : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        f,
+                        style: TextStyle(fontSize: 11, color: subTextColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openPayment() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? NusaConfig.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(ctx).padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkDivider : NusaConfig.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.activePrimary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.shopping_bag_outlined, color: NusaConfig.activePrimary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _selectedPlan == 'pro' ? 'Paket NUSA Pro' : 'Paket NUSA Lite',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          _selectedPlan == 'pro'
+                              ? 'Rp49.000 / bln • Rp249.000 Lifetime'
+                              : 'Rp29.000 / bln • Rp149.000 Lifetime',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isDark ? NusaConfig.darkBackground : const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? NusaConfig.darkBorder : const Color(0xFFE5E7EB),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pemesanan Online',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Jalur pembayaran online otomatis sedang disiapkan. Hubungi admin atau masukkan key aktivasi yang sudah Anda miliki.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    setState(() => _screen = 'key');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NusaConfig.activePrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Masukkan Key Aktivasi', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Active License Screen (Already licensed) ────────────────────────
+
+  Widget _buildActiveLicenseScreen(bool isDark) {
+    final textColor = isDark ? NusaConfig.darkTextPrimary : const Color(0xFF151717);
+    final subTextColor = isDark ? NusaConfig.darkTextSecondary : const Color(0xFF3F3F46);
+
+    return Scaffold(
+      backgroundColor: isDark ? NusaConfig.darkBackground : const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            child: Column(
+              children: [
+                const SizedBox(height: 16),
+                Image.asset(
+                  splashLogoPath(),
+                  width: 88,
+                  height: 88,
+                  errorBuilder: (_, __, ___) => Text(
+                    'NUSA',
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      color: NusaConfig.activePrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'NUSA',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: NusaConfig.activePrimary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  NusaConfig.appSubtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: subTextColor,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Card Status Lisensi Aktif
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Status Badge
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: NusaConfig.accentGreen.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: NusaConfig.accentGreen.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.verified_rounded, size: 16, color: NusaConfig.accentGreen),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'LISENSI AKTIF',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: NusaConfig.accentGreen,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            _activeLicenseTier?.toUpperCase() ?? (NusaConfig.isLite ? 'LITE' : 'PRO'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: NusaConfig.activePrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      Text(
+                        'Status Lisensi Terverifikasi',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Aplikasi siap digunakan untuk operasional penjualan.',
+                        style: TextStyle(fontSize: 12, color: subTextColor),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Detail Lisensi
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? NusaConfig.darkBackground : const Color(0xFFF9FAFB),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark ? NusaConfig.darkBorder : const Color(0xFFE5E7EB),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _buildLicenseRow(
+                              isDark: isDark,
+                              label: 'Masa Berlaku',
+                              value: _licenseExpiry != null
+                                  ? '${_licenseExpiry!.day}/${_licenseExpiry!.month}/${_licenseExpiry!.year}'
+                                  : 'Seumur Hidup (Lifetime)',
+                            ),
+                            const Divider(height: 16),
+                            _buildLicenseRow(
+                              isDark: isDark,
+                              label: 'Akun Terhubung',
+                              value: _googleId ?? 'Google Account',
+                            ),
+                            if (_activeLicenseKey != null) ...[
+                              const Divider(height: 16),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Key Lisensi',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    _activeLicenseKey!.length > 14
+                                        ? '${_activeLicenseKey!.substring(0, 10)}...${_activeLicenseKey!.substring(_activeLicenseKey!.length - 4)}'
+                                        : _activeLicenseKey!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  InkWell(
+                                    onTap: () {
+                                      Clipboard.setData(ClipboardData(text: _activeLicenseKey!));
+                                      TopToast.success(context, 'Key lisensi disalin');
+                                    },
+                                    child: Icon(Icons.copy_rounded, size: 16, color: NusaConfig.activePrimary),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+
+                      // Tombol Buka Kasir
+                      SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _goToPinOrSetup,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: NusaConfig.activePrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text(
+                            'Buka Kasir / Masuk',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Tombol Ganti Key
+                      SizedBox(
+                        height: 46,
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => _screen = 'key'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: textColor,
+                            side: BorderSide(
+                              color: isDark ? NusaConfig.darkBorder : const Color(0xFFD1D5DB),
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('Ganti Key Aktivasi', style: TextStyle(fontSize: 13)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (NusaConfig.cloudEnabled) ...[
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: _switchGoogleAccount,
+                    icon: Icon(
+                      Icons.switch_account_outlined,
+                      size: 16,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                    ),
+                    label: Text(
+                      'Ganti akun Google',
+                      style: TextStyle(
+                        color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -2407,21 +2916,30 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     );
   }
 
-  Future<void> _openPayment() async {
-    final googleId = _googleId;
-    if (googleId == null) return;
-
-    final url = await PaymentSheet.show(context, googleId: googleId);
-    if (url == null || !mounted) return;
-
-    // Open WebView for Midtrans payment
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PaymentWebView(
-          paymentUrl: url,
-          googleId: googleId,
+  Widget _buildLicenseRow({
+    required bool isDark,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+          ),
         ),
-      ),
+        const Spacer(),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -2496,7 +3014,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                         );
                         ref.read(employeeSessionProvider.notifier).login(session, remember: false);
                         ref.read(authProvider.notifier).state = emp.role;
-                        try { await AttendanceRepository(ref.read(databaseProvider)).checkIn(emp.id); } catch (_) {}
                         final storeName = await SettingsRepository(ref.read(databaseProvider)).getStoreName();
                         if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
                         return null; // already handled
@@ -2553,13 +3070,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                           );
                           ref.read(employeeSessionProvider.notifier).login(session, remember: false);
                           ref.read(authProvider.notifier).state = emp.role;
-
-                          // Auto check-in
-                          try {
-                            final db = ref.read(databaseProvider);
-                            final repo = AttendanceRepository(db);
-                            await repo.checkIn(emp.id);
-                          } catch (_) {}
 
                           final settingsRepo = SettingsRepository(ref.read(databaseProvider));
                           final storeName = await settingsRepo.getStoreName();
@@ -2680,7 +3190,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
               if (NusaConfig.cloudEnabled) ...[
                 SizedBox(height: 8),
                 TextButton(
-                  onPressed: _startGoogleSignIn,
+                  onPressed: _switchGoogleAccount,
                   child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
                 ),
               ],
@@ -2744,8 +3254,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       ref.read(employeeSessionProvider.notifier).login(session, remember: false);
       ref.read(authProvider.notifier).state = owner.role;
 
-      try { await AttendanceRepository(db).checkIn(owner.id); } catch (_) {}
-
       final storeName = await SettingsRepository(db).getStoreName();
       if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
     } catch (_) {
@@ -2778,7 +3286,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       );
       ref.read(employeeSessionProvider.notifier).login(session, remember: false);
       ref.read(authProvider.notifier).state = emp.role;
-      try { await AttendanceRepository(db).checkIn(emp.id); } catch (_) {}
       final settingsRepo = SettingsRepository(db);
       final storeName = await settingsRepo.getStoreName();
       if (mounted) context.go(storeName.isEmpty ? '/setup' : '/home');
@@ -2921,7 +3428,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
               // Ganti akun Google — cloud-only (hidden in NUSA Lite)
               if (NusaConfig.cloudEnabled)
                 TextButton(
-                  onPressed: _startGoogleSignIn,
+                  onPressed: _switchGoogleAccount,
                   child: Text('Ganti akun Google', style: TextStyle(color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary, fontSize: 13)),
                 ),
             ],

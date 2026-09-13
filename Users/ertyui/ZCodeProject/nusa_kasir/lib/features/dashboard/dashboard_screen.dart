@@ -1579,14 +1579,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (!pinOk) return;
     }
 
-    // 5. Attendance check: if not checked in, check in now
-    if (!_hasCheckedIn) {
-      final attRepo = AttendanceRepository(ref.read(databaseProvider));
-      await attRepo.checkIn(session.employeeId);
-      if (mounted) setState(() => _hasCheckedIn = true);
-      await _afterCheckIn();
-    }
-
     // Navigate
     if (route == 'presensi') {
       await context.push('/$route');
@@ -1864,16 +1856,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         context.push('/kasir?sessionId=${active.id}');
       }
       return;
-    }
-
-    // Auto check-in if not yet
-    if (!_hasCheckedIn) {
-      try {
-        final attRepo = AttendanceRepository(ref.read(databaseProvider));
-        await attRepo.checkIn(s.employeeId);
-        setState(() => _hasCheckedIn = true);
-        await _afterCheckIn();
-      } catch (_) {}
     }
 
     // Create cashier session with saldo = 0

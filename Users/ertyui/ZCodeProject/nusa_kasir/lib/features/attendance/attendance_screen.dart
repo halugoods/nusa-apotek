@@ -754,7 +754,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 44,
+                  height: 48,
                   child: ElevatedButton.icon(
                     onPressed: isIzin
                         ? null
@@ -776,6 +776,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                     style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                      alignment: Alignment.center,
                       backgroundColor: !isCheckedIn
                           ? NusaConfig.accentGreen
                           : (!isCheckedOut ? const Color(0xFFEF4444) : (isDark ? NusaConfig.darkSurface2 : const Color(0xFFE2E8F0))),

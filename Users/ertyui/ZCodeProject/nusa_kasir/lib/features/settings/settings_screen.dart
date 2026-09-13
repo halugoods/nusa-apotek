@@ -3860,13 +3860,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   isDark: isDark,
                   onTap: () => context.push('/toko_online_setup'),
                 ),
-                _menuTile(
-                  icon: Icons.badge_outlined,
-                  title: 'Kartu ID',
-                  subtitle: 'Studio desain & cetak kartu member/karyawan',
-                  isDark: isDark,
-                  onTap: () => context.push('/id_card_studio'),
-                ),
+	                _menuTile(
+	                  icon: Icons.badge_outlined,
+	                  title: 'Kartu ID',
+	                  subtitle: 'Studio desain & cetak kartu member/karyawan',
+	                  isDark: isDark,
+	                  onTap: () => context.push('/id_card_studio'),
+	                ),
+	                _menuTile(
+	                  icon: Icons.auto_awesome_mosaic_outlined,
+	                  title: 'Studio Desain Promosi',
+	                  subtitle: 'Buat poster promosi produk ala Canva untuk medsos & WA',
+	                  isDark: isDark,
+	                  onTap: () => context.push('/desain_promosi'),
+	                ),
                 _menuTile(
                   icon: Icons.payment,
                   title: 'Pembayaran',

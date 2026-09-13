@@ -131,6 +131,11 @@ class DeltaSyncService {
       RealtimeSyncService.I.stream.listen((_) => pullNow());
     } catch (_) {}
 
+    // v2.2.57+143: Pure Realtime direct deltas listener (<50ms zero-roundtrip D1)
+    try {
+      RealtimeSyncService.I.deltaStream.listen((deltas) => applyDirectDeltas(deltas));
+    } catch (_) {}
+
     // Fallback periodic pull (jalur cadangan — 5 detik).
     _periodicPull = Timer.periodic(_pullInterval, (_) => pullNow());
 
@@ -264,7 +269,11 @@ class DeltaSyncService {
         return;
       }
 
-      // 3. Push (dengan device_id! — sebelumnya 401 karena tidak dikirim).
+      // v2.2.57+143: Pure Realtime direct WebSocket broadcast (<50ms)!
+      // Peer device menerima dan meng-upsert data seketika tanpa roundtrip D1.
+      unawaited(RealtimeBackupNotifier.I.broadcastDeltas(deltas));
+
+      // 3. Push ke Cloudflare D1 sebagai persistent historical store offline catch-up.
       final result = await CloudGateway.shared.invoke('sync-delta', body: {
         'action': 'push',
         'deltas': deltas,
@@ -278,7 +287,7 @@ class DeltaSyncService {
           'DELETE FROM sync_outbox WHERE id <= ?',
           [maxIdInBatch],
         );
-        // v2.2.57+141: broadcast segera setelah push sukses agar device lain langsung pull
+        // Fallback broadcastUpdated untuk kompatibilitas / legacy pull listener
         try {
           await RealtimeBackupNotifier.I.broadcastUpdated();
         } catch (_) {}
@@ -444,6 +453,35 @@ class DeltaSyncService {
     }
   }
 
+  /// v2.2.57+143: Pure Realtime 1-Jalur Direct WS Delta apply.
+  /// Menerima payload deltas langsung via WebSocket RoomDO (<50ms).
+  /// Menjalankan upsert SQLite lokal tanpa HTTP pull ke D1.
+  Future<void> applyDirectDeltas(List<Map<String, dynamic>> deltas) async {
+    if (_db == null || deltas.isEmpty) return;
+    await setSyncMuted(_db!, true);
+    var changed = false;
+    try {
+      for (final delta in deltas) {
+        try {
+          await _applyDelta(delta);
+          changed = true;
+        } catch (e) {
+          debugPrint(
+              '[DeltaSync] direct apply failed ${delta['table'] ?? delta['table_name']}/${delta['record_id']}: $e');
+        }
+      }
+    } finally {
+      await setSyncMuted(_db!, false);
+    }
+    if (changed) {
+      _controller.add(DeltaEvent(
+        table: '*',
+        recordId: '',
+        operation: 'BATCH',
+      ));
+    }
+  }
+
   Future<void> _applyDelta(Map<String, dynamic> delta) async {
     if (_db == null) return;
 
@@ -453,14 +491,21 @@ class DeltaSyncService {
     final recordId = delta['record_id'] as String? ?? '';
     final operation =
         (delta['operation'] ?? delta['op']) as String? ?? '';
-    final dataStr = delta['data'] as String?;
+    final dataRaw = delta['data'];
+    Map<String, dynamic>? data;
+    if (dataRaw is Map) {
+      data = Map<String, dynamic>.from(dataRaw);
+    } else if (dataRaw is String && dataRaw.isNotEmpty) {
+      try {
+        data = jsonDecode(dataRaw) as Map<String, dynamic>;
+      } catch (_) {}
+    }
 
     try {
       switch (operation) {
         case 'INSERT':
         case 'UPDATE':
-          if (dataStr != null) {
-            final data = jsonDecode(dataStr) as Map<String, dynamic>;
+          if (data != null) {
             await _upsertRecord(table, recordId, data);
           }
           break;

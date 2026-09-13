@@ -7,7 +7,7 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 class GoogleAuthService {
   static const _key = 'nusa_google_user_id';
 
-  final GoogleSignIn _signIn = GoogleSignIn(
+  static final GoogleSignIn _signIn = GoogleSignIn(
     scopes: ['email', 'profile'],
   );
 
@@ -35,12 +35,20 @@ class GoogleAuthService {
   /// Sign out and clear stored Google ID.
   Future<void> signOut() async {
     try {
+      await _signIn.signOut();
+    } catch (e) {
+      // ignore: avoid_print
+      print('[GoogleAuth] Gagal signOut: $e');
+    }
+    try {
       await _signIn.disconnect();
     } catch (e) {
       // ignore: avoid_print
       print('[GoogleAuth] Gagal disconnect: $e');
     }
     await SecureStore.delete(key: _key);
+    await SecureStore.delete(key: _emailKey);
+    await SecureStore.delete(key: 'nusa_linked_account_id');
   }
 
   /// Return the stored Google user ID, if any.

@@ -52,6 +52,7 @@ import 'package:nusa_kasir/features/reports/stylist_reports_screen.dart';
 import 'package:nusa_kasir/core/dev/variant_picker_screen.dart';
 import 'package:nusa_kasir/features/settings/store_data_screen.dart';
 import 'package:nusa_kasir/features/id_card/id_card_studio_screen.dart';
+import 'package:nusa_kasir/features/design_studio/promo_design_studio_screen.dart';
 
 const _publicRoutes = {
   '/splash',
@@ -292,6 +293,10 @@ GoRouter buildRouter(String initialLocation, WidgetRef ref) => GoRouter(
         final initialType = typeStr == 'customer' ? IdCardType.customer : IdCardType.employee;
         return _slidePage(IdCardStudioScreen(initialType: initialType));
       },
+    ),
+    GoRoute(
+      path: '/desain_promosi',
+      pageBuilder: (_, __) => _slidePage(const PromoDesignStudioScreen()),
     ),
     // ── Domain-specific screens (F&B, Laundry, Bengkel, Salon, Apotek, Fotocopy, Servis) ──
     GoRoute(path: '/meja', pageBuilder: (_, __) => _slidePage(MejaScreen())),

@@ -52,6 +52,10 @@ class RealtimeBackupNotifier {
   Future<void> start() async {
     if (_shouldRun) return;
     _shouldRun = true;
+    final devId = await SecureStore.getDeviceId();
+    if (devId != null && devId.isNotEmpty) {
+      _deviceId = devId;
+    }
     _connect();
   }
 
@@ -95,6 +99,30 @@ class RealtimeBackupNotifier {
               : message;
           if (decoded is! Map) return;
           final event = '${decoded['event'] ?? ''}';
+
+          // v2.2.57+143: Pure Realtime direct delta_broadcast (<50ms).
+          if (event == 'delta_broadcast') {
+            final payload = decoded['payload'];
+            final p = payload is Map
+                ? Map<String, dynamic>.from(payload)
+                : <String, dynamic>{};
+            final deviceId = '${p['deviceId'] ?? ''}';
+            if (deviceId == _myDeviceId()) return;
+            final deltasRaw = p['deltas'];
+            if (deltasRaw is List && deltasRaw.isNotEmpty) {
+              final deltas = deltasRaw
+                  .whereType<Map>()
+                  .map((d) => Map<String, dynamic>.from(d))
+                  .toList();
+              if (deltas.isNotEmpty) {
+                debugPrint(
+                    '[RealtimeSync] direct delta_broadcast (${deltas.length} deltas) from $deviceId');
+                RealtimeSyncService.I.onRemoteDeltas(deltas);
+                return;
+              }
+            }
+          }
+
           if (event != 'backup_updated' && event != 'sync') return;
           final payload = decoded['payload'];
           final p = payload is Map
@@ -217,6 +245,25 @@ class RealtimeBackupNotifier {
     }
   }
 
+  /// v2.2.57+143: Pure Realtime 1-Jalur WS Delta Broadcast.
+  /// Kirim payload delta langsung ke semua peer aktif di channel backup_updated:{uid}.
+  Future<void> broadcastDeltas(List<Map<String, dynamic>> deltas) async {
+    if (_channel == null || deltas.isEmpty) return;
+    try {
+      _channel!.sink.add(jsonEncode({
+        'event': 'delta_broadcast',
+        'payload': {
+          'deviceId': _myDeviceId(),
+          'deltas': deltas,
+          'at': DateTime.now().toUtc().toIso8601String(),
+        },
+      }));
+      debugPrint('[RealtimeSync] broadcast ${deltas.length} deltas directly via WS');
+    } catch (e) {
+      debugPrint('[RealtimeSync] broadcast deltas failed: $e');
+    }
+  }
+
   String _myDeviceId() => _deviceId ??= () {
         try {
           return 'dart-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}-${identityHashCode(this).toRadixString(36)}';
@@ -237,10 +284,19 @@ class RealtimeSyncService {
   final _controller = StreamController<DateTime>.broadcast();
   Stream<DateTime> get stream => _controller.stream;
 
+  final _deltaController =
+      StreamController<List<Map<String, dynamic>>>.broadcast();
+  Stream<List<Map<String, dynamic>>> get deltaStream => _deltaController.stream;
+
   /// Called by [RealtimeBackupNotifier] callback when another device
   /// announces a backup. Triggers immediate pull on this device.
   void onRemoteBackupUpdated() {
     if (!_controller.isClosed) _controller.add(DateTime.now());
+  }
+
+  /// v2.2.57+143: Menerima deltas langsung dari WebSocket broadcast peer.
+  void onRemoteDeltas(List<Map<String, dynamic>> deltas) {
+    if (!_deltaController.isClosed) _deltaController.add(deltas);
   }
 }
 
