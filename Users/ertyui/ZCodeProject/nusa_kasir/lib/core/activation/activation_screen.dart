@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/services/google_auth_service.dart';
 import 'package:nusa_kasir/core/services/account_auth_service.dart';
+import 'package:nusa_kasir/core/services/realtime_order_service.dart';
 import 'package:nusa_kasir/core/services/delta_sync_service.dart';
 import 'package:nusa_kasir/core/utils/icon_loader.dart';
 import 'package:nusa_kasir/core/utils/permission_helper.dart';
@@ -556,6 +557,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       if (phase == 'unpack') progress.phase(RestorePhase.unpack);
     });
     if (ok && mounted) {
+      // v2.2.57+145: Rebind koneksi drift baru pasca-swap sqlite file agar
+      // DeltaSyncService dan RealtimeOrderService tidak throw 'database closed'.
+      final newDb = ref.read(databaseProvider);
+      DeltaSyncService.I.rebindDatabase(newDb);
+      RealtimeOrderService.I.rebindDatabase(newDb);
+
       TopToast.success(context, 'Data berhasil dipulihkan');
       // v2.2.57+133: pulihkan foto produk/karyawan dari bucket SEKARANG —
       // restore membawa path absolut device asal (file tidak ada di sini)
@@ -566,7 +573,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
         await DeltaSyncService.I.hydrateAllImages(onProgress: (done, total) {
           progress.updateFiles(done, total);
         });
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[Activation] hydrateAllImages error: $e');
+      }
       if (context.mounted) Navigator.of(context).pop(); // tutup dialog
       progress.done();
       if (context.canPop()) {

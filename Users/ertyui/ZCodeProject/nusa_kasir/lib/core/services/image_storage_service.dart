@@ -27,9 +27,9 @@ class ImageStorageService {
   String _remoteDir(String category) =>
       '$_uid/${NusaConfig.productId}/$category';
 
-  /// Map nama file lokal (product_*, photo_*, qris_*) → kategori remote.
+  /// Map nama file lokal (product_*, crop_*, photo_*, qris_*) → kategori remote.
   static String _categoryOf(String filename) {
-    if (filename.startsWith('product_')) return 'products';
+    if (filename.startsWith('product_') || filename.startsWith('crop_')) return 'products';
     if (filename.startsWith('photo_')) return 'employees';
     return 'settings'; // qris_*, printer_logo_*
   }

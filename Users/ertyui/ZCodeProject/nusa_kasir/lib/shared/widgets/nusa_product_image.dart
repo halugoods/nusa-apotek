@@ -102,6 +102,14 @@ class _NusaProductImageState extends State<NusaProductImage>
     _sub = DeltaSyncService.I.hydrationStream.listen((ev) {
       if (ev.productId != pid) return;
       if (!mounted) return;
+      if (ev.progress < 0) {
+        // Download gagal / dibatalkan: bersihkan overlay
+        setState(() => _downloadProgress = null);
+        if (_waveController.isAnimating) {
+          _waveController.stop();
+        }
+        return;
+      }
       if (ev.progress >= 1.0) {
         if (ev.localPath != null) {
           setState(() {

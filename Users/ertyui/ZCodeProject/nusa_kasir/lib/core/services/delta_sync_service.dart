@@ -115,9 +115,9 @@ class DeltaSyncService {
   }
 
   Future<void> start(AppDatabase db) async {
+    _db = db;
     if (_started) return;
     _started = true;
-    _db = db;
     // v2.2.57+141: reset mute flag saat service start (cegah outbox mati)
     try {
       await setSyncMuted(db, false);
@@ -151,6 +151,15 @@ class DeltaSyncService {
 
     // Register device with cloud secara background (jangan blok start)
     unawaited(_registerDevice());
+  }
+
+  /// v2.2.57+145: Rebind database baru setelah restore backup selesai (drift lama
+  /// di-close saat swap sqlite file) supaya DeltaSyncService & hydration tidak mati.
+  void rebindDatabase(AppDatabase db) {
+    _db = db;
+    try {
+      setSyncMuted(db, false);
+    } catch (_) {}
   }
 
   Future<void> _registerDevice() async {
@@ -1816,7 +1825,7 @@ class DeltaSyncService {
         if (!_hydrationController.isClosed) {
           _hydrationController.add(ImageHydrationEvent(
             productId: productId,
-            progress: 1.0,
+            progress: -1.0,
           ));
         }
         return null;
@@ -1827,7 +1836,7 @@ class DeltaSyncService {
       if (!_hydrationController.isClosed) {
         _hydrationController.add(ImageHydrationEvent(
           productId: productId,
-          progress: 1.0,
+          progress: -1.0,
         ));
       }
       return null;
@@ -1868,7 +1877,7 @@ class DeltaSyncService {
         if (hasFile) continue;
         final b64 = pr.imageBase64;
         if (b64 != null && b64.isNotEmpty) continue;
-        final name = path?.split('/').last ?? '';
+        final name = path?.split(RegExp(r'[/\\]')).last ?? '';
         if (name.isEmpty) continue;
         if (!(name.startsWith('product_') || name.startsWith('crop_'))) continue;
         productCandidates.add(_HydrateTarget(pr.id, name));
@@ -1881,7 +1890,7 @@ class DeltaSyncService {
         if (hasFile) continue;
         final b64 = em.photoBase64;
         if (b64 != null && b64.isNotEmpty) continue;
-        final name = path?.split('/').last ?? '';
+        final name = path?.split(RegExp(r'[/\\]')).last ?? '';
         if (name.isEmpty || !name.startsWith('photo_')) continue;
         empCandidates.add(_HydrateTarget(em.id, name));
       }
@@ -1914,23 +1923,26 @@ class DeltaSyncService {
           },
         );
         try {
-          final restored = await svc.downloadOriginal(category, name);
+          var restored = await svc.downloadOriginal(category, name);
+          if (restored == null) {
+            restored = await svc.downloadImage(category, name);
+          }
           ticker.cancel();
           if (!_hydrationController.isClosed) {
             _hydrationController.add(ImageHydrationEvent(
               productId: productId,
-              progress: 1.0,
+              progress: restored != null ? 1.0 : -1.0,
               localPath: restored,
             ));
           }
           return restored;
         } catch (e) {
           ticker.cancel();
-          // -1.0 = sinyal done (UI bersihkan overlay). path null.
+          // -1.0 = sinyal error/done (UI bersihkan overlay). path null.
           if (!_hydrationController.isClosed) {
             _hydrationController.add(ImageHydrationEvent(
               productId: productId,
-              progress: 1.0,
+              progress: -1.0,
             ));
           }
           return null;

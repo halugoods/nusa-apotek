@@ -31,10 +31,14 @@ class RealtimeOrderService {
   static const _reconnectDelay = Duration(seconds: 5);
 
   Future<void> start(AppDatabase db) async {
+    _db = db;
     if (_shouldRun) return;
     _shouldRun = true;
-    _db = db;
     _connect();
+  }
+
+  void rebindDatabase(AppDatabase db) {
+    _db = db;
   }
 
   Future<String?> _channelName() async {

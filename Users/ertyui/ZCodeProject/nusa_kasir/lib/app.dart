@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -387,6 +388,8 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
     // on the same account. Pushes local changes, pulls remote deltas.
     try {
       DeltaSyncService.I.start(ref.read(databaseProvider));
+      // v2.2.57+145: Background auto-hydration foto produk & karyawan yang hilang
+      unawaited(DeltaSyncService.I.hydrateAllImages());
     } catch (_) {}
   }
 
