@@ -15,7 +15,7 @@ abstract class NusaConfig {
   /// prep rilis sebelum APK terpasang, sehingga label "Terpasang" dan
   /// force-update salah membandingkan (konstanta build baru > APK terpasang
   /// build lama). Fallback: nilai compile-time (paket gagal di platform).
-  static int appBuildNumber = 145;
+  static int appBuildNumber = 146;
   static void seedBuildNumber(int build) {
     if (build > 0) appBuildNumber = build;
   }
