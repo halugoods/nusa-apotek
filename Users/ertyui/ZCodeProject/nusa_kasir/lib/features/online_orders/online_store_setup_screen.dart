@@ -41,7 +41,8 @@ class _OnlineStoreSetupScreenState
   String? _storeUrl;
   bool _isActive = false;
   String? _logoPath;
-  // Google UID — namespace path upload storage (dipakai bangun URL publik).
+  String? _cloudLogoUrl;
+  // UID — namespace path upload storage (dipakai bangun URL publik).
   String _logoUid = '';
   int _onlineProductCount = 0;
   // Produk yang gagal upload gambarnya (nama) — ditampilkan sebagai banner
@@ -156,7 +157,9 @@ class _OnlineStoreSetupScreenState
     _logoPath = await repo.getStoreLogoPath();
     // Simpan UID untuk bangun URL publik logo (v2.2.35).
     try {
-      _logoUid = await GoogleAuthService.getStoredUserId() ?? '';
+      _logoUid = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId() ??
+          '';
     } catch (_) {}
 
     final fallbackSlug = _slugify(name);
@@ -187,6 +190,10 @@ class _OnlineStoreSetupScreenState
         _waCtrl.text = store['whatsapp'] as String? ?? '';
         _addressCtrl.text = store['address'] as String? ?? '';
         _hoursCtrl.text = store['open_hours'] as String? ?? '08:00 - 21:00';
+        final cloudLogo = store['logo_url'] as String?;
+        if (cloudLogo != null && cloudLogo.isNotEmpty) {
+          _cloudLogoUrl = cloudLogo;
+        }
         final cloudSlug = store['slug'] as String?;
         if (cloudSlug != null && cloudSlug.isNotEmpty) {
           _slugCtrl.text = cloudSlug;
@@ -218,12 +225,47 @@ class _OnlineStoreSetupScreenState
                 (jsonDecode(ms) as Map).cast<String, dynamic>();
           }
         } catch (_) {}
+
+        // Auto-merge QRIS & Rekening Bank dari pengaturan lokal jika belum diisi
+        final bankName = await repo.getBankName();
+        final bankAcc = await repo.getBankAccount();
+        final bankHolder = await repo.getBankHolder();
+        final qrisPath = await repo.getQrisImagePath();
+        final uid = _logoUid;
+
         if (_payMethods.isEmpty) {
+          String? bankDetails;
+          if (bankName != null && bankName.isNotEmpty && bankAcc != null && bankAcc.isNotEmpty) {
+            bankDetails = '$bankName $bankAcc ${bankHolder != null && bankHolder.isNotEmpty ? "a.n $bankHolder" : ""}'.trim();
+          }
+          String? qrisUrl;
+          if (qrisPath != null && qrisPath.isNotEmpty && uid.isNotEmpty) {
+            qrisUrl = CloudGateway.shared.storagePublicUrl(
+              'nusa-images',
+              '$uid/${NusaConfig.productId}/settings/${p.basename(qrisPath)}',
+            );
+          }
           _payMethods = [
             {'name': 'Tunai', 'type': 'tunai', 'handling_fee': 0, 'is_active': true},
-            {'name': 'QRIS', 'type': 'qris', 'handling_fee': 0, 'is_active': true},
-            {'name': 'Transfer', 'type': 'bank', 'handling_fee': 0, 'is_active': true},
+            {'name': 'QRIS', 'type': 'qris', if (qrisUrl != null) 'qr': qrisUrl, 'handling_fee': 0, 'is_active': true},
+            {'name': 'Transfer', 'type': 'bank', if (bankDetails != null) 'details': bankDetails, 'handling_fee': 0, 'is_active': true},
           ];
+        } else {
+          for (final m in _payMethods) {
+            if (m['type'] == 'bank' && (m['details'] == null || (m['details'] as String).isEmpty)) {
+              if (bankName != null && bankName.isNotEmpty && bankAcc != null && bankAcc.isNotEmpty) {
+                m['details'] = '$bankName $bankAcc ${bankHolder != null && bankHolder.isNotEmpty ? "a.n $bankHolder" : ""}'.trim();
+              }
+            }
+            if (m['type'] == 'qris' && (m['qr'] == null || (m['qr'] as String).isEmpty)) {
+              if (qrisPath != null && qrisPath.isNotEmpty && uid.isNotEmpty) {
+                m['qr'] = CloudGateway.shared.storagePublicUrl(
+                  'nusa-images',
+                  '$uid/${NusaConfig.productId}/settings/${p.basename(qrisPath)}',
+                );
+              }
+            }
+          }
         }
         if (_orderTypes.isEmpty) {
           _orderTypes = [
@@ -296,10 +338,10 @@ class _OnlineStoreSetupScreenState
         address: _addressCtrl.text.trim(),
         openHours: _hoursCtrl.text.trim(),
         isActive: isActive,
-        // Logo toko (v2.2.35) — URL publik dari upload storage settings.
-        logoUrl: _logoPath != null && _logoPath!.isNotEmpty
+        // Logo toko (v2.2.35) — URL publik dari upload storage settings atau cloud logo URL yang ada.
+        logoUrl: (_logoPath != null && _logoPath!.isNotEmpty && File(_logoPath!).existsSync())
             ? _buildLogoPublicUrl(_logoPath!)
-            : null,
+            : _cloudLogoUrl,
       );
       final ok = result.ok;
 
@@ -377,6 +419,9 @@ class _OnlineStoreSetupScreenState
         pickupOptions: _jsonStr(_pickupOptions),
         paymentMethods: _jsonStr(_payMethods),
         memberSettings: _jsonStr(_memberSettings),
+        logoUrl: (_logoPath != null && _logoPath!.isNotEmpty && File(_logoPath!).existsSync())
+            ? _buildLogoPublicUrl(_logoPath!)
+            : _cloudLogoUrl,
       );
       if (!r1.ok) return false;
 
@@ -434,6 +479,9 @@ class _OnlineStoreSetupScreenState
         address: _addressCtrl.text.trim(),
         openHours: _hoursCtrl.text.trim(),
         isActive: _isActive,
+        logoUrl: (_logoPath != null && _logoPath!.isNotEmpty && File(_logoPath!).existsSync())
+            ? _buildLogoPublicUrl(_logoPath!)
+            : _cloudLogoUrl,
       );
       if (result.ok) {
         await ref.read(settingsRepoProvider).setStoreName(name);
@@ -571,20 +619,20 @@ class _OnlineStoreSetupScreenState
 
       // Cloud upload → logo_url ke website (v2.2.35).
       try {
-        // Logo toko — ID Google dari SecureStore (bukan Supabase currentUser).
-        final uid = await GoogleAuthService.getStoredUserId();
-        if (uid != null) {
+        // Logo toko — Canonical UID dari SecureStore (Google UID / Account UID / Lite).
+        final uid = await SecureStore.resolveCanonicalUid() ??
+            await GoogleAuthService.getStoredUserId();
+        if (uid != null && uid.isNotEmpty) {
           _logoUid = uid;
           final svc = ImageStorageService(uid);
           final ok = await svc.uploadImage('settings', path);
           if (ok) {
-            // URL publik — dikirim ke store_settings supaya web bisa
-            // render <img>.
+            // URL publik — dikirim ke store_settings supaya web bisa render <img>.
             final publicUrl = CloudGateway.shared.storagePublicUrl(
               'nusa-images',
-              '$uid/${NusaConfig.productId}/settings/'
-                  '${p.basename(path)}',
+              '$uid/${NusaConfig.productId}/settings/${p.basename(path)}',
             );
+            setState(() => _cloudLogoUrl = publicUrl);
             final online = OnlineOrderService();
             await online.upsertStore(
               storeName: _nameCtrl.text.trim().isEmpty
@@ -1421,7 +1469,9 @@ class _OnlineStoreSetupScreenState
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: borderC, width: 1.5),
                   ),
-                  child: _logoPath != null && _logoPath!.isNotEmpty
+                  child: (_logoPath != null &&
+                          _logoPath!.isNotEmpty &&
+                          File(_logoPath!).existsSync())
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.file(
@@ -1430,21 +1480,44 @@ class _OnlineStoreSetupScreenState
                             cacheWidth: 400,
                           ),
                         )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.add_photo_alternate,
-                              size: 24,
-                              color: subColor,
+                      : (_cloudLogoUrl != null && _cloudLogoUrl!.isNotEmpty)
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                _cloudLogoUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.add_photo_alternate,
+                                      size: 24,
+                                      color: subColor,
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Logo',
+                                      style: TextStyle(fontSize: 8, color: subColor),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_photo_alternate,
+                                  size: 24,
+                                  color: subColor,
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Logo',
+                                  style: TextStyle(fontSize: 8, color: subColor),
+                                ),
+                              ],
                             ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Logo',
-                              style: TextStyle(fontSize: 8, color: subColor),
-                            ),
-                          ],
-                        ),
                 ),
               ),
               SizedBox(width: 14),

@@ -170,9 +170,9 @@ class OnlineOrderService {
       return (ok: false, error: OnlineStoreError.unknown);
     }
     try {
-      // Google UID = pemilik toko (persistensi lintas clear-data &
-      // anti rebutan slug antar varian). Sama dengan backup identity.
-      final userId = await GoogleAuthService.getStoredUserId();
+      // Canonical UID (Google UID / Account UID / Lite email) = pemilik toko.
+      final userId = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
       debugPrint(
         '[OnlineOrderService] upsertStore: invoking online-store edge function...',
       );
@@ -230,11 +230,14 @@ class OnlineOrderService {
   Future<bool> isSlugAvailable(String slug, {String? variant}) async {
     if (slug.trim().isEmpty) return false;
     try {
-      final userId = await GoogleAuthService.getStoredUserId();
+      final userId = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
+      final sid = await storeId;
       final res = await _invoke('online-store', {
         'action': 'check_slug',
         'slug': slug.trim().toLowerCase(),
         'variant': variant ?? NusaConfig.productId,
+        if (sid != null) 'store_id': sid,
         if (userId != null) 'user_id': userId,
       });
       if (res.status >= 400) return false;
@@ -251,7 +254,8 @@ class OnlineOrderService {
     try {
       // Kirim user_id + variant: edge fn fallback ke (user_id, variant)
       // bila row by store_id tidak ada (clear-data / key beda).
-      final userId = await GoogleAuthService.getStoredUserId();
+      final userId = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'get_store',
         'store_id': sid,
@@ -330,7 +334,8 @@ class OnlineOrderService {
     try {
       final products = await ProductRepository(db).getProducts();
       final online = products.where((p) => p.isOnline).toList();
-      final uid = await GoogleAuthService.getStoredUserId();
+      final uid = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
       final storeId = await this.storeId;
       if (storeId == null) return (count: 0, imgSuccess: 0, imgFailed: 0, failedNames: failedNames, imgFailReasons: failReasons, error: 'Belum ada toko online (activation key)');
 
@@ -459,7 +464,8 @@ class OnlineOrderService {
     try {
       // v2.2.57+127: kirim user_id+variant — edge fn fallback ambil order
       // via row toko asli bila store_id (activation key baru) tak berisi apa-apa.
-      final userId = await GoogleAuthService.getStoredUserId();
+      final userId = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'get_orders',
         'store_id': sid,
@@ -489,7 +495,8 @@ class OnlineOrderService {
     final sid = await storeId;
     if (sid == null) return false;
     try {
-      final userId = await GoogleAuthService.getStoredUserId();
+      final userId = await SecureStore.resolveCanonicalUid() ??
+          await GoogleAuthService.getStoredUserId();
       final res = await _invoke('online-store', {
         'action': 'update_order',
         'store_id': sid,

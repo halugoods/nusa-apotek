@@ -391,6 +391,11 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
       // v2.2.57+145: Background auto-hydration foto produk & karyawan yang hilang
       unawaited(DeltaSyncService.I.hydrateAllImages());
     } catch (_) {}
+
+    // Auto-sync produk & stok ke Toko Online (listen tableUpdates & debounce)
+    try {
+      ref.read(onlineProductSyncProvider);
+    } catch (_) {}
   }
 
   @override
@@ -411,6 +416,9 @@ class _NusaAppState extends ConsumerState<NusaApp> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       try {
         ref.read(autoSyncProvider).flushNow();
+      } catch (_) {}
+      try {
+        ref.read(onlineProductSyncProvider).flushNow();
       } catch (_) {}
     }
     // v2.2.57: on resume, pull immediately so devices that were idle on a
