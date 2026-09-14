@@ -131,10 +131,25 @@ async function upsertStore(ctx: Ctx, p: Row): Promise<Response> {
   const varId = p.variant == null ? '' : String(p.variant);
 
   // Ambil row milik user (by user_id+variant), lalu by store_id (legacy).
-  const userRow = await db
+  let userRow = await db
     .prepare('SELECT store_id FROM store_settings WHERE user_id IS ? AND variant = ? LIMIT 1')
     .bind(userId, varId)
     .first<{ store_id: string }>();
+
+  // Bila userRow belum ada tapi storeId ada di licenses, lookup via google_user_id
+  if (!userRow && storeId) {
+    const lic = await db
+      .prepare('SELECT google_user_id FROM licenses WHERE id = ? LIMIT 1')
+      .bind(storeId)
+      .first<{ google_user_id: string | null }>();
+    if (lic?.google_user_id) {
+      userRow = await db
+        .prepare('SELECT store_id FROM store_settings WHERE (user_id = ? OR owner_user_id = ?) AND variant = ? LIMIT 1')
+        .bind(lic.google_user_id, lic.google_user_id, varId)
+        .first<{ store_id: string }>();
+    }
+  }
+
   // SELALU query legacy by store_id — user tanpa Google login (user_id null)
   // tetap harus bisa UPDATE row lama; kalau hanya query saat uid, mereka
   // jatuh ke INSERT yang bentrok → 500 "server sibuk" (fix v2.2.57+116).
@@ -237,9 +252,24 @@ async function checkSlug(ctx: Ctx, p: Row): Promise<Response> {
     .bind(variant, slug)
     .first<{ store_id: string; user_id: string | null }>();
 
-  // Row sendiri (user_id sama) → bukan "taken".
-  if (data && p.user_id && data.user_id === String(p.user_id)) {
-    return json({ available: true, reason: 'ok' });
+  // Row sendiri (user_id sama atau store_id sama) → bukan "taken".
+  if (data) {
+    if (p.user_id && data.user_id === String(p.user_id)) {
+      return json({ available: true, reason: 'ok' });
+    }
+    if (p.store_id && data.store_id === String(p.store_id)) {
+      return json({ available: true, reason: 'ok' });
+    }
+    // Jika store_id yang dikirim adalah license id, cek apakah google_user_id cocok
+    if (p.store_id) {
+      const lic = await db
+        .prepare('SELECT google_user_id FROM licenses WHERE id = ? LIMIT 1')
+        .bind(p.store_id)
+        .first<{ google_user_id: string | null }>();
+      if (lic?.google_user_id && data.user_id === lic.google_user_id) {
+        return json({ available: true, reason: 'ok' });
+      }
+    }
   }
   return json({ available: !data, reason: data ? 'taken' : 'ok' });
 }
@@ -857,12 +887,37 @@ async function getStore(ctx: Ctx, p: Row): Promise<Response> {
     data = await db.prepare('SELECT * FROM store_settings WHERE store_id = ?').bind(storeId).first<Row>();
   }
 
-  // Fallback: row milik user ini di varian ini (setup lama tetap ketemu).
+  // Fallback 1: row milik user ini di varian ini (user_id atau owner_user_id)
   if (!data && userId && variant) {
     data = await db
-      .prepare('SELECT * FROM store_settings WHERE user_id = ? AND variant = ? LIMIT 1')
-      .bind(userId, variant)
+      .prepare('SELECT * FROM store_settings WHERE (user_id = ? OR owner_user_id = ? OR store_id = ?) AND variant = ? LIMIT 1')
+      .bind(userId, userId, userId, variant)
       .first<Row>();
+  }
+
+  // Fallback 2: jika storeId adalah license key dari licenses table, cari via google_user_id
+  if (!data && storeId && variant) {
+    const lic = await db
+      .prepare('SELECT google_user_id, owner_email FROM licenses WHERE id = ? LIMIT 1')
+      .bind(storeId)
+      .first<{ google_user_id: string | null; owner_email: string | null }>();
+    if (lic?.google_user_id) {
+      data = await db
+        .prepare('SELECT * FROM store_settings WHERE (user_id = ? OR owner_user_id = ? OR store_id = ?) AND variant = ? LIMIT 1')
+        .bind(lic.google_user_id, lic.google_user_id, lic.google_user_id, variant)
+        .first<Row>();
+    }
+  }
+
+  // Fallback 3: jika userId dikirim dan cocok dengan license id
+  if (!data && userId && variant) {
+    const lic = await db
+      .prepare('SELECT id FROM licenses WHERE (google_user_id = ? OR owner_email = ?) AND (product = ? OR product = "nusa-kasir") LIMIT 1')
+      .bind(userId, userId, variant)
+      .first<{ id: string }>();
+    if (lic?.id) {
+      data = await db.prepare('SELECT * FROM store_settings WHERE store_id = ?').bind(lic.id).first<Row>();
+    }
   }
 
   if (!data) return errorJson('Store not found', 404);
