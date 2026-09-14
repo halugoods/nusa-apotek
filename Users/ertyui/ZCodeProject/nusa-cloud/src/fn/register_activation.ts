@@ -56,14 +56,15 @@ function hexToBytes(hex: string) {
 // Owner-first: akun Google yang sama selalu boleh re-aktivasi (renew /
 // upgrade / multi-device), walau key lamanya sudah expired. Akun lain
 // ditolak bila key dibatalkan / expired / sudah dimiliki orang lain, atau
-// bila akun tsb masih punya lisensi aktif lain.
+// bila akun tsb masih punya lisensi aktif lain untuk varian/produk yang sama.
 async function canActivate(
   env: FnContext['env'],
   lid: string,
-  gid: string
+  gid: string,
+  prod?: string
 ): Promise<boolean> {
   const lic = await env.DB.prepare(
-    'SELECT status, expires_at, google_user_id FROM licenses WHERE id = ?'
+    'SELECT status, expires_at, google_user_id, product FROM licenses WHERE id = ?'
   )
     .bind(lid)
     .first<Row>();
@@ -82,14 +83,15 @@ async function canActivate(
   // Akun Google lain sudah memiliki lisensi ini → tolak
   if (lic.google_user_id != null && lic.google_user_id !== gid) return false;
 
-  // Cek apakah akun Google ini masih punya lisensi aktif lain
+  // Cek apakah akun Google ini masih punya lisensi aktif lain untuk produk yang SAMA
+  const targetProduct = prod ?? lic.product ?? 'nusa-kasir';
   const cnt = await env.DB.prepare(
     `SELECT COUNT(*) AS c FROM licenses
-     WHERE google_user_id = ? AND id != ?
+     WHERE google_user_id = ? AND id != ? AND (product = ? OR product = 'nusa-kasir')
        AND (expires_at IS NULL OR expires_at >= ?)
        AND status NOT IN ('Cancelled', 'Expired')`
   )
-    .bind(gid, lid, new Date().toISOString())
+    .bind(gid, lid, targetProduct, new Date().toISOString())
     .first<Row>();
   if ((cnt?.c ?? 0) > 0) return false;
 
@@ -111,29 +113,29 @@ export async function handleRegisterActivation(ctx: FnContext, params: Params): 
 
     // ─── CHECK action (tanpa key) ────────────────────────────────
     if (!key) {
-      // Satu lisensi mencakup SEMUA varian NUSA. Cari lisensi milik akun
-      // Google ini apapun produknya — key Kelontong juga membuka app
-      // FnB / Laundry / Fotocopy / dst. di akun yang sama.
-      // (Dulu difilter per product, yang menyisakan user yang beli lisensi
-      // satu varian tapi membuka varian lain.)
+      // Lisensi per-varian: cari lisensi milik akun Google ini
+      // yang sesuai dengan produk/varian aplikasi ini (atau fallback generic nusa-kasir).
       const ownedRes = await env.DB.prepare(
         `SELECT id, key, serial, status, google_user_id, owner_email, expires_at, tier, product
-         FROM licenses WHERE google_user_id = ? ORDER BY created_at DESC LIMIT 5`
+         FROM licenses WHERE google_user_id = ? AND (product = ? OR product = 'nusa-kasir')
+         ORDER BY created_at DESC LIMIT 5`
       )
-        .bind(googleUserId)
+        .bind(googleUserId, prod)
         .all<Row>();
       let owned = ownedRes.results ?? [];
 
-      // v2.2.57+131: kalau tidak ketemu by Google ID, cek by owner_email
+      // kalau tidak ketemu by Google ID, cek by owner_email
       // (lisensi generated/admin-linked tapi belum pernah di-activate user).
-      // Kalau email cocok → link google_user_id ke lisensi + anggap milik akun.
-      if (owned.length === 0) {
+      // Kalau email cocok dan produk cocok → link google_user_id ke lisensi + anggap milik akun.
+      const lookupEmail = ownerEmail || (googleUserId.includes('@') ? googleUserId : null);
+      if (owned.length === 0 && lookupEmail) {
         const emailMatch = await env.DB.prepare(
           `SELECT id, key, serial, status, google_user_id, owner_email, expires_at, tier, product
-           FROM licenses WHERE LOWER(owner_email) = LOWER(?) AND google_user_id IS NULL
+           FROM licenses WHERE LOWER(owner_email) = LOWER(?) AND (product = ? OR product = 'nusa-kasir')
+           AND google_user_id IS NULL
            AND status NOT IN ('Cancelled', 'Expired') ORDER BY created_at DESC LIMIT 1`
         )
-          .bind(googleUserId) // googleUserId bisa berupa email untuk Lite
+          .bind(lookupEmail, prod)
           .first<Row>();
         if (emailMatch) {
           // Link Google ID ke lisensi ini
@@ -246,29 +248,35 @@ export async function handleRegisterActivation(ctx: FnContext, params: Params): 
     if (lic.status === 'Cancelled')
       return json({ error: 'cancelled', message: 'Key ini sudah dibatalkan' }, 403);
 
-    // Terima status 'Generated' dan 'Trial' untuk aktivasi
-    if (lic.status !== 'Generated' && lic.status !== 'Trial') {
-      return json({ error: 'already_activated', message: 'Key ini sudah diaktivasi' }, 409);
+    // Terima status 'Generated', 'Trial', atau aktivasi ulang oleh akun Google yang sama
+    const isOwnerReactivating = lic.google_user_id && lic.google_user_id === googleUserId;
+    if (lic.status !== 'Generated' && lic.status !== 'Trial' && !isOwnerReactivating) {
+      return json({ error: 'already_activated', message: 'Key ini sudah diaktivasi oleh akun lain' }, 409);
     }
 
-    // Satu lisensi berlaku untuk SEMUA varian NUSA (signature varian-agnostic),
-    // jadi mismatch product tidak ditolak. Saat aktivasi dari varian lain,
-    // migrasikan product lisensi agar action CHECK (yang tidak difilter
-    // product) tetap konsisten.
-    if (lic.product !== prod) {
+    // Validasi kesesuaian varian produk
+    if (lic.product && lic.product !== 'nusa-kasir' && prod !== 'nusa-kasir' && lic.product !== prod) {
+      return json({
+        error: 'wrong_variant',
+        message: `Lisensi ini dibuat untuk ${lic.product}, tidak dapat digunakan di ${prod}.`
+      }, 400);
+    }
+
+    // Jika lisensi masih generic 'nusa-kasir' atau belum di-set, kunci ke varian ini
+    if (lic.product === 'nusa-kasir' || !lic.product) {
       await env.DB.prepare('UPDATE licenses SET product = ? WHERE id = ?')
         .bind(prod, lic.id)
         .run();
     }
 
     // 3. Cek can_activate
-    const can = await canActivate(env, lic.id, googleUserId);
+    const can = await canActivate(env, lic.id, googleUserId, prod);
     if (!can) {
       return json(
         {
           error: 'already_activated',
           message:
-            'Akun Google ini sudah dipakai untuk license lain. Gunakan license yang sama atau hubungi seller.',
+            'Akun Google ini sudah dipakai untuk license lain di varian ini. Gunakan license yang sama atau hubungi seller.',
         },
         409,
       );

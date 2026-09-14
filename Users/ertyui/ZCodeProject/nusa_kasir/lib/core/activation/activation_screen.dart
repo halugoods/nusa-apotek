@@ -746,46 +746,29 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     final accountSwitched = (prevLinked != null && prevLinked != googleUserId);
     await SecureStore.setLinkedAccountId(googleUserId);
 
-    // ── v2.2.44 (L2): cek cloud DULU (sekali per session). Ini jalur SATU
-    // sumber kebenaran untuk status lisensi — expired Active/Trial diblokir
-    // server, jadi user yang sudah aktivasi pun tetap terkunci kalau lisensi
-    // kedaluwarsa. Kalau offline → fallback ke key lokal (jangan blokir
-    // user yang sah karena jaringan).
+    // Ambil email untuk auto-linking lisensi baru yang di-generate dari dashboard
+    final email = await GoogleAuthService.getStoredEmail() ??
+        await SecureStore.read(key: AccountAuthService.emailKey);
+
+    // ── 1. Cek Cloud DULU (sumber kebenaran lisensi server per-varian)
     try {
       final res = await CloudGateway.shared.invoke(
         'register_activation',
-        body: {'googleUserId': googleUserId, 'product': NusaConfig.productId},
+        body: {
+          'googleUserId': googleUserId,
+          'product': NusaConfig.productId,
+          if (email != null && email.isNotEmpty) 'ownerEmail': email,
+        },
       );
       final data = res.data as Map<String, dynamic>?;
-      if (data?['has_license'] == false) {
-        final cloudStatus = data!['status'] as String?;
-        final isExpired = data['is_expired'] == true;
 
-        if (isExpired || cloudStatus == 'Expired' ||
-            cloudStatus == 'Cancelled') {
+      if (data?['has_license'] == true) {
+        final isExpired = data!['is_expired'] == true;
+        if (isExpired) {
           if (mounted) {
-            // v2.2.57+112: akun yang lisensinya DIBATALKAN (Cancelled) kembali
-            // ke layar status lisensi (decision — "sudah punya / belum punya
-            // lisensi"), BUKAN layar perpanjangan.
-            // Layar trial_expired (perpanjangan) hanya untuk status Expired.
-            if (cloudStatus == 'Cancelled') {
-              setState(() {
-                _googleLoading = false;
-                _googleError = data['message'] as String? ??
-                    'Lisensi Anda tidak aktif lagi.\nHubungi admin untuk bantuan.';
-                _licenseExpiry = data['expires_at'] != null
-                    ? DateTime.tryParse(data['expires_at'] as String)
-                    : null;
-                _screen = 'decision';
-              });
-              return;
-            }
             setState(() {
               _googleLoading = false;
-              _googleError = data['message'] as String? ??
-                  (cloudStatus == 'Expired'
-                      ? 'Lisensi Anda telah kedaluwarsa.\nPerpanjang untuk melanjutkan.'
-                      : 'Lisensi Anda tidak aktif lagi.\nHubungi admin untuk bantuan.');
+              _googleError = 'Masa trial Anda telah habis.\nBeli lisensi untuk melanjutkan.';
               _licenseExpiry = data['expires_at'] != null
                   ? DateTime.tryParse(data['expires_at'] as String)
                   : null;
@@ -794,70 +777,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           }
           return;
         }
-      }
-    } catch (_) {
-      // Offline / Supabase error → fall through ke jalur lokal di bawah.
-    }
-
-    // First check local storage
-    final isActivated = await ref.read(activationRepoProvider).isActivated;
-
-    if (isActivated) {
-      // ── v2.2.40: ganti akun / install ulang → key masih ada, tapi DB lokal
-      // bisa kosong (fresh) atau milik akun lain. Kalau akun berubah ATAU DB
-      // lokal tidak punya karyawan → cek backup cloud DULU (dialog "Data
-      // Ditemukan" tampil) sebelum PIN pad. `_goToPinOrSetup` sendiri sudah
-      // mengecek karyawan + restore saat DB kosong, tapi kita panggil
-      // hasBackup eksplisit supaya dialog muncul meski DB lokal masih punya
-      // karyawan milik akun LAMA (ganti akun) — restore hanya menimpa DB
-      // kalau user setuju (dialog). Kalau user batal, PIN pad pakai data lama.
-      if (accountSwitched) {
-        final hasBak = await ref.read(activationRepoProvider).hasBackup();
-        if (hasBak) {
-          // Tutup koneksi drift SEBELUM restore supaya swap aman, lalu
-          // tampilkan dialog "Data Ditemukan" → restore → redirect login.
-          try {
-            final db = ref.read(databaseProvider);
-            await db.close();
-          } catch (_) {}
-          ref.invalidate(databaseProvider);
-          final restored = await _autoRestoreIfNeeded();
-          if (restored) return; // redirect ke /login
-        }
-      }
-      if (mounted) {
-        _goToPinOrSetup();
-      }
-      return;
-    }
-
-    // Try cloud check — user might have a license from another device
-    try {
-      final res = await CloudGateway.shared.invoke(
-        'register_activation',
-        body: {'googleUserId': googleUserId, 'product': NusaConfig.productId},
-      );
-      final data = res.data as Map<String, dynamic>?;
-      if (data?['has_license'] == true) {
-        // Check if trial expired
-        final isExpired = data!['is_expired'] == true;
-
-        if (isExpired) {
-          setState(() {
-            _googleLoading = false;
-            _googleError = 'Masa trial Anda telah habis.\nBeli lisensi untuk melanjutkan.';
-            _licenseExpiry = data['expires_at'] != null
-                ? DateTime.tryParse(data['expires_at'] as String)
-                : null;
-            _screen = 'trial_expired';
-          });
-          return;
-        }
 
         // Verify the returned key is valid locally
         final key = data['key'] as String;
         final keyValid = await ActivationKey.verify(
-          key, nusaActivationPublicKey,
+          key,
+          nusaActivationPublicKey,
         );
         if (!keyValid) {
           if (mounted) {
@@ -880,15 +805,100 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
           tier: (data['tier'] as String?) ?? 'lifetime',
           status: (data['status'] as String?) ?? 'Active',
         );
-        _goToPinOrSetup();
+
+        if (accountSwitched) {
+          final hasBak = await ref.read(activationRepoProvider).hasBackup();
+          if (hasBak) {
+            try {
+              final db = ref.read(databaseProvider);
+              await db.close();
+            } catch (_) {}
+            ref.invalidate(databaseProvider);
+            final restored = await _autoRestoreIfNeeded();
+            if (restored) return;
+          }
+        }
+
+        if (mounted) {
+          _goToPinOrSetup();
+        }
+        return;
+      } else if (data?['has_license'] == false) {
+        final cloudStatus = data!['status'] as String?;
+        final isExpired = data['is_expired'] == true;
+
+        if (isExpired || cloudStatus == 'Expired') {
+          if (mounted) {
+            setState(() {
+              _googleLoading = false;
+              _googleError = data['message'] as String? ??
+                  'Lisensi Anda telah kedaluwarsa.\nPerpanjang untuk melanjutkan.';
+              _licenseExpiry = data['expires_at'] != null
+                  ? DateTime.tryParse(data['expires_at'] as String)
+                  : null;
+              _screen = 'trial_expired';
+            });
+          }
+          return;
+        }
+
+        if (cloudStatus == 'Cancelled') {
+          if (mounted) {
+            setState(() {
+              _googleLoading = false;
+              _googleError = data['message'] as String? ??
+                  'Lisensi Anda tidak aktif lagi.\nHubungi admin untuk bantuan.';
+              _screen = 'decision';
+            });
+          }
+          return;
+        }
+
+        // Server confirmed: akun ini tidak memiliki lisensi aktif untuk varian ini!
+        // Bersihkan key lokal lama/bocor dan arahkan ke layar decision masukkan key
+        await SecureStore.clearActivation();
+        await SecureStore.clearLicenseInfo();
+        if (mounted) {
+          setState(() {
+            _googleLoading = false;
+            _googleError = null;
+            _screen = 'decision';
+          });
+        }
         return;
       }
     } catch (_) {
-      // Offline / Supabase error — show decision screen, don't bypass activation
+      // Offline fallback: bila jaringan gagal, fall through ke cek local storage di bawah
     }
 
-    // No license at all — show the 2-button decision screen
-    setState(() => _screen = 'decision');
+    // ── 2. Offline Fallback: cek local storage
+    final isActivated = await ref.read(activationRepoProvider).isActivated;
+    if (isActivated) {
+      if (accountSwitched) {
+        final hasBak = await ref.read(activationRepoProvider).hasBackup();
+        if (hasBak) {
+          try {
+            final db = ref.read(databaseProvider);
+            await db.close();
+          } catch (_) {}
+          ref.invalidate(databaseProvider);
+          final restored = await _autoRestoreIfNeeded();
+          if (restored) return; // redirect ke /login
+        }
+      }
+      if (mounted) {
+        _goToPinOrSetup();
+      }
+      return;
+    }
+
+    // ── 3. Tidak ada lisensi sama sekali — tampilkan layar decision
+    if (mounted) {
+      setState(() {
+        _googleLoading = false;
+        _screen = 'decision';
+      });
+    }
   }
 
 

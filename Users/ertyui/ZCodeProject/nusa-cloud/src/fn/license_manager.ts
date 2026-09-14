@@ -163,7 +163,7 @@ export async function handleGenerate(ctx: FnContext, params: Params): Promise<Re
           product,
           mode,
           tier,
-          tier === 'trial' ? 'Trial' : 'Active',
+          tier === 'trial' ? 'Trial' : 'Generated',
           ownerEmail,
           trialExpires,
         )
@@ -659,10 +659,10 @@ export async function handleAutoClaim(ctx: FnContext, params: Params): Promise<R
   if (!email) return errorJson('email required', 400);
   if (!googleUserId) return errorJson('googleUserId required', 400);
 
-  // Cari lisensi Generated yang email-nya cocok
+  // Cari lisensi Generated yang email-nya cocok untuk produk ini
   const lic = await ctx.env.DB.prepare(
-    "SELECT id, status, google_user_id, product FROM licenses WHERE LOWER(owner_email) = ? AND status = 'Generated' ORDER BY created_at ASC LIMIT 1"
-  ).bind(email).first<Row>();
+    "SELECT id, status, google_user_id, product, key FROM licenses WHERE LOWER(owner_email) = ? AND status = 'Generated' AND (product = ? OR product = 'nusa-kasir') ORDER BY created_at ASC LIMIT 1"
+  ).bind(email, product).first<Row>();
 
   if (!lic) return errorJson('no_license', 404);
 
@@ -673,7 +673,7 @@ export async function handleAutoClaim(ctx: FnContext, params: Params): Promise<R
     updates.push('google_user_id = ?');
     binds.push(googleUserId);
   }
-  if (lic.product !== product) {
+  if (lic.product === 'nusa-kasir' && product !== 'nusa-kasir') {
     updates.push('product = ?');
     binds.push(product);
   }
@@ -731,6 +731,11 @@ export async function handleActivateLite(ctx: FnContext, params: Params): Promis
   ).bind(licenseKey).first<Row>();
 
   if (!lic) return errorJson('license_key tidak valid', 404);
+
+  // Cek kesesuaian varian produk
+  if (lic.product && lic.product !== 'nusa-kasir' && product && product !== 'nusa-kasir' && lic.product !== product) {
+    return errorJson(`Lisensi ini untuk ${lic.product}, tidak dapat digunakan di ${product}`, 400);
+  }
 
   // 2. Cek status
   if (lic.status === 'Cancelled' || lic.status === 'Expired') {
