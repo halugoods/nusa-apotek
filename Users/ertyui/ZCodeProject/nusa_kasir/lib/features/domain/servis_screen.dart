@@ -17,6 +17,8 @@ import 'package:nusa_kasir/data/repositories/service_ticket_repository.dart';
 import 'package:nusa_kasir/data/repositories/settings_repository.dart';
 import 'package:nusa_kasir/features/pos/cart.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
+import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
@@ -266,11 +268,12 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _filtered.isEmpty
-                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.build_circle_outlined, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                      const SizedBox(height: 16),
-                      Text(_isBengkel ? 'Belum ada tiket servis' : 'Belum ada tiket servis', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    ]))
+                  ? EmptyState(
+                      icon: _isBengkel ? Icons.directions_car_filled_rounded : Icons.build_circle_rounded,
+                      message: 'Belum ada tiket servis',
+                      actionLabel: 'Tiket Baru',
+                      onAction: () => _openForm(),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                       itemCount: _filtered.length,
@@ -290,162 +293,299 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
 
   Widget _ticketCard(ServiceTicket t, bool isDark) {
     final statusColor = _chipColor(t.status);
-    final catColor = _isBengkel ? _catColor(t.deviceName) : null;
     final hasVehicle = _isBengkel && (t.plateNumber?.isNotEmpty ?? false);
     final hasBrand = _isBengkel && (t.vehicleBrand?.isNotEmpty ?? false);
     final total = t.sparepartCost + t.serviceCost;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text(t.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-            if (t.queueNumber != null) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(
-                  color: NusaConfig.accentGold.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: NusaConfig.accentGold.withOpacity(0.3)),
-                ),
-                child: Text('#SRV-${t.queueNumber.toString().padLeft(3, '0')}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: NusaConfig.accentGold)),
-              ),
-            ],
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: statusColor.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
-              child: Text(t.status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor)),
-            ),
-          ]),
-          // Vehicle row (bengkel): plate + brand + year
-          if (hasVehicle || hasBrand) ...[
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              if (hasVehicle)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: NusaConfig.warning.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: NusaConfig.warning.withOpacity(0.35)),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.local_taxi_outlined, size: 12, color: NusaConfig.warning),
-                    const SizedBox(width: 4),
-                    Text(t.plateNumber!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: NusaConfig.warning)),
-                  ]),
-                ),
-              if (hasBrand)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: catColor!.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(t.vehicleBrand!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: catColor)),
-                ),
-              if (t.vehicleYear != null && t.vehicleYear! > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('${t.vehicleYear}', style: const TextStyle(fontSize: 11)),
-                ),
-              if (t.technician != null && t.technician!.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: NusaConfig.info.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.engineering_outlined, size: 12, color: NusaConfig.info),
-                    const SizedBox(width: 4),
-                    Text('👤 ${t.technician}', style: const TextStyle(fontSize: 11, color: NusaConfig.info)),
-                  ]),
-                ),
-            ]),
-          ],
-          if (t.customerPhone != null && t.customerPhone!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: GestureDetector(
-                onTap: () => _callCustomer(t.customerPhone!),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.phone_outlined, size: 12, color: NusaConfig.activePrimary),
-                  const SizedBox(width: 4),
-                  Text(t.customerPhone!, style: TextStyle(fontSize: 12, color: NusaConfig.activePrimary)),
-                ]),
-              ),
-            ),
-          const SizedBox(height: 6),
-          Row(children: [
-            Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.devices, size: 16, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-            const SizedBox(width: 4),
-            Expanded(child: Text(t.deviceName, style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary))),
-          ]),
-          const SizedBox(height: 4),
-          Row(children: [
-            Icon(Icons.report_problem_outlined, size: 16, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-            const SizedBox(width: 4),
-            Expanded(child: Text(t.issue, style: TextStyle(fontSize: 13, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis)),
-          ]),
-          if (t.estimatedCost > 0 || t.finalCost > 0 || (_isBengkel && total > 0)) ...[
-            const SizedBox(height: 6),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              if (_isBengkel && total > 0)
-                Chip(label: Text('Estimasi: ${formatRupiah(total)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.warning.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              if (_isBengkel && t.sparepartCost > 0)
-                Chip(label: Text('Sparepart: ${formatRupiah(t.sparepartCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.info.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              if (_isBengkel && t.serviceCost > 0)
-                Chip(label: Text('Jasa: ${formatRupiah(t.serviceCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.accentGreen.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              if (!_isBengkel && t.estimatedCost > 0)
-                Chip(label: Text('Estimasi: ${formatRupiah(t.estimatedCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.warning.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              if (t.finalCost > 0) ...[
-                Chip(label: Text('Final: ${formatRupiah(t.finalCost)}', style: const TextStyle(fontSize: 11)), backgroundColor: NusaConfig.success.withOpacity(0.1), side: BorderSide.none, visualDensity: VisualDensity.compact),
-              ],
-            ]),
-          ],
-          const SizedBox(height: 8),
-          // ── Quick status chips (pola salon) ──
-          Row(children: [
-            Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Wrap(spacing: 6, runSpacing: 4, children: _nextStages(t).map((ns) {
-                final nsColor = ns['color'] as Color;
-                return GestureDetector(
-                  onTap: () => _jumpToStatus(t, ns['label']),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: NusaCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: Vehicle Plate / Device + Customer Name + Status & Queue Pill
+            Row(
+              children: [
+                if (hasVehicle) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: nsColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: nsColor.withOpacity(0.3)),
+                      color: NusaConfig.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: NusaConfig.warning.withValues(alpha: 0.35)),
                     ),
-                    child: Text(ns['label'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.local_taxi_outlined, size: 12, color: NusaConfig.warning),
+                        const SizedBox(width: 4),
+                        Text(
+                          t.plateNumber!,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: NusaConfig.warning),
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              }).toList()),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        t.customerName,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (hasBrand || !_isBengkel)
+                        Text(
+                          _isBengkel ? '${t.vehicleBrand ?? ''}${t.vehicleYear != null && t.vehicleYear! > 0 ? ' (${t.vehicleYear})' : ''}' : t.deviceName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                if (t.queueNumber != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.accentGold.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: NusaConfig.accentGold.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      '#SRV-${t.queueNumber.toString().padLeft(3, '0')}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: NusaConfig.accentGold),
+                    ),
+                  ),
+                ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        t.status,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ]),
-          const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            _actionButton(Icons.print_outlined, 'Cetak', () => _printTicketFlow(t), isDark),
-            const SizedBox(width: 4),
-            _actionButton(Icons.point_of_sale_outlined, 'Kasir', () => _quickPos(t), isDark),
-            const SizedBox(width: 4),
-            _actionButton(Icons.edit_outlined, 'Edit', () => _openForm(ticket: t), isDark),
-            const SizedBox(width: 4),
-            _actionButton(Icons.delete_outline, 'Hapus', () => _deleteTicket(t), isDark),
-          ]),
-        ]),
+            if (t.customerPhone != null && t.customerPhone!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: GestureDetector(
+                  onTap: () => _callCustomer(t.customerPhone!),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.phone_outlined, size: 11, color: NusaConfig.activePrimary),
+                      const SizedBox(width: 4),
+                      Text(
+                        t.customerPhone!,
+                        style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            // Row 2: Category + Issue
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _isBengkel ? Icons.build_circle_outlined : Icons.report_problem_outlined,
+                  size: 14,
+                  color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${_isBengkel ? '[${t.deviceName}] ' : ''}${t.issue}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            // Row 3: Technician & Costs
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (_isBengkel && t.deviceName.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: _catColor(t.deviceName).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      t.deviceName,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: _catColor(t.deviceName),
+                      ),
+                    ),
+                  ),
+                if (t.technician != null && t.technician!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.info.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.engineering_outlined, size: 12, color: NusaConfig.info),
+                        const SizedBox(width: 4),
+                        Text(
+                          t.technician!,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.info),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_isBengkel && total > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Estimasi: ${formatRupiah(total)}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.warning),
+                    ),
+                  ),
+                if (_isBengkel && t.sparepartCost > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.info.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Part: ${formatRupiah(t.sparepartCost)}',
+                      style: const TextStyle(fontSize: 10, color: NusaConfig.info),
+                    ),
+                  ),
+                if (_isBengkel && t.serviceCost > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.accentGreen.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Jasa: ${formatRupiah(t.serviceCost)}',
+                      style: const TextStyle(fontSize: 10, color: NusaConfig.accentGreen),
+                    ),
+                  ),
+                if (!_isBengkel && t.estimatedCost > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Estimasi: ${formatRupiah(t.estimatedCost)}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: NusaConfig.warning),
+                    ),
+                  ),
+                if (t.finalCost > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: NusaConfig.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Final: ${formatRupiah(t.finalCost)}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: NusaConfig.success),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // Bottom row: quick status chips + actions
+            Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.rocket_launch_rounded, size: 12, color: NusaConfig.info),
+                        const SizedBox(width: 4),
+                        ..._nextStages(t).map((ns) {
+                          final nsColor = ns['color'] as Color;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              onTap: () => _jumpToStatus(t, ns['label']),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: nsColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: nsColor.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(
+                                  ns['label'],
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: nsColor),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _actionButton(Icons.print_outlined, 'Cetak', () => _printTicketFlow(t), isDark),
+                const SizedBox(width: 4),
+                _actionButton(Icons.point_of_sale_outlined, 'Kasir', () => _quickPos(t), isDark),
+                const SizedBox(width: 4),
+                _actionButton(Icons.edit_outlined, 'Edit', () => _openForm(ticket: t), isDark),
+                const SizedBox(width: 4),
+                _actionButton(Icons.delete_outline, 'Hapus', () => _deleteTicket(t), isDark),
+              ],
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(14),
+        borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
       ),
     );
   }
@@ -489,14 +629,21 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
   }
 
   Future<void> _deleteTicket(ServiceTicket t) async {
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Hapus Tiket?'),
-      content: Text('Hapus tiket servis ${t.customerName} — ${t.deviceName}?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus', style: TextStyle(color: Colors.red))),
-      ],
-    ));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusLG)),
+        title: const Text('Hapus Tiket?'),
+        content: Text('Hapus tiket servis ${t.customerName} — ${t.deviceName}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
     if (ok == true) {
       await ServiceTicketRepository(ref.read(databaseProvider)).delete(t.id);
       TopToast.success(context, 'Tiket dihapus');
@@ -695,23 +842,43 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        Widget sectionTitle(String title, IconData icon, Color color) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 14, bottom: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
         return StatefulBuilder(builder: (ctx, setModalState) {
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
                 child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 16),
                   Row(children: [
                     Container(
                       width: 38, height: 38,
                       decoration: BoxDecoration(
-                        color: (_isBengkel ? NusaConfig.warning : NusaConfig.info).withOpacity(0.12),
+                        color: (_isBengkel ? NusaConfig.warning : NusaConfig.info).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(_isBengkel ? Icons.directions_car_filled_outlined : Icons.build_outlined, color: _isBengkel ? NusaConfig.warning : NusaConfig.info, size: 20),
@@ -723,9 +890,10 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
                         Text(queueLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NusaConfig.accentGold)),
                     ])),
                   ]),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   if (_isBengkel) ...[
                     // ── Vehicle identity (bengkel) ──
+                    sectionTitle('Kendaraan & Pelanggan', Icons.directions_car_outlined, NusaConfig.warning),
                     NusaInput('Plat Nomor', controller: plateC, hint: 'Contoh: B 1234 XYZ'),
                     const SizedBox(height: 12),
                     NusaInput('Merk / Model Kendaraan', controller: brandC, hint: 'Contoh: Honda Beat, Toyota Avanza'),
@@ -737,7 +905,8 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
                     ]),
                     const SizedBox(height: 12),
                     NusaInput('No. Telepon', controller: phoneC, type: TextInputType.phone, hint: 'Contoh: 0812-3456-7890'),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
+                    sectionTitle('Kategori & Pekerjaan', Icons.build_outlined, NusaConfig.info),
                     // Kategori servis
                     Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                       Container(
@@ -818,7 +987,8 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
                         ]),
                       ),
                     NusaFormField(label: 'Keluhan / Pekerjaan', controller: issueC, hintText: 'Deskripsikan pekerjaan servis...', maxLines: 3, validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
+                    sectionTitle('Biaya & Estimasi', Icons.payments_outlined, NusaConfig.success),
                     // ── Cost split: sparepart + jasa ──
                     Row(children: [
                       Expanded(child: NusaFormField(label: 'Biaya Sparepart', controller: spareC, hintText: 'Rp', keyboardType: TextInputType.number)),
@@ -830,14 +1000,17 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
                     const SizedBox(height: 12),
                   ] else ...[
                     // ── Legacy device form ──
+                    sectionTitle('Pelanggan & Perangkat', Icons.devices_outlined, NusaConfig.info),
                     NusaFormField(label: 'Nama Pelanggan', controller: nameC, hintText: 'Nama pelanggan', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
                     const SizedBox(height: 12),
                     NusaFormField(label: 'No. Telepon', controller: phoneC, hintText: 'Contoh: 0812-3456-7890', keyboardType: TextInputType.phone),
                     const SizedBox(height: 12),
                     NusaFormField(label: 'Nama Perangkat', controller: deviceC, hintText: 'Contoh: iPhone 13, Samsung A52', validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
+                    sectionTitle('Keluhan & Masalah', Icons.report_problem_outlined, NusaConfig.warning),
                     NusaFormField(label: 'Keluhan / Masalah', controller: issueC, hintText: 'Deskripsikan masalah perangkat...', maxLines: 3, validator: (v) => v == null || v.isEmpty ? 'Wajib diisi' : null),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
+                    sectionTitle('Estimasi Biaya', Icons.payments_outlined, NusaConfig.success),
                     Row(children: [
                       Expanded(child: NusaFormField(label: 'Estimasi Biaya', controller: estC, hintText: 'Rp', keyboardType: TextInputType.number)),
                       const SizedBox(width: 12),
@@ -845,6 +1018,7 @@ class _ServisScreenState extends ConsumerState<ServisScreen> with SingleTickerPr
                     ]),
                     const SizedBox(height: 12),
                   ],
+                  sectionTitle('Catatan Tambahan', Icons.note_alt_outlined, isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
                   NusaFormField(label: 'Catatan', controller: notesC, hintText: 'Catatan tambahan...', maxLines: 2),
                   const SizedBox(height: 20),
                   SizedBox(

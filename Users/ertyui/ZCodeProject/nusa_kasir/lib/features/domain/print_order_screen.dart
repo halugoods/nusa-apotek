@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nusa_kasir/core/config/nusa_config.dart';
 import 'package:nusa_kasir/core/providers.dart';
 import 'package:nusa_kasir/core/services/online_order_service.dart';
@@ -16,6 +17,8 @@ import 'package:nusa_kasir/data/repositories/print_order_repository.dart';
 import 'package:nusa_kasir/data/repositories/print_service_type_repository.dart';
 import 'package:nusa_kasir/data/repositories/estimate_option_repository.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
+import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
@@ -269,21 +272,12 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _filtered.isEmpty
-                  ? Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.print_outlined,
-                            size: 64,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary),
-                        const SizedBox(height: 16),
-                        Text('Belum ada order cetak',
-                            style: TextStyle(
-                                fontSize: 16,
-                                color: isDark
-                                    ? NusaConfig.darkTextSecondary
-                                    : NusaConfig.textSecondary)),
-                      ]))
+                  ? const Center(
+                      child: EmptyState(
+                        icon: Icons.print_outlined,
+                        message: 'Belum ada order cetak',
+                      ),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                       itemCount: _filtered.length,
@@ -416,105 +410,267 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     );
   }
 
+  void _quickPos(PrintOrder o) {
+    context.push('/kasir', extra: {'bookingCustomer': o.customerName, 'bookingPhone': o.customerPhone ?? ''});
+    TopToast.success(context, 'Buka kasir untuk ${o.customerName}');
+  }
+
   Widget _orderCard(PrintOrder o, bool isDark) {
     final sc = _statusColor(o.status);
     final dims = (o.widthCm != null && o.lengthCm != null)
         ? '${o.widthCm}×${o.lengthCm} cm'
         : null;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            // Tanpa icon bulat — label layanan polos (custom friendly)
-            Expanded(
-              child: Text(o.customerName,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                  color: sc.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text(o.status,
-                  style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.w700, color: sc)),
-            ),
-            PopupMenuButton(
-              itemBuilder: (_) => [
-                if (o.status != 'Diambil')
-                  PopupMenuItem(
-                      value: 'next',
-                      child: Text('▶ ${_nextStatus(o.status) ?? "Lanjut"}')),
-                const PopupMenuItem(value: 'edit', child: Text('✏ Edit')),
-                const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('🗑 Hapus', style: TextStyle(color: Colors.red))),
+    final orderLabel = '#PRN-${o.id.toString().padLeft(3, '0')}';
+    final initial = o.customerName.isNotEmpty ? o.customerName[0].toUpperCase() : 'P';
+    final nextStatus = _nextStatus(o.status);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: NusaCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: sc.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initial,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: sc),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              o.customerName,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              orderLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(color: sc, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            o.status,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: sc),
+                          ),
+                          if (o.estimateReady != null && o.estimateReady!.isNotEmpty) ...[
+                            Text(' • ', style: TextStyle(color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                            Icon(Icons.access_time_rounded, size: 12, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                            const SizedBox(width: 3),
+                            Text(
+                              o.estimateReady!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert_rounded, size: 20, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusMD)),
+                  itemBuilder: (_) => [
+                    if (o.status != 'Diambil')
+                      PopupMenuItem(
+                        value: 'next',
+                        child: Row(
+                          children: [
+                            Icon(Icons.arrow_forward_rounded, size: 16, color: sc),
+                            const SizedBox(width: 8),
+                            Text('▶ ${_nextStatus(o.status) ?? "Lanjut"}'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_outlined, size: 16),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 16, color: NusaConfig.error),
+                          SizedBox(width: 8),
+                          Text('Hapus', style: TextStyle(color: NusaConfig.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onSelected: (v) {
+                    if (v == 'next') _advanceStatus(o);
+                    if (v == 'edit') _openForm(order: o);
+                    if (v == 'delete') _deleteOrder(o);
+                  },
+                ),
               ],
-              onSelected: (v) {
-                if (v == 'next') _advanceStatus(o);
-                if (v == 'edit') _openForm(order: o);
-                if (v == 'delete') _deleteOrder(o);
-              },
             ),
-          ]),
-          const SizedBox(height: 4),
-          Row(children: [
-            Text(o.serviceType,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: NusaConfig.activePrimary)),
-            const SizedBox(width: 8),
-            Text('${o.pages} lbr · ${o.copies}x',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? NusaConfig.darkTextSecondary
-                        : NusaConfig.textSecondary)),
-            if (o.paperSize != 'A4') ...[
-              const SizedBox(width: 8),
-              Text(o.paperSize,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: NusaConfig.activePrimary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    o.serviceType,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: NusaConfig.activePrimary),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${o.pages} lbr • ${o.copies}x',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                ),
+                if (o.paperSize != 'A4')
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      o.paperSize,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    ),
+                  ),
+                if (dims != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      dims,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    ),
+                  ),
+              ],
+            ),
+            if (o.customFieldsJson != null && o.customFieldsJson!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              ..._buildCustomFieldChips(o.customFieldsJson!, isDark),
             ],
-            if (dims != null) ...[
-              const SizedBox(width: 8),
-              Text(dims,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary)),
-            ],
-            const Spacer(),
-            if (o.total > 0)
-              Text(formatRupiah(o.total),
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: NusaConfig.success)),
-          ]),
-          if (o.estimateReady != null && o.estimateReady!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text('⏱ Selesai: ${o.estimateReady}',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: isDark
-                        ? NusaConfig.darkTextTertiary
-                        : NusaConfig.textTertiary)),
+            const SizedBox(height: 10),
+            Divider(height: 1, color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (o.total > 0) ...[
+                  Text(
+                    'Total:',
+                    style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    formatRupiah(o.total),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: NusaConfig.success),
+                  ),
+                ],
+                const Spacer(),
+                if (nextStatus != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      onTap: () => _advanceStatus(o),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: sc.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: sc.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              nextStatus,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: sc),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.arrow_forward_rounded, size: 12, color: sc),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    side: BorderSide(color: NusaConfig.activePrimary.withValues(alpha: 0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => _quickPos(o),
+                  icon: const Icon(Icons.shopping_cart_outlined, size: 14),
+                  label: const Text('Kasir', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
           ],
-          // v2.2.35: field kustom per layanan — tampil di kartu order.
-          if (o.customFieldsJson != null && o.customFieldsJson!.isNotEmpty)
-            ..._buildCustomFieldChips(o.customFieldsJson!, isDark),
-        ]),
+        ),
+        padding: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
       ),
     );
   }
@@ -568,6 +724,8 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(NusaConfig.radiusLG)),
               title: const Text('Hapus Order?'),
               content: Text('Hapus order ${o.customerName}?'),
               actions: [
@@ -577,7 +735,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
                 TextButton(
                     onPressed: () => Navigator.pop(ctx, true),
                     child: const Text('Hapus',
-                        style: TextStyle(color: Colors.red))),
+                        style: TextStyle(color: NusaConfig.error))),
               ],
             ));
     if (ok == true) {
@@ -600,6 +758,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -620,18 +779,11 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
-                20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+                20, 4, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: Colors.grey.shade400,
-                        borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 16),
                 Row(children: [
                   const Text('Kelola',
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
@@ -1335,7 +1487,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     final paperSizes = ['A4', 'A3', 'F4', 'A5', 'Letter', 'Legal', 'Custom'];
     // Estimasi preset dari DB — dropdown + opsi "Kustom…" (input bebas).
     List<EstimateOption> estimatePresets = [];
-    String? estimateSelection = order?.estimateReady ?? null;
+    String? estimateSelection = order?.estimateReady;
     bool estimateIsCustom = order?.estimateReady != null;
     // v2.2.35: field kustom per layanan — controller per label.
     // Order lama: customFieldsJson mungkin null → muat dari label field
@@ -1370,6 +1522,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -1401,7 +1554,7 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
 
             return Padding(
           padding: EdgeInsets.fromLTRB(
-              20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+              20, 4, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Form(
             key: formKey,
             child: SingleChildScrollView(
@@ -1409,13 +1562,6 @@ class _PrintOrderScreenState extends ConsumerState<PrintOrderScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 16),
                   Text(isEdit ? 'Edit Order' : 'Order Cetak Baru',
                       style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.w700)),

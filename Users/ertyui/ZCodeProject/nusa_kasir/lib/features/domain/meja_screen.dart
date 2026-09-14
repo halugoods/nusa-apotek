@@ -14,7 +14,8 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/dining_table_repository.dart';
 import 'package:nusa_kasir/data/repositories/tab_repository.dart';
-import 'package:nusa_kasir/features/pos/cart.dart';
+import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/screen_scaffold.dart';
 import 'package:nusa_kasir/shared/widgets/top_toast.dart';
@@ -117,19 +118,6 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
     }
   }
 
-  IconData _statusIcon(String s) {
-    switch (s) {
-      case 'Kosong':
-        return Icons.check_circle;
-      case 'Dipesan':
-        return Icons.pending_actions;
-      case 'Tutup':
-        return Icons.cancel;
-      default:
-        return Icons.table_bar;
-    }
-  }
-
   String _statusLabel(String s) {
     switch (s) {
       case 'Kosong':
@@ -185,29 +173,11 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
       _loading
           ? const Center(child: CircularProgressIndicator())
           : _tables.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.table_bar,
-                        size: 64,
-                        color: isDark
-                            ? NusaConfig.darkTextTertiary
-                            : NusaConfig.textTertiary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Belum ada meja',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isDark
-                              ? NusaConfig.darkTextSecondary
-                              : NusaConfig.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+              ? EmptyState(
+                  icon: Icons.table_bar_rounded,
+                  message: 'Belum ada data meja.\nTap tombol di bawah untuk menambah meja baru.',
+                  actionLabel: 'Tambah Meja',
+                  onAction: _addTable,
                 )
               : Column(
                   children: [
@@ -457,47 +427,48 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
     final sc = _statusColor(status);
     final tabs = _tabsForTable(table.id);
     final hasTabs = tabs.isNotEmpty;
-    final itemCount = _itemCountFromTabs(table.id);
     final tabTotal = _totalFromTabs(table.id);
 
-    final card = GestureDetector(
-      onTap: () => _onTableTap(table),
-      onLongPress: () => _editTable(table),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
-          borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-          border: Border.all(
-            color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor,
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : NusaConfig.textTertiary)
-                  .withOpacity(isDark ? 0.2 : 0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: NusaCard(
+        Row(
           children: [
             // Left side: icon + name + status
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top row: icon + name
+                  // Top row: status pill + name
                   Row(
                     children: [
                       Container(
-                        width: 10,
-                        height: 10,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: sc,
-                          shape: BoxShape.circle,
+                          color: sc.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: sc,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _statusLabel(status),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: sc,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -517,108 +488,95 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  // Status + capacity
-                  Padding(
-                    padding: const EdgeInsets.only(left: 18),
-                    child: Row(
-                      children: [
-                        Text(
-                          _statusLabel(status),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: sc,
-                          ),
+                  const SizedBox(height: 6),
+                  // Capacity and tab info
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 3,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${table.capacity} Kursi',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Tab info row (Dipesan + has tabs)
-                  if (status == 'Dipesan' && hasTabs) ...[
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 18),
-                      child: Row(
-                        children: [
-                          Icon(Icons.receipt_long,
-                              size: 14,
-                              color: isDark
-                                  ? NusaConfig.darkTextTertiary
-                                  : NusaConfig.textSecondary),
-                          const SizedBox(width: 4),
-                          Text(
-                            formatRupiah(tabTotal),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? NusaConfig.darkTextPrimary
-                                  : NusaConfig.textPrimary,
-                            ),
-                          ),
-                          if (tabs.length > 1) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 3,
-                              height: 3,
-                              decoration: BoxDecoration(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.chair_alt_rounded,
+                                size: 12,
                                 color: isDark
                                     ? NusaConfig.darkTextTertiary
-                                    : NusaConfig.textTertiary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
+                                    : NusaConfig.textTertiary),
+                            const SizedBox(width: 4),
                             Text(
-                              '${tabs.length} tab',
+                              '${table.capacity} Kursi',
                               style: TextStyle(
                                 fontSize: 11,
+                                fontWeight: FontWeight.w600,
                                 color: isDark
-                                    ? NusaConfig.darkTextTertiary
-                                    : NusaConfig.textTertiary,
+                                    ? NusaConfig.darkTextSecondary
+                                    : NusaConfig.textSecondary,
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      if (status == 'Dipesan' && hasTabs) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.receipt_long_rounded,
+                            size: 14,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textSecondary),
+                        const SizedBox(width: 4),
+                        Text(
+                          formatRupiah(tabTotal),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? NusaConfig.darkTextPrimary
+                                : NusaConfig.textPrimary,
+                          ),
+                        ),
+                        if (tabs.length > 1) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '(${tabs.length} tab)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark
+                                  ? NusaConfig.darkTextTertiary
+                                  : NusaConfig.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            // Right side: action button
+            // Right side: action button & edit icon
             if (status == 'Kosong' || status == 'Dipesan')
               _tableActionButton(table, status, isDark),
+            IconButton(
+              icon: Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+              ),
+              onPressed: () => _editTable(table),
+              tooltip: 'Edit Meja',
+              visualDensity: VisualDensity.compact,
+            ),
           ],
         ),
+        onTap: () => _onTableTap(table),
+        padding: const EdgeInsets.all(14),
+        borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
       ),
     );
-
-    return card;
   }
 
   Widget _tableActionButton(
@@ -685,78 +643,100 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
         final hasTabs = tabs.isNotEmpty;
         final tabTotal = _totalFromTabs(t.id);
 
-        return GestureDetector(
-          onTap: () => _onTableTap(t),
-          onLongPress: () => _editTable(t),
-          child: Container(
-            decoration: BoxDecoration(
-              color: (isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor)
-                  .withOpacity(isDark ? 1.0 : 0.92),
-              borderRadius: BorderRadius.circular(NusaConfig.radiusMD),
-              border: Border.all(
-                color: sc.withOpacity(0.5),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: sc.withOpacity(isDark ? 0.18 : 0.1),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _onTableTap(t),
+            onLongPress: () => _editTable(t),
+            borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? NusaConfig.darkSurface : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
+                border: Border.all(
+                  color: t.status == 'Kosong'
+                      ? (isDark ? NusaConfig.darkBorder : NusaConfig.borderColor)
+                      : sc.withValues(alpha: 0.5),
+                  width: t.status == 'Kosong' ? 1 : 1.5,
                 ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      t.name,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: isDark
-                            ? NusaConfig.darkTextPrimary
-                            : NusaConfig.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (isDark ? Colors.black : NusaConfig.textTertiary)
+                        .withValues(alpha: isDark ? 0.2 : 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
                   ),
-                  if (t.capacity > 0)
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: sc.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        _statusLabel(t.status),
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: sc,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Flexible(
                       child: Text(
-                        '${t.capacity} Kursi',
+                        t.name,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
                           color: isDark
-                              ? NusaConfig.darkTextTertiary
-                              : NusaConfig.textTertiary,
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  if (t.status == 'Dipesan' && hasTabs)
-                    Flexible(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                    if (t.capacity > 0)
+                      Flexible(
                         child: Text(
-                          formatRupiah(tabTotal),
+                          '${t.capacity} Kursi',
                           style: TextStyle(
                             fontSize: 10,
-                            fontWeight: FontWeight.w600,
                             color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                ],
+                    if (t.status == 'Dipesan' && hasTabs)
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            formatRupiah(tabTotal),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -779,6 +759,10 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
   void _showKosongSheet(DiningTable table) {
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? NusaConfig.darkSurface
+          : NusaConfig.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -786,22 +770,11 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Text(
                   table.name,
                   style: TextStyle(
@@ -813,7 +786,7 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                   ),
                 ),
                 Text(
-                  'Kapasitas ${table.capacity} - Kosong',
+                  'Kapasitas ${table.capacity} Kursi — Meja Tersedia',
                   style: TextStyle(
                     fontSize: 13,
                     color: NusaConfig.success,
@@ -889,7 +862,11 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
     final tabs = _tabsForTable(table.id);
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
       isScrollControlled: true,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? NusaConfig.darkSurface
+          : NusaConfig.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -902,21 +879,10 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
           expand: false,
           builder: (ctx2, scrollController) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade400,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Text(
                     table.name,
                     style: TextStyle(
@@ -972,7 +938,7 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: NusaConfig.warning.withOpacity(0.12),
+                                    color: NusaConfig.warning.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Icon(
@@ -1010,11 +976,11 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                                     ],
                                   ),
                                 ),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.pop(ctx);
-                                      _lanjutkanTab(tab);
-                                    },
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    _lanjutkanTab(tab);
+                                  },
                                   style: TextButton.styleFrom(
                                     foregroundColor: NusaConfig.warning,
                                   ),
@@ -1073,11 +1039,16 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                           final ok = await showDialog<bool>(
                             context: ctx,
                             builder: (c) => AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               title: const Text('Selesai Makan?'),
                               content: Text('Tandai ${table.name} sebagai kosong?'),
                               actions: [
                                 TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Batal')),
-                                TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Selesai', style: TextStyle(color: NusaConfig.success))),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(backgroundColor: NusaConfig.success),
+                                  onPressed: () => Navigator.pop(c, true),
+                                  child: const Text('Selesai'),
+                                ),
                               ],
                             ),
                           );
@@ -1143,28 +1114,18 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
     final capC = TextEditingController(text: '4');
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
-              20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+              20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
               const Text(
                 'Tambah Meja',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -1224,6 +1185,7 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
         TextEditingController(text: t.capacity > 0 ? '${t.capacity}' : '');
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1231,22 +1193,11 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
-              20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+              20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
               const Text(
                 'Edit Meja',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -1270,6 +1221,7 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                   final ok = await showDialog<bool>(
                     context: ctx,
                     builder: (c) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       title: const Text('Hapus Meja?'),
                       content: Text('Hapus ${t.name}?'),
                       actions: [
@@ -1277,12 +1229,10 @@ class _MejaScreenState extends ConsumerState<MejaScreen> {
                           onPressed: () => Navigator.pop(c, false),
                           child: const Text('Batal'),
                         ),
-                        TextButton(
+                        FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.red),
                           onPressed: () => Navigator.pop(c, true),
-                          child: const Text(
-                            'Hapus',
-                            style: TextStyle(color: Colors.red),
-                          ),
+                          child: const Text('Hapus'),
                         ),
                       ],
                     ),

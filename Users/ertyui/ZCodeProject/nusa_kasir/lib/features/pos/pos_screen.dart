@@ -597,76 +597,108 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(        padding: EdgeInsets.fromLTRB(
-          20,
-          12,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          void applyPreset(double val) {
+            final current = double.tryParse(ctrl.text.trim()) ?? 0.0;
+            final next = current > 0 ? (current + val) : val;
+            ctrl.text = next.toStringAsFixed(next.truncateToDouble() == next ? 0 : 1);
+            setSheet(() {});
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              4,
+              20,
+              MediaQuery.of(ctx).viewInsets.bottom + 20,
             ),
-            SizedBox(height: 16),
-            Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: NusaConfig.accentPurple.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.scale_rounded,
-                    color: NusaConfig.accentPurple,
-                    size: 20,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: NusaConfig.accentPurple.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.scale_rounded,
+                        color: NusaConfig.accentPurple,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.name,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${formatRupiah(product.sellPrice)} / kg',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    product.name,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
+                const SizedBox(height: 16),
+                NusaFormField(
+                  label: 'Berat (kg)',
+                  controller: ctrl,
+                  hintText: 'Contoh: 2.5',
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Wajib diisi';
+                    final w = double.tryParse(v);
+                    if (w == null || w <= 0) return 'Berat tidak valid';
+                    return null;
+                  },
                 ),
-              ],
-            ),
-            SizedBox(height: 4),
-            Text(
-              '${formatRupiah(product.sellPrice)} / kg',
-              style: TextStyle(fontSize: 13, color: NusaConfig.textSecondary),
-            ),
-            SizedBox(height: 16),
-            NusaFormField(
-              label: 'Berat (kg)',
-              controller: ctrl,
-              hintText: 'Contoh: 2.5',
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Wajib diisi';
-                final w = double.tryParse(v);
-                if (w == null || w <= 0) return 'Berat tidak valid';
-                return null;
-              },
-            ),
-            SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [0.5, 1.0, 2.0, 3.0, 5.0, 10.0].map((w) {
+                    return ActionChip(
+                      avatar: const Icon(Icons.add_rounded, size: 14, color: NusaConfig.accentPurple),
+                      label: Text('${w.toStringAsFixed(w == w.roundToDouble() ? 0 : 1)} kg'),
+                      labelStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: NusaConfig.accentPurple,
+                      ),
+                      backgroundColor: NusaConfig.accentPurple.withValues(alpha: 0.08),
+                      side: BorderSide(color: NusaConfig.accentPurple.withValues(alpha: 0.25)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      onPressed: () => applyPreset(w),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: NusaConfig.activePrimary,
                   foregroundColor: Colors.white,
@@ -708,14 +740,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   // jalan tanpa tap (v2.2.29).
                   _searchFocus.requestFocus();
                 },
-                child: Text('Tambah ke Keranjang'),
+                child: const Text('Tambah ke Keranjang'),
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
+      );
+    },
+  ),
+);
   }
 
   @override
@@ -3355,33 +3389,39 @@ class _ProductCard extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: outOfStock
-                                ? NusaConfig.stockOut
-                                : (lowStock
-                                      ? NusaConfig.stockLow
-                                      : NusaConfig.surfaceColor.withValues(
-                                          alpha: 0.92,
-                                        )),
+                            color: product.priceType == 'kg'
+                                ? NusaConfig.accentPurple.withValues(alpha: 0.15)
+                                : (outOfStock
+                                    ? NusaConfig.stockOut
+                                    : (lowStock
+                                          ? NusaConfig.stockLow
+                                          : NusaConfig.surfaceColor.withValues(
+                                              alpha: 0.92,
+                                            ))),
                             borderRadius: BorderRadius.circular(
                               NusaConfig.radiusFull,
                             ),
                           ),
                           child: Text(
-                            product.isService
-                                ? 'Layanan'
-                                : outOfStock
-                                    ? 'Habis'
-                                    : '${product.stock}x',
+                            product.priceType == 'kg'
+                                ? 'Kiloan'
+                                : (product.isService
+                                    ? 'Layanan'
+                                    : outOfStock
+                                        ? 'Habis'
+                                        : '${product.stock}x'),
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: product.isService
-                                  ? NusaConfig.activePrimary
-                                  : outOfStock
-                                      ? NusaConfig.stockOutText
-                                      : (lowStock
-                                            ? NusaConfig.stockLowText
-                                            : NusaConfig.activePrimary),
+                              color: product.priceType == 'kg'
+                                  ? NusaConfig.accentPurple
+                                  : (product.isService
+                                      ? NusaConfig.activePrimary
+                                      : outOfStock
+                                          ? NusaConfig.stockOutText
+                                          : (lowStock
+                                                ? NusaConfig.stockLowText
+                                                : NusaConfig.activePrimary)),
                             ),
                           ),
                         ),
@@ -4179,29 +4219,35 @@ class _ProductListCard extends StatelessWidget {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: outOfStock
-                                  ? NusaConfig.stockOut
-                                  : (lowStock
-                                        ? NusaConfig.stockLow
-                                        : NusaConfig.stockActive),
+                              color: product.priceType == 'kg'
+                                  ? NusaConfig.accentPurple.withValues(alpha: 0.15)
+                                  : (outOfStock
+                                      ? NusaConfig.stockOut
+                                      : (lowStock
+                                            ? NusaConfig.stockLow
+                                            : NusaConfig.stockActive)),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              product.isService
-                                  ? 'Layanan'
-                                  : outOfStock
-                                      ? 'Habis'
-                                      : 'Stok ${product.stock}',
+                              product.priceType == 'kg'
+                                  ? 'Kiloan'
+                                  : (product.isService
+                                      ? 'Layanan'
+                                      : outOfStock
+                                          ? 'Habis'
+                                          : 'Stok ${product.stock}'),
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color: product.isService
-                                    ? NusaConfig.activePrimary
-                                    : outOfStock
-                                        ? NusaConfig.stockOutText
-                                        : (lowStock
-                                              ? NusaConfig.stockLowText
-                                              : NusaConfig.stockActiveText),
+                                color: product.priceType == 'kg'
+                                    ? NusaConfig.accentPurple
+                                    : (product.isService
+                                        ? NusaConfig.activePrimary
+                                        : outOfStock
+                                            ? NusaConfig.stockOutText
+                                            : (lowStock
+                                                  ? NusaConfig.stockLowText
+                                                  : NusaConfig.stockActiveText)),
                               ),
                             ),
                           ),

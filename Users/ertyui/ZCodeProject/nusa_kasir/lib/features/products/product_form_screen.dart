@@ -1678,6 +1678,38 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
 
   // ── Expiry date picker ──
   Widget _buildExpiryPicker(bool isDark) {
+    Widget? expiryBadge;
+    if (_expiryDate != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final exp = DateTime(_expiryDate!.year, _expiryDate!.month, _expiryDate!.day);
+      final diff = exp.difference(today).inDays;
+      final Color bColor;
+      final String bText;
+      if (diff < 0) {
+        bColor = NusaConfig.error;
+        bText = 'Kadaluarsa';
+      } else if (diff <= 30) {
+        bColor = NusaConfig.warning;
+        bText = '$diff hr lagi';
+      } else {
+        bColor = NusaConfig.success;
+        bText = '$diff hr';
+      }
+      expiryBadge = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: bColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: bColor.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          bText,
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: bColor),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: () async {
         final now = DateTime.now();
@@ -1717,21 +1749,29 @@ class _ProductFormSheetState extends ConsumerState<ProductFormSheet> {
                     ),
                   ),
                   SizedBox(height: 6),
-                  Text(
-                    _expiryDate != null
-                        ? '${_expiryDate!.day}/${_expiryDate!.month}/${_expiryDate!.year}'
-                        : 'Pilih tanggal',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _expiryDate != null
-                          ? isDark
-                                ? NusaConfig.darkTextPrimary
-                                : NusaConfig.textPrimary
-                          : isDark
-                          ? NusaConfig.darkTextTertiary
-                          : NusaConfig.textTertiary,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        _expiryDate != null
+                            ? '${_expiryDate!.day}/${_expiryDate!.month}/${_expiryDate!.year}'
+                            : 'Pilih tanggal',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _expiryDate != null
+                              ? isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary
+                              : isDark
+                              ? NusaConfig.darkTextTertiary
+                              : NusaConfig.textTertiary,
+                        ),
+                      ),
+                      if (expiryBadge != null) ...[
+                        const SizedBox(width: 8),
+                        expiryBadge,
+                      ],
+                    ],
                   ),
                 ],
               ),

@@ -11,6 +11,8 @@ import 'package:nusa_kasir/core/utils/secure_storage.dart';
 import 'package:nusa_kasir/data/database/app_database.dart';
 import 'package:nusa_kasir/data/repositories/laundry_order_repository.dart';
 import 'package:nusa_kasir/shared/widgets/customer_picker_button.dart';
+import 'package:nusa_kasir/shared/widgets/empty_state.dart';
+import 'package:nusa_kasir/shared/widgets/nusa_card.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_form_field.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_input.dart';
 import 'package:nusa_kasir/shared/widgets/nusa_search_bar.dart';
@@ -193,11 +195,12 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
             // List
             Expanded(
               child: _filtered.isEmpty
-                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.local_laundry_service, size: 64, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-                      const SizedBox(height: 16),
-                      Text('Tidak ada pesanan ${_stages[_selectedIdx]['label']}', style: TextStyle(fontSize: 16, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-                    ]))
+                  ? EmptyState(
+                      icon: Icons.local_laundry_service_rounded,
+                      message: 'Tidak ada pesanan ${_stages[_selectedIdx]['label']}',
+                      actionLabel: 'Cucian Baru',
+                      onAction: () => _openForm(),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                       itemCount: _filtered.length,
@@ -233,116 +236,247 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
       }
     }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      color: isDark ? NusaConfig.darkSurface2 : NusaConfig.surfaceColor,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)), child: Icon(stage['icon'] as IconData, color: color, size: 20)),
-            const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                const SizedBox(width: 8),
-                Text(orderLabel, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-              ]),
-              if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
-                GestureDetector(
-                  onTap: () => _callCustomer(o.customerPhone!),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.phone_outlined, size: 11, color: NusaConfig.activePrimary),
-                    const SizedBox(width: 4),
-                    Text(o.customerPhone!, style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary)),
-                  ]),
-                ),
-            ])),
-            if (o.total > 0) Text(formatRupiah(o.total), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.success)),
-            PopupMenuButton(
-              itemBuilder: (_) => [
-                if (_nextStatus(o.status) != null) PopupMenuItem(value: 'next', child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.arrow_forward_rounded, size: 18), const SizedBox(width: 8), Text(_nextStatus(o.status)!),
-                ])),
-                const PopupMenuItem(value: 'print', child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.print_rounded, size: 18), SizedBox(width: 8), Text('Cetak Tag'),
-                ])),
-                const PopupMenuItem(value: 'edit', child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('Edit'),
-                ])),
-                const PopupMenuItem(value: 'delete', child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('Hapus', style: TextStyle(color: Colors.red)),
-                ])),
-              ],
-              onSelected: (v) {
-                if (v == 'next') _advanceStatus(o);
-                if (v == 'print') _printTag(o);
-                if (v == 'edit') _openForm(order: o);
-                if (v == 'delete') _deleteOrder(o);
-              },
-            ),
-          ]),
-          // ── Items chips ──
-          if (items.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6, runSpacing: 4,
-              children: items.map((item) {
-                final w = item['weightKg'];
-                final qtyDisplay = w != null ? '${(w as num).toDouble().toStringAsFixed(1)} kg' : '${item['qty'] ?? 1}x';
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: isDark ? NusaConfig.darkSurface : NusaConfig.inputFill, borderRadius: BorderRadius.circular(6)),
-                  child: Text('${item['name']} $qtyDisplay', style: const TextStyle(fontSize: 11)),
-                );
-              }).toList(),
-            ),
-          ],
-          // ── Estimate + notes ──
-          if (estString != null) ...[
-            const SizedBox(height: 6),
-            Row(children: [
-              Icon(Icons.schedule, size: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
-              const SizedBox(width: 4),
-              Text(estString, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-              if (o.estimatedReady != null) ...[
-                const SizedBox(width: 6),
-                Text(DateFormat('dd/MM HH:mm').format(o.estimatedReady!), style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-              ],
-            ]),
-          ],
-          if (o.notes != null && o.notes!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(o.notes!, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
-          ],
-          // ── Quick status update chips ──
-          if (nextStages.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Row(children: [
-              Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
-              const SizedBox(width: 6),
-              Text('Update:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary)),
-              const SizedBox(width: 6),
-              ...nextStages.map((ns) {
-                final nsColor = ns['color'] as Color;
-                return GestureDetector(
-                  onTap: () => _jumpToStatus(o, ns['label']),
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: nsColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: nsColor.withOpacity(0.3)),
-                    ),
-                    child: Text(ns['label'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor)),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: NusaCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                );
-              }),
-            ]),
+                  child: Center(
+                    child: Text(
+                      o.customerName.isNotEmpty ? o.customerName[0].toUpperCase() : 'L',
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              o.customerName,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              orderLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: GestureDetector(
+                            onTap: () => _callCustomer(o.customerPhone!),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.phone_outlined, size: 11, color: NusaConfig.activePrimary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  o.customerPhone!,
+                                  style: TextStyle(fontSize: 11, color: NusaConfig.activePrimary, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (o.total > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Text(
+                      formatRupiah(o.total),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: NusaConfig.success),
+                    ),
+                  ),
+                PopupMenuButton(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  itemBuilder: (_) => [
+                    if (_nextStatus(o.status) != null)
+                      PopupMenuItem(
+                        value: 'next',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.arrow_forward_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            Text(_nextStatus(o.status)!),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'print',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.print_rounded, size: 18),
+                          SizedBox(width: 8),
+                          Text('Cetak Tag'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_rounded, size: 18),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('Hapus', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onSelected: (v) {
+                    if (v == 'next') _advanceStatus(o);
+                    if (v == 'print') _printTag(o);
+                    if (v == 'edit') _openForm(order: o);
+                    if (v == 'delete') _deleteOrder(o);
+                  },
+                ),
+              ],
+            ),
+            // Items chips
+            if (items.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: items.map((item) {
+                  final w = item['weightKg'];
+                  final qtyDisplay = w != null
+                      ? '${(w as num).toDouble().toStringAsFixed(1)} kg'
+                      : '${item['qty'] ?? 1}x';
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isDark ? NusaConfig.darkSurface2 : NusaConfig.inputFill,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isDark ? NusaConfig.darkBorder : NusaConfig.borderColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Text(
+                      '${item['name']} $qtyDisplay',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? NusaConfig.darkTextPrimary : NusaConfig.textPrimary,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            // Estimate + notes
+            if (estString != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.schedule_rounded, size: 13, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+                  const SizedBox(width: 4),
+                  Text(estString, style: TextStyle(fontSize: 11, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary)),
+                  if (o.estimatedReady != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      DateFormat('dd/MM HH:mm').format(o.estimatedReady!),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+            if (o.notes != null && o.notes!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                o.notes!,
+                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: isDark ? NusaConfig.darkTextTertiary : NusaConfig.textTertiary),
+              ),
+            ],
+            // Quick status update chips
+            if (nextStages.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.rocket_launch_rounded, size: 13, color: NusaConfig.info),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Update:',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? NusaConfig.darkTextSecondary : NusaConfig.textSecondary),
+                  ),
+                  const SizedBox(width: 6),
+                  ...nextStages.map((ns) {
+                    final nsColor = ns['color'] as Color;
+                    return GestureDetector(
+                      onTap: () => _jumpToStatus(o, ns['label']),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: nsColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: nsColor.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          ns['label'],
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: nsColor),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ],
           ],
-        ]),
+        ),
+        padding: const EdgeInsets.all(14),
+        borderRadius: BorderRadius.circular(NusaConfig.radiusLG),
       ),
     );
   }
@@ -425,13 +559,21 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
   }
 
   Future<void> _deleteOrder(LaundryOrder o) async {
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Hapus Cucian?'), content: Text('Hapus cucian ${o.customerName}?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus', style: TextStyle(color: Colors.red))),
-      ],
-    ));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NusaConfig.radiusLG)),
+        title: const Text('Hapus Cucian?'),
+        content: Text('Hapus cucian ${o.customerName}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
     if (ok == true) { await LaundryOrderRepository(ref.read(databaseProvider)).delete(o.id); TopToast.success(context, 'Cucian dihapus'); _load(); }
   }
 
@@ -461,13 +603,26 @@ class _LaundryStatusScreenState extends ConsumerState<LaundryStatusScreen> {
       });
     }
 
-    showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (ctx) {
-      final isDark = Theme.of(ctx).brightness == Brightness.dark;
-      return StatefulBuilder(builder: (ctx, setSheet) {
-        return Padding(padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20), child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Text(isEdit ? 'Edit Cucian' : 'Cucian Baru', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(isEdit ? 'Edit Cucian' : 'Cucian Baru', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 16),
           NusaFormField(label: 'Nama Pelanggan', controller: nameC, hintText: 'Nama pelanggan', validator: (v) => v == null || v!.isEmpty ? 'Wajib diisi' : null),
           const SizedBox(height: 12),

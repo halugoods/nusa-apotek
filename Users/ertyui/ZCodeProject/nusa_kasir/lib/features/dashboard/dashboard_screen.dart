@@ -3242,13 +3242,313 @@ class _KeuanganSummary extends StatelessWidget {
   }
 }
 
-/// Laundry mini stats — collapsible via a phone-style nav pill bar.
-/// Collapsed: just a thin horizontal pill. Tap to expand the stats card.
-class _LaundryStatsCard extends StatefulWidget {
+class _DomainStatMetric {
+  final String label;
+  final int count;
+  final Color color;
+  const _DomainStatMetric(this.label, this.count, this.color);
+}
+
+/// Unified collapsible domain stats card with interactive preview pill when collapsed.
+class _BaseDomainStatsCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String branch;
+  final String summary;
+  final List<_DomainStatMetric> metrics;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget? extraContent;
+
+  const _BaseDomainStatsCard({
+    required this.icon,
+    required this.title,
+    required this.branch,
+    required this.summary,
+    required this.metrics,
+    required this.expanded,
+    required this.onToggle,
+    this.extraContent,
+  });
+
+  @override
+  State<_BaseDomainStatsCard> createState() => _BaseDomainStatsCardState();
+}
+
+class _BaseDomainStatsCardState extends State<_BaseDomainStatsCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _slideCtrl;
+  late Animation<double> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnim = CurvedAnimation(
+      parent: _slideCtrl,
+      curve: Curves.easeOutCubic,
+    );
+    if (widget.expanded) _slideCtrl.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _BaseDomainStatsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _slideCtrl.forward();
+      } else {
+        _slideCtrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _slideCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = NusaConfig.primaryColor;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          // ── Pull preview pill bar (tap to expand) ──
+          GestureDetector(
+            onTap: widget.onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: widget.expanded
+                  ? const SizedBox.shrink()
+                  : Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? NusaConfig.darkSurface
+                            : NusaConfig.surfaceColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isDark
+                              ? NusaConfig.darkBorder
+                              : NusaConfig.borderColor,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.08 : 0.04,
+                            ),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(widget.icon, size: 14, color: primaryColor),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? NusaConfig.darkTextPrimary
+                                  : NusaConfig.textPrimary,
+                            ),
+                          ),
+                          if (widget.summary.isNotEmpty) ...[
+                            Text(
+                              ' • ${widget.summary}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 14,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+
+          // ── Expanded card (slide animation) ──
+          SizeTransition(
+            sizeFactor: _slideAnim,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? NusaConfig.darkSurface
+                    : NusaConfig.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? NusaConfig.darkBorder
+                      : NusaConfig.borderColor,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          widget.icon,
+                          size: 18,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? NusaConfig.darkTextPrimary
+                              : NusaConfig.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.branch,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? NusaConfig.darkTextTertiary
+                                : NusaConfig.textTertiary,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: widget.onToggle,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 18,
+                            color: isDark
+                                ? NusaConfig.darkTextSecondary
+                                : NusaConfig.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: widget.metrics
+                        .map((m) => _buildStat(m.label, m.count, m.color, isDark))
+                        .toList(),
+                  ),
+                  if (widget.extraContent != null) ...[
+                    widget.extraContent!,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStat(String label, int count, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? NusaConfig.darkTextTertiary
+                    : NusaConfig.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Laundry mini stats card.
+class _LaundryStatsCard extends StatelessWidget {
   final int today, pending, ready, delivered;
   final String branch;
   final bool expanded;
   final VoidCallback onToggle;
+
   const _LaundryStatsCard({
     required this.today,
     required this.pending,
@@ -3260,255 +3560,31 @@ class _LaundryStatsCard extends StatefulWidget {
   });
 
   @override
-  State<_LaundryStatsCard> createState() => _LaundryStatsCardState();
-}
-
-class _LaundryStatsCardState extends State<_LaundryStatsCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _slideCtrl;
-  late Animation<double> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _slideAnim = CurvedAnimation(
-      parent: _slideCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    if (widget.expanded) _slideCtrl.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(covariant _LaundryStatsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.expanded != oldWidget.expanded) {
-      if (widget.expanded) {
-        _slideCtrl.forward();
-      } else {
-        _slideCtrl.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _slideCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark
-        ? NusaConfig.darkTextTertiary
-        : const Color(0xFFB0B0B0);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          // ── Pull pill bar (no card, no text, no animation — just the bar) ──
-          GestureDetector(
-            onTap: widget.onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: widget.expanded
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: hintColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-
-          // ── Expanded card (slide animation) ──
-          SizeTransition(
-            sizeFactor: _slideAnim,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.local_laundry_service_rounded,
-                          size: 18,
-                          color: primaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Laundry',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // v2.2.57+115: keterangan cabang yang dipilih.
-                      Expanded(
-                        child: Text(
-                          widget.branch,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: widget.onToggle,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 18,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _laundryStat(
-                        'Hari Ini',
-                        widget.today,
-                        NusaConfig.accentPurple,
-                        isDark,
-                      ),
-                      _laundryStat(
-                        'Diproses',
-                        widget.pending,
-                        NusaConfig.info,
-                        isDark,
-                      ),
-                      _laundryStat(
-                        'Siap',
-                        widget.ready,
-                        NusaConfig.success,
-                        isDark,
-                      ),
-                      _laundryStat(
-                        'Diambil',
-                        widget.delivered,
-                        NusaConfig.activePrimary,
-                        isDark,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _laundryStat(String label, int count, Color color, bool isDark) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _BaseDomainStatsCard(
+      icon: Icons.local_laundry_service_rounded,
+      title: 'Laundry',
+      branch: branch,
+      summary: pending > 0 ? '$pending aktif' : '$today hari ini',
+      expanded: expanded,
+      onToggle: onToggle,
+      metrics: [
+        _DomainStatMetric('Hari Ini', today, NusaConfig.accentPurple),
+        _DomainStatMetric('Diproses', pending, NusaConfig.info),
+        _DomainStatMetric('Siap', ready, NusaConfig.success),
+        _DomainStatMetric('Diambil', delivered, NusaConfig.activePrimary),
+      ],
     );
   }
 }
 
 /// Salon stats mini-card on dashboard.
-class _SalonStatsCard extends StatefulWidget {
+class _SalonStatsCard extends StatelessWidget {
   final int today, confirmed, waiting, done;
   final String branch;
   final bool expanded;
   final VoidCallback onToggle;
+
   const _SalonStatsCard({
     required this.today,
     required this.confirmed,
@@ -3520,255 +3596,31 @@ class _SalonStatsCard extends StatefulWidget {
   });
 
   @override
-  State<_SalonStatsCard> createState() => _SalonStatsCardState();
-}
-
-class _SalonStatsCardState extends State<_SalonStatsCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _slideCtrl;
-  late Animation<double> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _slideAnim = CurvedAnimation(
-      parent: _slideCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    if (widget.expanded) _slideCtrl.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(covariant _SalonStatsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.expanded != oldWidget.expanded) {
-      if (widget.expanded) {
-        _slideCtrl.forward();
-      } else {
-        _slideCtrl.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _slideCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark
-        ? NusaConfig.darkTextTertiary
-        : const Color(0xFFB0B0B0);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          // ── Pull pill bar ──
-          GestureDetector(
-            onTap: widget.onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: widget.expanded
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: hintColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-
-          // ── Expanded card (slide animation) ──
-          SizeTransition(
-            sizeFactor: _slideAnim,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.content_cut_rounded,
-                          size: 18,
-                          color: primaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Salon',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // v2.2.57+115: keterangan cabang yang dipilih.
-                      Expanded(
-                        child: Text(
-                          widget.branch,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: widget.onToggle,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 18,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _salonStat(
-                        'Hari Ini',
-                        widget.today,
-                        NusaConfig.accentPurple,
-                        isDark,
-                      ),
-                      _salonStat(
-                        'Dikonfirmasi',
-                        widget.confirmed,
-                        NusaConfig.info,
-                        isDark,
-                      ),
-                      _salonStat(
-                        'Menunggu',
-                        widget.waiting,
-                        NusaConfig.warning,
-                        isDark,
-                      ),
-                      _salonStat(
-                        'Selesai',
-                        widget.done,
-                        NusaConfig.success,
-                        isDark,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _salonStat(String label, int count, Color color, bool isDark) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _BaseDomainStatsCard(
+      icon: Icons.content_cut_rounded,
+      title: 'Reservasi',
+      branch: branch,
+      summary: waiting > 0 ? '$waiting menunggu' : '$today hari ini',
+      expanded: expanded,
+      onToggle: onToggle,
+      metrics: [
+        _DomainStatMetric('Hari Ini', today, NusaConfig.accentPurple),
+        _DomainStatMetric('Dikonfirmasi', confirmed, NusaConfig.info),
+        _DomainStatMetric('Menunggu', waiting, NusaConfig.warning),
+        _DomainStatMetric('Selesai', done, NusaConfig.success),
+      ],
     );
   }
 }
 
-/// Fotocopy/Percetakan dashboard stats card — expandable with slide animation.
-class _PrintOrderStatsCard extends StatefulWidget {
+/// Print order stats mini-card on dashboard.
+class _PrintOrderStatsCard extends StatelessWidget {
   final int today, pending, done, picked;
   final String branch;
   final bool expanded;
   final VoidCallback onToggle;
+
   const _PrintOrderStatsCard({
     required this.today,
     required this.pending,
@@ -3780,254 +3632,31 @@ class _PrintOrderStatsCard extends StatefulWidget {
   });
 
   @override
-  State<_PrintOrderStatsCard> createState() => _PrintOrderStatsCardState();
-}
-
-class _PrintOrderStatsCardState extends State<_PrintOrderStatsCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _slideCtrl;
-  late Animation<double> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _slideAnim = CurvedAnimation(
-      parent: _slideCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    if (widget.expanded) _slideCtrl.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(covariant _PrintOrderStatsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.expanded != oldWidget.expanded) {
-      if (widget.expanded) {
-        _slideCtrl.forward();
-      } else {
-        _slideCtrl.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _slideCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark
-        ? NusaConfig.darkTextTertiary
-        : const Color(0xFFB0B0B0);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: widget.onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: widget.expanded
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: hintColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-
-          // ── Expanded card (slide animation) ──
-          SizeTransition(
-            sizeFactor: _slideAnim,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.print_rounded,
-                          size: 18,
-                          color: primaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Order Cetak',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // v2.2.57+115: keterangan cabang yang dipilih.
-                      Expanded(
-                        child: Text(
-                          widget.branch,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: widget.onToggle,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 18,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _printStat(
-                        'Hari Ini',
-                        widget.today,
-                        NusaConfig.accentPurple,
-                        isDark,
-                      ),
-                      _printStat(
-                        'Diproses',
-                        widget.pending,
-                        NusaConfig.info,
-                        isDark,
-                      ),
-                      _printStat(
-                        'Selesai',
-                        widget.done,
-                        NusaConfig.success,
-                        isDark,
-                      ),
-                      _printStat(
-                        'Diambil',
-                        widget.picked,
-                        NusaConfig.activePrimary,
-                        isDark,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _printStat(String label, int count, Color color, bool isDark) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _BaseDomainStatsCard(
+      icon: Icons.print_rounded,
+      title: 'Order Cetak',
+      branch: branch,
+      summary: pending > 0 ? '$pending diproses' : '$today hari ini',
+      expanded: expanded,
+      onToggle: onToggle,
+      metrics: [
+        _DomainStatMetric('Hari Ini', today, NusaConfig.accentPurple),
+        _DomainStatMetric('Diproses', pending, NusaConfig.info),
+        _DomainStatMetric('Selesai', done, NusaConfig.success),
+        _DomainStatMetric('Diambil', picked, NusaConfig.activePrimary),
+      ],
     );
   }
 }
 
-/// Bengkel dashboard stats card — expandable with slide animation (mirror of salon).
-class _BengkelStatsCard extends StatefulWidget {
+/// Bengkel dashboard stats card.
+class _BengkelStatsCard extends StatelessWidget {
   final int today, queue, inProgress, done, estimate;
   final String branch;
   final bool expanded;
   final VoidCallback onToggle;
+
   const _BengkelStatsCard({
     required this.today,
     required this.queue,
@@ -4040,290 +3669,72 @@ class _BengkelStatsCard extends StatefulWidget {
   });
 
   @override
-  State<_BengkelStatsCard> createState() => _BengkelStatsCardState();
-}
-
-class _BengkelStatsCardState extends State<_BengkelStatsCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _slideCtrl;
-  late Animation<double> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _slideAnim = CurvedAnimation(
-      parent: _slideCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    if (widget.expanded) _slideCtrl.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(covariant _BengkelStatsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.expanded != oldWidget.expanded) {
-      if (widget.expanded) {
-        _slideCtrl.forward();
-      } else {
-        _slideCtrl.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _slideCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = NusaConfig.primaryColor;
-    final hintColor = isDark
-        ? NusaConfig.darkTextTertiary
-        : const Color(0xFFB0B0B0);
+    final totalActive = queue + inProgress;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          // ── Pull pill bar ──
-          GestureDetector(
-            onTap: widget.onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: widget.expanded
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: hintColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-
-          // ── Expanded card (slide animation) ──
-          SizeTransition(
-            sizeFactor: _slideAnim,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? NusaConfig.darkSurface
-                    : NusaConfig.surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark
-                      ? NusaConfig.darkBorder
-                      : NusaConfig.borderColor,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+    return _BaseDomainStatsCard(
+      icon: Icons.directions_car_filled_outlined,
+      title: 'Bengkel',
+      branch: branch,
+      summary: totalActive > 0 ? '$totalActive unit aktif' : '$today hari ini',
+      expanded: expanded,
+      onToggle: onToggle,
+      metrics: [
+        _DomainStatMetric('Hari Ini', today, NusaConfig.warning),
+        _DomainStatMetric('Antrian', queue, NusaConfig.info),
+        _DomainStatMetric('Dikerjakan', inProgress, NusaConfig.accentPurple),
+        _DomainStatMetric('Selesai', done, NusaConfig.success),
+      ],
+      extraContent: estimate > 0
+          ? Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
                   ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                  decoration: BoxDecoration(
+                    color: NusaConfig.accentGold.withValues(
+                      alpha: isDark ? 0.12 : 0.10,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: NusaConfig.accentGold.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
                     children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.directions_car_filled_outlined,
-                          size: 18,
-                          color: primaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Bengkel',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? NusaConfig.darkTextPrimary
-                              : NusaConfig.textPrimary,
-                        ),
+                      const Icon(
+                        Icons.receipt_long_outlined,
+                        size: 16,
+                        color: NusaConfig.accentGold,
                       ),
                       const SizedBox(width: 8),
-                      // v2.2.57+115: keterangan cabang yang dipilih.
-                      Expanded(
-                        child: Text(
-                          widget.branch,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark
-                                ? NusaConfig.darkTextTertiary
-                                : NusaConfig.textTertiary,
-                          ),
+                      Text(
+                        'Estimasi berjalan: ',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? NusaConfig.darkTextSecondary
+                              : NusaConfig.textSecondary,
                         ),
                       ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: widget.onToggle,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 18,
-                            color: isDark
-                                ? NusaConfig.darkTextSecondary
-                                : NusaConfig.textSecondary,
-                          ),
+                      Text(
+                        formatRupiah(estimate),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: NusaConfig.accentGold,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _bengkelStat(
-                        'Hari Ini',
-                        widget.today,
-                        NusaConfig.warning,
-                        isDark,
-                      ),
-                      _bengkelStat(
-                        'Antrian',
-                        widget.queue,
-                        NusaConfig.info,
-                        isDark,
-                      ),
-                      _bengkelStat(
-                        'Dikerjakan',
-                        widget.inProgress,
-                        NusaConfig.accentPurple,
-                        isDark,
-                      ),
-                      _bengkelStat(
-                        'Selesai',
-                        widget.done,
-                        NusaConfig.success,
-                        isDark,
-                      ),
-                    ],
-                  ),
-                  if (widget.estimate > 0) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: NusaConfig.accentGold.withValues(
-                          alpha: isDark ? 0.12 : 0.10,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: NusaConfig.accentGold.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.receipt_long_outlined,
-                            size: 16,
-                            color: NusaConfig.accentGold,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Estimasi berjalan: ',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark
-                                  ? NusaConfig.darkTextSecondary
-                                  : NusaConfig.textSecondary,
-                            ),
-                          ),
-                          Text(
-                            formatRupiah(widget.estimate),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: NusaConfig.accentGold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bengkelStat(String label, int count, Color color, bool isDark) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withValues(alpha: isDark ? 0.15 : 0.12),
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? NusaConfig.darkTextTertiary
-                    : NusaConfig.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
+                ),
+              ],
+            )
+          : null,
     );
   }
 }
